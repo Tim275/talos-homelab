@@ -1,0 +1,48 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: test-appset
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+  - git:
+      repoURL: https://github.com/Tim275/talos-homelab.git
+      revision: main
+      directories:
+      - path: kubernetes/applications/*/envs/test
+  template:
+    metadata:
+      name: '{{index .path.segments 2}}-test'
+      namespace: argocd
+      labels:
+        app.kubernetes.io/component: application
+        app.kubernetes.io/part-of: test-environment
+    spec:
+      project: applications
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab.git
+        targetRevision: main
+        path: '{{.path.path}}'
+        kustomize: {}
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{index .path.segments 2}}-test'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        retry:
+          limit: 3
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 3m
+        syncOptions:
+          - CreateNamespace=true
+          - ApplyOutOfSyncOnly=true
+          - ServerSideApply=true
+          - PruneLast=true
