@@ -44,6 +44,16 @@ module "talos" {
       ram_dedicated = 4144
       datastore_id  = "local-zfs"
     }
+    "ctrl-02" = {
+      host_node     = "homelab"
+      machine_type  = "controlplane"
+      ip            = "192.168.68.105"
+      mac_address   = "BC:24:11:2E:C8:A4"
+      vm_id         = 802
+      cpu           = 2
+      ram_dedicated = 4144
+      datastore_id  = "local-zfs"
+    }
     "work-00" = {
       host_node     = "homelab"
       machine_type  = "worker"

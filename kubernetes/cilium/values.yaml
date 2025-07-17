@@ -1,4 +1,44 @@
-cluster:
+## Zusammenfassung: Netzwerk- und GitOps-Strategie für Talos + ArgoCD
+
+### 1. Aktueller Stand
+- Dein Talos-Cluster läuft mit statischen IPs, keine DHCP-Reservierung nötig.
+- VLANs sind aktuell **optional**, aber für die Zukunft sehr empfehlenswert.
+- Die alte Checkliste (DHCP, alte IPs) ist **nicht mehr relevant** – du bist bereits in der Betriebsphase.
+
+### 2. VLANs & Netzwerkplanung – Warum und wie?
+- **VLANs** ermöglichen logische Trennung (z.B. Management, Dev, Staging, Prod, DMZ) auf derselben Hardware.
+- Vorteile:
+  - **Sicherheit:** Isolierung von Prod, Admin, IoT, etc.
+  - **Performance:** Weniger Broadcast-Traffic.
+  - **Management:** Klare IP-Bereiche, bessere Übersicht.
+  - **Firewall:** Feingranulare Kontrolle zwischen Umgebungen.
+
+- **VLANs können jederzeit nachgerüstet werden** – jetzt alles im Default-VLAN, später Migration möglich.
+
+### 3. GitOps mit ArgoCD & VLANs
+- **Empfohlene Struktur für professionelle Setups:**
+  - VLAN 1: Management (Admin, ArgoCD UI)
+  - VLAN 10: Development
+  - VLAN 20: Staging
+  - VLAN 30: Production
+- **ArgoCD** kann pro Environment (dev/staging/prod) eigene Cluster oder Namespaces verwalten.
+- **Network Policies** sorgen für Isolation zwischen Environments (z.B. Prod nur aus Prod-VLAN erreichbar).
+- **GitOps-Workflow:** Änderungen werden per Git gepusht, ArgoCD deployed automatisiert in die jeweilige Umgebung, Promotion nach Staging/Prod nach Freigabe.
+
+### 4. Praktische Vorteile
+- **Sicherheit:** Prod ist von Dev/Staging isoliert, Secrets und Datenbanken sind getrennt.
+- **Testing:** Realistische Netzwerk- und LB-Tests pro Umgebung.
+- **Compliance:** Audit-Logs, Zugriffssteuerung und Change-Management pro Environment.
+
+### 5. Migrationsempfehlung
+- **Phase 1:** Single Cluster, Namespaces für dev/staging/prod, Network Policies nutzen.
+- **Phase 2:** VLANs einführen, Cluster pro Environment trennen, ArgoCD Multi-Cluster-Setup.
+- **Phase 3:** Production Ready – dedizierte ArgoCD-Instanzen, Service Mesh, Disaster Recovery.
+
+---
+
+**Fazit:**  
+Dein aktuelles Setup ist bereits produktionsreif. VLANs und GitOps mit ArgoCD sind der nächste logische Schritt für mehr Sicherheit, Skalierbarkeit und Professionalität. Du kannst jederzeit VLANs und Multi-Environment-Strategien nachrüsten – das ist der Profi-Weg für HomeLab und Enterprise! 🚀cluster:
   name: talos
   id: 1
 
@@ -67,7 +107,8 @@ ingressController:
   loadbalancerMode: shared
   service:
     annotations:
-      io.cilium/lb-ipam-ips: 192.168.1.223
+      # IP must be in same subnet as router (192.168.68.1)
+      io.cilium/lb-ipam-ips: 192.168.68.100
 
 hubble:
   enabled: true
