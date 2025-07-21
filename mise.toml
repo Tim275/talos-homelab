@@ -1,0 +1,86 @@
+[tools]
+kubectl = "latest"     # ⚓ Kubernetes CLI
+k9s = "latest"         # 📊 Kubernetes dashboard TUI
+yq = "latest"          # 📝 YAML processor
+opentofu = "latest"    # 🌱 Infrastructure as Code
+talosctl = "latest"    # 🐧 Talos Linux CLI
+helm = "latest"        # ⛵ Helm package manager
+cilium = "latest"       # 🦠 Cilium CLI for networking (not in mise registry)
+
+[settings]
+experimental = true
+
+[tasks.setup]
+description = "Trust and install all tools"
+run = """
+mise trust
+mise install
+"""
+
+
+[tasks.cluster-info]
+description = "Show cluster information"
+run = """
+echo "🔍 Talos Cluster Info:"
+kubectl get nodes -o wide
+kubectl get pods -A --field-selector=status.phase!=Running
+"""
+[tasks.cluster-status]
+description = "Check cluster health (Talos + Kubernetes)"
+run = """
+echo "🏥 Talos Cluster Health:"
+talosctl --talosconfig tofu/output/talos-config.yaml health
+
+echo ""
+echo "☸️ Kubernetes Nodes:"
+kubectl --kubeconfig tofu/output/kube-config.yaml get nodes -o wide
+
+echo ""
+echo "🔍 Not Running Pods:"
+kubectl --kubeconfig tofu/output/kube-config.yaml get pods -A --field-selector=status.phase!=Running
+"""
+
+[tasks.apply-manifests]
+description = "Apply Kubernetes manifests"
+run = """
+echo "🚀 Applying manifests..."
+kubectl apply -f kubernetes/
+"""
+
+[tasks.tofu-plan]
+description = "Plan infrastructure changes"
+run = """
+echo "📋 Planning infrastructure changes..."
+cd tofu
+tofu plan
+"""
+
+[tasks.tofu-apply]
+description = "Apply infrastructure changes"
+run = """
+echo "🚀 Applying infrastructure changes..."
+cd tofu
+tofu apply
+"""
+
+[hooks]
+enter = """
+echo '🎯 Talos K8s DevContainer Ready!'
+echo ''
+echo '🔧 Tools available: ⚓ kubectl 📊 k9s 📝 yq 🌱 opentofu 🐧 talosctl'
+echo ''
+echo '❓ Available commands:'
+echo '  ⚓ kubectl get nodes        # View cluster nodes'
+echo '  📊 k9s                     # Open K8s dashboard'
+echo '  🐧 talosctl health         # Check Talos cluster health'
+echo '  🌱 tofu plan               # Plan infrastructure changes'
+echo '  📝 yq --version           # Check YAML processor'
+echo ''
+echo '🚀 Quick tasks:'
+echo '  mise run setup            # Install all tools'
+echo '  mise run cluster-info     # Show cluster information'
+echo '  mise run cluster-status   # Check cluster health'
+echo ''
+"""
+
+
