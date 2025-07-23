@@ -3,11 +3,46 @@ global:
 
 configs:
   cm:
-    kustomize.buildOptions: --enable-helm
-    timeout.reconciliation: 300s
+    create: true
+    application.resourceTrackingMethod: annotation+label
+    admin.enabled: true
+    url: https://argocd.homelab.local
+    
+  cmp:
+    create: true
+    plugins:
+      kustomize-build-with-helm:
+        generate:
+          command: [ sh, -c ]
+          args: [ kustomize build --enable-helm ]
+
   params:
+    controller.diff.server.side: true
     server.insecure: true
     server.grpc.web: true
+
+crds:
+  install: true
+  keep: false
+
+controller:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 700Mi
+    limits:
+      memory: 4Gi
+
+dex:
+  enabled: false
+
+redis:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      memory: 1Gi
 
 server:
   service:
@@ -21,33 +56,57 @@ server:
       - /
     pathType: Prefix
   resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
     limits:
-      cpu: 500m
-      memory: 512Mi
-    requests:
-      cpu: 250m
-      memory: 256Mi
-
-dex:
-  enabled: false
-
-controller:
-  resources:
-    limits: 
-      cpu: 1000m
-      memory: 2Gi
-    requests:
-      cpu: 250m
-      memory: 512Mi
+      memory: 1Gi
 
 repoServer:
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+  volumes:
+    - name: cmp-kustomize-build-with-helm
+      configMap:
+        name: argocd-cmp-cm
+    - name: cmp-tmp
+      emptyDir: { }
   resources:
-    limits:
-      cpu: 500m
-      memory: 1Gi
     requests:
-      cpu: 250m
-      memory: 512Mi
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 2Gi
+  extraContainers:
+    - name: kustomize-build-with-helm
+      command:
+        - argocd-cmp-server
+      image: '{{ default .Values.global.image.repository .Values.repoServer.image.repository }}:{{ default (include "argo-cd.defaultTag" .) .Values.repoServer.image.tag }}'
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop: [ ALL ]
+      volumeMounts:
+        - name: plugins
+          mountPath: /home/argocd/cmp-server/plugins
+        - name: cmp-kustomize-build-with-helm
+          mountPath: /home/argocd/cmp-server/config/plugin.yaml
+          subPath: kustomize-build-with-helm.yaml
+        - mountPath: /tmp
+          name: cmp-tmp
 
 applicationSet:
-  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 1Gi
+
+notifications:
+  enabled: false
