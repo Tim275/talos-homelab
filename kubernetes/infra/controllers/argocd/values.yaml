@@ -1,11 +1,13 @@
-global:
-  domain: argocd.homelab.local
-
+# Based on Vegard's homelab setup
 configs:
-  params:
-    server.insecure: true
-    server.grpc.web: true
-    controller.diff.server.side: true
+  cm:
+    create: true
+    application.resourceTrackingMethod: annotation+label
+    admin.enabled: true
+    url: https://argocd.homelab.local
+    kustomize.buildOptions: --enable-helm
+    timeout.reconciliation: 300s
+
   cmp:
     create: true
     plugins:
@@ -14,9 +16,39 @@ configs:
           command: [ sh, -c ]
           args: [ kustomize build --enable-helm ]
 
+  params:
+    controller.diff.server.side: true
+    server.insecure: true
+    server.grpc.web: true
+
 crds:
   install: true
   keep: false
+
+controller:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 700Mi
+    limits:
+      memory: 4Gi
+
+dex:
+  enabled: false
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+redis:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      memory: 1Gi
 
 server:
   service:
@@ -30,40 +62,13 @@ server:
       - /
     pathType: Prefix
   resources:
-    limits:
-      cpu: 500m
-      memory: 512Mi
     requests:
-      cpu: 250m
-      memory: 256Mi
-
-dex:
-  enabled: false
-
-redis-ha:
-  enabled: false
-
-redis:
-  enabled: true
-  resources:
-    requests:
-      cpu: 100m
+      cpu: 50m
       memory: 64Mi
     limits:
       memory: 1Gi
 
-controller:
-  replicas: 1
-  resources:
-    limits:
-      cpu: 1000m
-      memory: 2Gi
-    requests:
-      cpu: 250m
-      memory: 512Mi
-
 repoServer:
-  replicas: 1
   containerSecurityContext:
     readOnlyRootFilesystem: true
   volumes:
@@ -73,12 +78,11 @@ repoServer:
     - name: cmp-tmp
       emptyDir: { }
   resources:
-    limits:
-      cpu: 500m
-      memory: 2Gi
     requests:
-      cpu: 250m
-      memory: 512Mi
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 2Gi
   extraContainers:
     - name: kustomize-build-with-helm
       command:
@@ -103,11 +107,12 @@ repoServer:
           name: cmp-tmp
 
 applicationSet:
-  enabled: true
-  replicas: 1
   resources:
     requests:
       cpu: 50m
       memory: 64Mi
     limits:
       memory: 1Gi
+
+notifications:
+  enabled: false
