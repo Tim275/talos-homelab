@@ -5,7 +5,19 @@ configs:
   params:
     server.insecure: true
     server.grpc.web: true
-  
+    controller.diff.server.side: true
+  cmp:
+    create: true
+    plugins:
+      kustomize-build-with-helm:
+        generate:
+          command: [ sh, -c ]
+          args: [ kustomize build --enable-helm ]
+
+crds:
+  install: true
+  keep: false
+
 server:
   service:
     type: LoadBalancer
@@ -17,6 +29,13 @@ server:
     paths:
       - /
     pathType: Prefix
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
 
 dex:
   enabled: false
@@ -26,37 +45,69 @@ redis-ha:
 
 redis:
   enabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      memory: 1Gi
 
 controller:
   replicas: 1
   resources:
     limits:
-      cpu: 500m
-      memory: 512Mi
+      cpu: 1000m
+      memory: 2Gi
     requests:
       cpu: 250m
-      memory: 256Mi
-
-server:
-  replicas: 1
-  resources:
-    limits:
-      cpu: 500m
       memory: 512Mi
-    requests:
-      cpu: 250m
-      memory: 256Mi
 
 repoServer:
   replicas: 1
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+  volumes:
+    - name: cmp-kustomize-build-with-helm
+      configMap:
+        name: argocd-cmp-cm
+    - name: cmp-tmp
+      emptyDir: { }
   resources:
     limits:
       cpu: 500m
-      memory: 512Mi
+      memory: 2Gi
     requests:
       cpu: 250m
-      memory: 256Mi
+      memory: 512Mi
+  extraContainers:
+    - name: kustomize-build-with-helm
+      command:
+        - argocd-cmp-server
+      image: 'quay.io/argoproj/argocd:v2.12.6'
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop: [ ALL ]
+      volumeMounts:
+        - name: plugins
+          mountPath: /home/argocd/cmp-server/plugins
+        - name: cmp-kustomize-build-with-helm
+          mountPath: /home/argocd/cmp-server/config/plugin.yaml
+          subPath: kustomize-build-with-helm.yaml
+        - mountPath: /tmp
+          name: cmp-tmp
 
 applicationSet:
   enabled: true
   replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 1Gi
