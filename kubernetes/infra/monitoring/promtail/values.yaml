@@ -1,0 +1,131 @@
+# Production Promtail Configuration
+config:
+  # Loki endpoint
+  clients:
+    - url: http://loki-gateway/loki/api/v1/push
+      tenant_id: 1
+
+  # Advanced log processing pipeline
+  snippets:
+    pipelineStages:
+      - cri: {}
+      - json:
+          expressions:
+            level: level
+            msg: msg
+            time: time
+      - labels:
+          level:
+          msg:
+      - timestamp:
+          source: time
+          format: RFC3339Nano
+    
+    # Comprehensive scrape configs for Kubernetes
+    scrapeConfigs: |
+      # Kubernetes pods
+      - job_name: kubernetes-pods
+        kubernetes_sd_configs:
+          - role: pod
+        pipeline_stages:
+          - cri: {}
+        relabel_configs:
+          - source_labels:
+              - __meta_kubernetes_pod_controller_name
+            regex: ([0-9a-z-.]+?)(-[0-9a-f]{8,10})?
+            target_label: __tmp_controller_name
+          - source_labels:
+              - __meta_kubernetes_pod_label_app_kubernetes_io_name
+              - __meta_kubernetes_pod_label_app
+              - __tmp_controller_name
+              - __meta_kubernetes_pod_name
+            regex: ^;*([^;]+)(;.*)?$
+            target_label: app
+            replacement: $1
+          - source_labels:
+              - __meta_kubernetes_pod_label_app_kubernetes_io_instance
+              - __meta_kubernetes_pod_label_instance
+            regex: ^;*([^;]+)(;.*)?$
+            target_label: instance
+            replacement: $1
+          - source_labels:
+              - __meta_kubernetes_pod_label_app_kubernetes_io_component
+              - __meta_kubernetes_pod_label_component
+            regex: ^;*([^;]+)(;.*)?$
+            target_label: component
+            replacement: $1
+          - replacement: /var/log/pods/*$1/*.log
+            separator: /
+            source_labels:
+              - __meta_kubernetes_pod_uid
+              - __meta_kubernetes_pod_container_name
+            target_label: __path__
+            
+      # Kubernetes node logs  
+      - job_name: kubernetes-node-logs
+        static_configs:
+          - targets:
+              - localhost
+            labels:
+              job: node-logs
+              __path__: /var/log/{kern,dmesg,messages,syslog}
+
+# Production resource limits
+resources:
+  limits:
+    cpu: 200m
+    memory: 128Mi
+  requests:
+    cpu: 100m
+    memory: 64Mi
+
+# DaemonSet configuration for node coverage
+daemonset:
+  enabled: true
+
+# Security context
+securityContext:
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+  allowPrivilegeEscalation: false
+
+# Tolerations for all nodes
+tolerations:
+  - effect: NoSchedule
+    operator: Exists
+  - effect: NoExecute
+    operator: Exists
+
+# Node selection
+nodeSelector: {}
+
+# Affinity rules
+affinity: {}
+
+# Service monitor for Prometheus
+serviceMonitor:
+  enabled: true
+
+# Default volumes (logs from nodes)
+defaultVolumes:
+  - name: run
+    hostPath:
+      path: /run/promtail
+  - name: containers
+    hostPath:
+      path: /var/lib/docker/containers
+  - name: pods
+    hostPath:
+      path: /var/log/pods
+
+defaultVolumeMounts:
+  - name: run
+    mountPath: /run/promtail
+  - name: containers
+    mountPath: /var/lib/docker/containers
+    readOnly: true
+  - name: pods
+    mountPath: /var/log/pods
+    readOnly: true
