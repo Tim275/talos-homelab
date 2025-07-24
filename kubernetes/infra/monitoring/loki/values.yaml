@@ -1,91 +1,49 @@
-# Production-ready Loki Configuration  
-deploymentMode: SingleBinary
-
+# Simple Loki Stack Configuration for Homelab
 loki:
-  # Filesystem storage for homelab
-  storage:
-    type: filesystem
-  
-  # Simple schema config for filesystem
-  schemaConfig:
-    configs:
-      - from: 2020-10-24
-        store: boltdb-shipper
-        object_store: filesystem  
-        schema: v11
-        index:
-          prefix: index_
-          period: 24h
-  
-  # Storage config for filesystem
-  storageConfig:
-    boltdb_shipper:
-      active_index_directory: /data/loki/boltdb-shipper-active
-      cache_location: /data/loki/boltdb-shipper-cache
-      shared_store: filesystem
-    filesystem:
-      directory: /data/loki/chunks
-  
-  # Resource limits for production
-  resources:
-    limits:
-      cpu: 1000m
-      memory: 1Gi
-    requests:
-      cpu: 500m
-      memory: 512Mi
-
-  # Retention policy
-  compactor:
-    retention_enabled: true
-    retention_delete_delay: 2h
-    retention_delete_worker_count: 150
-  
-  limits_config:
-    retention_period: 168h  # 7 days
-    ingestion_rate_mb: 10
-    ingestion_burst_size_mb: 20
-    max_global_streams_per_user: 10000
-    max_query_parallelism: 32
-
-# Persistent storage for production
-singleBinary:
+  enabled: true
   persistence:
     enabled: true
-    storageClass: proxmox-csi
-    size: 10Gi
-  
+    storageClassName: proxmox-csi
+    size: 5Gi
   resources:
     limits:
-      cpu: 1000m
-      memory: 1Gi
-    requests:
       cpu: 500m
       memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  config:
+    chunk_store_config:
+      max_look_back_period: 168h  # 7 days
+    table_manager:
+      retention_deletes_enabled: true
+      retention_period: 168h      # 7 days
 
-# Monitoring integration
-monitoring:
-  serviceMonitor:
-    enabled: true
-  prometheusRule:
-    enabled: true
+# Promtail enabled in loki-stack
+promtail:
+  enabled: true
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 64Mi
+  config:
+    lokiAddress: http://loki:3100/loki/api/v1/push
 
-# Security
-rbac:
-  pspEnabled: false
-
-# Disable test components for production
-test:
+# Disable other components
+grafana:
   enabled: false
 
-# Gateway disabled (using single binary)
-gateway:
+prometheus:
   enabled: false
 
-# Distributed components disabled (using single binary)
-read:
+fluent-bit:
   enabled: false
-write:
+
+filebeat:
   enabled: false
-backend:
+
+logstash:
   enabled: false
