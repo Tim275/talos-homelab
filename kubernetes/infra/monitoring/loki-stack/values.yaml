@@ -1,0 +1,100 @@
+# Loki Stack Configuration for Log Aggregation
+loki:
+  enabled: true
+  persistence:
+    enabled: true
+    storageClassName: proxmox-csi
+    size: 2Gi
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  config:
+    chunk_store_config:
+      max_look_back_period: 168h  # 7 days
+    table_manager:
+      retention_deletes_enabled: true
+      retention_period: 168h      # 7 days
+
+# Promtail - Log collector that runs on every node
+promtail:
+  enabled: true
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 64Mi
+  config:
+    lokiAddress: http://loki-stack:3100/loki/api/v1/push
+    snippets:
+      scrapeConfigs: |
+        # Kubernetes pods
+        - job_name: kubernetes-pods
+          kubernetes_sd_configs:
+            - role: pod
+          pipeline_stages:
+            - cri: {}
+          relabel_configs:
+            - source_labels:
+                - __meta_kubernetes_pod_controller_name
+              regex: ([0-9a-z-.]+?)(-[0-9a-f]{8,10})?
+              target_label: __tmp_controller_name
+            - source_labels:
+                - __meta_kubernetes_pod_label_app_kubernetes_io_name
+                - __meta_kubernetes_pod_label_app
+                - __tmp_controller_name
+                - __meta_kubernetes_pod_name
+              regex: ^;*([^;]+)(;.*)?$
+              target_label: app
+              replacement: $1
+            - source_labels:
+                - __meta_kubernetes_pod_label_app_kubernetes_io_instance
+                - __meta_kubernetes_pod_label_instance
+              regex: ^;*([^;]+)(;.*)?$
+              target_label: instance
+              replacement: $1
+            - source_labels:
+                - __meta_kubernetes_pod_label_app_kubernetes_io_component
+                - __meta_kubernetes_pod_label_component
+              regex: ^;*([^;]+)(;.*)?$
+              target_label: component
+              replacement: $1
+            - replacement: /var/log/pods/*$1/*.log
+              separator: /
+              source_labels:
+                - __meta_kubernetes_pod_uid
+                - __meta_kubernetes_pod_container_name
+              target_label: __path__
+            - replacement: /var/log/pods/*$1/*.log
+              regex: true/(.*)
+              separator: /
+              source_labels:
+                - __meta_kubernetes_pod_annotationpresent_kubernetes_io_config_hash
+                - __meta_kubernetes_pod_annotation_kubernetes_io_config_hash
+                - __meta_kubernetes_pod_container_name
+              target_label: __path__
+
+# Fluent Bit - disabled, we use Promtail
+fluent-bit:
+  enabled: false
+
+# Grafana - disabled, we use the one from prometheus-stack  
+grafana:
+  enabled: false
+
+# Prometheus - disabled, we use the one from prometheus-stack
+prometheus:
+  enabled: false
+
+# Filebeat - disabled, we use Promtail
+filebeat:
+  enabled: false
+
+# Logstash - disabled, we use Promtail  
+logstash:
+  enabled: false
