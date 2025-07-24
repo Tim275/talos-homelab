@@ -1,0 +1,101 @@
+# Complete Monitoring Stack - Everything in One Place
+# Prometheus for metrics + Grafana for visualization + Loki for logs + Promtail for log collection
+
+# Loki - Log aggregation backend
+loki:
+  enabled: true
+  persistence:
+    enabled: true
+    storageClassName: proxmox-csi
+    size: 5Gi
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  config:
+    chunk_store_config:
+      max_look_back_period: 168h
+    table_manager:
+      retention_deletes_enabled: true
+      retention_period: 168h
+
+# Promtail - Log collection agent (DaemonSet on all nodes)
+promtail:
+  enabled: true
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 64Mi
+
+# Grafana - Visualization dashboard with Loki datasource
+grafana:
+  enabled: true
+  adminPassword: admin
+  persistence:
+    enabled: true
+    storageClassName: proxmox-csi
+    size: 2Gi
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  # Pre-configure Loki as datasource
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Loki
+          type: loki
+          url: http://monitoring-stack:3100
+          access: proxy
+          isDefault: false
+        - name: Prometheus  
+          type: prometheus
+          url: http://monitoring-stack-prometheus-server
+          access: proxy
+          isDefault: true
+
+# Prometheus - Metrics collection
+prometheus:
+  enabled: true
+  server:
+    persistentVolume:
+      enabled: true
+      storageClass: proxmox-csi
+      size: 5Gi
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+  alertmanager:
+    persistentVolume:
+      enabled: true
+      storageClass: proxmox-csi
+      size: 2Gi
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+# Disable unused components
+fluent-bit:
+  enabled: false
+filebeat:
+  enabled: false
+logstash:
+  enabled: false
