@@ -7,7 +7,7 @@ talos_nodes = {
     mac_address   = "BC:24:11:2E:C8:A0"
     vm_id         = 800
     cpu           = 2
-    ram_dedicated = 4144  # 4GB
+    ram_dedicated = 6192  # 4GB
     datastore_id  = "local-zfs"
   }
   
@@ -18,7 +18,7 @@ talos_nodes = {
     mac_address   = "BC:24:11:2E:C8:A1"
     vm_id         = 801
     cpu           = 2
-    ram_dedicated = 4144  # 4GB
+    ram_dedicated = 6192  # 4GB
     datastore_id  = "local-zfs"
   }
   
@@ -29,7 +29,7 @@ talos_nodes = {
     mac_address   = "BC:24:11:2E:C8:A4"
     vm_id         = 802
     cpu           = 2
-    ram_dedicated = 4144  # 4GB
+    ram_dedicated = 6192  # 4GB
     datastore_id  = "local-zfs"
   }
   
