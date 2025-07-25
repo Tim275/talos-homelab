@@ -1,54 +1,64 @@
+# machine-Konfiguration für Talos Nodes
 machine:
   network:
-    hostname: ${hostname}
+    hostname: ${hostname}  # Hostname des Nodes
     interfaces:
       - deviceSelector:
-          hardwareAddr: ${mac_address}
+          hardwareAddr: ${mac_address}  # MAC-Adresse für Interface-Auswahl
         addresses:
-          - ${ip}/${subnet_mask}
+          - ${ip}/${subnet_mask}        # Statische IP-Adresse/Subnetz
         routes:
           - network: 0.0.0.0/0
-            gateway: ${gateway}
-        dhcp: false
+            gateway: ${gateway}         # Default Gateway
+        dhcp: false                     # DHCP deaktiviert
 %{ if vip != null }
         vip:
-          ip: ${vip}
+          ip: ${vip}                    # Optional: Virtual IP für HA
 %{ endif }
   nodeLabels:
-    topology.kubernetes.io/region: ${cluster_name}
-    topology.kubernetes.io/zone: ${node_name}
+    topology.kubernetes.io/region: ${cluster_name}  # Region-Label für Topologie
+    topology.kubernetes.io/zone: ${node_name}       # Zonen-Label für Topologie
   features:
-    rbac: true
-    stableHostname: true
-    apidCheckExtKeyUsage: true
-    diskQuotaSupport: true
+    rbac: true                         # RBAC aktivieren
+    stableHostname: true               # Stabiler Hostname
+    apidCheckExtKeyUsage: true         # API-Server Zertifikatsprüfung
+    diskQuotaSupport: true             # Disk-Quota aktivieren
     kubePrism:
       enabled: true
-      port: 7445
+      port: 7445                      # KubePrism für Web-Konsole
     hostDNS:
-      enabled: true
+      enabled: true                   # Host-DNS aktivieren
   install:
-    disk: /dev/sda
-    image: ghcr.io/siderolabs/installer:v1.7.0
-    wipe: false
+    disk: /dev/sda                    # Installationsziel
+    image: ghcr.io/siderolabs/installer:v1.7.0  # Talos Installer-Image
+    wipe: false                       # Disk nicht löschen
   kubelet:
-    image: ghcr.io/siderolabs/kubelet:v1.30.0
-    defaultRuntimeSeccompProfileEnabled: true
-    disableManifestsDirectory: true
+    image: ghcr.io/siderolabs/kubelet:v1.30.0   # Kubelet-Image
+    defaultRuntimeSeccompProfileEnabled: true   # Seccomp aktivieren
+    disableManifestsDirectory: true             # Manifests-Verzeichnis deaktivieren
 
+# cluster-Konfiguration
 cluster:
-  allowSchedulingOnControlPlanes: true
+  allowSchedulingOnControlPlanes: true          # Workloads auf Control-Plane-Nodes erlauben
   apiServer:
     ${indent(4, api_server)}
+    # PodSecurity admission controller Konfiguration
+    # Exempts monitoring namespace from baseline security restrictions
+    # Ermöglicht hostPath volumes für Promtail und node-exporter
+    admissionControl:
+      - name: PodSecurity
+        configuration:
+          exemptions:
+            namespaces: ["monitoring"]  # Monitoring namespace exempt von PodSecurity baseline
   network:
     cni:
-      name: none
+      name: none                        # Kein CNI-Plugin (wird extern gemanaged)
   proxy:
-    disabled: true
+    disabled: true                      # Kube-Proxy deaktiviert
   discovery:
     enabled: true
     registries:
       service:
-        disabled: false
-  extraManifests: ${extra_manifests}
-  inlineManifests: ${inline_manifests}
+        disabled: false                 # Service-Registry aktivieren
+  extraManifests: ${extra_manifests}    # Zusätzliche Manifeste
+  inlineManifests: ${inline_manifests}  # Inline-Manifeste
