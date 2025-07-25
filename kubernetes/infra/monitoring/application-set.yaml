@@ -1,35 +1,25 @@
 apiVersion: argoproj.io/v1alpha1
-kind: ApplicationSet
+kind: Application
 metadata:
-  name: monitoring
+  name: monitoring-stack
   namespace: argocd
   labels:
     app.kubernetes.io/managed-by: argocd
 spec:
-  generators:
-    - git:
-        repoURL: https://github.com/Tim275/talos-homelab.git
-        revision: HEAD
-        directories:
-          - path: kubernetes/infra/monitoring/*
-  template:
-    metadata:
-      name: '{{ path.basename }}'
-      labels:
-        app.kubernetes.io/managed-by: argocd
-    spec:
-      project: monitoring
-      source:
-        repoURL: https://github.com/Tim275/talos-homelab.git
-        targetRevision: HEAD
-        path: '{{ path }}'
-      destination:
-        name: in-cluster
-        namespace: monitoring
-      syncPolicy:
-        automated:
-          selfHeal: true
-          prune: true
-        syncOptions:
-          - ApplyOutOfSyncOnly=true
-          - ServerSideApply=true
+  project: monitoring
+  source:
+    plugin:
+      name: kustomize-build-with-helm
+    repoURL: https://github.com/Tim275/talos-homelab.git
+    targetRevision: HEAD
+    path: kubernetes/infra/monitoring/monitoring-stack
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
