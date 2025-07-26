@@ -50,12 +50,12 @@ Everything needed to run my cluster & deploy my applications:
         <td>Log aggregation system designed for cloud-native applications</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://raw.githubusercontent.com/bitnami-labs/sealed-secrets/main/docs/images/sealed-secrets.png"></td>
+        <td>🔒</td>
         <td><a href="https://sealed-secrets.netlify.app/">Sealed Secrets</a></td>
         <td>Kubernetes controller for one-way encrypted secrets</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://kubernetes.io/images/blog-logging/2018-04-10-container-storage-interface-beta/csi-logo.png"></td>
+        <td><img width="32" src="https://www.yuribacciarini.com/content/images/2023/07/image-4.png"></td>
         <td><a href="https://github.com/kubernetes-csi/csi-driver-nfs">Proxmox CSI</a></td>
         <td>Container Storage Interface for Proxmox VE with ZFS backend</td>
     </tr>
