@@ -1,4 +1,4 @@
-module "proxmox_volume" {
+module "proxmox-volume" {
   for_each = var.volumes
   source   = "./proxmox-volume"
 
@@ -6,7 +6,6 @@ module "proxmox_volume" {
     restapi = restapi
   }
 
-  proxmox_api = var.proxmox_api
   volume = {
     name    = each.key
     node    = each.value.node
@@ -17,7 +16,7 @@ module "proxmox_volume" {
   }
 }
 
-module "persistent_volume" {
+module "persistent-volume" {
   for_each = var.volumes
   source   = "./persistent-volume"
 
@@ -28,7 +27,7 @@ module "persistent_volume" {
   volume = {
     name          = each.key
     capacity      = each.value.size
-    volume_handle = "${var.proxmox_api.cluster_name}/${module.proxmox_volume[each.key].node}/${module.proxmox_volume[each.key].storage}/${module.proxmox_volume[each.key].filename}"
+    volume_handle = "${var.proxmox_api.cluster_name}/${module.proxmox-volume[each.key].node}/${module.proxmox-volume[each.key].storage}/${module.proxmox-volume[each.key].filename}"
     storage       = each.value.storage
   }
 }
