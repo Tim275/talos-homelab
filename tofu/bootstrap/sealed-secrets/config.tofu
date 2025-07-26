@@ -1,11 +1,11 @@
-resource "kubernetes_namespace" "sealed_secrets" {
+resource "kubernetes_namespace" "sealed-secrets" {
   metadata {
     name = "sealed-secrets"
   }
 }
 
-resource "kubernetes_secret" "sealed_secrets_key" {
-  depends_on = [kubernetes_namespace.sealed_secrets]
+resource "kubernetes_secret" "sealed-secrets-key" {
+  depends_on = [kubernetes_namespace.sealed-secrets]
   type       = "kubernetes.io/tls"
 
   metadata {
@@ -17,7 +17,7 @@ resource "kubernetes_secret" "sealed_secrets_key" {
   }
 
   data = {
-    "tls.crt" = var.cert.cert
-    "tls.key" = var.cert.key
+    "tls.crt" = file("${path.root}/${var.cert.certificate_path}")
+    "tls.key" = file("${path.root}/${var.cert.certificate_key_path}")
   }
 }

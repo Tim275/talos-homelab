@@ -10,7 +10,7 @@ module "talos" {
   nodes   = var.talos_nodes
 }
 
-module "sealed_secrets" {
+module "sealed-secrets" {
   depends_on = [module.talos]
   source     = "./bootstrap/sealed-secrets"
 

@@ -1,10 +1,4 @@
-data "proxmox_virtual_environment_role" "csi" {
-  role_id = "CSI"
-}
-
-# Create role only if it doesn't exist
 resource "proxmox_virtual_environment_role" "csi" {
-  count   = can(data.proxmox_virtual_environment_role.csi.role_id) ? 0 : 1
   role_id = "CSI"
   privileges = [
     "VM.Audit",
@@ -15,30 +9,24 @@ resource "proxmox_virtual_environment_role" "csi" {
   ]
 }
 
-data "proxmox_virtual_environment_user" "kubernetes_csi" {
-  user_id = "kubernetes-csi@pve"
-}
-
-# Create user only if it doesn't exist
-resource "proxmox_virtual_environment_user" "kubernetes_csi" {
-  count   = can(data.proxmox_virtual_environment_user.kubernetes_csi.user_id) ? 0 : 1
+resource "proxmox_virtual_environment_user" "kubernetes-csi" {
   user_id = "kubernetes-csi@pve"
   comment = "User for Proxmox CSI Plugin"
   acl {
     path      = "/"
     propagate = true
-    role_id   = try(data.proxmox_virtual_environment_role.csi.role_id, proxmox_virtual_environment_role.csi[0].role_id)
+    role_id   = proxmox_virtual_environment_role.csi.role_id
   }
 }
 
-resource "proxmox_virtual_environment_user_token" "kubernetes_csi_token" {
+resource "proxmox_virtual_environment_user_token" "kubernetes-csi-token" {
   comment               = "Token for Proxmox CSI Plugin"
   token_name            = "csi"
-  user_id               = try(data.proxmox_virtual_environment_user.kubernetes_csi.user_id, proxmox_virtual_environment_user.kubernetes_csi[0].user_id)
+  user_id               = proxmox_virtual_environment_user.kubernetes-csi.user_id
   privileges_separation = false
 }
 
-resource "kubernetes_namespace" "csi_proxmox" {
+resource "kubernetes_namespace" "csi-proxmox" {
   metadata {
     name = "csi-proxmox"
     labels = {
@@ -49,10 +37,10 @@ resource "kubernetes_namespace" "csi_proxmox" {
   }
 }
 
-resource "kubernetes_secret" "proxmox_csi_plugin" {
+resource "kubernetes_secret" "proxmox-csi-plugin" {
   metadata {
     name      = "proxmox-csi-plugin"
-    namespace = kubernetes_namespace.csi_proxmox.id
+    namespace = kubernetes_namespace.csi-proxmox.id
   }
 
   data = {
@@ -60,8 +48,8 @@ resource "kubernetes_secret" "proxmox_csi_plugin" {
 clusters:
 - url: "${var.proxmox.endpoint}/api2/json"
   insecure: ${var.proxmox.insecure}
-  token_id: "${proxmox_virtual_environment_user_token.kubernetes_csi_token.id}"
-  token_secret: "${element(split("=", proxmox_virtual_environment_user_token.kubernetes_csi_token.value), length(split("=", proxmox_virtual_environment_user_token.kubernetes_csi_token.value)) - 1)}"
+  token_id: "${proxmox_virtual_environment_user_token.kubernetes-csi-token.id}"
+  token_secret: "${element(split("=", proxmox_virtual_environment_user_token.kubernetes-csi-token.value), length(split("=", proxmox_virtual_environment_user_token.kubernetes-csi-token.value)) - 1)}"
   region: ${var.proxmox.cluster_name}
 EOF
   }
