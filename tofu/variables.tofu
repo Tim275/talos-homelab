@@ -64,8 +64,8 @@ variable "talos_nodes" {
 variable "sealed_secrets_config" {
   description = "Sealed secrets certificate configuration"
   type = object({
-    cert = string
-    key  = string
+    certificate_path     = string
+    certificate_key_path = string
   })
   sensitive = true
 }

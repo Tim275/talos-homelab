@@ -2,12 +2,12 @@ locals {
   filename = "vm-${var.volume.vmid}-${var.volume.name}"
 }
 
-resource "restapi_object" "proxmox_volume" {
-  path = "/api2/json/nodes/${var.volume.node}/storage/${var.volume.storage}/content/"
+resource "restapi_object" "proxmox-volume" {
+  path = "/api2/json/nodes/${var.volume.node}/storage/${var.volume.storage}/content"
 
   id_attribute = "data"
 
-  force_new = [var.volume.size]
+  debug = true
 
   data = jsonencode({
     vmid     = var.volume.vmid
@@ -16,9 +16,11 @@ resource "restapi_object" "proxmox_volume" {
     format   = var.volume.format
   })
 
-  # lifecycle {
-  #   prevent_destroy = true
-  # }
+  force_new = [var.volume.size]
+
+  lifecycle {
+    prevent_destroy = false
+  }
 }
 
 output "node" {

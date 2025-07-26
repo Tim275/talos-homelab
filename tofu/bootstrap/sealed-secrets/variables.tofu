@@ -1,7 +1,6 @@
 variable "cert" {
-  description = "Certificate for encryption/decryption"
   type = object({
-    cert = string
-    key  = string
+    certificate_path     = string
+    certificate_key_path = string
   })
 }
