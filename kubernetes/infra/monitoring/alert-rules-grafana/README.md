@@ -68,7 +68,7 @@ kubectl rollout restart deployment alertmanager -n monitoring
 
 ## 📧 E-Mail Konfiguration
 
-**Empfänger:** timour.miagol@outlook.de
+**Empfänger:** timour@hotmail.de
 
 **Alert Frequenz:**
 - Critical: Alle 15 Minuten
