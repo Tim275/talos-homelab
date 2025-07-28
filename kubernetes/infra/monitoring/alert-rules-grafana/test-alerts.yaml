@@ -1,0 +1,45 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: test-alerts
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+  - name: test-alerts.rules
+    rules:
+    # Test Alert - Always Firing (für Testing)
+    - alert: TestAlertAlwaysFiring
+      expr: vector(1)
+      for: 0s
+      labels:
+        severity: info
+        component: test
+      annotations:
+        summary: "Test alert - this should always fire"
+        description: "This is a test alert to verify that alerting is working correctly. This alert will always be active."
+        
+    # Test Alert - CPU Load (wird bei hoher Last gefeuert)
+    - alert: TestHighCPULoad
+      expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 50
+      for: 1m
+      labels:
+        severity: info
+        component: test
+      annotations:
+        summary: "Test alert - CPU load above 50%"
+        description: "CPU load is {{ $value }}% on {{ $labels.instance }}. This is a test alert for moderate CPU usage."
+        
+    # Test Alert - Memory Usage (wird bei moderater Memory-Nutzung gefeuert)
+    - alert: TestMemoryUsage
+      expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 50
+      for: 1m
+      labels:
+        severity: info
+        component: test
+      annotations:
+        summary: "Test alert - Memory usage above 50%"
+        description: "Memory usage is {{ $value }}% on {{ $labels.instance }}. This is a test alert for moderate memory usage."
