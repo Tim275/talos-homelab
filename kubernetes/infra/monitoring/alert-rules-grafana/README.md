@@ -58,7 +58,8 @@ kubectl rollout restart deployment alertmanager -n monitoring
 - **TalosHighMemoryUsage:** Memory >85% (5 Min)
 - **TalosHighCPUUsage:** CPU >80% (10 Min)
 - **KubernetesPodCrashLooping:** Pod restarts (5 Min)
-- **HighErrorLogRate:** >5 errors/sec (2 Min)
+- **LokiDown:** Loki service down (2 Min)
+- **PromtailDown:** Promtail agent down (2 Min)
 
 ### 🔵 Info Alerts (Testing)
 - **TestAlertAlwaysFiring:** Always active
