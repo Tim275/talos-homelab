@@ -96,7 +96,7 @@ EOF
 # Test 4: Test Alert (sollte sofort feuern)
 test_always_firing_alert() {
     echo "🚨 Test 4: Always Firing Test Alert"
-    echo "This alert should fire immediately and send email to timour.miagol@outlook.de"
+    echo "This alert should fire immediately and send email to timour@hotmail.de"
     echo "Check your email inbox in 2-3 minutes!"
 }
 
@@ -183,5 +183,5 @@ echo ""
 echo "📧 Don't forget to:"
 echo "1. Set up Outlook App Password in alertmanager-config.yaml"
 echo "2. Deploy the alert rules with: kubectl apply -k kubernetes/infra/monitoring/alert-rules-grafana/"
-echo "3. Check email: timour.miagol@outlook.de"
+echo "3. Check email: timour@hotmail.de"
 echo "4. Monitor alerts in Grafana: http://grafana.homelab.local/alerting"
