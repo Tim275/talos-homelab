@@ -1,7 +1,7 @@
 apiVersion: monitoring.coreos.com/v1alpha1
 kind: AlertmanagerConfig
 metadata:
-  name: homelab-email-config
+  name: homelab-slack-config
   namespace: monitoring
   labels:
     alertmanagerConfig: homelab
@@ -13,72 +13,70 @@ spec:
     groupWait: 30s
     groupInterval: 5m
     repeatInterval: 4h
-    receiver: 'homelab-admin'
+    receiver: 'slack-general'
     routes:
     - matchers:
       - name: severity
         value: critical
-      receiver: 'critical-alerts'
+      receiver: 'slack-critical'
       repeatInterval: 15m
     - matchers:
       - name: severity
         value: warning
-      receiver: 'warning-alerts'
+      receiver: 'slack-warnings'
       repeatInterval: 2h
     - matchers:
       - name: severity
         value: info
-      receiver: 'homelab-admin'
+      receiver: 'slack-general'
       repeatInterval: 30m
   receivers:
-  - name: 'homelab-admin'
-    emailConfigs:
-    - to: 'timour@hotmail.de'
-      from: 'timour@hotmail.de'
-      smarthost: 'smtp-mail.outlook.com:587'
-      authUsername: 'timour@hotmail.de'
-      authPassword:
-        name: outlook-app-password
-        key: password
-      requireTLS: true
-      headers:
-      - key: Subject
-        value: 'Homelab Alert: {{ .GroupLabels.alertname }}'
-  - name: 'critical-alerts'  
-    emailConfigs:
-    - to: 'timour@hotmail.de'
-      from: 'timour@hotmail.de'
-      smarthost: 'smtp-mail.outlook.com:587'
-      authUsername: 'timour@hotmail.de'
-      authPassword:
-        name: outlook-app-password
-        key: password
-      requireTLS: true
-      headers:
-      - key: Subject
-        value: 'CRITICAL ALERT: {{ .GroupLabels.alertname }}'
-  - name: 'warning-alerts'
-    emailConfigs:
-    - to: 'timour@hotmail.de'
-      from: 'timour@hotmail.de'
-      smarthost: 'smtp-mail.outlook.com:587'
-      authUsername: 'timour@hotmail.de'
-      authPassword:
-        name: outlook-app-password
-        key: password
-      requireTLS: true
-      headers:
-      - key: Subject
-        value: 'Warning: {{ .GroupLabels.alertname }}'
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: outlook-app-password
-  namespace: monitoring
-  labels:
-    app.kubernetes.io/managed-by: argocd
-    release: prometheus-operator
-type: Opaque
-stringData:
-  password: 'qmcwtuosowfroxde'
+  - name: 'slack-general'
+    slackConfigs:
+    - apiURL: 'https://hooks.slack.com/services/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'
+      channel: '#general'
+      title: '🔔 Homelab Alert: {{ .GroupLabels.alertname }}'
+      text: |
+        *Alert:* {{ .GroupLabels.alertname }}
+        *Severity:* {{ .CommonLabels.severity }}
+        *Instance:* {{ .CommonLabels.instance }}
+        *Namespace:* {{ .CommonLabels.namespace }}
+        
+        *Description:* {{ .CommonAnnotations.summary }}
+        
+        *Time:* {{ .CommonAnnotations.timestamp }}
+      
+  - name: 'slack-critical'
+    slackConfigs:
+    - apiURL: 'https://hooks.slack.com/services/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'
+      channel: '#general'
+      title: '🚨 CRITICAL ALERT: {{ .GroupLabels.alertname }}'
+      text: |
+        <!channel> **CRITICAL SYSTEM ALERT**
+        
+        *Alert:* {{ .GroupLabels.alertname }}
+        *Instance:* {{ .CommonLabels.instance }}
+        *Namespace:* {{ .CommonLabels.namespace }}
+        
+        *Problem:* {{ .CommonAnnotations.summary }}
+        *Description:* {{ .CommonAnnotations.description }}
+        
+        *Time:* {{ .CommonAnnotations.timestamp }}
+        
+        🚨 **IMMEDIATE ACTION REQUIRED** 🚨
+        
+  - name: 'slack-warnings'
+    slackConfigs:
+    - apiURL: 'https://hooks.slack.com/services/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'
+      channel: '#general'
+      title: '⚠️ Warning: {{ .GroupLabels.alertname }}'
+      text: |
+        *Warning Alert:*
+        
+        *Alert:* {{ .GroupLabels.alertname }}
+        *Instance:* {{ .CommonLabels.instance }}
+        *Severity:* {{ .CommonLabels.severity }}
+        
+        *Issue:* {{ .CommonAnnotations.summary }}
+        
+        Please investigate when convenient.
