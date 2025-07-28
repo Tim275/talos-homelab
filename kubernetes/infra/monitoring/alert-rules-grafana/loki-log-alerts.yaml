@@ -1,0 +1,84 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: loki-log-alerts
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+  - name: loki-logs.rules
+    rules:
+    # High Error Rate in Logs
+    - alert: HighErrorLogRate
+      expr: |
+        sum(rate({namespace=~".*"} |~ `(?i)error|exception|fail|failed` [5m])) > 5
+      for: 2m
+      labels:
+        severity: warning
+        component: logs
+      annotations:
+        summary: "High error log rate detected"
+        description: "More than 5 error messages per second detected in application logs. Check for systematic issues."
+        
+    # Critical Log Messages
+    - alert: CriticalLogMessages
+      expr: |
+        sum(rate({namespace=~".*"} |~ `(?i)critical|fatal|panic|emergency` [1m])) > 0
+      for: 0m
+      labels:
+        severity: critical
+        component: logs
+      annotations:
+        summary: "Critical log messages detected"
+        description: "Critical, fatal, panic, or emergency messages found in logs. Immediate investigation required."
+        
+    # Talos Kernel Issues
+    - alert: TalosKernelErrors
+      expr: |
+        sum(rate({job="talos-kernel"} |~ `(?i)kernel panic|oops|segfault|call trace` [1m])) > 0
+      for: 0m
+      labels:
+        severity: critical
+        component: kernel
+      annotations:
+        summary: "Talos kernel errors detected"
+        description: "Kernel-level errors detected in Talos system logs. System stability may be compromised."
+        
+    # Container OOM Killed
+    - alert: ContainerOOMKilled
+      expr: |
+        sum(rate({namespace=~".*"} |~ `(?i)oom.*killed|out of memory|memory cgroup out of memory` [5m])) > 0
+      for: 1m
+      labels:
+        severity: warning
+        component: memory
+      annotations:
+        summary: "Container OOM killed events detected"
+        description: "Containers are being killed due to out-of-memory conditions. Consider increasing memory limits or investigating memory leaks."
+        
+    # Authentication Failures
+    - alert: AuthenticationFailures
+      expr: |
+        sum(rate({namespace=~".*"} |~ `(?i)authentication failed|login failed|unauthorized|access denied|permission denied` [5m])) > 10
+      for: 3m
+      labels:
+        severity: warning
+        component: security
+      annotations:
+        summary: "High authentication failure rate detected"
+        description: "More than 10 authentication failures per second detected. Possible brute force attack or misconfiguration."
+        
+    # Talos API Errors
+    - alert: TalosAPIErrors
+      expr: |
+        sum(rate({job="talos-api"} |~ `(?i)error|failed|timeout` [5m])) > 2
+      for: 2m
+      labels:
+        severity: warning
+        component: talos-api
+      annotations:
+        summary: "Talos API errors detected"
+        description: "Frequent errors in Talos API calls. Check for connectivity or configuration issues."
