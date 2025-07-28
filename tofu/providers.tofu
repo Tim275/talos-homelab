@@ -2,19 +2,19 @@ terraform {
   required_providers {
     talos = {
       source  = "siderolabs/talos"
-      version = "0.5.0"
+      version = "0.5.0" # renovate: terraform=siderolabs/talos
     }
     proxmox = {
       source  = "bpg/proxmox"
-      version = "0.61.1"
+      version = "0.61.1" # renovate: terraform=bpg/proxmox
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "2.32.0"
+      version = "2.32.0" # renovate: terraform=hashicorp/kubernetes
     }
     restapi = {
       source  = "Mastercard/restapi"
-      version = "1.19.1"
+      version = "1.19.1" # renovate: terraform=Mastercard/restapi
     }
   }
 }
