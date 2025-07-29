@@ -59,6 +59,11 @@ Everything needed to run my cluster & deploy my applications:
         <td><a href="https://github.com/kubernetes-csi/csi-driver-nfs">Proxmox CSI</a></td>
         <td>Container Storage Interface for Proxmox VE with ZFS backend</td>
     </tr>
+    <tr>
+        <td>🚨</td>
+        <td><a href="https://prometheus.io/docs/alerting/latest/alertmanager/">Alertmanager</a></td>
+        <td>Alert routing and notification system with Slack integration</td>
+    </tr>
 </table>
 
 ---
