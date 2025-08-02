@@ -51,17 +51,11 @@ data "talos_machine_configuration" "this" {
   config_patches = [
     each.value.machine_type == "controlplane" ?
     templatefile("${path.module}/machine-config/control-plane.yaml.tftpl", {
-      hostname         = each.key
-      cluster_name     = var.cluster.proxmox_cluster
-      node_name        = each.value.host_node
-      ip               = each.value.ip
-      mac_address      = lower(each.value.mac_address)
-      gateway          = var.cluster.gateway
-      subnet_mask      = var.cluster.subnet_mask
-      vip              = var.cluster.vip
-      extra_manifests  = jsonencode(local.extra_manifests)
-      api_server       = var.cluster.api_server
-      inline_manifests = jsonencode(terraform_data.cilium_bootstrap_inline_manifests.output)
+      hostname       = each.key
+      cluster_name   = var.cluster.proxmox_cluster  
+      node_name      = each.value.host_node
+      cilium_values  = file("${path.root}/${var.cluster.cilium.values_file_path}")
+      cilium_install = file("${path.root}/${var.cluster.cilium.bootstrap_manifest_path}")
     }) :
     templatefile("${path.module}/machine-config/worker.yaml.tftpl", {
       hostname     = each.key
