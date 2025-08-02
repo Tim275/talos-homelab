@@ -1,0 +1,41 @@
+# Gateway mit automatischen TLS-Zertifikaten für timourhomelab.org
+# Erstellt LoadBalancer Service für externen Traffic
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: cilium-gateway
+  namespace: gateway
+  annotations:
+    # cert-manager erstellt automatisch Certificate Resources
+    cert-manager.io/issuer: cloudflare-issuer
+spec:
+  gatewayClassName: cilium
+  addresses:
+    - type: IPAddress
+      value: "192.168.68.153"
+  listeners:
+    # HTTPS Listener für Wildcard Domain (*.timourhomelab.org)
+    - protocol: HTTPS
+      port: 443
+      name: https-wildcard
+      hostname: "*.timourhomelab.org"
+      tls:
+        certificateRefs:
+          - kind: Secret
+            name: timourhomelab-wildcard-cert
+      allowedRoutes:
+        namespaces:
+          from: All
+    
+    # HTTPS Listener für Apex Domain (timourhomelab.org)  
+    - protocol: HTTPS
+      port: 443
+      name: https-apex
+      hostname: "timourhomelab.org"
+      tls:
+        certificateRefs:
+          - kind: Secret
+            name: timourhomelab-apex-cert
+      allowedRoutes:
+        namespaces:
+          from: All
