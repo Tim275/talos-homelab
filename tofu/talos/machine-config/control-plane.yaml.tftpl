@@ -1,64 +1,37 @@
-# machine-Konfiguration für Talos Nodes
 machine:
   network:
-    hostname: ${hostname}  # Hostname des Nodes
-    interfaces:
-      - deviceSelector:
-          hardwareAddr: ${mac_address}  # MAC-Adresse für Interface-Auswahl
-        addresses:
-          - ${ip}/${subnet_mask}        # Statische IP-Adresse/Subnetz
-        routes:
-          - network: 0.0.0.0/0
-            gateway: ${gateway}         # Default Gateway
-        dhcp: false                     # DHCP deaktiviert
-%{ if vip != null }
-        vip:
-          ip: ${vip}                    # Optional: Virtual IP für HA
-%{ endif }
+    hostname: ${hostname}
   nodeLabels:
-    topology.kubernetes.io/region: ${cluster_name}  # Region-Label für Topologie
-    topology.kubernetes.io/zone: ${node_name}       # Zonen-Label für Topologie
-  features:
-    rbac: true                         # RBAC aktivieren
-    stableHostname: true               # Stabiler Hostname
-    apidCheckExtKeyUsage: true         # API-Server Zertifikatsprüfung
-    diskQuotaSupport: true             # Disk-Quota aktivieren
-    kubePrism:
-      enabled: true
-      port: 7445                      # KubePrism für Web-Konsole
-    hostDNS:
-      enabled: true                   # Host-DNS aktivieren
-  install:
-    disk: /dev/sda                    # Installationsziel
-    image: ghcr.io/siderolabs/installer:v1.7.0  # Talos Installer-Image
-    wipe: false                       # Disk nicht löschen
-  kubelet:
-    image: ghcr.io/siderolabs/kubelet:v1.30.0   # Kubelet-Image
-    defaultRuntimeSeccompProfileEnabled: true   # Seccomp aktivieren
-    disableManifestsDirectory: true             # Manifests-Verzeichnis deaktivieren
+    topology.kubernetes.io/region: ${cluster_name}
+    topology.kubernetes.io/zone: ${node_name}
 
-# cluster-Konfiguration
 cluster:
-  allowSchedulingOnControlPlanes: true          # Workloads auf Control-Plane-Nodes erlauben
-  apiServer:
-    ${indent(4, api_server)}
-    # PodSecurity admission controller Konfiguration
-    # Exempts monitoring namespace from baseline security restrictions
-    # Ermöglicht hostPath volumes für Promtail und node-exporter
-    admissionControl:
-      - name: PodSecurity
-        configuration:
-          exemptions:
-            namespaces: ["monitoring"]  # Monitoring namespace exempt von PodSecurity baseline
+  allowSchedulingOnControlPlanes: true
   network:
     cni:
-      name: none                        # Kein CNI-Plugin (wird extern gemanaged)
+      name: none
   proxy:
-    disabled: true                      # Kube-Proxy deaktiviert
-  discovery:
-    enabled: true
-    registries:
-      service:
-        disabled: false                 # Service-Registry aktivieren
-  extraManifests: ${extra_manifests}    # Zusätzliche Manifeste
-  inlineManifests: ${inline_manifests}  # Inline-Manifeste
+    disabled: true
+  # Gateway API CRDs
+  extraManifests:
+  - https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.3.0/config/crd/standard/gateway.networking.k8s.io_gatewayclasses.yaml
+  - https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.3.0/config/crd/experimental/gateway.networking.k8s.io_gateways.yaml
+  - https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.3.0/config/crd/standard/gateway.networking.k8s.io_httproutes.yaml
+  - https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.3.0/config/crd/standard/gateway.networking.k8s.io_referencegrants.yaml
+  - https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.3.0/config/crd/standard/gateway.networking.k8s.io_grpcroutes.yaml
+  - https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.3.0/config/crd/experimental/gateway.networking.k8s.io_tlsroutes.yaml
+  inlineManifests:
+  - name: cilium-values
+    contents: |
+      ---
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: cilium-values
+        namespace: kube-system
+      data:
+        values.yaml: |-
+          ${indent(10, cilium_values)}
+  - name: cilium-bootstrap
+    contents: |
+      ${indent(6, cilium_install)}
