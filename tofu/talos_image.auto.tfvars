@@ -1,6 +1,6 @@
 talos_image = {
   factory_url = "https://factory.talos.dev"
-  version     = "v1.10.5"
+  version     = "v1.10.6"
   schematic   = <<-EOT
 customization:
   systemExtensions:
