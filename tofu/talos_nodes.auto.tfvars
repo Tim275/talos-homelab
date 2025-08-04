@@ -54,6 +54,18 @@ talos_nodes = {
     ram_dedicated = 6192  # 6GB
     datastore_id  = "local-zfs"
   }
+
+  #### NEU HINZUGEFÜGT: 3. Worker Node für Ceph Storage ####
+  "work-02" = {
+    host_node     = "homelab"
+    machine_type  = "worker"
+    ip            = "192.168.68.105"
+    mac_address   = "BC:24:11:2E:C8:A5"
+    vm_id         = 812
+    cpu           = 2
+    ram_dedicated = 6192  # 6GB
+    datastore_id  = "local-zfs"
+  }
 }
 
-# Total RAM usage: ~31GB (17GB remaining for Proxmox host + overhead)
+# Total RAM usage: ~37GB (11GB remaining for Proxmox host + overhead)
