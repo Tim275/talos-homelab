@@ -30,6 +30,21 @@ Everything needed to run my cluster & deploy my applications:
         <td>eBPF-based networking, observability and security for Kubernetes</td>
     </tr>
     <tr>
+        <td>🌐</td>
+        <td><a href="https://gateway-api.sigs.k8s.io/">Gateway API</a></td>
+        <td>Next-generation ingress API for Kubernetes with vendor-neutral traffic routing</td>
+    </tr>
+    <tr>
+        <td>🔐</td>
+        <td><a href="https://cert-manager.io/">cert-manager</a></td>
+        <td>Automatic SSL certificate management with Let's Encrypt integration</td>
+    </tr>
+    <tr>
+        <td>☁️</td>
+        <td><a href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/">Cloudflare Tunnel</a></td>
+        <td>Zero-Trust secure tunnel for external access without port forwarding</td>
+    </tr>
+    <tr>
         <td><img width="32" src="https://raw.githubusercontent.com/argoproj/argo-cd/master/docs/assets/argo.png"></td>
         <td><a href="https://argo-cd.readthedocs.io/">ArgoCD</a></td>
         <td>Declarative GitOps continuous delivery for Kubernetes</td>
