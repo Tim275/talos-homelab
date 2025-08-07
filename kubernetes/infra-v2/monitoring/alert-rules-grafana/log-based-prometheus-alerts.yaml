@@ -1,0 +1,56 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: log-based-prometheus-alerts
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+  - name: log-metrics.rules
+    rules:
+    # High Log Error Rate (basierend auf Promtail Metrics)
+    - alert: HighLogErrorRate
+      expr: rate(promtail_read_lines_total{job="promtail"}[5m]) == 0
+      for: 2m
+      labels:
+        severity: warning
+        component: logs
+      annotations:
+        summary: "Promtail stopped reading logs"
+        description: "Promtail on {{ $labels.instance }} has stopped reading log lines. Log collection may be broken."
+        
+    # Loki Service Down
+    - alert: LokiDown
+      expr: up{job="loki"} == 0
+      for: 2m
+      labels:
+        severity: critical
+        component: logs
+      annotations:
+        summary: "Loki service is down"
+        description: "Loki log aggregation service is not responding. Log ingestion and querying is unavailable."
+        
+    # Promtail Service Down
+    - alert: PromtailDown
+      expr: up{job="promtail"} == 0
+      for: 2m
+      labels:
+        severity: warning
+        component: logs
+      annotations:
+        summary: "Promtail service is down on {{ $labels.instance }}"
+        description: "Promtail log collection agent is down. Logs from this node are not being collected."
+        
+    # High Loki Ingestion Rate (potential log spam)
+    - alert: HighLokiIngestionRate
+      expr: rate(loki_ingester_streams_created_total[5m]) > 10
+      for: 5m
+      labels:
+        severity: warning
+        component: logs
+      annotations:
+        summary: "High log ingestion rate in Loki"
+        description: "Loki is ingesting logs at a rate of {{ $value }} streams/sec. This may indicate log spam or misconfiguration."
