@@ -1,0 +1,107 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: monitoring
+data:
+  alertmanager.yml: |
+    global:
+      smtp_smarthost: 'smtp-mail.outlook.com:587'
+      smtp_from: 'timour@hotmail.de'
+      smtp_auth_username: 'timour@hotmail.de'
+      smtp_auth_password: 'kqzqrxxvcxzyjjrv'  # App-spezifisches Passwort für timour@hotmail.de
+      smtp_require_tls: true
+
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      receiver: 'homelab-admin'
+      routes:
+      - match:
+          severity: critical
+        receiver: 'critical-alerts'
+        repeat_interval: 15m
+      - match:
+          severity: warning
+        receiver: 'warning-alerts'
+        repeat_interval: 2h
+
+    receivers:
+    - name: 'homelab-admin'
+      email_configs:
+      - to: 'timour@hotmail.de'
+        subject: '🔔 Homelab Alert: {{ .GroupLabels.alertname }}'
+        headers:
+          From: 'Talos Homelab <timour@hotmail.de>'
+          To: 'Homelab Admin <timour@hotmail.de>'
+        body: |
+          Alert Details:
+          
+          Alert Name: {{ .GroupLabels.alertname }}
+          Severity: {{ .CommonLabels.severity }}
+          Instance: {{ .CommonLabels.instance }}
+          Namespace: {{ .CommonLabels.namespace }}
+          
+          Description: {{ .CommonAnnotations.summary }}
+          
+          Time: {{ .CommonAnnotations.timestamp }}
+          
+          ---
+          Talos Homelab Monitoring System
+          
+    - name: 'critical-alerts'
+      email_configs:
+      - to: 'timour@hotmail.de'
+        subject: '🚨 CRITICAL ALERT: {{ .GroupLabels.alertname }}'
+        headers:
+          From: 'Talos Homelab CRITICAL <timour@hotmail.de>'
+          To: 'Homelab Admin <timour@hotmail.de>'
+          Priority: 'high'
+        body: |
+          ⚠️  CRITICAL ALERT - IMMEDIATE ACTION REQUIRED ⚠️
+          
+          Alert: {{ .GroupLabels.alertname }}
+          Instance: {{ .CommonLabels.instance }}
+          Namespace: {{ .CommonLabels.namespace }}
+          
+          Problem: {{ .CommonAnnotations.summary }}
+          Description: {{ .CommonAnnotations.description }}
+          
+          Timestamp: {{ .CommonAnnotations.timestamp }}
+          
+          This is a critical system alert requiring immediate attention!
+          
+          ---
+          Talos Homelab Critical Monitoring
+          
+    - name: 'warning-alerts'
+      email_configs:
+      - to: 'timour@hotmail.de'
+        subject: '⚠️  Warning: {{ .GroupLabels.alertname }}'
+        headers:
+          From: 'Talos Homelab Warning <timour@hotmail.de>'
+          To: 'Homelab Admin <timour@hotmail.de>'
+        body: |
+          Warning Alert:
+          
+          Alert: {{ .GroupLabels.alertname }}
+          Instance: {{ .CommonLabels.instance }}
+          Severity: {{ .CommonLabels.severity }}
+          
+          Issue: {{ .CommonAnnotations.summary }}
+          
+          Time: {{ .CommonAnnotations.timestamp }}
+          
+          Please investigate when convenient.
+          
+          ---
+          Talos Homelab Monitoring
+
+    inhibit_rules:
+    - source_match:
+        severity: 'critical'
+      target_match:
+        severity: 'warning'
+      equal: ['alertname', 'instance']
