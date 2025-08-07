@@ -1,23 +1,34 @@
 apiVersion: argoproj.io/v1alpha1
-kind: Application
+kind: ApplicationSet
 metadata:
   name: infrastructure
   namespace: argocd
+  labels:
+    dev.stonegarden: infrastructure
 spec:
-  project: app-of-apps
-  source:
-    path: kubernetes/infra
-    repoURL: https://github.com/Tim275/talos-homelab
-    targetRevision: HEAD
-    plugin:
-      name: kustomize-build-with-helm
-  destination:
-    namespace: argocd
-    server: https://kubernetes.default.svc
-  syncPolicy:
-    automated:
-      selfHeal: true
-      prune: true
-    syncOptions:
-      - CreateNamespace=true
-      - ServerSideApply=true
+  generators:
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: kubernetes/infra/*
+  template:
+    metadata:
+      name: '{{ path.basename }}'
+      labels:
+        dev.stonegarden: infrastructure
+    spec:
+      project: app-of-apps
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{ path }}'
+        plugin:
+          name: kustomize-build-with-helm
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: argocd
+      syncPolicy:
+        automated:
+          selfHeal: true
+          prune: true
