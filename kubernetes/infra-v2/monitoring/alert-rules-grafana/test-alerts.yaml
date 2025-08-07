@@ -1,0 +1,72 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: test-alerts
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+  - name: test-alerts.rules
+    rules:
+    # Test Alert - Always Firing (für Testing)
+    - alert: TestAlertAlwaysFiring
+      expr: vector(1)
+      for: 0s
+      labels:
+        severity: warning
+        component: test
+        namespace: monitoring
+      annotations:
+        summary: "Test alert - this should always fire"
+        description: "This is a test alert to verify that alerting is working correctly. This alert will always be active."
+        
+    # Test Alert - CPU Load (wird bei hoher Last gefeuert)
+    - alert: TestHighCPULoad
+      expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 10
+      for: 1m
+      labels:
+        severity: warning
+        component: test
+        namespace: monitoring
+      annotations:
+        summary: "Test alert - CPU load above 10%"
+        description: "CPU load is {{ $value }}% on {{ $labels.instance }}. This is a test alert for moderate CPU usage."
+        
+    # Test Alert - Memory Usage (wird bei moderater Memory-Nutzung gefeuert)
+    - alert: TestMemoryUsage
+      expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 30
+      for: 1m
+      labels:
+        severity: warning
+        component: test
+        namespace: monitoring
+      annotations:
+        summary: "Test alert - Memory usage above 30%"
+        description: "Memory usage is {{ $value }}% on {{ $labels.instance }}. This is a test alert for moderate memory usage."
+        
+    # Test Alert - Fast Crash Loop (für schnelles Testing)
+    - alert: TestPodCrashLooping
+      expr: rate(kube_pod_container_status_restarts_total[5m]) > 0
+      for: 30s
+      labels:
+        severity: warning
+        component: pod
+        namespace: monitoring
+      annotations:
+        summary: "Test alert - Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+        description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is restarting frequently. Check pod logs for errors."
+        
+    # Test Alert - High Error Log Rate
+    - alert: TestHighErrorLogRate
+      expr: sum(rate(container_log_lines_total{level="error"}[5m])) by (pod) > 1
+      for: 1m
+      labels:
+        severity: warning
+        component: logs
+        namespace: monitoring
+      annotations:
+        summary: "Test alert - High error log rate in pod {{ $labels.pod }}"
+        description: "Pod {{ $labels.pod }} is generating {{ $value }} error logs per second."
