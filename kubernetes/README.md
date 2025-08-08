@@ -65,14 +65,14 @@ kubectl get csistoragecapacities -ocustom-columns=CLASS:.storageClassName,AVAIL:
 This setup implements the **Enterprise Matrix Generator Pattern** used by Netflix, Google, and AWS:
 
 ### **How it works:**
-- **Auto-Discovery**: Apps in `kubernetes/infra-v2/*/*` are automatically found
+- **Auto-Discovery**: Apps in `kubernetes/infra/*/*` are automatically found
 - **Zero Maintenance**: No manual app registry updates needed  
 - **Multi-Cluster Ready**: Deploy to 1000+ clusters with same config
 - **Team Self-Service**: Create folder → App appears in ArgoCD
 
 ### **Adding New Apps:**
 ```bash
-mkdir -p kubernetes/infra-v2/my-category/my-app
+mkdir -p kubernetes/infra/my-category/my-app
 # Add kustomization.yaml
 git push
 # ✨ App appears automatically in ArgoCD!
