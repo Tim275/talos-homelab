@@ -5,6 +5,9 @@
 ### **Bootstrap Order (Dependencies Matter!)**
 
 ```bash
+# IMPORTANT: Set KUBECONFIG first!
+export KUBECONFIG="/Users/timour/Desktop/kubecraft/mealie/homelabtm/taloshomelab/talos-homelab-scratch/tofu/output/kube-config.yaml"
+
 # 1. 🌐 NETWORK FOUNDATION
 kubectl kustomize --enable-helm kubernetes/infra/network/cilium | kubectl apply -f -
 # ↳ CNI + LoadBalancer + Gateway API CRDs
@@ -78,12 +81,42 @@ git push
 # ✨ App appears automatically in ArgoCD!
 ```
 
-### **Why Dependencies Matter:**
-1. **Cilium First**: Pods need networking to start + Gateway API CRDs
-2. **Sealed-Secrets**: Many apps need encrypted secrets (CRD dependency)
-3. **Storage**: Apps need PersistentVolumes (CSI driver)
-4. **ArgoCD**: Can manage all other apps once foundations are ready
-5. **ApplicationSets**: Triggers auto-discovery of all remaining apps
+### **Why This Bootstrap Order? (Critical Dependencies)**
+
+#### **🔴 What happens if you deploy in wrong order:**
+```
+❌ Apps before Cilium → Pods stuck in "ContainerCreating" (no network)
+❌ Apps before Sealed-Secrets → "SealedSecret CRD not found" errors
+❌ Databases before Storage → "No PersistentVolume available" 
+❌ Everything before ArgoCD → Manual deployment hell (no GitOps)
+```
+
+#### **✅ Why this specific order works:**
+
+1. **Cilium First (CNI)**: 
+   - Without CNI, Pods can't get IP addresses or communicate
+   - Provides LoadBalancer for exposing services
+   - Installs Gateway API CRDs that other apps depend on
+
+2. **Sealed-Secrets Second**:
+   - Many apps store credentials as SealedSecrets
+   - Without the CRD, these apps fail immediately
+   - Must exist BEFORE any app that uses encrypted secrets
+
+3. **Storage (Proxmox CSI)**:
+   - Databases (PostgreSQL, Redis) need PersistentVolumes
+   - Grafana, Prometheus need storage for data
+   - CSI driver must be ready before stateful apps
+
+4. **ArgoCD Fourth**:
+   - Once foundations are ready, ArgoCD takes over
+   - Manages all remaining deployments automatically
+   - Provides self-healing and auto-sync
+
+5. **ApplicationSets Last**:
+   - Triggers the "chain reaction"
+   - Auto-discovers all apps in `kubernetes/infra/*/*`
+   - Matrix Generator deploys everything else automatically
 
 ---
 
