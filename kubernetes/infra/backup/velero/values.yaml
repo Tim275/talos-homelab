@@ -1,0 +1,62 @@
+# Velero configuration for Kubernetes backup
+# Based on guide: https://ricsanfre.github.io/picluster/docs/backup/
+
+# AWS plugin for Minio S3 compatibility
+initContainers:
+  - name: velero-plugin-for-aws
+    image: velero/velero-plugin-for-aws:v1.12.1
+    imagePullPolicy: IfNotPresent
+    volumeMounts:
+      - mountPath: /target
+        name: plugins
+
+configuration:
+  # Enable CSI snapshot support for Longhorn integration
+  features: EnableCSI
+  
+  # TODO: Configure when Minio is deployed
+  # backupStorageLocation:
+  #   - provider: aws
+  #     bucket: k3s-velero  # Minio bucket
+  #     config:
+  #       region: eu-west-1
+  #       s3ForcePathStyle: true
+  #       s3Url: https://minio.timourhomelab.org:9000
+  #       # insecureSkipTLSVerify: true  # only for self-signed certs
+
+# TODO: Configure Minio credentials when available  
+# credentials:
+#   secretContents:
+#     cloud: |
+#       [default]
+#       aws_access_key_id: velero
+#       aws_secret_access_key: supersecret
+
+# Disable native VolumeSnapshotLocation (use CSI instead)
+snapshotsEnabled: false
+
+# Prometheus metrics integration
+metrics:
+  enabled: true
+  scrapeInterval: 30s
+  scrapeTimeout: 10s
+  serviceMonitor:
+    enabled: true
+  prometheusRule:
+    enabled: true
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+# Schedule daily backups (when S3 is configured)
+# schedules:
+#   daily:
+#     schedule: "0 4 * * *"  # 4 AM daily
+#     template:
+#       ttl: "720h"  # 30 days retention
