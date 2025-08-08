@@ -12,58 +12,6 @@ A fully automated, modular Kubernetes cluster project for homelab and testing, p
 - 🖥️ **Proxmox VE** – Virtualization platform
 - 🦑 **Cilium** – Advanced networking & security
 
----
-
-## 🚀 Deployment Commands
-
-### **Bootstrap Order (Dependencies Matter!)**
-
-```bash
-# 1. 🌐 NETWORK FOUNDATION
-kubectl kustomize --enable-helm kubernetes/infra/network/cilium | kubectl apply -f -
-# ↳ CNI + LoadBalancer + Gateway API CRDs
-
-# 2. 🔐 SECURITY FOUNDATION  
-kustomize build --enable-helm kubernetes/infra/controllers/sealed-secrets | kubectl apply -f -
-# ↳ SealedSecret CRDs for encrypted secrets
-
-# 3. 💾 STORAGE FOUNDATION
-kustomize build --enable-helm kubernetes/infra/storage/proxmox-csi | kubectl apply -f -
-kubectl get csistoragecapacities -ocustom-columns=CLASS:.storageClassName,AVAIL:.capacity,ZONE:.nodeTopology.matchLabels -A
-# ↳ Storage classes and persistent volume support
-
-# 4. 🚀 GITOPS ENGINE
-kustomize build --enable-helm kubernetes/infra/controllers/argocd | kubectl apply -f -
-kubectl -n argocd get secret argocd-initial-admin-secret -ojson | jq -r '.data.password | @base64d'
-# ↳ ArgoCD GitOps platform
-
-# 5. ⚡ TRIGGER CHAIN REACTION (Matrix Generator Magic!)
-kubectl apply -k kubernetes/infra  # Deploy remaining infrastructure
-kubectl apply -k kubernetes/sets   # Deploy ApplicationSets → Auto-discovers ALL apps!
-```
-
-### **Access ArgoCD UI**
-```bash
-kubectl -n argocd port-forward svc/argocd-server 8080:80
-# 🌐 URL: http://localhost:8080
-# 👤 Username: admin  
-# 🔑 Password: [from command above]
-```
-
-### **Individual Components (if needed)**
-```bash
-# Cilium
-kubectl kustomize --enable-helm kubernetes/infra/network/cilium | kubectl apply -f -
-
-# Sealed-secrets
-kustomize build --enable-helm kubernetes/infra/controllers/sealed-secrets | kubectl apply -f -
-
-# Proxmox CSI Plugin
-kustomize build --enable-helm kubernetes/infra/storage/proxmox-csi | kubectl apply -f -
-kubectl get csistoragecapacities -ocustom-columns=CLASS:.storageClassName,AVAIL:.capacity,ZONE:.nodeTopology.matchLabels -A
-```
-
----
 
 ## Infrastructure
 
@@ -132,27 +80,7 @@ Everything needed to run my cluster & deploy my applications:
     </tr>
 </table>
 
----
 
-## 🎯 Enterprise Matrix Generator
-
-This homelab implements the **Enterprise Matrix Generator Pattern** used by Netflix, Google, and AWS:
-
-### **How it works:**
-- **Auto-Discovery**: Apps in `kubernetes/infra-v2/*/*` are automatically found
-- **Zero Maintenance**: No manual app registry updates needed  
-- **Multi-Cluster Ready**: Deploy to 1000+ clusters with same config
-- **Team Self-Service**: Create folder → App appears in ArgoCD
-
-### **Adding New Apps:**
-```bash
-mkdir -p kubernetes/infra-v2/my-category/my-app
-# Add kustomization.yaml
-git push
-# ✨ App appears automatically in ArgoCD!
-```
-
----
 
 > ⚠️ **This repository is a work in progress!**  
 > 🏗️ Expect breaking changes, experiments, and lots of learning along the way.  
