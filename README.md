@@ -2,7 +2,7 @@
 
 A fully automated, modular Kubernetes cluster project for homelab and testing, powered by [Talos Linux](https://www.talos.dev/) 🐧, [OpenTofu](https://opentofu.org/) 🌱, and [Proxmox VE](https://www.proxmox.com/) 🖥️.
 
----
+------
 
 ## 📦 Tech Stack
 
