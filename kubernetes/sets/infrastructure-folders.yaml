@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure-folders
+  namespace: argocd
+  labels:
+    dev.stonegarden: infrastructure
+spec:
+  generators:
+    - list:
+        elements:
+          # Removed storage - managed by individual rook-ceph application
+          # Removed network - individual apps exist (cilium, cloudflared, gateway)
+          - folder: monitoring
+            path: kubernetes/infra/monitoring
+          - folder: controllers  
+            path: kubernetes/infra/controllers
+          - folder: backup
+            path: kubernetes/infra/backup
+  template:
+    metadata:
+      name: '{{ folder }}'
+      labels:
+        dev.stonegarden: infrastructure-folder
+    spec:
+      project: app-of-apps
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{ path }}'
+        directory:
+          recurse: true
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: argocd
+      syncPolicy:
+        automated:
+          selfHeal: false
+          prune: false
