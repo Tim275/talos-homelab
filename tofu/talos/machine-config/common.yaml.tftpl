@@ -11,8 +11,25 @@
 # ========================================================================
 
 machine:
+  kernel:
+    modules:
+      # Required for Longhorn distributed storage
+      - name: iscsi_tcp
+      - name: nvme_tcp
+      - name: nvme_rdma
+      - name: nbd        # Network Block Device - CRITICAL for Longhorn
+      - name: configfs   # Configuration filesystem - CRITICAL for Longhorn
   kubelet:
     image: ghcr.io/siderolabs/kubelet:v1.30.0
+    extraMounts:
+      # Required for Longhorn distributed storage
+      - destination: /var/lib/longhorn
+        type: bind
+        source: /var/lib/longhorn
+        options:
+          - bind
+          - rshared
+          - rw
     extraArgs:
       # CRITICAL: Very relaxed thresholds for 20GB disks
       eviction-hard: "nodefs.available<1%,imagefs.available<1%,memory.available<100Mi"
