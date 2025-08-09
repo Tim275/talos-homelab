@@ -1,9 +1,4 @@
-machine:
-  network:
-    hostname: ${hostname}
-  nodeLabels:
-    topology.kubernetes.io/region: ${cluster_name}
-    topology.kubernetes.io/zone: ${node_name}
+# Control plane specific settings only - common config comes from common.yaml.tftpl
 
 cluster:
   allowSchedulingOnControlPlanes: true
@@ -35,3 +30,32 @@ cluster:
   - name: cilium-bootstrap
     contents: |
       ${indent(6, cilium_install)}
+
+# ========================================================================
+# ERKLÄRUNG: Was diese control-plane.yaml.tftpl bewirkt
+# ========================================================================
+#
+# ZWECK:
+# - Control Plane spezifische Konfiguration (Master Nodes)
+# - Wird MIT common.yaml.tftpl kombiniert (wie @vehagn macht)
+#
+# WAS HIER KONFIGURIERT WIRD:
+#
+# 1. SCHEDULING auf Control Planes erlaubt:
+#    - allowSchedulingOnControlPlanes: true
+#    - Wichtig für kleine Homelab Setups wo jeder Node genutzt werden soll
+#
+# 2. CNI & PROXY deaktiviert:
+#    - cni.name: none → Cilium wird separat installiert
+#    - proxy.disabled: true → Cilium ersetzt kube-proxy
+#
+# 3. GATEWAY API CRDs:
+#    - Automatisch installiert beim Bootstrap
+#    - Nötig für moderne Ingress/Gateway Konfiguration
+#
+# 4. CILIUM Bootstrap:
+#    - Inline Manifests für Cilium Installation
+#    - Values als ConfigMap für spätere Anpassungen
+#
+# RESULTAT: Control Planes die auch Workloads ausführen können (Homelab-optimiert)
+# ========================================================================
