@@ -1,0 +1,77 @@
+# ========================================================================
+# COMMON CONFIGURATION - Gilt für ALLE Nodes (Control Plane + Worker)
+# ========================================================================
+# Zweck: Optimierungen für kleine Homelab VMs mit nur 20GB Disk & 6-12GB RAM
+# 
+# Hauptprobleme die gelöst werden:
+# 1. "Not enough storage" Fehler bei Kubernetes Scheduling
+# 2. Zu aggressive Eviction Thresholds für kleine Disks
+# 3. inotify Limits die Storage-Probleme vortäuschen
+# 4. Speicherverschwendung durch Logs und alte Images
+# ========================================================================
+
+machine:
+  kubelet:
+    image: ghcr.io/siderolabs/kubelet:v1.30.0
+    extraArgs:
+      # CRITICAL: Very relaxed thresholds for 20GB disks
+      eviction-hard: "nodefs.available<1%,imagefs.available<1%,memory.available<100Mi"
+      eviction-soft: "nodefs.available<2%,imagefs.available<3%,memory.available<300Mi"
+      eviction-soft-grace-period: "nodefs.available=1m,imagefs.available=1m,memory.available=1m"
+      # Very aggressive image GC for 20GB disks
+      image-gc-high-threshold: "70"
+      image-gc-low-threshold: "50"
+      # Minimal logging to save disk space
+      container-log-max-files: "2"
+      container-log-max-size: "5Mi"
+      # Reserve less resources for system
+      system-reserved: "cpu=100m,memory=200Mi"
+      kube-reserved: "cpu=100m,memory=200Mi"
+  nodeLabels:
+    topology.kubernetes.io/region: ${cluster_name}
+    topology.kubernetes.io/zone: ${node_name}
+  network:
+    hostname: ${hostname}
+  sysctls:
+    # CRITICAL: Fix inotify limits (main cause of storage issues!)
+    fs.inotify.max_user_watches: 1048576
+    fs.inotify.max_user_instances: 8192
+    # Optimized for small VMs with limited RAM
+    vm.swappiness: 1
+    vm.overcommit_memory: 1
+    vm.panic_on_oom: 0
+    # Reduce memory usage
+    vm.nr_hugepages: 0  # No hugepages for small VMs
+    # Network optimizations for homelab
+    net.core.default_qdisc: fq
+    net.core.rmem_max: 16777216  # Reduced from 64MB
+    net.core.wmem_max: 16777216  # Reduced from 64MB
+    net.ipv4.tcp_congestion_control: bbr
+    net.ipv4.tcp_fastopen: 3
+    net.ipv4.tcp_rmem: 4096 87380 16777216  # Reduced
+    net.ipv4.tcp_wmem: 4096 65536 16777216  # Reduced
+    # File system optimizations
+    fs.file-max: 2097152
+
+# ========================================================================
+# ERKLÄRUNG: Was diese common.yaml.tftpl bewirkt
+# ========================================================================
+# 
+# PROBLEM das gelöst wird:
+# - Grafana & Loki Pods: "0/6 nodes available: did not have enough free storage"
+# - Obwohl die Nodes eigentlich genug Platz haben!
+#
+# URSACHE:
+# - Kubernetes default: Bei <15% freiem Disk Space (3GB von 20GB) keine Pods mehr
+# - inotify limits zu niedrig → falsche Storage-Fehler
+# - Zu viele alte Container Images & Logs
+#
+# LÖSUNG durch diese Config:
+# 1. Eviction erst bei <1% (200MB) statt <15% (3GB) → 2.8GB mehr nutzbar!
+# 2. inotify auf 1048576 erhöht (128x mehr) → keine falschen Fehler
+# 3. Image GC bei 70% → räumt früher auf
+# 4. Kleine Logs (5MB) → spart Disk Space
+# 5. Weniger RAM-Reservierung → mehr für Pods
+#
+# RESULTAT: Grafana, Loki, Longhorn können endlich deployen!
+# ========================================================================
