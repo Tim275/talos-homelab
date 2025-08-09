@@ -68,4 +68,4 @@ talos_nodes = {
   }
 }
 
-# Total RAM usage: ~37GB (11GB remaining for Proxmox host + overhead)
+# 

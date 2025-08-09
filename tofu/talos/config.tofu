@@ -49,6 +49,13 @@ data "talos_machine_configuration" "this" {
   machine_type    = each.value.machine_type
   machine_secrets = talos_machine_secrets.this.machine_secrets
   config_patches = [
+    # Common configuration for ALL nodes (following @vehagn's pattern)
+    templatefile("${path.module}/machine-config/common.yaml.tftpl", {
+      hostname     = each.key
+      cluster_name = var.cluster.proxmox_cluster
+      node_name    = each.value.host_node
+    }),
+    # Node-type specific configuration
     each.value.machine_type == "controlplane" ?
     templatefile("${path.module}/machine-config/control-plane.yaml.tftpl", {
       hostname       = each.key
