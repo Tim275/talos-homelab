@@ -1,0 +1,46 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: storage
+  namespace: argocd
+  labels:
+    dev.stonegarden: storage
+spec:
+  generators:
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/infra/storage/*"
+          # Exclude files that aren't applications
+          - path: "kubernetes/infra/storage/application-set.yaml"
+            exclude: true
+          - path: "kubernetes/infra/storage/project.yaml"
+            exclude: true
+          - path: "kubernetes/infra/storage/kustomization.yaml"
+            exclude: true
+          # Exclude Longhorn for now
+          - path: "kubernetes/infra/storage/longhorn"
+            exclude: true
+  template:
+    metadata:
+      name: 'storage-{{ path.basename }}'
+      labels:
+        dev.stonegarden: storage
+    spec:
+      project: storage
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{ path }}'
+        plugin:
+          name: kustomize-build-with-helm
+      destination:
+        server: https://kubernetes.default.svc
+      syncPolicy:
+        automated:
+          selfHeal: true
+          prune: true
+        syncOptions:
+          - ServerSideApply=true
+          - CreateNamespace=true

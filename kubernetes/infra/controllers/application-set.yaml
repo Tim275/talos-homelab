@@ -1,38 +1,36 @@
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: infrastructure
+  name: controllers
   namespace: argocd
   labels:
-    dev.stonegarden: infrastructure
+    dev.stonegarden: controllers
 spec:
   generators:
     - git:
         repoURL: https://github.com/Tim275/talos-homelab
         revision: HEAD
         directories:
-          # Top-level ApplicationSets for each category
-          - path: "kubernetes/infra/storage"
-          - path: "kubernetes/infra/controllers"
-          - path: "kubernetes/infra/monitoring"
-          - path: "kubernetes/infra/network"
+          - path: "kubernetes/infra/controllers/*"
   template:
     metadata:
       name: '{{ path.basename }}'
       labels:
-        dev.stonegarden: infrastructure
+        dev.stonegarden: controllers
     spec:
-      project: app-of-apps
+      project: controllers
       source:
         repoURL: https://github.com/Tim275/talos-homelab
         targetRevision: HEAD
         path: '{{ path }}'
-        directory:
-          recurse: false
-          include: 'application-set.yaml'
+        plugin:
+          name: kustomize-build-with-helm
       destination:
         server: https://kubernetes.default.svc
       syncPolicy:
         automated:
           selfHeal: true
           prune: true
+        syncOptions:
+          - ServerSideApply=true
+          - CreateNamespace=true
