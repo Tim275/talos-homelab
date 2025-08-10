@@ -1,0 +1,43 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: backup
+  namespace: argocd
+  labels:
+    dev.stonegarden: backup
+spec:
+  generators:
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/infra/backup/*"
+          # Exclude non-application files
+          - path: "kubernetes/infra/backup/application-set.yaml"
+            exclude: true
+          - path: "kubernetes/infra/backup/project.yaml"
+            exclude: true
+          - path: "kubernetes/infra/backup/kustomization.yaml"
+            exclude: true
+  template:
+    metadata:
+      name: '{{ path.basename }}'
+      labels:
+        dev.stonegarden: backup
+    spec:
+      project: backup
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{ path }}'
+        plugin:
+          name: kustomize-build-with-helm
+      destination:
+        server: https://kubernetes.default.svc
+      syncPolicy:
+        automated:
+          selfHeal: true
+          prune: true
+        syncOptions:
+          - ServerSideApply=true
+          - CreateNamespace=true
