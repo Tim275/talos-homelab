@@ -49,6 +49,11 @@ Everything needed to run my cluster & deploy my applications:
         <td>Log aggregation system designed for cloud-native applications</td>
     </tr>
     <tr>
+        <td><img width="32" src="https://raw.githubusercontent.com/rook/rook/master/design/logo/rook-logo.svg"></td>
+        <td><a href="https://rook.io/">Rook Ceph</a></td>
+        <td>Cloud-native storage orchestrator with distributed Ceph backend for block, object and file storage</td>
+    </tr>
+    <tr>
         <td>🔒</td>
         <td><a href="https://sealed-secrets.netlify.app/">Sealed Secrets</a></td>
         <td>Kubernetes controller for one-way encrypted secrets</td>
