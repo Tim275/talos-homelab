@@ -14,22 +14,22 @@ configuration:
   # Enable CSI snapshot support for Longhorn integration
   features: EnableCSI
   
-  # Minimal configuration - will be updated when Minio is available
+  # Minio S3 configuration
   backupStorageLocation:
     - provider: aws
       bucket: velero-backups
       config:
         region: eu-west-1
         s3ForcePathStyle: true
-        s3Url: http://localhost:9000  # placeholder
+        s3Url: http://minio.minio.svc.cluster.local:9000
 
-# TODO: Configure Minio credentials when available  
-# credentials:
-#   secretContents:
-#     cloud: |
-#       [default]
-#       aws_access_key_id: velero
-#       aws_secret_access_key: supersecret
+# Minio credentials for Velero
+credentials:
+  secretContents:
+    cloud: |
+      [default]
+      aws_access_key_id: velero
+      aws_secret_access_key: velero-secret-key
 
 # Disable native VolumeSnapshotLocation (use CSI instead)
 snapshotsEnabled: false
@@ -53,9 +53,18 @@ resources:
     cpu: 200m
     memory: 256Mi
 
-# Schedule daily backups (when S3 is configured)
-# schedules:
-#   daily:
-#     schedule: "0 4 * * *"  # 4 AM daily
-#     template:
-#       ttl: "720h"  # 30 days retention
+# Schedule daily backups
+schedules:
+  daily-backup:
+    schedule: "0 4 * * *"  # 4 AM daily
+    template:
+      ttl: "720h"  # 30 days retention
+      storageLocation: default
+      includedNamespaces:
+        - argocd
+        - monitoring  
+        - rook-ceph
+        - velero
+      excludedResources:
+        - pods
+        - replicasets
