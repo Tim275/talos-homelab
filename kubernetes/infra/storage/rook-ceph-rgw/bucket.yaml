@@ -1,0 +1,41 @@
+apiVersion: ceph.rook.io/v1
+kind: CephObjectStoreUser
+metadata:
+  name: s3-admin
+  namespace: rook-ceph
+spec:
+  store: homelab-objectstore
+  displayName: "S3 Admin User for bucket management"
+  capabilities:
+    user: "*"
+    bucket: "*"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: create-velero-bucket
+  namespace: rook-ceph
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: aws-cli
+        image: amazon/aws-cli:latest
+        command:
+        - /bin/sh
+        - -c
+        - |
+          export AWS_ACCESS_KEY_ID=$(cat /tmp/s3-creds/AccessKey | base64 -d)
+          export AWS_SECRET_ACCESS_KEY=$(cat /tmp/s3-creds/SecretKey | base64 -d)
+          export AWS_ENDPOINT_URL=$(cat /tmp/s3-creds/Endpoint | base64 -d)
+          aws s3 mb s3://velero-backups --endpoint-url $AWS_ENDPOINT_URL
+          aws s3 ls --endpoint-url $AWS_ENDPOINT_URL
+        volumeMounts:
+        - name: s3-creds
+          mountPath: /tmp/s3-creds
+          readOnly: true
+      volumes:
+      - name: s3-creds
+        secret:
+          secretName: rook-ceph-object-user-homelab-objectstore-s3-admin
