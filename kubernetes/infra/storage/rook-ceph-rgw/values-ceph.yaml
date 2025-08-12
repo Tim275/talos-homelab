@@ -1,0 +1,63 @@
+# Velero configuration for Ceph Object Storage (RGW)
+# Uses existing Rook-Ceph cluster for S3-compatible backups
+
+# AWS plugin for Ceph S3 compatibility  
+initContainers:
+  - name: velero-plugin-for-aws
+    image: velero/velero-plugin-for-aws:v1.12.1
+    imagePullPolicy: IfNotPresent
+    volumeMounts:
+      - mountPath: /target
+        name: plugins
+
+configuration:
+  # Enable CSI snapshot support
+  features: EnableCSI
+  
+  # Ceph RGW S3 configuration
+  backupStorageLocation:
+    - provider: aws
+      bucket: velero-backups
+      config:
+        region: us-east-1
+        s3ForcePathStyle: true
+        s3Url: http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc.cluster.local:80
+
+# Ceph credentials (will be created by CephObjectStoreUser)
+credentials:
+  existingSecret: rook-ceph-object-user-velero
+
+# Disable native VolumeSnapshotLocation (use CSI)
+snapshotsEnabled: false
+
+# Prometheus metrics
+metrics:
+  enabled: true
+  scrapeInterval: 30s
+  scrapeTimeout: 10s
+  serviceMonitor:
+    enabled: true
+  prometheusRule:
+    enabled: true
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+# Schedule daily backups
+schedules:
+  daily-backup:
+    schedule: "0 4 * * *"  # 4 AM daily
+    template:
+      ttl: "720h"  # 30 days retention
+      storageLocation: default
+      includedNamespaces:
+        - "*"  # All namespaces
+      excludedResources:
+        - pods
+        - replicasets
