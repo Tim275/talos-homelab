@@ -120,4 +120,57 @@ git push
 
 ---
 
+## 🌍 Multi-Environment Extensions (Provisional)
+
+**Ready for test/staging/production environments!**
+
+### **Future Directory Structure:**
+```
+kubernetes/
+├── environments/
+│   ├── test/
+│   │   ├── kustomization.yaml
+│   │   └── values/
+│   ├── staging/
+│   │   ├── kustomization.yaml  
+│   │   └── values/
+│   └── production/
+│       ├── kustomization.yaml
+│       └── values/
+├── infra/           # Current base infrastructure
+└── sets/            # ApplicationSets (cleaned up)
+```
+
+### **Matrix Generator for Multi-Env (Example):**
+```yaml
+# Future: environments/applicationset.yaml
+generators:
+  - matrix:
+      generators:
+        - list:
+            elements:
+              - env: test
+                replicas: "1"
+              - env: staging  
+                replicas: "2"
+              - env: production
+                replicas: "3"
+        - git:
+            directories:
+              - path: "kubernetes/infra/storage"
+              - path: "kubernetes/infra/monitoring"
+template:
+  name: '{{env}}-{{path.basename}}'
+  source:
+    path: '{{path}}/overlays/{{env}}'
+```
+
+**🎯 Benefits:**
+- Same infrastructure → Multiple environments
+- Environment-specific values (replicas, resources, domains)
+- Zero duplication, maximum reuse
+- Ready to scale to any number of environments
+
+---
+
 **🚀 From manual app management to enterprise auto-discovery!**
