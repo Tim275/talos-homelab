@@ -1,18 +1,34 @@
-# Jaeger Configuration for Homelab - Simplified
-# Using memory storage to avoid S3 plugin issues
+# Jaeger Configuration for Homelab with Badger Storage on Ceph
+# Using Badger (embedded database) with persistent volume on Ceph
 
-# Disable built-in data stores
+# Disable external data stores
 provisionDataStore:
   cassandra: false
   elasticsearch: false
   kafka: false
 
-# Enable all-in-one deployment for homelab simplicity
+# Enable all-in-one deployment with Badger storage
 allInOne:
   enabled: true
   replicas: 1
   args:
     - "--query.base-path=/"
+  extraEnv:
+    - name: SPAN_STORAGE_TYPE
+      value: "badger"
+    - name: BADGER_EPHEMERAL
+      value: "false"
+    - name: BADGER_DIRECTORY_VALUE
+      value: "/badger/data"
+    - name: BADGER_DIRECTORY_KEY
+      value: "/badger/key"
+  volumeMounts:
+    - name: badger-storage
+      mountPath: /badger
+  volumes:
+    - name: badger-storage
+      persistentVolumeClaim:
+        claimName: jaeger-badger-storage
   resources:
     requests:
       memory: 256Mi
@@ -20,24 +36,8 @@ allInOne:
     limits:
       memory: 1Gi
       cpu: 500m
-  service:
-    type: ClusterIP
-    # Expose standard Jaeger ports
-    ports:
-      - name: http-query
-        port: 16686
-        protocol: TCP
-        targetPort: 16686
-      - name: otlp-grpc
-        port: 4317
-        protocol: TCP
-        targetPort: 4317
-      - name: otlp-http
-        port: 4318
-        protocol: TCP
-        targetPort: 4318
 
-# Disable individual components (using all-in-one instead)
+# Disable individual components (using all-in-one)
 query:
   enabled: false
 collector:
