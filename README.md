@@ -49,7 +49,7 @@ Everything needed to run my cluster & deploy my applications:
         <td>Log aggregation system designed for cloud-native applications</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://raw.githubusercontent.com/rook/rook/master/design/logo/rook-logo.svg"></td>
+        <td><img width="32" src="https://ceph.io/assets/favicons/favicon-32x32.png"></td>
         <td><a href="https://rook.io/">Rook Ceph</a></td>
         <td>Cloud-native storage orchestrator with distributed Ceph backend for block, object and file storage</td>
     </tr>
@@ -82,6 +82,11 @@ Everything needed to run my cluster & deploy my applications:
         <td><img width="32" src="https://www.vectorlogo.zone/logos/cloudflare/cloudflare-icon.svg"></td>
         <td><a href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/">Cloudflare Tunnel</a></td>
         <td>Zero-Trust secure tunnel for external access without port forwarding</td>
+    </tr>
+    <tr>
+        <td>💾</td>
+        <td><a href="https://velero.io/">Velero</a></td>
+        <td>Kubernetes backup and disaster recovery with Ceph Object Storage backend</td>
     </tr>
 </table>
 
