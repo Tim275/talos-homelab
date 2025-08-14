@@ -1,0 +1,71 @@
+# Jaeger Configuration for Homelab with Ceph S3 Storage
+# Based on official Jaeger Helm Chart values
+
+# Disable built-in data stores - using external S3 (Ceph)
+provisionDataStore:
+  cassandra: false
+  elasticsearch: false
+  kafka: false
+
+# Enable all-in-one deployment for homelab simplicity
+allInOne:
+  enabled: true
+  replicas: 1
+  args:
+    - "--query.base-path=/"
+  extraEnv:
+    - name: SPAN_STORAGE_TYPE
+      value: "grpc-plugin"
+    - name: GRPC_STORAGE_PLUGIN_BINARY
+      value: "/go/bin/jaeger-s3"
+    - name: GRPC_STORAGE_PLUGIN_CONFIGURATION_FILE  
+      value: "/etc/jaeger/s3-config.yaml"
+  extraConfigmapMounts:
+    - name: s3-config
+      mountPath: /etc/jaeger
+      configMap: jaeger-s3-config
+      readOnly: true
+  extraSecretMounts:
+    - name: s3-credentials
+      mountPath: /etc/secrets
+      secretName: jaeger-s3-credentials
+      readOnly: true
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 1Gi
+      cpu: 500m
+  service:
+    type: ClusterIP
+    # Expose standard Jaeger ports
+    ports:
+      - name: http-query
+        port: 16686
+        protocol: TCP
+        targetPort: 16686
+      - name: otlp-grpc
+        port: 4317
+        protocol: TCP
+        targetPort: 4317
+      - name: otlp-http
+        port: 4318
+        protocol: TCP
+        targetPort: 4318
+
+# Disable individual components (using all-in-one instead)
+query:
+  enabled: false
+collector:
+  enabled: false
+agent:
+  enabled: false
+ingester:
+  enabled: false
+
+# Enable ServiceMonitor for Prometheus scraping
+serviceMonitor:
+  enabled: true
+  labels:
+    release: prometheus-operator
