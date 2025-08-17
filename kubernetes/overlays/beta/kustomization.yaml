@@ -1,0 +1,54 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 🚀 BETA OVERLAY - ENTERPRISE KONTROLLE ÜBER APPLICATIONSETS
+# Comment/Uncomment ApplicationSets um sie zu aktivieren/deaktivieren
+
+namespace: argocd
+
+resources:
+  # ============================================
+  # 🎯 INFRASTRUCTURE APPLICATIONSETS KONTROLLE
+  # ============================================
+  
+  # CONTROLLERS ApplicationSet (ArgoCD, Cert-Manager, Sealed-Secrets)
+  - ../../infra/controllers/application-set.yaml    # ✅ Essential controllers
+  
+  # STORAGE ApplicationSet (Proxmox-CSI, Rook-Ceph, MinIO excluded)  
+  - ../../infra/storage/application-set.yaml        # ✅ Storage infrastructure
+  
+  # MONITORING ApplicationSet (Prometheus, Grafana, Loki, etc.)
+  - ../../infra/monitoring/application-set.yaml     # ✅ Full observability stack
+  
+  # NETWORK ApplicationSet (Cilium, Gateway API)
+  - ../../infra/network/application-set.yaml        # ✅ Network infrastructure
+  
+  # BACKUP ApplicationSet (Velero)
+  # - ../../infra/backup/application-set.yaml       # ❌ Optional - uncomment wenn benötigt
+
+# Enterprise Labels
+commonLabels:
+  environment: beta
+  managed-by: kustomize-overlay
+  tier: infrastructure
+  
+commonAnnotations:
+  beta.platform/version: "1.0"
+  beta.platform/deployment-method: "controlled-applicationsets"
+  beta.platform/owner: "platform-team"
+
+# Enterprise-level ApplicationSet patches
+patchesStrategicMerge:
+  - patches/monitoring-beta-patch.yaml              # Monitoring-specific patches
+  - patches/storage-beta-patch.yaml                 # Storage-specific patches
+  
+patchesJson6902:
+  - target:
+      group: argoproj.io
+      version: v1alpha1
+      kind: ApplicationSet
+      name: storage
+    patch: |-
+      - op: add
+        path: /spec/template/spec/syncPolicy/syncOptions/-
+        value: "Validate=strict"
