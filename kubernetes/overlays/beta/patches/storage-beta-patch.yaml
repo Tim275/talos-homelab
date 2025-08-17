@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: storage
+  namespace: argocd
+spec:
+  # Enterprise Beta storage patches
+  generators:
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/infra/storage/*"
+          # Exclude files that aren't applications
+          - path: "kubernetes/infra/storage/application-set.yaml"
+            exclude: true
+          - path: "kubernetes/infra/storage/project.yaml"
+            exclude: true
+          - path: "kubernetes/infra/storage/kustomization.yaml"
+            exclude: true
+          # Beta: Exclude heavy/optional storage
+          - path: "kubernetes/infra/storage/longhorn"
+            exclude: true                           # ✅ Beta: Exclude Longhorn
+          - path: "kubernetes/infra/storage/minio"
+            exclude: true                           # ✅ Beta: Exclude MinIO
+  template:
+    metadata:
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"           # Deploy before monitoring
+    spec:
+      syncPolicy:
+        automated:
+          selfHeal: true
+          prune: false                              # ✅ Beta: Safer for storage
+        syncOptions:
+          - ServerSideApply=true
+          - CreateNamespace=true
+          - Validate=true
+        retry:
+          limit: 5                                  # ✅ Storage needs more retries
+          backoff:
+            duration: "15s"
+            factor: 2
+            maxDuration: "10m0s"
