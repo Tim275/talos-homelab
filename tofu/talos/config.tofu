@@ -1,9 +1,10 @@
 locals {
   first_control_plane_node_ip = [for k, v in var.nodes : v.ip if v.machine_type == "controlplane"][0]
-  kubernetes_endpoint         = coalesce(var.cluster.vip, local.first_control_plane_node_ip)
+  kubernetes_endpoint         = coalesce(var.cluster.endpoint, local.first_control_plane_node_ip)
   extra_manifests = concat(var.cluster.extra_manifests, [
     "https://github.com/kubernetes-sigs/gateway-api/releases/download/${var.cluster.gateway_api_version}/standard-install.yaml",
-    "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/${var.cluster.gateway_api_version}/config/crd/experimental/gateway.networking.k8s.io_tlsroutes.yaml"
+    "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/${var.cluster.gateway_api_version}/config/crd/experimental/gateway.networking.k8s.io_tlsroutes.yaml",
+    "https://raw.githubusercontent.com/prometheus-community/helm-charts/refs/heads/main/charts/kube-prometheus-stack/charts/crds/crds/crd-servicemonitors.yaml"
   ])
 }
 
@@ -61,8 +62,13 @@ data "talos_machine_configuration" "this" {
       hostname       = each.key
       cluster_name   = var.cluster.proxmox_cluster  
       node_name      = each.value.host_node
-      cilium_values  = file("${path.root}/${var.cluster.cilium.values_file_path}")
-      cilium_install = file("${path.root}/${var.cluster.cilium.bootstrap_manifest_path}")
+      ip             = each.value.ip
+      mac_address    = lower(each.value.mac_address)
+      gateway        = var.cluster.gateway
+      subnet_mask    = var.cluster.subnet_mask
+      vip              = var.cluster.endpoint
+      extra_manifests  = jsonencode(local.extra_manifests)
+      inline_manifests = jsonencode(terraform_data.cilium_bootstrap_inline_manifests.output)
     }) :
     templatefile("${path.module}/machine-config/worker.yaml.tftpl", {
       hostname     = each.key
@@ -82,6 +88,8 @@ resource "talos_machine_configuration_apply" "this" {
   node                        = each.value.ip
   client_configuration        = talos_machine_secrets.this.client_configuration
   machine_configuration_input = data.talos_machine_configuration.this[each.key].machine_configuration
+  
+  
   lifecycle {
     replace_triggered_by = [proxmox_virtual_environment_vm.this[each.key]]
   }
@@ -103,7 +111,7 @@ data "talos_cluster_health" "this" {
   worker_nodes           = [for k, v in var.nodes : v.ip if v.machine_type == "worker"]
   endpoints              = data.talos_client_configuration.this.endpoints
   timeouts = {
-    read = "10m"
+    read = "20m"
   }
 }
 
@@ -115,6 +123,6 @@ data "talos_cluster_kubeconfig" "this" {
   node                 = local.first_control_plane_node_ip
   client_configuration = talos_machine_secrets.this.client_configuration
   timeouts = {
-    read = "1m"
+    read = "5m"
   }
 }
