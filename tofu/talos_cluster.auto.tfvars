@@ -1,6 +1,6 @@
 talos_cluster_config = {
   name            = "homelab-k8s"
-  endpoint        = "192.168.68.101"  # First control plane IP (ctrl-00)
+  endpoint        = "192.168.68.100"  # VIP managed by kube-vip
   gateway         = "192.168.68.1"
   subnet_mask     = "24"
   talos_version   = "v1.10"
