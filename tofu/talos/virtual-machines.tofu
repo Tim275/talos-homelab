@@ -82,4 +82,8 @@ resource "proxmox_virtual_environment_vm" "this" {
       xvga    = false
     }
   }
+
+  lifecycle {
+    create_before_destroy = false
+  }
 }

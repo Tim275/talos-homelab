@@ -1,0 +1,60 @@
+# ZFS StorageClass - Native ZFS support
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: openebs-zfs
+  annotations:
+    openebs.io/cas-type: localpv
+    cas.openebs.io/config: |
+      - name: StorageType
+        value: "zfs"
+      - name: PoolName
+        value: "storage"  # Your ZFS pool name - CHANGE THIS!
+provisioner: zfs.csi.openebs.io
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+parameters:
+  recordsize: "128k"
+  compression: "lz4"      # ZFS compression
+  dedup: "off"            # Deduplication off for performance
+  fstype: "zfs"
+  poolname: "storage"     # Your ZFS pool name - CHANGE THIS!
+
+---
+# High-performance ZFS StorageClass
+apiVersion: storage.k8s.io/v1  
+kind: StorageClass
+metadata:
+  name: openebs-zfs-fast
+  annotations:
+    openebs.io/cas-type: localpv
+provisioner: zfs.csi.openebs.io
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer  
+reclaimPolicy: Delete
+parameters:
+  recordsize: "64k"      # Smaller recordsize for databases
+  compression: "off"     # No compression for max performance
+  dedup: "off"
+  fstype: "zfs"
+  poolname: "fast-pool"  # Separate fast pool (NVMe)
+
+---  
+# Backup-optimized ZFS StorageClass
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: openebs-zfs-backup
+  annotations:
+    openebs.io/cas-type: localpv
+provisioner: zfs.csi.openebs.io
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Retain     # Keep for backups
+parameters:
+  recordsize: "1M"        # Large recordsize for backup efficiency
+  compression: "gzip"     # Max compression for backup storage
+  dedup: "on"            # Deduplication for backup efficiency
+  fstype: "zfs"
+  poolname: "backup-pool"
