@@ -24,6 +24,7 @@ provider "proxmox" {
   insecure = var.proxmox.insecure
 
   api_token = var.proxmox.api_token
+  
   ssh {
     agent    = true
     username = var.proxmox.username
