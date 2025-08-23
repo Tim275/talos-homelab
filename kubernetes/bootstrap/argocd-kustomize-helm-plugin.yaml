@@ -1,0 +1,126 @@
+---
+# ArgoCD Kustomize+Helm Plugin Configuration
+# This enables ArgoCD to process Kustomize files with Helm charts
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-kustomize-helm-plugin
+  namespace: argocd
+data:
+  plugin.yaml: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ConfigManagementPlugin
+    metadata:
+      name: kustomize-build-with-helm
+    spec:
+      version: v1.0
+      init:
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            echo "Initializing Kustomize+Helm plugin..."
+            helm version || echo "Helm not available"
+            kustomize version || echo "Kustomize not available"
+      generate:
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            set -e
+            echo "🔧 Building with Kustomize+Helm plugin..."
+            
+            # Check if kustomization.yaml exists
+            if [ -f "kustomization.yaml" ] || [ -f "kustomization.yml" ]; then
+              echo "✅ Found kustomization file"
+              # Enable Helm in Kustomize and build
+              kustomize build --enable-helm .
+            else
+              echo "❌ No kustomization.yaml found, falling back to kubectl"
+              kubectl apply --dry-run=client -o yaml -f .
+            fi
+      discover:
+        find:
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              # Discover if this repository uses kustomize with helm
+              if [ -f "kustomization.yaml" ] || [ -f "kustomization.yml" ]; then
+                if grep -q "helmCharts:" kustomization.yaml kustomization.yml 2>/dev/null; then
+                  echo "true"
+                else
+                  echo "false"
+                fi
+              else
+                echo "false"
+              fi
+---
+# Patch ArgoCD repo-server to include the plugin
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-repo-server
+  namespace: argocd
+spec:
+  template:
+    spec:
+      containers:
+      - name: argocd-repo-server
+        env:
+        - name: ARGOCD_EXEC_TIMEOUT
+          value: "300"
+        - name: HELM_CACHE_HOME
+          value: /tmp/helm/cache
+        - name: HELM_CONFIG_HOME
+          value: /tmp/helm/config
+        - name: HELM_DATA_HOME
+          value: /tmp/helm/data
+        volumeMounts:
+        - name: kustomize-helm-plugin
+          mountPath: /etc/argocd/cmp-server/config
+        - name: helm-cache
+          mountPath: /tmp/helm
+      - name: kustomize-helm-plugin
+        image: quay.io/argoproj/argocd:v2.13.2
+        command: ["/var/run/argocd/argocd-cmp-server"]
+        env:
+        - name: KUSTOMIZE_PLUGIN_HOME
+          value: /etc/kustomize/plugin
+        - name: HELM_CACHE_HOME
+          value: /tmp/helm/cache
+        - name: HELM_CONFIG_HOME
+          value: /tmp/helm/config  
+        - name: HELM_DATA_HOME
+          value: /tmp/helm/data
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 999
+        volumeMounts:
+        - name: var-files
+          mountPath: /var/run/argocd
+        - name: plugins
+          mountPath: /home/argocd/cmp-server/plugins
+        - name: tmp
+          mountPath: /tmp
+        - name: kustomize-helm-plugin
+          mountPath: /home/argocd/cmp-server/config/plugin.yaml
+          subPath: plugin.yaml
+        - name: helm-cache
+          mountPath: /tmp/helm
+      volumes:
+      - name: kustomize-helm-plugin
+        configMap:
+          name: argocd-kustomize-helm-plugin
+      - name: helm-cache
+        emptyDir: {}
+      initContainers:
+      - name: install-helm
+        image: alpine/helm:3.16.4
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            echo "Installing Helm..."
+            cp /usr/bin/helm /shared/helm
+            chmod +x /shared/helm
+            echo "Helm installed successfully"
+        volumeMounts:
+        - name: plugins
+          mountPath: /shared
