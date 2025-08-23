@@ -1,0 +1,46 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: homelab-environment
+  annotations:
+    environment.config/name: "homelab"
+    environment.config/description: "Complete homelab infrastructure stack"
+
+# Base infrastructure
+resources:
+  # Core infrastructure - always enabled
+  - ../../../infra/controllers
+  - ../../../infra/network
+  - ../../../infra/storage
+  
+  # Monitoring stack - selectively enabled
+  - ../../profiles/homelab/monitoring-overrides.yaml
+  
+  # Platform services - optional
+  - ../../components/platform/data/cloudnative-pg
+
+# Environment-specific configurations
+commonLabels:
+  environment: homelab
+  managed-by: argocd-homelab
+
+# Patches for homelab-specific customizations
+patches:
+  # Reduce resource requirements for homelab
+  - target:
+      kind: Application
+      labelSelector: "component=grafana"
+    patch: |-
+      - op: add
+        path: /metadata/annotations/homelab.config~1resource-tier
+        value: "low"
+  
+  # Disable resource-intensive features
+  - target:
+      kind: Application
+      labelSelector: "component=jaeger"
+    patch: |-
+      - op: replace
+        path: /spec/syncPolicy/automated
+        value: null
