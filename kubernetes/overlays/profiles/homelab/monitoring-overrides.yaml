@@ -1,0 +1,39 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: homelab-monitoring-profile
+  annotations:
+    profile.config/name: "homelab"
+    profile.config/description: "Homelab monitoring stack configuration"
+
+# Enable specific monitoring components
+resources:
+  # Core monitoring
+  - ../../components/infrastructure/monitoring/prometheus
+  - ../../components/infrastructure/monitoring/grafana
+  
+  # Log aggregation - enable/disable as needed
+  - ../../components/infrastructure/monitoring/loki
+  
+  # Distributed tracing - currently disabled
+  # - ../../components/infrastructure/monitoring/jaeger
+
+# Common labels for all monitoring resources
+commonLabels:
+  environment: homelab
+  profile: homelab-monitoring
+  managed-by: kustomize
+
+patches:
+  # Disable resource-intensive components for homelab
+  - target:
+      kind: Application
+      name: monitoring-jaeger
+    patch: |-
+      - op: add
+        path: /metadata/annotations/argocd.argoproj.io~1sync-options
+        value: "SkipDryRunOnMissingResource=true"
+      - op: replace
+        path: /spec/syncPolicy/automated
+        value: null
