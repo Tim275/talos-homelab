@@ -6,6 +6,14 @@ machine:
     extensions:
       - image: ghcr.io/siderolabs/iscsi-tools:20240808-talos-v1.7.0
       - image: ghcr.io/siderolabs/util-linux-tools:2.40.1-talos-v1.7.0
+  features:
+    # Enable enhanced dashboard with detailed service monitoring
+    stableHostname: true
+    apidCheckExtKeyUsage: true
+    diskQuotaSupport: true
+    kubePrism:
+      enabled: true
+      port: 7445
   kernel:
     modules:
       # Required for Longhorn distributed storage
@@ -26,10 +34,10 @@ machine:
           - rshared
           - rw
     extraArgs:
-      # CRITICAL: Very relaxed thresholds for 20GB disks
-      eviction-hard: "nodefs.available<1%,imagefs.available<1%,memory.available<100Mi"
-      eviction-soft: "nodefs.available<2%,imagefs.available<3%,memory.available<300Mi"
-      eviction-soft-grace-period: "nodefs.available=1m,imagefs.available=1m,memory.available=1m"
+      # Minimal stable configuration
+      eviction-hard: "nodefs.available<5%,imagefs.available<5%,memory.available<100Mi"
+      eviction-soft: "nodefs.available<10%,imagefs.available<10%,memory.available<200Mi"
+      eviction-soft-grace-period: "nodefs.available=30s,imagefs.available=30s,memory.available=30s"
       # Very aggressive image GC for 20GB disks
       image-gc-high-threshold: "70"
       image-gc-low-threshold: "50"
@@ -44,6 +52,16 @@ machine:
     topology.kubernetes.io/zone: ${node_name}
   network:
     hostname: ${hostname}
+  logging:
+    # Basic logging for stability
+    destinations:
+      - endpoint: tcp://127.0.0.1:5555
+        format: json_lines
+  time:
+    # NTP servers for accurate timestamps
+    servers:
+      - time.cloudflare.com
+      - pool.ntp.org
   sysctls:
     # CRITICAL: Fix inotify limits (main cause of storage issues!)
     fs.inotify.max_user_watches: 1048576
