@@ -1,0 +1,50 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: app-of-apps
+  namespace: argocd
+spec:
+  clusterResourceWhitelist:
+  - group: '*'
+    kind: '*'
+  destinations:
+  - namespace: '*'
+    server: '*'
+  sourceRepos:
+  - https://github.com/Tim275/talos-homelab
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  labels:
+    dev.stonegarden: infrastructure
+  name: infrastructure
+  namespace: argocd
+spec:
+  generators:
+  - git:
+      directories:
+      - path: kubernetes/infra/storage
+      - path: kubernetes/infra/controllers
+      - path: kubernetes/infra/monitoring
+      - path: kubernetes/infra/network
+      - path: kubernetes/infra/backup
+      repoURL: https://github.com/Tim275/talos-homelab
+      revision: HEAD
+  template:
+    metadata:
+      labels:
+        dev.stonegarden: infrastructure
+      name: '{{ path.basename }}'
+    spec:
+      destination:
+        server: https://kubernetes.default.svc
+      project: app-of-apps
+      source:
+        path: '{{ path }}'
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
