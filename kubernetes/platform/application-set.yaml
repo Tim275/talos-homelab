@@ -1,0 +1,56 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform
+  namespace: argocd
+  labels:
+    dev.stonegarden: platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          # Platform Data Layer
+          - path: "kubernetes/platform/data/*"
+          # Platform Security Layer (future)
+          # - path: "kubernetes/platform/security/*"
+          # Platform Service Mesh (future)  
+          # - path: "kubernetes/platform/service-mesh/*"
+  template:
+    metadata:
+      name: 'platform-{{.path.basename}}'
+      namespace: argocd
+      labels:
+        dev.stonegarden: platform
+        category: platform
+        component: '{{.path.basename}}'
+      annotations:
+        argocd.argoproj.io/sync-wave: "2"
+    spec:
+      project: app-of-apps
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path}}'
+      destination:
+        server: https://kubernetes.default.svc
+      syncPolicy:
+        automated:
+          selfHeal: true
+          prune: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
+      revisionHistoryLimit: 3
