@@ -1,0 +1,72 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: osd-purge-job
+  namespace: rook-ceph
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: osd-purge
+        image: rook/ceph:v1.15.3
+        command:
+        - /bin/bash
+        - -c
+        - |
+          echo "Purging problematic OSDs that have CRUSH map issues..."
+          
+          # Force remove OSDs that are causing CRUSH errors
+          PROBLEMATIC_OSDS="2 3 7 8"
+          
+          for osd_id in $PROBLEMATIC_OSDS; do
+            echo "Processing OSD $osd_id..."
+            
+            # Mark OSD out (stop serving data)
+            ceph osd out osd.$osd_id || true
+            
+            # Stop OSD service
+            ceph osd down osd.$osd_id || true
+            
+            # Remove OSD from CRUSH map
+            ceph osd crush remove osd.$osd_id || true
+            
+            # Delete OSD authentication key
+            ceph auth del osd.$osd_id || true
+            
+            # Remove OSD from cluster
+            ceph osd rm osd.$osd_id || true
+            
+            echo "OSD $osd_id purged successfully"
+          done
+          
+          echo "All problematic OSDs purged. Cluster will recreate them automatically."
+        env:
+        - name: ROOK_CEPH_MON_HOST
+          valueFrom:
+            secretKeyRef:
+              name: rook-ceph-mon
+              key: mon-host
+        - name: ROOK_CEPH_MON_INITIAL_MEMBERS
+          valueFrom:
+            secretKeyRef:
+              name: rook-ceph-mon
+              key: mon-initial-members
+        volumeMounts:
+        - mountPath: /etc/ceph
+          name: ceph-config
+        - mountPath: /var/lib/ceph
+          name: mon-endpoint-volume
+      volumes:
+      - name: ceph-config
+        emptyDir: {}
+      - name: mon-endpoint-volume
+        configMap:
+          name: rook-ceph-mon-endpoints
+          items:
+          - key: data
+            path: mon-endpoints
