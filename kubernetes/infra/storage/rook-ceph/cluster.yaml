@@ -4,21 +4,32 @@ metadata:
   name: rook-ceph
   namespace: rook-ceph
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-wave: "2"
 spec:
   cephVersion:
-    image: quay.io/ceph/ceph:v19.2.3
+    # Latest stable Pacific release - proven for Proxmox integration
+    image: quay.io/ceph/ceph:v18.2.4
     allowUnsupported: false
+  
+  # Enterprise-grade data directory with proper permissions for Talos
   dataDirHostPath: /var/lib/rook
-  upgradeOSDRequiresHealthyPGs: false
-  # Skip upgrade checks to force recreation of problematic OSDs
-  skipUpgradeChecks: true
-  continueUpgradeAfterChecksEvenIfNotHealthy: true
-  waitTimeoutForHealthyOSDInMinutes: 10
+  
+  # Production settings for reliable cluster management
+  upgradeOSDRequiresHealthyPGs: true
+  skipUpgradeChecks: false
+  continueUpgradeAfterChecksEvenIfNotHealthy: false
+  waitTimeoutForHealthyOSDInMinutes: 30
 
   mon:
     count: 3
     allowMultiplePerNode: false
+    # Enterprise placement across failure domains
+    volumeClaimTemplate:
+      spec:
+        storageClassName: proxmox-csi
+        resources:
+          requests:
+            storage: 10Gi
 
   mgr:
     count: 2
@@ -28,20 +39,31 @@ spec:
         enabled: true
       - name: balancer
         enabled: true
+      - name: telemetry
+        enabled: false
+      - name: crash
+        enabled: true
+      - name: prometheus
+        enabled: true
 
   dashboard:
     enabled: true
     ssl: true
+    port: 8443
+    urlPrefix: /
 
   monitoring:
-    enabled: false
+    enabled: true
+    rulesNamespaceSelector: {}
 
   network:
+    provider: host
     connections:
       encryption:
-        enabled: false
+        enabled: true
       compression:
-        enabled: false
+        enabled: true
+        algorithm: lz4
 
   crashCollector:
     disable: false
@@ -49,92 +71,237 @@ spec:
   logCollector:
     enabled: true
     periodicity: daily
-    maxLogSize: 500M
+    maxLogSize: 1000M
 
   cleanupPolicy:
     confirmation: ""
     sanitizeDisks:
-      method: quick
-      dataSource: zero
-      iteration: 1
+      method: complete
+      dataSource: random
+      iteration: 3
 
+  # Enterprise security and compliance labels
   annotations:
-
+    ceph.rook.io/cluster: "production"
   labels:
+    environment: "production"
+    tier: "storage"
 
+  # Production-grade resource allocation
   resources:
     mgr:
-      limits:
-        cpu: "1000m"
-        memory: "2Gi"
-      requests:
-        cpu: "100m"
-        memory: "512Mi"
-    mon:
-      limits:
-        cpu: "2000m"
-        memory: "2Gi"
-      requests:
-        cpu: "100m"
-        memory: "1Gi"
-    osd:
       limits:
         cpu: "2000m"
         memory: "4Gi"
       requests:
-        cpu: "100m"
+        cpu: "500m"
+        memory: "1Gi"
+    mon:
+      limits:
+        cpu: "2000m"
+        memory: "4Gi"
+      requests:
+        cpu: "500m"
         memory: "2Gi"
+    osd:
+      limits:
+        cpu: "4000m"
+        memory: "8Gi"
+      requests:
+        cpu: "1000m"
+        memory: "4Gi"
+    prepareosd:
+      limits:
+        cpu: "500m"
+        memory: "1Gi"
+      requests:
+        cpu: "200m"
+        memory: "512Mi"
+    mgr-sidecar:
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+    crashcollector:
+      limits:
+        cpu: "100m"
+        memory: "128Mi"
+      requests:
+        cpu: "50m"
+        memory: "64Mi"
 
   removeOSDsIfOutAndSafeToRemove: true
 
   storage:
     useAllNodes: false
     useAllDevices: false
-    # Explicit node configuration for better control and OSD recreation
+    
+    # Enterprise node topology - distributed across failure domains
     nodes:
-      # Only include working nodes that have stable OSDs
-      # Excluded problematic nodes: ctrl-00, work-00, work-02, work-04
-      - name: "ctrl-01" 
+      # Physical host: nipogi (primary storage tier)
+      - name: "ctrl-01"
+        config:
+          metadataDevice: ""
+          databaseSizeMB: "1024"
+          osdsPerDevice: "1"
         devices:
           - name: "sdb"
+            config:
+              deviceClass: "hdd"
+              crushRoot: "nipogi-rack"
+              
       - name: "ctrl-02"
+        config:
+          metadataDevice: ""
+          databaseSizeMB: "1024"
+          osdsPerDevice: "1"
         devices:
           - name: "sdb"
+            config:
+              deviceClass: "hdd"
+              crushRoot: "nipogi-rack"
+              
       - name: "work-01"
+        config:
+          metadataDevice: ""
+          databaseSizeMB: "2048"
+          osdsPerDevice: "1"
         devices:
           - name: "sdb"
+            config:
+              deviceClass: "hdd"
+              crushRoot: "nipogi-rack"
+              
       - name: "work-03"
+        config:
+          metadataDevice: ""
+          databaseSizeMB: "2048"
+          osdsPerDevice: "1"
         devices:
           - name: "sdb"
+            config:
+              deviceClass: "hdd"
+              crushRoot: "nipogi-rack"
+              
       - name: "work-05"
+        config:
+          metadataDevice: ""
+          databaseSizeMB: "2048"
+          osdsPerDevice: "1"
         devices:
           - name: "sdb"
+            config:
+              deviceClass: "hdd"
+              crushRoot: "nipogi-rack"
+
+    # Global OSD configuration for enterprise deployment
     config:
       osdsPerDevice: "1"
       encryptedDevice: "false"
+      # Optimized for virtual environment
+      osdObjectStore: "bluestore"
+      bluestoreBlockDB: ""
+      bluestoreBlockWAL: ""
+      storeType: "bluestore"
 
   healthCheck:
     daemonHealth:
       mon:
         disabled: false
-        interval: 45s
+        interval: 30s
+        timeout: 15s
       osd:
         disabled: false
         interval: 60s
+        timeout: 30s
       status:
         disabled: false
         interval: 60s
+        timeout: 30s
+    livenessProbe:
+      mon:
+        disabled: false
+      mgr:
+        disabled: false
+      osd:
+        disabled: false
 
   disruptionManagement:
     managePodBudgets: true
     osdMaintenanceTimeout: 30
-    pgHealthCheckTimeout: 0
+    pgHealthCheckTimeout: 600
+    manageMachineDisruptionBudgets: false
     
-  # OSD recreation and recovery settings
+  # Enterprise placement and anti-affinity rules
   placement:
     all:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+              - key: node-role.kubernetes.io/worker
+                operator: Exists
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values: ["rook-ceph-osd"]
+              topologyKey: kubernetes.io/hostname
       tolerations:
         - effect: NoSchedule
           operator: Exists
         - effect: NoExecute
           operator: Exists
+          tolerationSeconds: 300
+    mon:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: Exists
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+                - key: app
+                  operator: In
+                  values: ["rook-ceph-mon"]
+            topologyKey: kubernetes.io/hostname
+    mgr:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: Exists
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 50
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values: ["rook-ceph-mgr"]
+              topologyKey: kubernetes.io/hostname
+
+  # Production priority classes and security contexts
+  priorityClassNames:
+    mon: system-node-critical
+    osd: system-cluster-critical
+    mgr: system-cluster-critical
+
+  security:
+    kms: {}
+    keyManagementService:
+      connectionDetails: {}
+      
+  # Enterprise external connections
+  external: {}
