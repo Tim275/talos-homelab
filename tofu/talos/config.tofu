@@ -50,7 +50,7 @@ data "talos_machine_configuration" "this" {
   machine_type    = each.value.machine_type
   machine_secrets = talos_machine_secrets.this.machine_secrets
   config_patches = [
-    # Common configuration for ALL nodes (following @vehagn's pattern)
+    # Common configuration for ALL nodes
     templatefile("${path.module}/machine-config/common.yaml.tftpl", {
       hostname     = each.key
       cluster_name = var.cluster.proxmox_cluster
