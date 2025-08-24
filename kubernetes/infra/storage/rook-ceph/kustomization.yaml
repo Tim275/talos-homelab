@@ -1,17 +1,25 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+namespace: rook-ceph
+
 resources:
+  # Upstream Rook-Ceph components
   - https://raw.githubusercontent.com/rook/rook/v1.17.7/deploy/examples/crds.yaml
   - https://raw.githubusercontent.com/rook/rook/v1.17.7/deploy/examples/common.yaml
   - https://raw.githubusercontent.com/rook/rook/v1.17.7/deploy/examples/operator.yaml
-  - pool.yaml
+  
+  # Enterprise components
+  - priority-classes.yaml
+  - device-preparation.yaml
   - cluster.yaml
-  - storageclass-block.yaml
-  - storageclass-filesystem.yaml
+  - pools.yaml
+  - storage-classes.yaml
+  - monitoring.yaml
 
-# Talos-spezifische Namespace-Label Patch für das common.yaml namespace
+# Enterprise and Talos-specific patches
 patches:
+  # Namespace enterprise labeling
   - target:
       kind: Namespace
       name: rook-ceph
@@ -22,3 +30,67 @@ patches:
           pod-security.kubernetes.io/enforce: privileged
           pod-security.kubernetes.io/audit: privileged
           pod-security.kubernetes.io/warn: privileged
+          app.kubernetes.io/name: rook-ceph
+          app.kubernetes.io/instance: enterprise
+          environment: production
+          tier: storage
+          
+  # Enterprise operator configuration
+  - target:
+      kind: Deployment
+      name: rook-ceph-operator
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          limits:
+            cpu: "2000m"
+            memory: "2Gi" 
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+      - op: add
+        path: /spec/template/spec/priorityClassName
+        value: system-cluster-critical
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: ROOK_LOG_LEVEL
+          value: "INFO"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: ROOK_CEPH_ALLOW_LOOP_DEVICES
+          value: "false"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: ROOK_ENABLE_DISCOVERY_DAEMON
+          value: "true"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: ROOK_CSI_ENABLE_CEPHFS
+          value: "true"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: ROOK_CSI_ENABLE_RBD
+          value: "true"
+
+# Enterprise image tags
+images:
+  - name: rook/ceph
+    newTag: v1.15.8
+
+# Common labels for all resources
+commonLabels:
+  app.kubernetes.io/part-of: rook-ceph-enterprise
+  environment: production
+  tier: storage
+  
+# Metadata for enterprise deployment
+commonAnnotations:
+  deployment.kubernetes.io/revision: "1"
+  meta.helm.sh/release-name: rook-ceph-enterprise
+  meta.helm.sh/release-namespace: rook-ceph
