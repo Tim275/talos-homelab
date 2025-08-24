@@ -45,3 +45,18 @@ module "volumes" {
   proxmox_api = var.proxmox
   volumes     = var.kubernetes_volumes
 }
+
+module "cert_manager" {
+  depends_on = [module.talos]
+  source     = "./modules/cert-manager"
+
+  providers = {
+    kubernetes = kubernetes
+    helm       = helm
+  }
+
+  acme_email            = var.acme_email
+  cloudflare_api_token  = var.cloudflare_api_token
+  certificate_domains   = ["${var.domain}", "*.${var.domain}"]
+  dns_zones            = [var.domain]
+}
