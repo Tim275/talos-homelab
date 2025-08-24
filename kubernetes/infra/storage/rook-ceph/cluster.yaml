@@ -26,6 +26,8 @@ spec:
     modules:
       - name: pg_autoscaler
         enabled: true
+      - name: balancer
+        enabled: true
 
   dashboard:
     enabled: true
@@ -51,8 +53,10 @@ spec:
 
   cleanupPolicy:
     confirmation: ""
-    # Allow aggressive cleanup for problematic OSDs
-    allowUninstallWithVolumesAttached: true
+    sanitizeDisks:
+      method: quick
+      dataSource: zero
+      iteration: 1
 
   annotations:
 
@@ -86,14 +90,40 @@ spec:
   removeOSDsIfOutAndSafeToRemove: true
 
   storage:
-    useAllNodes: true
+    useAllNodes: false
     useAllDevices: false
-    devices:
-      - name: "sdb"  # Die 15GB Ceph Disk auf allen Nodes
+    # Explicit node configuration for better control and OSD recreation
+    nodes:
+      - name: "ctrl-00"
+        devices:
+          - name: "sdb"
+      - name: "ctrl-01" 
+        devices:
+          - name: "sdb"
+      - name: "ctrl-02"
+        devices:
+          - name: "sdb"
+      - name: "work-00"
+        devices:
+          - name: "sdb"
+      - name: "work-01"
+        devices:
+          - name: "sdb"
+      - name: "work-02"
+        devices:
+          - name: "sdb"
+      - name: "work-03"
+        devices:
+          - name: "sdb"
+      - name: "work-04"
+        devices:
+          - name: "sdb"
+      - name: "work-05"
+        devices:
+          - name: "sdb"
     config:
       osdsPerDevice: "1"
-    # Force recreation of OSDs to fix CRUSH map issues
-    forceRemoveOSDsIfOutAndSafeToRemove: true
+      encryptedDevice: "false"
 
   healthCheck:
     daemonHealth:
@@ -111,3 +141,13 @@ spec:
     managePodBudgets: true
     osdMaintenanceTimeout: 30
     pgHealthCheckTimeout: 0
+    manageMachineDisruption: false
+    
+  # OSD recreation and recovery settings
+  placement:
+    all:
+      tolerations:
+        - effect: NoSchedule
+          operator: Exists
+        - effect: NoExecute
+          operator: Exists
