@@ -91,12 +91,12 @@ Everything needed to run my cluster & deploy my applications:
     <tr>
         <td><img width="32" src="https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/main/docs/src/images/postgresql.svg"></td>
         <td><a href="https://cloudnative-pg.io/">CloudNativePG (CNPG)</a></td>
-        <td>Cloud-native PostgreSQL operator for Kubernetes with automated backups and high availability</td>
+        <td>PostgreSQL database with automated backups, high availability and cloud-native operations</td>
     </tr>
     <tr>
         <td><img width="32" src="https://cdn.jsdelivr.net/gh/mongodb/mongo/docs/source/images/mongodb-logo.svg"></td>
         <td><a href="https://github.com/mongodb/mongodb-kubernetes-operator">MongoDB Operator</a></td>
-        <td>Kubernetes operator for MongoDB Community Edition with replica sets and sharding support</td>
+        <td>MongoDB database with replica sets, sharding and automated management in Kubernetes</td>
     </tr>
 </table>
 
