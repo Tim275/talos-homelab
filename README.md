@@ -50,7 +50,7 @@ Everything needed to run my cluster & deploy my applications:
         <td>Kubernetes controller for one-way encrypted secrets</td>
     </tr>
     <tr>
-        <td>💾</td>
+        <td><img width="32" src="https://www.yuribacciarini.com/content/images/2023/07/image-4.png"></td>
         <td><a href="https://github.com/sergelogvinov/proxmox-csi-plugin">Proxmox CSI</a></td>
         <td>Container Storage Interface for Proxmox VE with ZFS backend</td>
     </tr>
