@@ -2,19 +2,19 @@ terraform {
   required_providers {
     talos = {
       source  = "siderolabs/talos"
-      version = "0.5.0" # renovate: terraform=siderolabs/talos
+      version = "0.8.1"
     }
     proxmox = {
       source  = "bpg/proxmox"
-      version = "0.61.1" # renovate: terraform=bpg/proxmox
+      version = "0.81.0"
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "2.32.0" # renovate: terraform=hashicorp/kubernetes
+      version = "2.38.0"
     }
     restapi = {
       source  = "Mastercard/restapi"
-      version = "1.19.1" # renovate: terraform=Mastercard/restapi
+      version = "2.0.1"
     }
   }
 }
@@ -23,7 +23,7 @@ provider "proxmox" {
   endpoint = var.proxmox.endpoint
   insecure = var.proxmox.insecure
 
-  api_token = var.proxmox.api_token
+  api_token = var.proxmox_api_token
   
   ssh {
     agent    = true
@@ -45,6 +45,6 @@ provider "restapi" {
 
   headers = {
     "Content-Type"  = "application/json"
-    "Authorization" = "PVEAPIToken=${var.proxmox.api_token}"
+    "Authorization" = "PVEAPIToken=${var.proxmox_api_token}"
   }
 }
