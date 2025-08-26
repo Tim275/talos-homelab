@@ -1,11 +1,11 @@
 locals {
   version      = var.image.version
-  schematic    = var.image.schematic
+  schematic    = file(var.image.schematic_path)
   schematic_id = jsondecode(data.http.schematic_id.response_body)["id"]
   image_id     = "${local.schematic_id}_${local.version}"
 
   update_version      = coalesce(var.image.update_version, var.image.version)
-  update_schematic    = coalesce(var.image.update_schematic, var.image.schematic)
+  update_schematic    = coalesce(var.image.update_schematic_path != null ? file(var.image.update_schematic_path) : null, local.schematic)
   update_schematic_id = jsondecode(data.http.updated_schematic_id.response_body)["id"]
   update_image_id     = "${local.update_schematic_id}_${local.update_version}"
 }
@@ -32,5 +32,5 @@ resource "proxmox_virtual_environment_download_file" "this" {
   file_name               = "talos-${split("_",each.key)[1]}-${split("_", each.key)[2]}-${var.image.platform}-${var.image.arch}.img"
   url                     = "${var.image.factory_url}/image/${split("_", each.key)[1]}/${split("_", each.key)[2]}/${var.image.platform}-${var.image.arch}.raw.gz"
   decompression_algorithm = "gz"
-  overwrite               = false
+  overwrite               = true
   } 

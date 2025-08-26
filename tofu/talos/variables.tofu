@@ -2,33 +2,33 @@ variable "image" {
   description = "Talos image configuration"
   type = object({
     factory_url           = optional(string, "https://factory.talos.dev")
-    schematic             = string
+    schematic_path        = string
     version               = string
-    update_schematic      = optional(string)
+    update_schematic_path = optional(string)
     update_version        = optional(string)
     arch                  = optional(string, "amd64")
     platform              = optional(string, "nocloud")
     proxmox_datastore     = optional(string, "local")
-    talos_machine_config_version = optional(string)
   })
 }
 
 variable "cluster" {
-  description = "Cluster configuration"
+  description = "Talos cluster configuration"
   type = object({
-    name            = string
-    endpoint        = string
-    vip             = optional(string)
-    gateway         = string
-    subnet_mask     = string
-    talos_version   = string
-    proxmox_cluster = string
-    gateway_api_version = optional(string, "v1.1.0")
-    extra_manifests = optional(list(string), [])
-    api_server      = optional(string, "")
+    name                         = string
+    vip                          = optional(string)
+    gateway                      = string
+    subnet_mask                  = optional(string, "24")
+    talos_machine_config_version = optional(string)
+    proxmox_cluster              = string
+    kubernetes_version           = string
+    gateway_api_version          = string
+    extra_manifests              = optional(list(string), [])
+    kubelet                      = optional(string)
+    api_server                   = optional(string)
     cilium = object({
       bootstrap_manifest_path = string
-      values_file_path       = string
+      values_file_path        = string
     })
   })
 }
