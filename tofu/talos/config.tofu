@@ -1,6 +1,6 @@
 locals {
   first_control_plane_node_ip = [for k, v in var.nodes : v.ip if v.machine_type == "controlplane"][0]
-  kubernetes_endpoint         = coalesce(var.cluster.endpoint, local.first_control_plane_node_ip)
+  kubernetes_endpoint         = coalesce(var.cluster.vip, local.first_control_plane_node_ip)
   extra_manifests = concat(var.cluster.extra_manifests, [
     "https://github.com/kubernetes-sigs/gateway-api/releases/download/${var.cluster.gateway_api_version}/standard-install.yaml",
     "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/${var.cluster.gateway_api_version}/config/crd/experimental/gateway.networking.k8s.io_tlsroutes.yaml",
@@ -9,7 +9,7 @@ locals {
 }
 
 resource "talos_machine_secrets" "this" {
-  talos_version = var.cluster.talos_version
+  talos_version = var.cluster.talos_machine_config_version
 }
 
 data "talos_client_configuration" "this" {
@@ -46,7 +46,7 @@ data "talos_machine_configuration" "this" {
   for_each     = var.nodes
   cluster_name = var.cluster.name
   cluster_endpoint = "https://${local.kubernetes_endpoint}:6443"
-  talos_version = var.image.talos_machine_config_version != null ? var.image.talos_machine_config_version : (each.value.update == true ? var.image.update_version : var.image.version)
+  talos_version = var.cluster.talos_machine_config_version
   machine_type    = each.value.machine_type
   machine_secrets = talos_machine_secrets.this.machine_secrets
   config_patches = [
@@ -66,7 +66,7 @@ data "talos_machine_configuration" "this" {
       mac_address    = lower(each.value.mac_address)
       gateway        = var.cluster.gateway
       subnet_mask    = var.cluster.subnet_mask
-      vip              = var.cluster.endpoint
+      vip              = var.cluster.vip
       extra_manifests  = jsonencode(local.extra_manifests)
       inline_manifests = jsonencode(terraform_data.cilium_bootstrap_inline_manifests.output)
     }) :

@@ -4,13 +4,14 @@ A fully automated, modular Kubernetes cluster project for homelab and testing, p
 
 ------
 
-## 📦 Tech Stack
+## ✅ **Key Achievements**
 
-- 🐧 **Talos Linux** – Secure, immutable OS for Kubernetes
-- ☸️ **Kubernetes** – Container orchestration
-- 🌱 **OpenTofu** – Infrastructure as Code
-- 🖥️ **Proxmox VE** – Virtualization platform
-- 🦑 **Cilium** – Advanced networking & security
+- **🎯 Successfully upgraded to Kubernetes 1.33.2** - Latest stable version  
+- **🔧 Fixed Cilium bootstrap** - Proper KubePrism integration (`localhost:7445`)
+- **🏗️ Automated GitOps deployment** - ArgoCD + ApplicationSets
+- **📊 Full observability stack** - Prometheus + Grafana + Loki  
+- **🗄️ Database operators** - CloudNativePG + MongoDB ready for deployment
+- **🔐 Secure secret management** - Sealed Secrets integration
 
 
 ## Infrastructure
@@ -59,8 +60,8 @@ Everything needed to run my cluster & deploy my applications:
         <td>Kubernetes controller for one-way encrypted secrets</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://www.yuribacciarini.com/content/images/2023/07/image-4.png"></td>
-        <td><a href="https://github.com/kubernetes-csi/csi-driver-nfs">Proxmox CSI</a></td>
+        <td>💾</td>
+        <td><a href="https://github.com/sergelogvinov/proxmox-csi-plugin">Proxmox CSI</a></td>
         <td>Container Storage Interface for Proxmox VE with ZFS backend</td>
     </tr>
     <tr>
@@ -84,17 +85,17 @@ Everything needed to run my cluster & deploy my applications:
         <td>Zero-Trust secure tunnel for external access without port forwarding</td>
     </tr>
     <tr>
-        <td>💾</td>
+        <td><img width="32" src="https://velero.io/img/velero.svg"></td>
         <td><a href="https://velero.io/">Velero</a></td>
         <td>Kubernetes backup and disaster recovery with Ceph Object Storage backend</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/main/docs/src/images/postgresql.svg"></td>
+        <td><img width="32" src="https://cloudnative-pg.io/images/hero-elephant.png"></td>
         <td><a href="https://cloudnative-pg.io/">CloudNativePG (CNPG)</a></td>
         <td>PostgreSQL database with automated backups, high availability and cloud-native operations</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://cdn.jsdelivr.net/gh/mongodb/mongo/docs/source/images/mongodb-logo.svg"></td>
+        <td><img width="32" src="https://www.mongodb.com/assets/images/global/favicon.ico"></td>
         <td><a href="https://github.com/mongodb/mongodb-kubernetes-operator">MongoDB Operator</a></td>
         <td>MongoDB database with replica sets, sharding and automated management in Kubernetes</td>
     </tr>
