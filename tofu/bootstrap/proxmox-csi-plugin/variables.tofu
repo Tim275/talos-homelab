@@ -5,3 +5,9 @@ variable "proxmox" {
     insecure     = bool
   })
 }
+
+variable "proxmox_api_token" {
+  description = "API token for Proxmox"
+  type        = string
+  sensitive   = true
+}

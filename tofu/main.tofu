@@ -30,7 +30,8 @@ module "proxmox_csi_plugin" {
     kubernetes = kubernetes
   }
 
-  proxmox = var.proxmox
+  proxmox           = var.proxmox
+  proxmox_api_token = var.proxmox_api_token
 }
 
 module "volumes" {
@@ -42,21 +43,8 @@ module "volumes" {
     kubernetes = kubernetes
   }
 
-  proxmox_api = var.proxmox
+  proxmox_api       = var.proxmox
+  proxmox_api_token = var.proxmox_api_token
   volumes     = var.kubernetes_volumes
 }
 
-module "cert_manager" {
-  depends_on = [module.talos]
-  source     = "./modules/cert-manager"
-
-  providers = {
-    kubernetes = kubernetes
-    helm       = helm
-  }
-
-  acme_email            = var.acme_email
-  cloudflare_api_token  = var.cloudflare_api_token
-  certificate_domains   = ["${var.domain}", "*.${var.domain}"]
-  dns_zones            = [var.domain]
-}

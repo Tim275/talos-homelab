@@ -6,6 +6,12 @@ variable "proxmox_api" {
   })
 }
 
+variable "proxmox_api_token" {
+  description = "API token for Proxmox"
+  type        = string
+  sensitive   = true
+}
+
 variable "volumes" {
   type = map(
     object({
