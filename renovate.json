@@ -2,12 +2,24 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended",
-    ":rebaseStalePrs"
+    ":rebaseStalePrs",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    "docker:enableMajor",
+    ":automergeDigest"
   ],
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "Renovate Dashboard 🤖",
   "terraform": {
     "fileMatch": [
       "\\.tf$",
       "\\.tofu$"
+    ]
+  },
+  "kubernetes": {
+    "fileMatch": [
+      "kubernetes/.+\\.yaml$",
+      "kubernetes/.+\\.yml$"
     ]
   },
   "kustomize": {
@@ -28,8 +40,12 @@
         "\\.tfvars$"
       ],
       "matchStrings": [
-        "(?<currentValue>[\\w+\\.\\-]*)['\",;]*\\s*#\\s?renovate: (?<datasource>\\S+)=(?<depName>\\S+)\\s?(registry=(?<registryUrl>\\S+))?\\s?(versioning=(?<versioning>\\S+))?"
-      ]
+        "(?<currentValue>[\\w+\\.\\-]*)['\",;]*\\s*#\\s?renovate: (?<datasource>\\S+)=(?<depName>\\S+)\\s?(registry=(?<registryUrl>\\S+))?\\s?(versioning=(?<versioning>\\S+))?",
+        "talos_version\\s*=\\s*\"(?<currentValue>.*?)\"",
+        "kubernetes_version\\s*=\\s*\"(?<currentValue>.*?)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "siderolabs/talos"
     }
   ],
   "packageRules": [
@@ -76,6 +92,18 @@
       "matchDatasources": ["docker"],
       "matchUpdateTypes": ["major"],
       "enabled": false
+    },
+    {
+      "description": "Auto-merge container digests",
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["digest"],
+      "automerge": true
+    },
+    {
+      "description": "Auto-merge minor and patch",
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true,
+      "automergeType": "branch"
     }
   ]
 }
