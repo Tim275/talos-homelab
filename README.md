@@ -4,16 +4,6 @@ A fully automated, modular Kubernetes cluster project for homelab and testing, p
 
 ------
 
-## ✅ **Key Achievements**
-
-- **🎯 Successfully upgraded to Kubernetes 1.33.2** - Latest stable version  
-- **🔧 Fixed Cilium bootstrap** - Proper KubePrism integration (`localhost:7445`)
-- **🏗️ Automated GitOps deployment** - ArgoCD + ApplicationSets
-- **📊 Full observability stack** - Prometheus + Grafana + Loki  
-- **🗄️ Database operators** - CloudNativePG + MongoDB ready for deployment
-- **🔐 Secure secret management** - Sealed Secrets integration
-
-
 ## Infrastructure
 
 Everything needed to run my cluster & deploy my applications:
@@ -90,7 +80,7 @@ Everything needed to run my cluster & deploy my applications:
         <td>Kubernetes backup and disaster recovery with Ceph Object Storage backend</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://cloudnative-pg.io/images/hero-elephant.png"></td>
+        <td><img width="32" src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/postgresql.svg"></td>
         <td><a href="https://cloudnative-pg.io/">CloudNativePG (CNPG)</a></td>
         <td>PostgreSQL database with automated backups, high availability and cloud-native operations</td>
     </tr>
