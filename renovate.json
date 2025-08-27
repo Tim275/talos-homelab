@@ -4,11 +4,8 @@
     "config:recommended",
     ":rebaseStalePrs",
     ":dependencyDashboard",
-    ":semanticCommits",
-    "docker:enableMajor"
+    ":semanticCommits"
   ],
-  "automerge": false,
-  "prCreation": "immediate",
   "dependencyDashboard": true,
   "dependencyDashboardTitle": "Renovate Dashboard 🤖",
   "terraform": {
@@ -31,22 +28,68 @@
   "customManagers": [
     {
       "customType": "regex",
+      "description": "Update Talos versions in .tofu files",
       "fileMatch": [
-        "\\.tf$",
         "\\.tofu$",
-        "\\.tftpl$",
-        "\\.yaml$",
-        "\\.yml$",
-        "\\.sh$",
-        "\\.tfvars$"
+        "\\.tftpl$"
       ],
       "matchStrings": [
-        "(?<currentValue>[\\w+\\.\\-]*)['\",;]*\\s*#\\s?renovate: (?<datasource>\\S+)=(?<depName>\\S+)\\s?(registry=(?<registryUrl>\\S+))?\\s?(versioning=(?<versioning>\\S+))?",
-        "talos_version\\s*=\\s*\"(?<currentValue>.*?)\"",
-        "kubernetes_version\\s*=\\s*\"(?<currentValue>.*?)\""
+        "version\\s*=\\s*\"v?(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\"[^\\n]*#.*talos"
       ],
       "datasourceTemplate": "github-releases",
-      "depNameTemplate": "siderolabs/talos"
+      "depNameTemplate": "siderolabs/talos",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "Update Kubernetes versions in .tofu files", 
+      "fileMatch": [
+        "\\.tofu$",
+        "\\.tftpl$"
+      ],
+      "matchStrings": [
+        "kubernetes_version\\s*=\\s*\"v?(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "kubernetes/kubernetes",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "Update container images in Talos machine configs",
+      "fileMatch": [
+        "\\.tftpl$",
+        "\\.yaml$"
+      ],
+      "matchStrings": [
+        "image:\\s*(?<depName>[^\\s:]+):(?<currentValue>[^\\s]+)"
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex", 
+      "description": "Update Helm chart versions with renovate comments",
+      "fileMatch": [
+        "kustomization\\.ya?ml$"
+      ],
+      "matchStrings": [
+        "version:\\s*(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)[^\\n]*#\\s*renovate:\\s*github-releases=(?<depName>[^\\s]+)"
+      ],
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "Update container images in Cilium bootstrap job",
+      "fileMatch": [
+        "cilium-bootstrap\\.yaml$"
+      ],
+      "matchStrings": [
+        "image:\\s*quay\\.io/cilium/cilium-cli:v(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)"
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "cilium/cilium-cli",
+      "versioningTemplate": "semver"
     }
   ],
   "packageRules": [
@@ -54,34 +97,74 @@
       "groupName": "Talos System",
       "matchPackageNames": [
         "siderolabs/talos",
-        "**/talos**"
-      ],
-      "automerge": false
+        "siderolabs/**"
+      ]
     },
     {
-      "groupName": "Monitoring Stack",
+      "groupName": "Kubernetes Core",
       "matchPackageNames": [
-        "prometheus-community/**",
-        "grafana/**",
-        "**/loki**",
-        "**/promtail**"
-      ],
-      "automerge": false
+        "kubernetes/kubernetes"
+      ]
+    },
+    {
+      "groupName": "Cilium Network",
+      "matchPackageNames": [
+        "cilium/**",
+        "**/cilium**"
+      ]
     },
     {
       "groupName": "ArgoCD",
       "matchPackageNames": [
         "**/argo-cd**",
         "argoproj/**"
-      ],
-      "automerge": false
+      ]
     },
     {
-      "groupName": "Cilium",
+      "groupName": "Monitoring Stack", 
       "matchPackageNames": [
-        "/cilium/"
-      ],
-      "automerge": false
+        "prometheus-community/**",
+        "grafana/**",
+        "**/loki**",
+        "**/promtail**",
+        "**/jaeger**",
+        "**/opentelemetry**"
+      ]
+    },
+    {
+      "groupName": "Storage & Backup",
+      "matchPackageNames": [
+        "**/longhorn**",
+        "**/rook**",
+        "**/ceph**",
+        "**/velero**",
+        "**/minio**",
+        "sergelogvinov/proxmox-csi-plugin"
+      ]
+    },
+    {
+      "groupName": "Security & Secrets",
+      "matchPackageNames": [
+        "**/cert-manager**",
+        "**/sealed-secrets**",
+        "**/external-secrets**"
+      ]
+    },
+    {
+      "groupName": "Database Operators",
+      "matchPackageNames": [
+        "**/cloudnative-pg**",
+        "**/postgresql**",
+        "**/mongodb**"
+      ]
+    },
+    {
+      "groupName": "Network & Gateway",
+      "matchPackageNames": [
+        "**/cloudflare**",
+        "**/kube-vip**",
+        "kubernetes-sigs/gateway-api"
+      ]
     },
     {
       "matchManagers": [
@@ -91,22 +174,13 @@
         "provider",
         "required_provider"
       ],
-      "groupName": "Terraform Providers",
-      "automerge": false
+      "groupName": "Terraform/OpenTofu Providers"
     },
     {
-      "matchDatasources": [
-        "docker"
+      "matchManagers": [
+        "github-actions"
       ],
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "enabled": false
-    },
-    {
-      "description": "Never auto-merge anything - always create pull requests",
-      "matchUpdateTypes": ["minor", "patch", "major", "digest"],
-      "automerge": false
+      "groupName": "GitHub Actions"
     }
   ]
 }
