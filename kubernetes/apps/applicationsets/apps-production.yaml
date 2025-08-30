@@ -1,0 +1,52 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: apps-production
+  namespace: argocd
+  labels:
+    dev.stonegarden: applications
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"  # After platform databases
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/apps/overlays/production/*"
+  template:
+    metadata:
+      name: 'app-{{.path.basename}}'
+      namespace: argocd
+      labels:
+        dev.stonegarden: applications
+        category: app
+        component: '{{.path.basename}}'
+        environment: production
+      annotations:
+        argocd.argoproj.io/sync-wave: "3"  # After platform
+    spec:
+      project: app-of-apps
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path.path}}'
+      destination:
+        server: https://kubernetes.default.svc
+      syncPolicy:
+        automated:
+          selfHeal: true
+          prune: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
+      revisionHistoryLimit: 3
