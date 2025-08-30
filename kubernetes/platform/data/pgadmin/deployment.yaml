@@ -2,12 +2,12 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: pgadmin
-  namespace: n8n
+  namespace: pgadmin
   labels:
     app.kubernetes.io/name: pgadmin
     app.kubernetes.io/component: database-admin
   annotations:
-    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-wave: "3"
 spec:
   replicas: 1
   selector:
@@ -31,7 +31,7 @@ spec:
           name: http
         env:
         - name: PGADMIN_DEFAULT_EMAIL
-          value: admin@n8n.local
+          value: admin@pgadmin.local
         - name: PGADMIN_DEFAULT_PASSWORD
           valueFrom:
             secretKeyRef:
@@ -60,44 +60,3 @@ spec:
       - name: pgadmin-data
         persistentVolumeClaim:
           claimName: pgadmin-data
-
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: pgadmin-data
-  namespace: n8n
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: rook-ceph-block-enterprise
-  resources:
-    requests:
-      storage: 2Gi
-
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: pgadmin-credentials
-  namespace: n8n
-type: Opaque
-data:
-  password: cGdhZG1pbkFkbWluUGFzc3dvcmQxMjM=  # base64 encoded 'pgadminAdminPassword123' - CHANGE THIS!
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: pgadmin
-  namespace: n8n
-  labels:
-    app.kubernetes.io/name: pgadmin
-spec:
-  selector:
-    app.kubernetes.io/name: pgadmin
-  ports:
-  - name: http
-    port: 80
-    targetPort: 80
-  type: ClusterIP
