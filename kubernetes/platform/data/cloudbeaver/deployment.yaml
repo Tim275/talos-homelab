@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudbeaver
+  namespace: cloudbeaver
+  labels:
+    app.kubernetes.io/name: cloudbeaver
+    app.kubernetes.io/component: database-admin
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cloudbeaver
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cloudbeaver
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 8978
+        runAsGroup: 8978
+        fsGroup: 8978
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: cloudbeaver
+        image: dbeaver/cloudbeaver:latest
+        ports:
+        - containerPort: 8978
+          name: http
+        env:
+        - name: CB_SERVER_NAME
+          value: "Database Manager - Homelab"
+        - name: CB_ADMIN_NAME
+          value: "admin"
+        - name: CB_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: cloudbeaver-credentials
+              key: password
+        volumeMounts:
+        - name: cloudbeaver-data
+          mountPath: /opt/cloudbeaver/workspace
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "300m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          seccompProfile:
+            type: RuntimeDefault
+          readOnlyRootFilesystem: true
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8978
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8978
+          initialDelaySeconds: 60
+          periodSeconds: 30
+      volumes:
+      - name: cloudbeaver-data
+        persistentVolumeClaim:
+          claimName: cloudbeaver-data
