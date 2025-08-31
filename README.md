@@ -93,6 +93,53 @@ Everything needed to run my cluster & deploy my applications:
 
 
 
+## 🚀 Quick Start
+
+### 1. Deploy Infrastructure
+```bash
+cd tofu/
+tofu apply
+```
+
+### 2. **🚨 CRITICAL: Restore SealedSecrets Keys**
+```bash
+# Set kubeconfig
+export KUBECONFIG="$PWD/tofu/output/kube-config.yaml"
+
+# Restore SealedSecrets (REQUIRED after every cluster recreation)
+./post-deploy-restore.sh
+```
+
+### 3. Bootstrap GitOps
+```bash
+# Deploy ArgoCD and ApplicationSets
+kubectl apply -k kubernetes/bootstrap-infrastructure.yaml
+```
+
+### 4. Verify Deployment
+```bash
+# Check ArgoCD applications
+kubectl get applications -n argocd
+
+# Check critical services
+kubectl get pods -n cert-manager
+kubectl get pods -n monitoring
+```
+
+## 🔐 SealedSecrets Management
+
+**⚠️ CRITICAL:** After every `tofu destroy && tofu apply`, you MUST restore SealedSecrets keys:
+
+```bash
+# Automatic restoration
+./post-deploy-restore.sh
+
+# Why: Cluster recreation generates new keys, breaking ALL existing SealedSecrets
+# (certificates, storage, monitoring, backups)
+```
+
+**Detailed documentation:** [tofu/bootstrap/sealed-secrets/README.md](tofu/bootstrap/sealed-secrets/README.md)
+
 > ⚠️ **This repository is a work in progress!**  
 > 🏗️ Expect breaking changes, experiments, and lots of learning along the way.  
-> Contributions and feedback are welcome!# Migration Complete - All 224 commits preserved! 🚀
+> Contributions and feedback are welcome!

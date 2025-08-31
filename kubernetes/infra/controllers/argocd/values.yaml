@@ -5,6 +5,8 @@ configs:
     application.resourceTrackingMethod: annotation+label
     admin.enabled: true
     url: https://argocd.homelab.local
+    # Enable Helm support in Kustomize for all applications
+    kustomize.buildOptions: --enable-helm
 
   cmp:
     create: true
@@ -29,7 +31,30 @@ controller:
       cpu: 100m
       memory: 512Mi
     limits:
-      memory: 2Gi
+      cpu: 500m  # Limit CPU to prevent runaway usage
+      memory: 1Gi  # Reduce memory limit
+  # Reduce reconciliation frequency to lower CPU usage
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: argocd
+  # Add environment variables to tune performance
+  env:
+    - name: ARGOCD_REPO_SERVER_TIMEOUT_SECONDS
+      value: "90"  # Increase timeout to reduce retries
+  # Prefer nodes that are NOT work-00 or work-02 (i5 server)
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+          - key: kubernetes.io/hostname
+            operator: NotIn
+            values:
+            - work-00
+            - work-02
 
 dex:
   enabled: false
@@ -43,14 +68,21 @@ dex:
 redis:
   resources:
     requests:
-      cpu: 100m
+      cpu: 50m
       memory: 64Mi
     limits:
-      memory: 1Gi
+      cpu: 200m
+      memory: 256Mi
 
 server:
   service:
     type: LoadBalancer
+  # Enable metrics for ArgoCD server
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: argocd
   resources:
     requests:
       cpu: 50m
@@ -67,6 +99,12 @@ repoServer:
         name: argocd-cmp-cm
     - name: cmp-tmp
       emptyDir: { }
+  # Enable metrics for repo server
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: argocd
   resources:
     requests:
       cpu: 100m
@@ -95,6 +133,18 @@ repoServer:
           subPath: kustomize-build-with-helm.yaml
         - mountPath: /tmp
           name: cmp-tmp
+  # Also avoid i5 server nodes
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+          - key: kubernetes.io/hostname
+            operator: NotIn
+            values:
+            - work-00
+            - work-02
 
 applicationSet:
   resources:
@@ -106,3 +156,35 @@ applicationSet:
 
 notifications:
   enabled: false
+server:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 512Mi
+  # Also avoid i5 server nodes
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+          - key: kubernetes.io/hostname
+            operator: NotIn
+            values:
+            - work-00
+            - work-02
+
+
+# Disable ApplicationSet controller if not needed
+applicationSet:
+  enabled: true
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 256Mi
