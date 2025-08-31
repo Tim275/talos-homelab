@@ -1,0 +1,122 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: grafana-dashboard-importer
+  namespace: monitoring
+  labels:
+    app: grafana-dashboard-importer
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: dashboard-importer
+        image: grafana/grafana:11.2.1
+        env:
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          value: admin
+        command: ["/bin/sh"]
+        args:
+        - -c
+        - |
+          set -e
+          echo "Starting Grafana dashboard import..."
+          
+          # Wait for Grafana to be ready
+          echo "Waiting for Grafana to be ready..."
+          while ! curl -s http://grafana.monitoring.svc.cluster.local/api/health > /dev/null; do
+            echo "Waiting for Grafana..."
+            sleep 5
+          done
+          
+          echo "Grafana is ready, importing dashboards..."
+          
+          # Import Node Exporter Full (1860) - Perfect for Talos OS
+          echo "Importing Node Exporter Full dashboard..."
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -d '{
+              "dashboard": {
+                "gnetId": 1860,
+                "revision": 41
+              },
+              "overwrite": true,
+              "inputs": [
+                {
+                  "name": "DS_PROMETHEUS",
+                  "type": "datasource",
+                  "pluginId": "prometheus",
+                  "value": "prometheus"
+                }
+              ],
+              "folderId": 0
+            }' \
+            http://admin:admin@grafana.monitoring.svc.cluster.local/api/dashboards/import
+          
+          # Import Kubernetes Cluster (7249)
+          echo "Importing Kubernetes Cluster dashboard..."
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -d '{
+              "dashboard": {
+                "gnetId": 7249,
+                "revision": 1
+              },
+              "overwrite": true,
+              "inputs": [
+                {
+                  "name": "DS_PROMETHEUS",
+                  "type": "datasource",
+                  "pluginId": "prometheus",
+                  "value": "prometheus"
+                }
+              ],
+              "folderId": 0
+            }' \
+            http://admin:admin@grafana.monitoring.svc.cluster.local/api/dashboards/import
+          
+          # Import Ceph Cluster (2842)
+          echo "Importing Ceph Cluster dashboard..."
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -d '{
+              "dashboard": {
+                "gnetId": 2842,
+                "revision": 18
+              },
+              "overwrite": true,
+              "inputs": [
+                {
+                  "name": "DS_PROMETHEUS",
+                  "type": "datasource",
+                  "pluginId": "prometheus",
+                  "value": "prometheus"
+                }
+              ],
+              "folderId": 0
+            }' \
+            http://admin:admin@grafana.monitoring.svc.cluster.local/api/dashboards/import
+          
+          # Import ArgoCD (14584)
+          echo "Importing ArgoCD dashboard..."
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -d '{
+              "dashboard": {
+                "gnetId": 14584,
+                "revision": 1
+              },
+              "overwrite": true,
+              "inputs": [
+                {
+                  "name": "DS_PROMETHEUS",
+                  "type": "datasource",
+                  "pluginId": "prometheus", 
+                  "value": "prometheus"
+                }
+              ],
+              "folderId": 0
+            }' \
+            http://admin:admin@grafana.monitoring.svc.cluster.local/api/dashboards/import
+          
+          echo "All dashboards imported successfully!"
