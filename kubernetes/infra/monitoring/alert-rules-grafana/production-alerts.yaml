@@ -1,0 +1,96 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: production-alerts
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+  - name: production-alerts.rules
+    rules:
+    # High CPU Load - Alert only when CPU is really high
+    - alert: HighCPULoad
+      expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+      for: 5m
+      labels:
+        severity: warning
+        component: node
+        namespace: monitoring
+      annotations:
+        summary: "High CPU load on {{ $labels.instance }}"
+        description: "CPU load is {{ $value | humanize }}% on {{ $labels.instance }}. Consider scaling or investigating high CPU processes."
+        
+    # Critical CPU Load - Alert when CPU is critically high
+    - alert: CriticalCPULoad
+      expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 95
+      for: 2m
+      labels:
+        severity: critical
+        component: node
+        namespace: monitoring
+      annotations:
+        summary: "CRITICAL: CPU load on {{ $labels.instance }}"
+        description: "CPU load is {{ $value | humanize }}% on {{ $labels.instance }}. System may become unresponsive!"
+        
+    # High Memory Usage - Alert when memory is actually concerning
+    - alert: HighMemoryUsage
+      expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+      for: 5m
+      labels:
+        severity: warning
+        component: node
+        namespace: monitoring
+      annotations:
+        summary: "High memory usage on {{ $labels.instance }}"
+        description: "Memory usage is {{ $value | humanize }}% on {{ $labels.instance }}. Consider checking for memory leaks."
+        
+    # Critical Memory Usage - Alert when OOM is likely
+    - alert: CriticalMemoryUsage
+      expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 95
+      for: 2m
+      labels:
+        severity: critical
+        component: node
+        namespace: monitoring
+      annotations:
+        summary: "CRITICAL: Memory exhaustion on {{ $labels.instance }}"
+        description: "Memory usage is {{ $value | humanize }}% on {{ $labels.instance }}. OOM killer may activate soon!"
+        
+    # Pod Crash Looping - Only alert for persistent crashes
+    - alert: PodCrashLooping
+      expr: rate(kube_pod_container_status_restarts_total[15m]) > 0.1
+      for: 10m
+      labels:
+        severity: warning
+        component: pod
+        namespace: monitoring
+      annotations:
+        summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+        description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has restarted {{ $value | humanize }} times per minute over the last 15 minutes."
+        
+    # Disk Space Warning
+    - alert: DiskSpaceWarning
+      expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 20
+      for: 5m
+      labels:
+        severity: warning
+        component: node
+        namespace: monitoring
+      annotations:
+        summary: "Low disk space on {{ $labels.instance }}"
+        description: "Only {{ $value | humanize }}% disk space remaining on {{ $labels.instance }} root filesystem."
+        
+    # Disk Space Critical
+    - alert: DiskSpaceCritical
+      expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 10
+      for: 2m
+      labels:
+        severity: critical
+        component: node
+        namespace: monitoring
+      annotations:
+        summary: "CRITICAL: Disk space on {{ $labels.instance }}"
+        description: "Only {{ $value | humanize }}% disk space remaining on {{ $labels.instance }}. System may fail soon!"
