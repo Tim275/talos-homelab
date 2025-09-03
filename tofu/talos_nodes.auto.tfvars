@@ -45,7 +45,7 @@ talos_nodes = {
     mac_address   = "BC:24:11:2E:C8:A3"
     vm_id         = 911
     cpu           = 6
-    ram_dedicated = 14336  # 14GB (+2GB for Ceph)
+    ram_dedicated = 10240  # 10GB (safe for nipogi)
     datastore_id  = "local-zfs"
   }
   
@@ -56,7 +56,7 @@ talos_nodes = {
     mac_address   = "BC:24:11:2E:C8:A6"
     vm_id         = 913
     cpu           = 6
-    ram_dedicated = 14336  # 14GB (+2GB for Ceph)
+    ram_dedicated = 10240  # 10GB (safe for nipogi)
     datastore_id  = "local-zfs"
   }
   
@@ -67,7 +67,7 @@ talos_nodes = {
     mac_address   = "BC:24:11:2E:C8:A7"
     vm_id         = 914
     cpu           = 6
-    ram_dedicated = 14336  # 14GB (+2GB for Ceph)
+    ram_dedicated = 10240  # 10GB (safe for nipogi)
     datastore_id  = "local-zfs"
   }
   
@@ -78,7 +78,7 @@ talos_nodes = {
     mac_address   = "BC:24:11:2E:C8:A8"
     vm_id         = 915
     cpu           = 8  # Max CPU for intensive workloads
-    ram_dedicated = 14336  # 14GB (+2GB for Ceph)
+    ram_dedicated = 10240  # 10GB (safe for nipogi)
     datastore_id  = "local-zfs"
   }
   
@@ -89,7 +89,18 @@ talos_nodes = {
     mac_address   = "BC:24:11:2E:C8:A9"
     vm_id         = 916
     cpu           = 8  # Max CPU
-    ram_dedicated = 14336  # 14GB (+2GB for Ceph)
+    ram_dedicated = 10240  # 10GB (safe for nipogi)
+    datastore_id  = "local-zfs"
+  }
+  
+  "work-07" = {
+    host_node     = "nipogi"  # 6th worker for more capacity
+    machine_type  = "worker"
+    ip            = "192.168.68.111"
+    mac_address   = "BC:24:11:2E:C8:AA"
+    vm_id         = 917
+    cpu           = 8  # Max CPU
+    ram_dedicated = 10240  # 10GB (safe for nipogi)
     datastore_id  = "local-zfs"
   }
 }
@@ -98,8 +109,8 @@ talos_nodes = {
 
 # UPDATED Resource Allocation Summary:
 # homelab (48GB): ctrl-00(6GB) + ctrl-01(6GB) + ctrl-02(6GB) = 18GB (38% - LOTS OF HEADROOM)
-# nipogi (80GB): work-01(14GB) + work-03(14GB) + work-04(14GB) + work-05(14GB) + work-06(14GB) = 70GB (88% - SAFE)
+# nipogi (80GB): work-01(10GB) + work-03(10GB) + work-04(10GB) + work-05(10GB) + work-06(10GB) + work-07(10GB) = 60GB (75% - SAFE!)
 # 
-# Total: 88GB used of 128GB available (69% utilization)
-# Strategy: NO WORKERS on homelab to prevent crashes, all workers on nipogi
-# Benefits: homelab stability, dedicated control plane/worker separation
+# Total: 78GB used of 128GB available (61% utilization)
+# Strategy: NO WORKERS on homelab to prevent crashes, all 6 workers on nipogi at safe RAM levels
+# Benefits: homelab stability, safe nipogi resource usage, plenty of headroom
