@@ -45,7 +45,7 @@ talos_nodes = {
     mac_address   = "BC:24:11:2E:C8:A2"
     vm_id         = 910
     cpu           = 4
-    ram_dedicated = 12288  # 12GB (increased from 8GB)
+    ram_dedicated = 14336  # 14GB (+2GB for Ceph) (increased from 8GB)
     datastore_id  = "ceph_storage"
   }
   
@@ -56,7 +56,7 @@ talos_nodes = {
     mac_address   = "BC:24:11:2E:C8:A3"
     vm_id         = 911
     cpu           = 6
-    ram_dedicated = 12288  # 12GB
+    ram_dedicated = 14336  # 14GB (+2GB for Ceph)
     datastore_id  = "ceph_storage"
   }
 
@@ -78,7 +78,7 @@ talos_nodes = {
     mac_address   = "BC:24:11:2E:C8:A6"
     vm_id         = 913
     cpu           = 6
-    ram_dedicated = 12288  # 12GB
+    ram_dedicated = 14336  # 14GB (+2GB for Ceph)
     datastore_id  = "ceph_storage"
   }
   
@@ -89,7 +89,7 @@ talos_nodes = {
     mac_address   = "BC:24:11:2E:C8:A7"
     vm_id         = 914
     cpu           = 6
-    ram_dedicated = 12288  # 12GB
+    ram_dedicated = 14336  # 14GB (+2GB for Ceph)
     datastore_id  = "ceph_storage"
   }
   
@@ -100,7 +100,7 @@ talos_nodes = {
     mac_address   = "BC:24:11:2E:C8:A8"
     vm_id         = 915
     cpu           = 8  # Max CPU for intensive workloads
-    ram_dedicated = 12288  # 12GB
+    ram_dedicated = 14336  # 14GB (+2GB for Ceph)
     datastore_id  = "ceph_storage"
   }
   
@@ -111,7 +111,7 @@ talos_nodes = {
     mac_address   = "BC:24:11:2E:C8:A9"
     vm_id         = 916
     cpu           = 8  # Max CPU
-    ram_dedicated = 12288  # 12GB
+    ram_dedicated = 14336  # 14GB (+2GB for Ceph)
     datastore_id  = "ceph_storage"
   }
 }
