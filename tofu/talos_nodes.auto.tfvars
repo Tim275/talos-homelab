@@ -45,7 +45,7 @@ talos_nodes = {
     mac_address   = "BC:24:11:2E:C8:A2"
     vm_id         = 910
     cpu           = 4
-    ram_dedicated = 8192  # 8GB
+    ram_dedicated = 12288  # 12GB (increased from 8GB)
     datastore_id  = "ceph_storage"
   }
   
@@ -67,7 +67,7 @@ talos_nodes = {
     mac_address   = "BC:24:11:2E:C8:A5"
     vm_id         = 912
     cpu           = 4
-    ram_dedicated = 8192  # 8GB
+    ram_dedicated = 10240  # 10GB (increased from 8GB)
     datastore_id  = "ceph_storage"
   }
   
@@ -118,10 +118,10 @@ talos_nodes = {
 
 
 
-# SAFE Resource Allocation Summary:
-# homelab (48GB): ctrl-00(6GB) + ctrl-01(6GB) + ctrl-02(6GB) + work-00(8GB) + work-02(8GB) = 34GB (71% - SAFE BUFFER)
+# UPDATED Resource Allocation Summary:
+# homelab (48GB): ctrl-00(6GB) + ctrl-01(6GB) + ctrl-02(6GB) + work-00(12GB) + work-02(10GB) = 40GB (83% - SAFE BUFFER)
 # nipogi (80GB): work-01(12GB) + work-03(12GB) + work-04(12GB) + work-05(12GB) + work-06(12GB) = 60GB (75% - SAFE BUFFER)
 # 
-# Total: 94GB used of 128GB available (73% utilization)
-# Strategy: Conservative allocation with safety buffers for etcd stability
-# Benefits: 14GB buffer on homelab, 20GB buffer on nipogi, no risk of OOM kills
+# Total: 100GB used of 128GB available (78% utilization)
+# Strategy: work-00 gets 12GB (primary homelab worker), work-02 gets 10GB  
+# Benefits: +6GB homelab capacity, asymmetric allocation for workload distribution
