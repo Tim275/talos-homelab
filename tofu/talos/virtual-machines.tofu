@@ -40,21 +40,10 @@ resource "proxmox_virtual_environment_vm" "this" {
     discard      = "on"
     ssd          = true
     file_format  = "raw"
-    size         = 20
+    size         = 40
     file_id      = proxmox_virtual_environment_download_file.this["${each.value.host_node}_${each.value.update == true ? local.update_image_id : local.image_id}"].id
   }
 
-  #### NEU HINZUGEFÜGT: Ceph Storage Disk (raw, unformatted) ####
-  disk {
-    datastore_id = each.value.datastore_id
-    interface    = "scsi1"
-    iothread     = true
-    cache        = "none"
-    discard      = "on"
-    ssd          = true
-    file_format  = "raw"
-    size         = 15  # 15GB für Ceph OSD Testing (6 × 15GB = 90GB total)
-  }
 
   boot_order = ["scsi0"]
 
