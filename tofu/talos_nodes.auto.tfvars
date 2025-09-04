@@ -93,24 +93,14 @@ talos_nodes = {
     datastore_id  = "local-zfs"
   }
   
-  "work-07" = {
-    host_node     = "nipogi"  # 6th worker for more capacity
-    machine_type  = "worker"
-    ip            = "192.168.68.111"
-    mac_address   = "BC:24:11:2E:C8:AA"
-    vm_id         = 917
-    cpu           = 8  # Max CPU
-    ram_dedicated = 10240  # 10GB (safe for nipogi)
-    datastore_id  = "local-zfs"
-  }
 }
 
 
 
 # UPDATED Resource Allocation Summary:
 # homelab (48GB): ctrl-00(6GB) + ctrl-01(6GB) + ctrl-02(6GB) = 18GB (38% - LOTS OF HEADROOM)
-# nipogi (80GB): work-01(10GB) + work-03(10GB) + work-04(10GB) + work-05(10GB) + work-06(10GB) + work-07(10GB) = 60GB (75% - SAFE!)
+# nipogi (80GB): work-01(10GB) + work-03(10GB) + work-04(10GB) + work-05(10GB) + work-06(10GB) = 50GB (62% - SAFE!)
 # 
-# Total: 78GB used of 128GB available (61% utilization)
-# Strategy: NO WORKERS on homelab to prevent crashes, all 6 workers on nipogi at safe RAM levels
+# Total: 68GB used of 128GB available (53% utilization)
+# Strategy: NO WORKERS on homelab to prevent crashes, 5 workers on nipogi at safe RAM levels
 # Benefits: homelab stability, safe nipogi resource usage, plenty of headroom
