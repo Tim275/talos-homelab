@@ -10,7 +10,7 @@ talos_nodes = {
     vm_id         = 900
     cpu           = 4
     ram_dedicated = 6144  # 6GB
-    datastore_id  = "ceph_storage"
+    datastore_id  = "local-zfs"
   }
   
   "ctrl-01" = {
@@ -21,7 +21,7 @@ talos_nodes = {
     vm_id         = 901
     cpu           = 4
     ram_dedicated = 6144  # 6GB
-    datastore_id  = "ceph_storage"
+    datastore_id  = "local-zfs"
   }
   
   "ctrl-02" = {
@@ -32,23 +32,12 @@ talos_nodes = {
     vm_id         = 902
     cpu           = 4
     ram_dedicated = 6144  # 6GB
-    datastore_id  = "ceph_storage"
+    datastore_id  = "local-zfs"
   }
   
   
   
-  # === WORKERS === (Conservative allocation with safety buffers)
-  "work-00" = {
-    host_node     = "homelab"  # Light worker for basic workloads
-    machine_type  = "worker"
-    ip            = "192.168.68.103"
-    mac_address   = "BC:24:11:2E:C8:A2"
-    vm_id         = 910
-    cpu           = 4
-    ram_dedicated = 12288  # 12GB (increased from 8GB)
-    datastore_id  = "ceph_storage"
-  }
-  
+  # === WORKERS === (Only on nipogi - homelab only runs control planes)
   "work-01" = {
     host_node     = "nipogi"  # Heavy worker with Ryzen power
     machine_type  = "worker"
@@ -56,19 +45,8 @@ talos_nodes = {
     mac_address   = "BC:24:11:2E:C8:A3"
     vm_id         = 911
     cpu           = 6
-    ram_dedicated = 12288  # 12GB
-    datastore_id  = "ceph_storage"
-  }
-
-  "work-02" = {
-    host_node     = "homelab"  # Light worker for basic workloads
-    machine_type  = "worker"
-    ip            = "192.168.68.105"
-    mac_address   = "BC:24:11:2E:C8:A5"
-    vm_id         = 912
-    cpu           = 4
-    ram_dedicated = 10240  # 10GB (increased from 8GB)
-    datastore_id  = "ceph_storage"
+    ram_dedicated = 10240  # 10GB (safe for nipogi)
+    datastore_id  = "local-zfs"
   }
   
   "work-03" = {
@@ -78,8 +56,8 @@ talos_nodes = {
     mac_address   = "BC:24:11:2E:C8:A6"
     vm_id         = 913
     cpu           = 6
-    ram_dedicated = 12288  # 12GB
-    datastore_id  = "ceph_storage"
+    ram_dedicated = 10240  # 10GB (safe for nipogi)
+    datastore_id  = "local-zfs"
   }
   
   "work-04" = {
@@ -89,8 +67,8 @@ talos_nodes = {
     mac_address   = "BC:24:11:2E:C8:A7"
     vm_id         = 914
     cpu           = 6
-    ram_dedicated = 12288  # 12GB
-    datastore_id  = "ceph_storage"
+    ram_dedicated = 10240  # 10GB (safe for nipogi)
+    datastore_id  = "local-zfs"
   }
   
   "work-05" = {
@@ -100,8 +78,8 @@ talos_nodes = {
     mac_address   = "BC:24:11:2E:C8:A8"
     vm_id         = 915
     cpu           = 8  # Max CPU for intensive workloads
-    ram_dedicated = 12288  # 12GB
-    datastore_id  = "ceph_storage"
+    ram_dedicated = 10240  # 10GB (safe for nipogi)
+    datastore_id  = "local-zfs"
   }
   
   "work-06" = {
@@ -111,17 +89,18 @@ talos_nodes = {
     mac_address   = "BC:24:11:2E:C8:A9"
     vm_id         = 916
     cpu           = 8  # Max CPU
-    ram_dedicated = 12288  # 12GB
-    datastore_id  = "ceph_storage"
+    ram_dedicated = 10240  # 10GB (safe for nipogi)
+    datastore_id  = "local-zfs"
   }
+  
 }
 
 
 
 # UPDATED Resource Allocation Summary:
-# homelab (48GB): ctrl-00(6GB) + ctrl-01(6GB) + ctrl-02(6GB) + work-00(12GB) + work-02(10GB) = 40GB (83% - SAFE BUFFER)
-# nipogi (80GB): work-01(12GB) + work-03(12GB) + work-04(12GB) + work-05(12GB) + work-06(12GB) = 60GB (75% - SAFE BUFFER)
+# homelab (48GB): ctrl-00(6GB) + ctrl-01(6GB) + ctrl-02(6GB) = 18GB (38% - LOTS OF HEADROOM)
+# nipogi (80GB): work-01(10GB) + work-03(10GB) + work-04(10GB) + work-05(10GB) + work-06(10GB) = 50GB (62% - SAFE!)
 # 
-# Total: 100GB used of 128GB available (78% utilization)
-# Strategy: work-00 gets 12GB (primary homelab worker), work-02 gets 10GB  
-# Benefits: +6GB homelab capacity, asymmetric allocation for workload distribution
+# Total: 68GB used of 128GB available (53% utilization)
+# Strategy: NO WORKERS on homelab to prevent crashes, 5 workers on nipogi at safe RAM levels
+# Benefits: homelab stability, safe nipogi resource usage, plenty of headroom
