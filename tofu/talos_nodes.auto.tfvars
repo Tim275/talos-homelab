@@ -8,7 +8,7 @@ talos_nodes = {
     ip            = "192.168.68.101"
     mac_address   = "BC:24:11:2E:C8:A0"
     vm_id         = 900
-    cpu           = 4
+    cpu           = 2  # Reduced from 4 to prevent CPU overload
     ram_dedicated = 6144  # 6GB
     datastore_id  = "local-zfs"
   }
@@ -19,7 +19,7 @@ talos_nodes = {
     ip            = "192.168.68.102"
     mac_address   = "BC:24:11:2E:C8:A1"
     vm_id         = 901
-    cpu           = 4
+    cpu           = 2  # Reduced from 4 to prevent CPU overload
     ram_dedicated = 6144  # 6GB
     datastore_id  = "local-zfs"
   }
@@ -30,7 +30,7 @@ talos_nodes = {
     ip            = "192.168.68.106"
     mac_address   = "BC:24:11:2E:C8:A4"
     vm_id         = 902
-    cpu           = 4
+    cpu           = 2  # Reduced from 4 to prevent CPU overload
     ram_dedicated = 6144  # 6GB
     datastore_id  = "local-zfs"
   }
@@ -44,6 +44,17 @@ talos_nodes = {
     ip            = "192.168.68.104"
     mac_address   = "BC:24:11:2E:C8:A3"
     vm_id         = 911
+    cpu           = 6
+    ram_dedicated = 10240  # 10GB (safe for nipogi)
+    datastore_id  = "local-zfs"
+  }
+  
+  "work-02" = {
+    host_node     = "nipogi"  # Heavy worker with Ryzen power
+    machine_type  = "worker"
+    ip            = "192.168.68.105"
+    mac_address   = "BC:24:11:2E:C8:A2"
+    vm_id         = 912
     cpu           = 6
     ram_dedicated = 10240  # 10GB (safe for nipogi)
     datastore_id  = "local-zfs"
@@ -99,8 +110,8 @@ talos_nodes = {
 
 # UPDATED Resource Allocation Summary:
 # homelab (48GB): ctrl-00(6GB) + ctrl-01(6GB) + ctrl-02(6GB) = 18GB (38% - LOTS OF HEADROOM)
-# nipogi (80GB): work-01(10GB) + work-03(10GB) + work-04(10GB) + work-05(10GB) + work-06(10GB) = 50GB (62% - SAFE!)
+# nipogi (80GB): work-01(10GB) + work-02(10GB) + work-03(10GB) + work-04(10GB) + work-05(10GB) + work-06(10GB) = 60GB (75% - SAFE!)
 # 
-# Total: 68GB used of 128GB available (53% utilization)
-# Strategy: NO WORKERS on homelab to prevent crashes, 5 workers on nipogi at safe RAM levels
+# Total: 78GB used of 128GB available (61% utilization)
+# Strategy: NO WORKERS on homelab to prevent crashes, 6 workers on nipogi at safe RAM levels
 # Benefits: homelab stability, safe nipogi resource usage, plenty of headroom
