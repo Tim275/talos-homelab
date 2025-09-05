@@ -3,12 +3,15 @@ cluster:
   name: homelab-k8s
   id: 1
 
+# Enable kubeProxyReplacement for performance (Talos + Cilium best practice)
+# Now that network policy issues are resolved, we can use eBPF load balancing
 kubeProxyReplacement: true
 
 # Talos specific
 k8sServiceHost: localhost
 k8sServicePort: 7445
 
+# Talos-specific security context (remove SYS_MODULE for Talos compatibility)
 securityContext:
   capabilities:
     ciliumAgent: [ CHOWN, KILL, NET_ADMIN, NET_RAW, IPC_LOCK, SYS_ADMIN, SYS_RESOURCE, DAC_OVERRIDE, FOWNER, SETGID, SETUID ]
@@ -19,10 +22,16 @@ cgroup:
     enabled: false
   hostRoot: /sys/fs/cgroup
 
+# BPF performance optimizations for Talos + Istio
 # https://www.talos.dev/latest/talos-guides/network/host-dns/#forwarding-kube-dns-to-host-dns
 # https://docs.cilium.io/en/stable/operations/performance/tuning/#ebpf-host-routing
 bpf:
+  # Use legacy host routing for Talos compatibility
   hostLegacyRouting: true
+  # Bypass FIB lookup for improved performance
+  lbBypassFIBLookup: true
+  # Enable BPF masquerading for better performance (Talos compatible)
+  masquerade: true
 
 # https://docs.cilium.io/en/stable/network/concepts/ipam/
 ipam:
@@ -58,11 +67,14 @@ l2announcements:
 externalIPs:
   enabled: true
 
-# enableCiliumEndpointSlice: true  # Removed in v1.18.0 - now default behavior
+enableCiliumEndpointSlice: true
 
+# Load balancing optimizations
 loadBalancer:
-  # https://docs.cilium.io/en/stable/network/kubernetes/kubeproxy-free/#maglev-consistent-hashing
+  # https://docs.cilium.io/en/stable/network/kubernetes/kubeproxy-free/#maglev-consistent-hashing  
+  # Maglev provides consistent backend selection for better performance
   algorithm: maglev
+  mode: dsr  # Direct Server Return for better performance
 
 gatewayAPI:
   enabled: true
@@ -99,3 +111,18 @@ clustermesh:
         enabled: true
     # External ETCD for clustermesh
     clusters: []
+
+# Istio configuration
+# https://docs.cilium.io/en/latest/network/servicemesh/istio/
+# REQUIRED: Istio uses a CNI plugin - ensure Cilium doesn't interfere
+cni:
+  exclusive: false
+
+# Socket-based load balancing configuration for Istio compatibility
+socketLB:
+  # REQUIRED for Istio: Only apply socket LB in host namespace to avoid interfering with Istio proxies
+  hostNamespaceOnly: true
+
+# Network policy enforcement: default allows traffic, policies can be applied selectively
+# This prevents automatic Default Deny that broke DNS resolution
+policyEnforcementMode: "default"
