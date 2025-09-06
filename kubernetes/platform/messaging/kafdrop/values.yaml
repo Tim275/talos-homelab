@@ -1,0 +1,60 @@
+# Kafdrop Configuration for Kafka Web UI
+# Based on: https://picluster.ricsanfre.com/docs/kafka/
+
+# Kafka broker connection
+kafka:
+  brokerConnect: my-cluster-kafka-bootstrap:9092
+
+# JVM options for homelab resource limits
+jvm:
+  opts: "-Xms32M -Xmx64M"
+
+# Adding connection to schema registry
+cmdArgs: "--schemaregistry.connect=http://schema-registry:8081"
+
+# Resource limits for homelab
+resources:
+  limits:
+    cpu: 200m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 9000
+
+# Ingress resource for web access
+ingress:
+  enabled: true
+  className: cilium
+  hosts:
+    - host: kafdrop.homelab.local
+      paths:
+        - path: /
+          pathType: Prefix
+  # TLS can be added later with cert-manager
+  # tls:
+  #   - secretName: kafdrop-tls
+  #     hosts:
+  #       - kafdrop.homelab.local
+
+# Node affinity for AMD64 (Kafdrop images are not multi-arch)
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/arch
+          operator: In
+          values:
+          - amd64
+
+# Security context
+podSecurityContext:
+  enabled: true
+  fsGroup: 1000
+  runAsUser: 1000
+  runAsNonRoot: true

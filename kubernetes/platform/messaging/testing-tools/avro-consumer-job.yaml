@@ -1,0 +1,44 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-avro-consumer
+  namespace: kafka
+  labels:
+    app.kubernetes.io/name: kafka-avro-consumer
+    app.kubernetes.io/component: testing
+    app.kubernetes.io/part-of: messaging
+spec:
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kafka-avro-consumer
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: avro-consumer
+        image: ricsanfre/kafka-python-client:latest
+        command: ["python", "avro_consumer.py"]
+        args: 
+        - "-b"
+        - "my-cluster-kafka-bootstrap:9092"
+        - "-s"
+        - "http://schema-registry:8081"
+        - "-t"
+        - "my-avro-topic"
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        stdin: true
+        tty: true
+        resources:
+          limits:
+            cpu: 100m
+            memory: 128Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+  backoffLimit: 0

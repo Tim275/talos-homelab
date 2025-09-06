@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform
+  namespace: argocd
+  labels:
+    dev.stonegarden: platform
+spec:
+  generators:
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          # Platform services - data layer and messaging
+          - path: "kubernetes/platform/messaging/*"
+          - path: "kubernetes/platform/data/*"
+  template:
+    metadata:
+      name: 'platform-{{ path.basename }}'
+      labels:
+        dev.stonegarden: platform
+    spec:
+      project: app-of-apps
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{ path }}'
+      destination:
+        server: https://kubernetes.default.svc
+      syncPolicy:
+        automated:
+          selfHeal: true
+          prune: true
