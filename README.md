@@ -113,7 +113,7 @@ Everything needed to run my cluster & deploy my applications:
         <td>MongoDB database with replica sets, sharding and automated management in Kubernetes</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://raw.githubusercontent.com/apache/kafka/trunk/docs/images/apache-kafka.png"></td>
+        <td><img width="32" src="https://www.vectorlogo.zone/logos/apache_kafka/apache_kafka-icon.svg"></td>
         <td><a href="https://kafka.apache.org/">Kafka</a></td>
         <td>Apache Kafka platform running on Kubernetes with enterprise-grade streaming and messaging</td>
     </tr>
