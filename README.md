@@ -4,6 +4,29 @@ A fully automated, modular Kubernetes cluster project for homelab and testing, p
 
 ------
 
+## Apps
+End User Applications
+
+<table>
+    <tr>
+        <th>Logo</th>
+        <th>Name</th>
+        <th>Description</th>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://n8n.io/favicon.ico"></td>
+        <td><a href="https://n8n.io/">n8n</a></td>
+        <td>Secure, AI-native workflow automation</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://www.audiobookshelf.org/Logo.png"></td>
+        <td><a href="https://www.audiobookshelf.org/">Audiobookshelf</a></td>
+        <td>Self-hosted audiobook and podcast server</td>
+    </tr>
+</table>
+
+
+
 ## Infrastructure
 
 Everything needed to run my cluster & deploy my applications:
@@ -89,57 +112,15 @@ Everything needed to run my cluster & deploy my applications:
         <td><a href="https://github.com/mongodb/mongodb-kubernetes-operator">MongoDB Operator</a></td>
         <td>MongoDB database with replica sets, sharding and automated management in Kubernetes</td>
     </tr>
+    <tr>
+        <td><img width="32" src="https://www.vectorlogo.zone/logos/apache_kafka/apache_kafka-icon.svg"></td>
+        <td><a href="https://kafka.apache.org/">Kafka</a></td>
+        <td>Apache Kafka platform running on Kubernetes with enterprise-grade streaming and messaging</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://avatars.githubusercontent.com/u/23534644?s=200&v=4"></td>
+        <td><a href="https://istio.io/">Istio</a></td>
+        <td>Service mesh providing secure, observable and controlled microservice communication</td>
+    </tr>
 </table>
 
-
-
-## 🚀 Quick Start
-
-### 1. Deploy Infrastructure
-```bash
-cd tofu/
-tofu apply
-```
-
-### 2. **🚨 CRITICAL: Restore SealedSecrets Keys**
-```bash
-# Set kubeconfig
-export KUBECONFIG="$PWD/tofu/output/kube-config.yaml"
-
-# Restore SealedSecrets (REQUIRED after every cluster recreation)
-./post-deploy-restore.sh
-```
-
-### 3. Bootstrap GitOps
-```bash
-# Deploy ArgoCD and ApplicationSets
-kubectl apply -k kubernetes/bootstrap-infrastructure.yaml
-```
-
-### 4. Verify Deployment
-```bash
-# Check ArgoCD applications
-kubectl get applications -n argocd
-
-# Check critical services
-kubectl get pods -n cert-manager
-kubectl get pods -n monitoring
-```
-
-## 🔐 SealedSecrets Management
-
-**⚠️ CRITICAL:** After every `tofu destroy && tofu apply`, you MUST restore SealedSecrets keys:
-
-```bash
-# Automatic restoration
-./post-deploy-restore.sh
-
-# Why: Cluster recreation generates new keys, breaking ALL existing SealedSecrets
-# (certificates, storage, monitoring, backups)
-```
-
-**Detailed documentation:** [tofu/bootstrap/sealed-secrets/README.md](tofu/bootstrap/sealed-secrets/README.md)
-
-> ⚠️ **This repository is a work in progress!**  
-> 🏗️ Expect breaking changes, experiments, and lots of learning along the way.  
-> Contributions and feedback are welcome!
