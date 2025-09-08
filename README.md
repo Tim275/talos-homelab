@@ -89,9 +89,38 @@ Everything needed to run my cluster & deploy my applications:
         <td><a href="https://github.com/mongodb/mongodb-kubernetes-operator">MongoDB Operator</a></td>
         <td>MongoDB database with replica sets, sharding and automated management in Kubernetes</td>
     </tr>
+    <tr>
+        <td><img width="32" src="https://kafka.apache.org/images/logo.png"></td>
+        <td><a href="https://strimzi.io/">Strimzi Kafka</a></td>
+        <td>Apache Kafka platform running on Kubernetes with enterprise-grade streaming and messaging</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://istio.io/latest/img/istio-bluelogo-whitebackground-unframed.svg"></td>
+        <td><a href="https://istio.io/">Istio</a></td>
+        <td>Service mesh providing secure, observable and controlled microservice communication</td>
+    </tr>
 </table>
 
+## Apps
+End User Applications
 
+<table>
+    <tr>
+        <th>Logo</th>
+        <th>Name</th>
+        <th>Description</th>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://cdn.jsdelivr.net/gh/n8n-io/n8n/assets/n8n-logo.svg"></td>
+        <td><a href="https://n8n.io/">n8n</a></td>
+        <td>Secure, AI-native workflow automation</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://www.audiobookshelf.org/Logo.png"></td>
+        <td><a href="https://www.audiobookshelf.org/">Audiobookshelf</a></td>
+        <td>Self-hosted audiobook and podcast server</td>
+    </tr>
+</table>
 
 ## 🚀 Quick Start
 
