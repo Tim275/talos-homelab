@@ -14,7 +14,7 @@ End User Applications
         <th>Description</th>
     </tr>
     <tr>
-        <td><img width="32" src="https://docs.n8n.io/assets/images/n8n-logo-bw-48481e14ce16c3b5e9e30842f2f6aa20.png"></td>
+        <td><img width="32" src="https://n8n.io/favicon.ico"></td>
         <td><a href="https://n8n.io/">n8n</a></td>
         <td>Secure, AI-native workflow automation</td>
     </tr>
@@ -113,12 +113,12 @@ Everything needed to run my cluster & deploy my applications:
         <td>MongoDB database with replica sets, sharding and automated management in Kubernetes</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://strimzi.io/assets/images/strimzi_logo.png"></td>
-        <td><a href="https://strimzi.io/">Strimzi Kafka</a></td>
+        <td><img width="32" src="https://raw.githubusercontent.com/apache/kafka/trunk/docs/images/apache-kafka.png"></td>
+        <td><a href="https://kafka.apache.org/">Kafka</a></td>
         <td>Apache Kafka platform running on Kubernetes with enterprise-grade streaming and messaging</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://landscape.cncf.io/logos/istio.svg"></td>
+        <td><img width="32" src="https://avatars.githubusercontent.com/u/23534644?s=200&v=4"></td>
         <td><a href="https://istio.io/">Istio</a></td>
         <td>Service mesh providing secure, observable and controlled microservice communication</td>
     </tr>
