@@ -1,6 +1,8 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# 🌊 Rook-Ceph Storage Infrastructure (CRDs → Operator → Cluster)
+
 namespace: rook-ceph
 
 resources:
@@ -14,13 +16,98 @@ resources:
   - cluster.yaml
   - pools.yaml
   - storage-classes.yaml
-  # - monitoring.yaml  # Temporarily disabled until prometheus-operator is deployed
   
 # Resource reduction for homelab stability
   # - resource-reduction-patch.yaml  # Using strategic merge patch instead
 
 # Enterprise and Talos-specific patches
 patches:
+  # 🌊 Wave -10: CRDs must deploy first
+  - target:
+      kind: CustomResourceDefinition
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          argocd.argoproj.io/sync-wave: "-10"
+          argocd.argoproj.io/sync-options: ServerSideApply=true
+  
+  # 🌊 Wave -10: Namespace and RBAC with CRDs
+  - target:
+      kind: Namespace
+      name: rook-ceph
+    patch: |-
+      - op: add
+        path: /metadata/annotations/argocd.argoproj.io~1sync-wave
+        value: "-10"
+  
+  # 🌊 Wave -5: Operator deployment after CRDs are ready
+  - target:
+      kind: Deployment
+      name: rook-ceph-operator
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          argocd.argoproj.io/sync-wave: "-5"
+          argocd.argoproj.io/sync-options: Prune=false
+  
+  # 🌊 Wave 0: Cluster resources after operator is ready
+  - target:
+      kind: CephCluster
+      name: rook-ceph
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          argocd.argoproj.io/sync-wave: "0"
+          argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+  
+  # 🌊 Wave 10: Storage pools after cluster is ready
+  - target:
+      kind: CephBlockPool
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          argocd.argoproj.io/sync-wave: "10"
+          argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+  
+  # 🌊 Wave 15: Storage classes last
+  - target:
+      kind: StorageClass
+    patch: |-
+      - op: add
+        path: /metadata/annotations/argocd.argoproj.io~1sync-wave
+        value: "15"
+  
+  # CRITICAL: CSI Plugin Resource Limits (No unlimited memory!)
+  - target:
+      kind: DaemonSet
+      name: csi-cephfsplugin
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/1/resources
+        value:
+          limits:
+            cpu: "100m" 
+            memory: "128Mi"
+          requests:
+            cpu: "10m"
+            memory: "64Mi"
+  - target:
+      kind: DaemonSet
+      name: csi-rbdplugin
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/1/resources
+        value:
+          limits:
+            cpu: "100m"
+            memory: "128Mi" 
+          requests:
+            cpu: "10m"
+            memory: "64Mi"
   # Namespace enterprise labeling
   - target:
       kind: Namespace
