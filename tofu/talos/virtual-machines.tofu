@@ -44,6 +44,21 @@ resource "proxmox_virtual_environment_vm" "this" {
     file_id      = proxmox_virtual_environment_download_file.this["${each.value.host_node}_${each.value.update == true ? local.update_image_id : local.image_id}"].id
   }
 
+  # Storage Disk for Worker Nodes (Rook-Ceph)
+  dynamic "disk" {
+    for_each = each.value.machine_type == "worker" ? [1] : []
+    content {
+      datastore_id = each.value.datastore_id
+      interface    = "scsi1"
+      iothread     = true
+      cache        = "writethrough"
+      discard      = "on"
+      ssd          = true
+      file_format  = "raw"
+      size         = 50  # 50GB Storage Disk
+    }
+  }
+
 
   boot_order = ["scsi0"]
 
