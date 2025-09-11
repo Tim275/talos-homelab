@@ -1,0 +1,60 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: quantlab-postgres
+  namespace: quantlab-postgres
+spec:
+  instances: 2
+  
+  postgresql:
+    parameters:
+      max_connections: "200"
+      shared_buffers: "256MB"
+      effective_cache_size: "1GB"
+      maintenance_work_mem: "64MB"
+      checkpoint_completion_target: "0.9"
+      wal_buffers: "16MB"
+      default_statistics_target: "100"
+      random_page_cost: "1.1"
+      effective_io_concurrency: "200"
+      shared_preload_libraries: "pg_stat_statements"
+  
+  storage:
+    size: 20Gi
+    storageClass: longhorn
+  
+  monitoring:
+    enabled: true
+  
+  bootstrap:
+    initdb:
+      database: quantlab
+      owner: quantlab
+      secret:
+        name: quantlab-postgres-credentials
+  
+  backup:
+    retentionPolicy: "30d"
+    barmanObjectStore:
+      destinationPath: "s3://quantlab-backups/postgres"
+      s3Credentials:
+        accessKeyId:
+          name: backup-credentials
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: backup-credentials
+          key: SECRET_ACCESS_KEY
+      wal:
+        retention: "7d"
+      data:
+        retention: "30d"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: quantlab-postgres-credentials
+  namespace: quantlab-postgres
+type: kubernetes.io/basic-auth
+data:
+  username: cXVhbnRsYWI=  # quantlab
+  password: cXVhbnRsYWIxMjM=  # quantlab123
