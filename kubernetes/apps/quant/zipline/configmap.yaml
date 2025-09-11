@@ -1,0 +1,309 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zipline-trading-algorithm
+  namespace: zipline
+data:
+  algorithm.py: |
+    """
+    Tier 0 Multi-Strategy Quantitative Trading Algorithm
+    Professional Institutional-Grade Trading System
+    
+    Strategies:
+    1. Statistical Arbitrage (40% allocation)
+    2. Momentum Trading (35% allocation) 
+    3. Mean Reversion (25% allocation)
+    """
+    
+    import zipline
+    import pandas as pd
+    import numpy as np
+    from zipline.api import (
+        order_target_percent, record, symbol, 
+        schedule_function, date_rules, time_rules,
+        get_datetime, order_target, cancel_order
+    )
+    from zipline.finance import commission, slippage
+    import talib
+    import warnings
+    warnings.filterwarnings('ignore')
+    
+    def initialize(context):
+        """Initialize trading algorithm"""
+        
+        # Portfolio Configuration
+        context.leverage = 1.0
+        context.max_position_size = 0.1
+        context.rebalance_frequency = 5  # days
+        
+        # Strategy Allocations
+        context.strategies = {
+            'statistical_arbitrage': {
+                'allocation': 0.40,
+                'pairs': [
+                    (symbol('BTC'), symbol('ETH')),
+                    (symbol('ADA'), symbol('SOL'))
+                ],
+                'lookback': 252,
+                'entry_threshold': 2.0,
+                'exit_threshold': 0.5
+            },
+            'momentum': {
+                'allocation': 0.35,
+                'assets': [symbol('BTC'), symbol('ETH'), symbol('ADA')],
+                'lookback': 20,
+                'min_momentum': 0.02
+            },
+            'mean_reversion': {
+                'allocation': 0.25,
+                'assets': [symbol('BTC'), symbol('ETH')],
+                'lookback': 50,
+                'bollinger_period': 20,
+                'std_dev': 2.0
+            }
+        }
+        
+        # Risk Management
+        context.max_drawdown = 0.15
+        context.stop_loss = 0.05
+        context.take_profit = 0.10
+        
+        # Performance Tracking
+        context.trades = []
+        context.daily_pnl = []
+        context.max_dd = 0
+        
+        # Set commission and slippage
+        set_commission(commission.PerShare(cost=0.001, min_trade_cost=1.0))
+        set_slippage(slippage.VolumeShareSlippage(volume_limit=0.025, price_impact=0.1))
+        
+        # Schedule functions
+        schedule_function(
+            statistical_arbitrage_strategy,
+            date_rules.every_day(),
+            time_rules.market_open(hours=1)
+        )
+        
+        schedule_function(
+            momentum_strategy,
+            date_rules.every_day(),
+            time_rules.market_open(hours=2)
+        )
+        
+        schedule_function(
+            mean_reversion_strategy,
+            date_rules.every_day(),
+            time_rules.market_open(hours=3)
+        )
+        
+        schedule_function(
+            risk_management,
+            date_rules.every_day(),
+            time_rules.market_close(minutes=30)
+        )
+        
+        schedule_function(
+            record_performance,
+            date_rules.every_day(),
+            time_rules.market_close()
+        )
+    
+    def statistical_arbitrage_strategy(context, data):
+        """Statistical Arbitrage Strategy - 40% allocation"""
+        
+        strategy = context.strategies['statistical_arbitrage']
+        allocation = strategy['allocation']
+        
+        for pair in strategy['pairs']:
+            asset1, asset2 = pair
+            
+            if not (data.can_trade(asset1) and data.can_trade(asset2)):
+                continue
+                
+            # Get price data
+            prices1 = data.history(asset1, 'price', strategy['lookback'], '1d')
+            prices2 = data.history(asset2, 'price', strategy['lookback'], '1d')
+            
+            # Calculate spread
+            spread = np.log(prices1) - np.log(prices2)
+            spread_mean = spread.mean()
+            spread_std = spread.std()
+            
+            # Current spread z-score
+            current_spread = np.log(prices1[-1]) - np.log(prices2[-1])
+            z_score = (current_spread - spread_mean) / spread_std
+            
+            # Position sizing for this pair
+            pair_allocation = allocation / len(strategy['pairs'])
+            
+            # Entry signals
+            if z_score > strategy['entry_threshold']:
+                # Spread too high: short asset1, long asset2
+                order_target_percent(asset1, -pair_allocation * 0.5)
+                order_target_percent(asset2, pair_allocation * 0.5)
+                
+            elif z_score < -strategy['entry_threshold']:
+                # Spread too low: long asset1, short asset2
+                order_target_percent(asset1, pair_allocation * 0.5)
+                order_target_percent(asset2, -pair_allocation * 0.5)
+                
+            elif abs(z_score) < strategy['exit_threshold']:
+                # Exit positions
+                order_target_percent(asset1, 0)
+                order_target_percent(asset2, 0)
+    
+    def momentum_strategy(context, data):
+        """Momentum Strategy - 35% allocation"""
+        
+        strategy = context.strategies['momentum']
+        allocation = strategy['allocation']
+        assets = strategy['assets']
+        
+        momentum_scores = {}
+        
+        for asset in assets:
+            if not data.can_trade(asset):
+                continue
+                
+            # Get price data
+            prices = data.history(asset, 'price', strategy['lookback'], '1d')
+            
+            # Calculate momentum (rate of change)
+            momentum = (prices[-1] / prices[0]) - 1
+            momentum_scores[asset] = momentum
+        
+        # Sort by momentum
+        sorted_assets = sorted(momentum_scores.items(), key=lambda x: x[1], reverse=True)
+        
+        # Position in top momentum assets
+        top_assets = [asset for asset, score in sorted_assets if score > strategy['min_momentum']]
+        
+        if top_assets:
+            position_size = allocation / len(top_assets)
+            
+            for asset in assets:
+                if asset in top_assets:
+                    order_target_percent(asset, position_size)
+                else:
+                    order_target_percent(asset, 0)
+    
+    def mean_reversion_strategy(context, data):
+        """Mean Reversion Strategy - 25% allocation"""
+        
+        strategy = context.strategies['mean_reversion']
+        allocation = strategy['allocation']
+        assets = strategy['assets']
+        
+        for asset in assets:
+            if not data.can_trade(asset):
+                continue
+                
+            # Get price data
+            prices = data.history(asset, 'price', strategy['lookback'], '1d')
+            
+            # Calculate Bollinger Bands
+            bb_period = strategy['bollinger_period']
+            bb_std = strategy['std_dev']
+            
+            sma = prices.rolling(bb_period).mean()
+            std = prices.rolling(bb_period).std()
+            
+            upper_band = sma + (bb_std * std)
+            lower_band = sma - (bb_std * std)
+            
+            current_price = prices[-1]
+            current_sma = sma[-1]
+            current_upper = upper_band[-1]
+            current_lower = lower_band[-1]
+            
+            # Position sizing for this asset
+            asset_allocation = allocation / len(assets)
+            
+            # Mean reversion signals
+            if current_price > current_upper:
+                # Price above upper band: short
+                order_target_percent(asset, -asset_allocation)
+                
+            elif current_price < current_lower:
+                # Price below lower band: long
+                order_target_percent(asset, asset_allocation)
+                
+            elif abs(current_price - current_sma) / current_sma < 0.01:
+                # Price near mean: exit
+                order_target_percent(asset, 0)
+    
+    def risk_management(context, data):
+        """Risk Management and Position Monitoring"""
+        
+        portfolio_value = context.portfolio.total_value
+        
+        # Calculate current drawdown
+        if hasattr(context, 'peak_value'):
+            context.peak_value = max(context.peak_value, portfolio_value)
+        else:
+            context.peak_value = portfolio_value
+            
+        current_drawdown = (context.peak_value - portfolio_value) / context.peak_value
+        context.max_dd = max(context.max_dd, current_drawdown)
+        
+        # Emergency stop if max drawdown exceeded
+        if current_drawdown > context.max_drawdown:
+            for asset in context.portfolio.positions:
+                order_target_percent(asset, 0)
+            log.warn(f"Emergency stop triggered. Drawdown: {current_drawdown:.2%}")
+        
+        # Individual position risk management
+        for asset in context.portfolio.positions:
+            position = context.portfolio.positions[asset]
+            
+            if position.amount != 0:
+                current_price = data.current(asset, 'price')
+                pnl_percent = (current_price - position.cost_basis) / position.cost_basis
+                
+                # Stop loss
+                if pnl_percent < -context.stop_loss:
+                    order_target_percent(asset, 0)
+                    log.info(f"Stop loss triggered for {asset}: {pnl_percent:.2%}")
+                
+                # Take profit
+                elif pnl_percent > context.take_profit:
+                    order_target_percent(asset, 0)
+                    log.info(f"Take profit triggered for {asset}: {pnl_percent:.2%}")
+    
+    def record_performance(context, data):
+        """Record daily performance metrics"""
+        
+        portfolio_value = context.portfolio.total_value
+        cash = context.portfolio.cash
+        positions_value = portfolio_value - cash
+        
+        # Calculate daily PnL
+        if context.daily_pnl:
+            daily_pnl = portfolio_value - context.daily_pnl[-1]
+        else:
+            daily_pnl = 0
+            
+        context.daily_pnl.append(portfolio_value)
+        
+        # Record metrics
+        record(
+            portfolio_value=portfolio_value,
+            cash=cash,
+            positions_value=positions_value,
+            daily_pnl=daily_pnl,
+            max_drawdown=context.max_dd,
+            leverage=context.account.leverage
+        )
+        
+        # Log performance weekly
+        if get_datetime().weekday() == 4:  # Friday
+            log.info(f"Weekly Performance - Portfolio: ${portfolio_value:,.2f}, "
+                    f"Max DD: {context.max_dd:.2%}, Positions: {len(context.portfolio.positions)}")
+    
+    def before_trading_start(context, data):
+        """Pre-market preparation"""
+        pass
+    
+    def handle_data(context, data):
+        """Handle real-time data updates"""
+        pass
