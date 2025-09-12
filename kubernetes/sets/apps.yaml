@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: apps
+  namespace: argocd
+spec:
+  generators:
+  - git:
+      repoURL: https://github.com/Tim275/talos-homelab
+      revision: HEAD
+      files:
+      - path: "kubernetes/apps/applicationsets/*.yaml"
+  template:
+    metadata:
+      name: '{{path.basename}}'
+      namespace: argocd
+    spec:
+      project: app-of-apps
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: 'kubernetes/apps/applicationsets'
+        plugin:
+          name: kustomize-build-with-helm
+      destination:
+        server: https://kubernetes.default.svc
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true

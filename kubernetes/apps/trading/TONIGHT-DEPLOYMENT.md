@@ -13,6 +13,10 @@
 
 1. **Deploy Complete System**:
 ```bash
+# Via Bootstrap (deploys everything including Tier 0)
+kubectl apply -k kubernetes/sets
+
+# Or deploy Tier 0 directly
 kubectl apply -f kubernetes/apps/applicationsets/quant-trading.yaml
 ```
 
