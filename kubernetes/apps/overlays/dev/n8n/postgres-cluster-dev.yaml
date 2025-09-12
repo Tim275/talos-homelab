@@ -1,0 +1,56 @@
+# n8n PostgreSQL Cluster - Development
+# Dedicated PostgreSQL database for n8n workflow automation (dev environment)
+
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: n8n-postgres
+  namespace: n8n-dev
+  labels:
+    app.kubernetes.io/name: n8n-postgres
+    app.kubernetes.io/component: database
+    environment: development
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"  # Before n8n app
+spec:
+  # Single instance for dev (lightweight)
+  instances: 1
+  
+  # PostgreSQL version
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.1
+  
+  # Resource allocation (dev optimized - smaller)
+  resources:
+    requests:
+      memory: "128Mi"  # Reduced for dev
+      cpu: "100m"      # Reduced for dev
+    limits:
+      memory: "256Mi"  # Reduced for dev
+      cpu: "250m"      # Reduced for dev
+      
+  # Storage configuration (smaller for dev)
+  storage:
+    size: 4Gi  # Smaller for dev
+    storageClass: rook-ceph-block-enterprise
+        
+  # Bootstrap from existing cluster or create new
+  bootstrap:
+    initdb:
+      database: n8n
+      owner: n8n
+      secret:
+        name: n8n-postgres-credentials
+
+---
+# n8n database user credentials - Dev
+apiVersion: v1
+kind: Secret
+metadata:
+  name: n8n-postgres-credentials
+  namespace: n8n-dev
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"  # Before cluster
+type: kubernetes.io/basic-auth
+stringData:
+  username: n8n
+  password: n8nDevPassword123
