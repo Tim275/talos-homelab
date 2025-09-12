@@ -7,6 +7,7 @@ export KUBECONFIG="tofu/output/kube-config.yaml"
 
 # 1. Foundation (REQUIRED ORDER!)
 kubectl kustomize --enable-helm kubernetes/infra/network/cilium | kubectl apply -f -
+kustomize build --enable-helm kubernetes/infra/network/istio | kubectl apply -f -
 kustomize build --enable-helm kubernetes/infra/controllers/sealed-secrets | kubectl apply -f -
 kustomize build --enable-helm kubernetes/infra/storage/proxmox-csi | kubectl apply -f -
 kustomize build --enable-helm kubernetes/infra/controllers/argocd | kubectl apply -f -
