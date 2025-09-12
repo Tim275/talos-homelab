@@ -10,6 +10,10 @@
 ## 🚀 Quick Deployment
 
 ```bash
+# Deploy via normal bootstrap (recommended)
+kubectl apply -k kubernetes/sets
+
+# Or deploy directly
 kubectl apply -f kubernetes/apps/applicationsets/quant-trading.yaml
 ```
 
