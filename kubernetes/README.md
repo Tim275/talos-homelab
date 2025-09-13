@@ -12,10 +12,69 @@ kustomize build --enable-helm kubernetes/infra/controllers/sealed-secrets | kube
 kustomize build --enable-helm kubernetes/infra/storage/proxmox-csi | kubectl apply -f -
 kustomize build --enable-helm kubernetes/infra/controllers/argocd | kubectl apply -f -
 
+# Rook-Ceph (requires 2x deployment for CRDs)
+kustomize build --enable-helm kubernetes/infra/storage/rook-ceph | kubectl apply -f - && sleep 10 && kubectl wait --for=condition=established crd/cephclusters.ceph.rook.io --timeout=60s && kustomize build --enable-helm kubernetes/infra/storage/rook-ceph | kubectl apply -f -
+
 # 2. Deploy everything else via GitOps
 kubectl apply -k kubernetes/infra
 kubectl apply -k kubernetes/sets
 ```
+
+## 🏗️ GitOps Architecture Explanation
+
+### Why only 2 commands for everything?
+
+**1️⃣ Bootstrap Phase (Manual)**
+```bash
+kubectl apply -k kubernetes/infra     # Foundation components - ArgoCD, etc.
+```
+
+**2️⃣ GitOps Phase (Automatic via ApplicationSets)**
+```bash
+kubectl apply -k kubernetes/sets      # Deploy ApplicationSets (Auto-discovery)
+```
+
+### 🔄 What `kubernetes/sets` actually does:
+
+**ApplicationSets are "Apps that create Apps"** - they automatically scan:
+
+**`infrastructure.yaml` ApplicationSet:**
+- Scans `kubernetes/infra/storage` ✅
+- Scans `kubernetes/infra/controllers` ✅  
+- Scans `kubernetes/infra/monitoring` ✅
+- Scans `kubernetes/infra/network` ✅
+- Scans `kubernetes/infra/observability` ✅
+
+**`platform.yaml` ApplicationSet:**
+- Scans `kubernetes/platform/messaging/*` ✅
+- Scans `kubernetes/platform/data/*` ✅
+
+**`apps.yaml` ApplicationSet:**
+- Scans `kubernetes/apps/applicationsets/*.yaml` ✅
+
+### 🤔 Why not directly `kubectl apply -k kubernetes/platform`?
+
+**Because it's GitOps!**
+
+1. You deploy only the **ApplicationSets** with `kubectl apply -k kubernetes/sets`
+2. ApplicationSets **automatically scan** git repository
+3. They **create Applications** for everything they find
+4. ArgoCD **automatically syncs** all discovered Applications
+
+### 🎯 Summary:
+
+```bash
+kubectl apply -k kubernetes/infra     # Bootstrap basis (ArgoCD, etc.)
+kubectl apply -k kubernetes/sets      # Deploy ApplicationSets (Auto-discovery)
+# ApplicationSets then automatically deploy:
+# - kubernetes/infra/* (everything else)
+# - kubernetes/platform/*  
+# - kubernetes/apps/*
+```
+
+**You deploy EVERYTHING with just 2 commands, but via GitOps Auto-Discovery!** 🚀
+
+This is the difference between imperative (manual) and declarative (GitOps) deployments!
 
 ## 🚨 CRITICAL: SealedSecrets After Cluster Recreation
 
