@@ -6,20 +6,26 @@ replicaCount: 2
 
 # Use official production image with Elasticsearch plugin
 image:
-  repository: fluent/fluentd
-  tag: "v1.17"
+  repository: fluent/fluentd-kubernetes-daemonset
+  tag: "v1.19-debian-elasticsearch8-1"
 
 # Environment variables for Elasticsearch connection
 env:
-  - name: ELASTICSEARCH_PASSWORD
+  - name: FLUENT_ELASTICSEARCH_HOST
+    value: "production-cluster-es-http.elastic-system"
+  - name: FLUENT_ELASTICSEARCH_PORT  
+    value: "9200"
+  - name: FLUENT_ELASTICSEARCH_SCHEME
+    value: "https"
+  - name: FLUENT_ELASTICSEARCH_SSL_VERIFY
+    value: "false"
+  - name: FLUENT_ELASTICSEARCH_USER
+    value: "elastic"
+  - name: FLUENT_ELASTICSEARCH_PASSWORD
     valueFrom:
       secretKeyRef:
         name: production-cluster-es-elastic-user
         key: elastic
-
-# Install required plugins for Elasticsearch  
-plugins:
-  - fluent-plugin-elasticsearch
 
 # Resource limits for production aggregator
 resources:
@@ -39,54 +45,7 @@ service:
       protocol: TCP
       containerPort: 24224
 
-# Fluentd configuration files 
-fileConfigs:
-  01_sources.conf: |-
-    <source>
-      @type forward
-      port 24224
-      bind 0.0.0.0
-    </source>
-    
-  02_filters.conf: |-
-    <filter **>
-      @type record_transformer
-      <record>
-        hostname "#{Socket.gethostname}"
-        tag ${tag}
-        fluentd_worker "#{worker_id}"
-      </record>
-    </filter>
-    
-  04_outputs.conf: |-
-    <match **>
-      @type elasticsearch
-      host production-cluster-es-http.elastic-system
-      port 9200
-      scheme https
-      ssl_verify false
-      user elastic
-      password "#{ENV['ELASTICSEARCH_PASSWORD']}"
-      index_name fluentd-k8s
-      type_name _doc
-      include_tag_key true
-      tag_key @log_name
-      logstash_format true
-      logstash_prefix fluentd-k8s
-      <buffer>
-        @type file
-        path /buffers/fluentd-buffers
-        flush_mode interval
-        retry_type exponential_backoff
-        flush_thread_count 2
-        flush_interval 5s
-        retry_forever
-        retry_max_interval 30
-        chunk_limit_size 2M
-        total_limit_size 500M
-        overflow_action block
-      </buffer>
-    </match>
+# Use default DaemonSet configuration with environment variables
 
 # Volume for buffers
 volumeMounts:
