@@ -1,66 +1,93 @@
-# Fluentd deployment as DaemonSet for log collection
-replicaCount: 1
-kind: DaemonSet
+# Fluentd deployment as aggregator (receives from FluentBit)
+replicaCount: 2
+kind: Deployment
 
-# Official Fluentd image
+# Official Fluentd image for deployment (not daemonset)
 image:
-  repository: fluent/fluentd-kubernetes-daemonset
-  tag: "v1.17-debian-elasticsearch8-1"
+  repository: fluent/fluentd
+  tag: "v1.17-debian-1"
 
-# Environment variables for Elasticsearch connection  
+# Custom Fluentd configuration for log aggregation
+fluentdConf: |
+  # Input: Receive logs from FluentBit via forward protocol
+  <source>
+    @type forward
+    @id input_forward
+    port 24224
+    bind 0.0.0.0
+  </source>
+
+  # Output: Send aggregated logs to Elasticsearch
+  <match **>
+    @type elasticsearch
+    @id out_es
+    @log_level info
+    include_tag_key true
+    
+    # Elasticsearch connection
+    host production-cluster-es-http.elastic-system
+    port 9200
+    scheme https
+    ssl_verify false
+    
+    # Authentication
+    user elastic
+    password "#{ENV['ELASTICSEARCH_PASSWORD']}"
+    
+    # Index configuration
+    index_name logs
+    type_name _doc
+    
+    # Buffering and performance
+    <buffer>
+      @type file
+      path /opt/bitnami/fluentd/logs/buffers/logs.buffer
+      flush_mode interval
+      retry_type exponential_backoff
+      flush_thread_count 2
+      flush_interval 5s
+      retry_forever
+      retry_max_interval 30
+      chunk_limit_size 2M
+      total_limit_size 500M
+      overflow_action block
+    </buffer>
+  </match>
+
+# Environment variables for Elasticsearch password
 env:
-  - name: FLUENT_ELASTICSEARCH_HOST
-    value: "production-cluster-es-http.elastic-system"
-  - name: FLUENT_ELASTICSEARCH_PORT
-    value: "9200"
-  - name: FLUENT_ELASTICSEARCH_SCHEME
-    value: "https"
-  - name: FLUENT_ELASTICSEARCH_SSL_VERIFY
-    value: "false"
-  - name: FLUENT_ELASTICSEARCH_USER
-    value: "elastic"
-  - name: FLUENT_ELASTICSEARCH_PASSWORD
+  - name: ELASTICSEARCH_PASSWORD
     valueFrom:
       secretKeyRef:
         name: production-cluster-es-elastic-user
         key: elastic
-  - name: FLUENT_ELASTICSEARCH_INDEX_NAME
-    value: "logs"
-  - name: FLUENT_ELASTICSEARCH_TYPE_NAME
-    value: "_doc"
 
-# Configuration will be provided by the Helm chart
-
-# Security context for privileged log collection
-securityContext:
-  privileged: true
-
-# Resource limits
+# Resource limits for aggregator deployment
 resources:
   limits:
-    cpu: 500m
+    cpu: 200m
     memory: 512Mi
   requests:
     cpu: 100m
-    memory: 200Mi
+    memory: 256Mi
 
-# Node tolerations to run on all nodes
-tolerations:
-  - key: node-role.kubernetes.io/control-plane
-    operator: Exists
-    effect: NoSchedule
-  - key: node-role.kubernetes.io/master
-    operator: Exists
-    effect: NoSchedule
-
-# Default host paths are already included by Fluentd Helm chart
-# Additional volumes can be added here if needed
-
-# Service for monitoring
+# Service for FluentBit to send logs to Fluentd
 service:
   type: ClusterIP
-  port: 24231
+  ports:
+    - name: forward
+      port: 24224
+      protocol: TCP
+    - name: metrics  
+      port: 24231
+      protocol: TCP
   
 # ServiceMonitor for Prometheus
 serviceMonitor:
   enabled: true
+  port: metrics
+
+# Deployment specific settings (not DaemonSet)
+replicaCount: 2
+autoscaling:
+  enabled: false
