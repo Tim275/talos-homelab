@@ -1,14 +1,54 @@
-# Fluentd Deployment Configuration
-# Based on picluster.ricsanfre.com/docs/fluentd
-# Aggregates logs from FluentBit and sends to Elasticsearch
+# Production Fluentd Deployment Configuration
+# Uses official fluentd-kubernetes-daemonset with Elasticsearch plugins
+# Based on https://github.com/fluent/fluentd-kubernetes-daemonset
 
 replicaCount: 2
 
+# Use official production image with Elasticsearch plugin
 image:
-  repository: fluent/fluentd-kubernetes-daemonset
+  repository: quay.io/fluent/fluentd-kubernetes-daemonset
   tag: "v1.17-debian-elasticsearch8-1"
 
-# Simple Fluentd configuration that works
+# Production Fluentd configuration for Elasticsearch
+env:
+  - name: FLUENT_ELASTICSEARCH_HOST
+    value: "production-cluster-es-http.elastic-system"
+  - name: FLUENT_ELASTICSEARCH_PORT
+    value: "9200"
+  - name: FLUENT_ELASTICSEARCH_SCHEME
+    value: "https"
+  - name: FLUENT_ELASTICSEARCH_SSL_VERIFY
+    value: "false"
+  - name: FLUENT_ELASTICSEARCH_USER
+    value: "elastic"
+  - name: FLUENT_ELASTICSEARCH_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: production-cluster-es-elastic-user
+        key: elastic
+  - name: FLUENT_ELASTICSEARCH_INDEX_NAME
+    value: "fluentd"
+  - name: FLUENT_ELASTICSEARCH_TYPE_NAME
+    value: "_doc"
+
+# Resource limits for production aggregator
+resources:
+  limits:
+    cpu: 500m
+    memory: 1Gi
+  requests:
+    cpu: 200m
+    memory: 512Mi
+
+# Service configuration for FluentBit
+service:
+  type: ClusterIP
+  ports:
+    - name: forward
+      port: 24224
+      protocol: TCP
+
+# Production buffer configuration
 config:
   fluentConf: |
     <source>
@@ -17,24 +57,53 @@ config:
       bind 0.0.0.0
     </source>
     
+    <filter **>
+      @type record_transformer
+      <record>
+        hostname "#{Socket.gethostname}"
+        tag ${tag}
+        fluentd_worker "#{worker_id}"
+      </record>
+    </filter>
+    
     <match **>
-      @type stdout
+      @type elasticsearch
+      host "#{ENV['FLUENT_ELASTICSEARCH_HOST']}"
+      port "#{ENV['FLUENT_ELASTICSEARCH_PORT']}"
+      scheme "#{ENV['FLUENT_ELASTICSEARCH_SCHEME']}"
+      ssl_verify "#{ENV['FLUENT_ELASTICSEARCH_SSL_VERIFY']}"
+      user "#{ENV['FLUENT_ELASTICSEARCH_USER']}"
+      password "#{ENV['FLUENT_ELASTICSEARCH_PASSWORD']}"
+      index_name "#{ENV['FLUENT_ELASTICSEARCH_INDEX_NAME']}"
+      type_name "#{ENV['FLUENT_ELASTICSEARCH_TYPE_NAME']}"
+      include_tag_key true
+      tag_key @log_name
+      logstash_format true
+      logstash_prefix fluentd-k8s
+      <buffer>
+        @type file
+        path /buffers/fluentd-buffers
+        flush_mode interval
+        retry_type exponential_backoff
+        flush_thread_count 2
+        flush_interval 5s
+        retry_forever
+        retry_max_interval 30
+        chunk_limit_size 2M
+        total_limit_size 500M
+        overflow_action block
+      </buffer>
     </match>
 
-# Resource limits for aggregator
-resources:
-  limits:
-    cpu: 200m
-    memory: 512Mi
-  requests:
-    cpu: 100m
-    memory: 256Mi
+# Volume for buffers
+volumeMounts:
+  - name: buffer-storage
+    mountPath: /buffers
 
-# Service for FluentBit to connect
-service:
-  type: ClusterIP
+volumes:
+  - name: buffer-storage
+    emptyDir: {}
 
-# Environment variables
-env:
-  - name: FLUENTD_CONF
-    value: "fluent.conf"
+# Service monitor for monitoring
+serviceMonitor:
+  enabled: true
