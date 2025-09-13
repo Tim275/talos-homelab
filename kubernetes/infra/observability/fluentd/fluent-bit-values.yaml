@@ -1,8 +1,7 @@
 # FluentBit DaemonSet Configuration
-# Lightweight log collector running on every node
-# Part of proper EFK stack: FluentBit → Fluentd → Elasticsearch
+# Based on picluster.ricsanfre.com/docs/fluentbit
+# Collects container logs and sends to Fluentd aggregator
 
-# FluentBit image - lightweight and fast
 image:
   repository: fluent/fluent-bit
   tag: "3.1.9"
@@ -20,10 +19,8 @@ resources:
 service:
   type: ClusterIP
   port: 2020
-  labels: {}
-  annotations: {}
 
-# Input configuration - collect container logs
+# Kubernetes container log collection
 config:
   service: |
     [SERVICE]
@@ -40,11 +37,12 @@ config:
     [INPUT]
         Name tail
         Path /var/log/containers/*.log
-        multiline.parser docker, cri
+        multiline.parser cri
         Tag kube.*
         Mem_Buf_Limit 50MB
         Skip_Long_Lines On
         Skip_Empty_Lines On
+        storage.type filesystem
 
   filters: |
     [FILTER]
@@ -58,6 +56,7 @@ config:
         Merge_Log_Key log_processed
         K8S-Logging.Parser On
         K8S-Logging.Exclude Off
+        Labels On
 
   outputs: |
     [OUTPUT]
@@ -65,7 +64,6 @@ config:
         Match *
         Host fluentd.elastic-system.svc.cluster.local
         Port 24224
-        Require_ack_response true
 
   parsers: |
     [PARSER]
@@ -75,7 +73,7 @@ config:
         Time_Format %Y-%m-%dT%H:%M:%S.%L
         Time_Keep On
 
-# Tolerations to run on all nodes including control plane
+# Run on all nodes including control plane
 tolerations:
   - key: node-role.kubernetes.io/control-plane
     operator: Exists
@@ -85,11 +83,10 @@ tolerations:
     effect: NoSchedule
 
 # Security context for log file access
-securityContext:
-  privileged: true
+podSecurityContext:
   runAsUser: 0
 
-# Volume mounts for log collection
+# Volume mounts for container logs
 volumeMounts:
   - name: varlog
     mountPath: /var/log
@@ -107,7 +104,7 @@ volumes:
     hostPath:
       path: /var/lib/docker/containers
 
-# Service monitor for Prometheus
+# Prometheus monitoring
 serviceMonitor:
   enabled: true
   interval: 30s
