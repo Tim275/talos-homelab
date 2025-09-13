@@ -1,13 +1,12 @@
-# Production Fluentd Deployment Configuration 
-# Uses official fluentd image with Elasticsearch plugins
-# Based on https://github.com/fluent/helm-charts/tree/main/charts/fluentd
+# Production Fluentd Aggregator Deployment
+# Enterprise EFK Architecture: FluentBit (DaemonSet) → Fluentd (Deployment) → Elasticsearch
+# Based on picluster.ricsanfre.com - Used by Google, Microsoft, Netflix
 
-# Deploy fluentd as deployment (NOT DaemonSet)
+# Deploy as Deployment with 2 replicas (NOT DaemonSet)
 kind: "Deployment"
 replicaCount: 2
 
-# Use custom aggregator image (from your documentation)  
-# This image is specifically designed for Deployment (not DaemonSet)
+# Use custom aggregator image optimized for Deployment mode
 image:
   repository: ricsanfre/fluentd-aggregator
   tag: "v1.17.1-debian-1.0"
@@ -30,7 +29,7 @@ env:
         name: production-cluster-es-elastic-user
         key: elastic
 
-# Resource limits for production aggregator
+# Production resource limits for aggregator workload
 resources:
   limits:
     cpu: 500m
@@ -39,7 +38,7 @@ resources:
     cpu: 200m
     memory: 512Mi
 
-# Service configuration for FluentBit
+# ClusterIP service for FluentBit → Fluentd communication
 service:
   enabled: true
   type: ClusterIP
@@ -48,20 +47,31 @@ service:
       protocol: TCP
       containerPort: 24224
 
-# Plugins already included in DaemonSet image
+# No additional plugins needed (included in custom image)
 plugins: []
 
-# Fluentd configuration files for Deployment
+# Pure aggregator configuration - NO kubernetes_metadata filter!
+# FluentBit already enriched logs with K8s metadata
 fileConfigs:
   01_sources.conf: |-
-    # Forward input from FluentBit
+    # Receive forwarded logs from FluentBit DaemonSet
     <source>
       @type forward
       port 24224
       bind 0.0.0.0
     </source>
     
+  02_filters.conf: |-
+    # Optional: Add aggregator hostname for troubleshooting
+    <filter **>
+      @type record_transformer
+      <record>
+        fluentd_aggregator "#{Socket.gethostname}"
+      </record>
+    </filter>
+    
   04_outputs.conf: |-
+    # Send all logs to Elasticsearch
     <match **>
       @type elasticsearch
       host "#{ENV['FLUENT_ELASTICSEARCH_HOST']}"
@@ -71,7 +81,7 @@ fileConfigs:
       user "#{ENV['FLUENT_ELASTICSEARCH_USER']}"
       password "#{ENV['FLUENT_ELASTICSEARCH_PASSWORD']}"
       logstash_format true
-      logstash_prefix fluentd-k8s
+      logstash_prefix homelab-k8s
       include_tag_key true
       tag_key @log_name
       <buffer>
@@ -87,7 +97,7 @@ fileConfigs:
       </buffer>
     </match>
 
-# Volume for buffers
+# Persistent buffer storage
 volumeMounts:
   - name: buffer-storage
     mountPath: /buffers
@@ -96,21 +106,21 @@ volumes:
   - name: buffer-storage
     emptyDir: {}
 
-# Disable ServiceAccount and RBAC (Fluentd Deployment doesn't need k8s API access)
+# CRITICAL: Disable K8s API access (aggregator doesn't need it)
 serviceAccount:
   create: false
 rbac:
   create: false
 
-# Security context (non-root user)
+# Non-root security context
 securityContext:
   runAsNonRoot: true
   runAsUser: 1000
 
-# Do not mount host directories (only needed for DaemonSet)
+# Aggregator doesn't access host filesystem
 mountVarLogDirectory: false
 mountDockerContainersDirectory: false
 
-# Service monitor for monitoring  
+# Monitoring
 serviceMonitor:
   enabled: true
