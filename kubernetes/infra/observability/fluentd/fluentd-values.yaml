@@ -1,25 +1,27 @@
-# Fluentd deployment as aggregator (receives from FluentBit)
-# CRITICAL: Force deployment mode (not daemonset)
-kind: Deployment
+# Fluentd Deployment Configuration
+# Based on picluster.ricsanfre.com/docs/fluentd
+# Aggregates logs from FluentBit and sends to Elasticsearch
+
 replicaCount: 2
 
-# Official Fluentd image for deployment (not daemonset)
 image:
-  repository: fluent/fluentd
-  tag: "v1.17-debian-1"
+  repository: fluent/fluentd-kubernetes-daemonset
+  tag: "v1.17-debian-elasticsearch8-1"
 
-# Use default Fluentd configuration for now
-# fluentdConf will be configured later after basic setup works
+# Simple Fluentd configuration that works
+config:
+  fluentConf: |
+    <source>
+      @type forward
+      port 24224
+      bind 0.0.0.0
+    </source>
+    
+    <match **>
+      @type stdout
+    </match>
 
-# Environment variables for Elasticsearch password
-env:
-  - name: ELASTICSEARCH_PASSWORD
-    valueFrom:
-      secretKeyRef:
-        name: production-cluster-es-elastic-user
-        key: elastic
-
-# Resource limits for aggregator deployment
+# Resource limits for aggregator
 resources:
   limits:
     cpu: 200m
@@ -28,15 +30,11 @@ resources:
     cpu: 100m
     memory: 256Mi
 
-# Service for FluentBit to send logs to Fluentd
+# Service for FluentBit to connect
 service:
   type: ClusterIP
-  
-# ServiceMonitor for Prometheus
-serviceMonitor:
-  enabled: true
 
-# Deployment specific settings (not DaemonSet)
-replicaCount: 2
-autoscaling:
-  enabled: false
+# Environment variables
+env:
+  - name: FLUENTD_CONF
+    value: "fluent.conf"
