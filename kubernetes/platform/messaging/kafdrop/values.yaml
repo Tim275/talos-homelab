@@ -5,21 +5,21 @@
 kafka:
   brokerConnect: my-cluster-kafka-bootstrap:9092
 
-# JVM options for homelab resource limits
+# JVM options for homelab resource limits (reduced to prevent OOMKill)
 jvm:
-  opts: "-Xms32M -Xmx64M"
+  opts: "-Xms32M -Xmx200M -XX:+UseStringDeduplication"
 
-# Adding connection to schema registry
-cmdArgs: "--schemaregistry.connect=http://schema-registry:8081"
+# Schema registry disabled for now (not deployed yet)
+cmdArgs: ""
 
-# Resource limits for homelab
+# Resource limits for homelab (increased to prevent OOMKill)
 resources:
   limits:
     cpu: 200m
-    memory: 128Mi
+    memory: 512Mi
   requests:
     cpu: 50m
-    memory: 64Mi
+    memory: 256Mi
 
 # Service configuration
 service:
@@ -29,12 +29,13 @@ service:
 # Ingress resource for web access
 ingress:
   enabled: true
+  ingressClassName: cilium
   className: cilium
+  annotations:
+    # Skip ArgoCD health check for Cilium ingress compatibility
+    argocd.argoproj.io/ignore-healthcheck: "true"
   hosts:
-    - host: kafdrop.homelab.local
-      paths:
-        - path: /
-          pathType: Prefix
+    - kafdrop.homelab.local
   # TLS can be added later with cert-manager
   # tls:
   #   - secretName: kafdrop-tls

@@ -1,22 +1,22 @@
 kubernetes_volumes = {
   "argocd-data" = {
-    node = "homelab"
+    node = "nipogi"
     size = "10G"
   }
   "prometheus-data" = {
-    node = "homelab"
+    node = "nipogi"
     size = "20G"
   }
   "grafana-data" = {
-    node = "homelab"
+    node = "nipogi"
     size = "5G"
   }
   "storage-loki-0" = {
-    node = "homelab"
+    node = "msa2proxmox"
     size = "10G"
   }
   "storage-monitoring-stack-alertmanager-0" = {
-    node = "homelab"
+    node = "msa2proxmox"
     size = "5G"
   }
 }
