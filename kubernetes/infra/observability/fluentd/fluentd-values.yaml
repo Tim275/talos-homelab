@@ -1,0 +1,89 @@
+# Fluentd deployment as DaemonSet for log collection
+replicaCount: 1
+kind: DaemonSet
+
+# Official Fluentd image
+image:
+  repository: fluent/fluentd-kubernetes-daemonset
+  tag: "v1.17-debian-elasticsearch8-1"
+
+# Environment variables for Elasticsearch connection  
+env:
+  - name: FLUENT_ELASTICSEARCH_HOST
+    value: "production-cluster-es-http.elastic-system"
+  - name: FLUENT_ELASTICSEARCH_PORT
+    value: "9200"
+  - name: FLUENT_ELASTICSEARCH_SCHEME
+    value: "https"
+  - name: FLUENT_ELASTICSEARCH_SSL_VERIFY
+    value: "false"
+  - name: FLUENT_ELASTICSEARCH_USER
+    value: "elastic"
+  - name: FLUENT_ELASTICSEARCH_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: production-cluster-es-elastic-user
+        key: elastic
+  - name: FLUENT_ELASTICSEARCH_INDEX_NAME
+    value: "logs"
+  - name: FLUENT_ELASTICSEARCH_TYPE_NAME
+    value: "_doc"
+
+# Use external ConfigMap for custom configuration
+configMapConfigs:
+  - fluentd-config
+
+# Security context for privileged log collection
+securityContext:
+  privileged: true
+
+# Resource limits
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 200Mi
+
+# Node tolerations to run on all nodes
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+  - key: node-role.kubernetes.io/master
+    operator: Exists
+    effect: NoSchedule
+
+# Volume mounts for log collection
+volumeMounts:
+  - name: varlog
+    mountPath: /var/log
+    readOnly: true
+  - name: varlibdockercontainers
+    mountPath: /var/lib/docker/containers
+    readOnly: true
+  - name: etcmachineid
+    mountPath: /etc/machine-id
+    readOnly: true
+
+volumes:
+  - name: varlog
+    hostPath:
+      path: /var/log
+  - name: varlibdockercontainers
+    hostPath:
+      path: /var/lib/docker/containers
+  - name: etcmachineid
+    hostPath:
+      path: /etc/machine-id
+      type: File
+
+# Service for monitoring
+service:
+  type: ClusterIP
+  port: 24231
+  
+# ServiceMonitor for Prometheus
+serviceMonitor:
+  enabled: true
