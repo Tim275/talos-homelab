@@ -1,0 +1,100 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluentd-config
+  namespace: elastic-system
+data:
+  fluent.conf: |
+    # Prometheus monitoring
+    <source>
+      @type prometheus
+      bind 0.0.0.0
+      port 24231
+      metrics_path /metrics
+    </source>
+    <source>
+      @type prometheus_output_monitor
+      interval 10
+    </source>
+    <source>
+      @type prometheus_tail_monitor
+      interval 10
+    </source>
+
+    # Input plugin for Kubernetes container logs
+    <source>
+      @type tail
+      @id in_tail_container_logs
+      path /var/log/containers/*.log
+      pos_file /var/log/fluentd-containers.log.pos
+      tag "kubernetes.*"
+      exclude_path ["/var/log/containers/fluent*"]
+      read_from_head true
+      <parse>
+        @type cri
+      </parse>
+    </source>
+
+    # Input plugin for system logs
+    <source>
+      @type tail
+      @id in_tail_systemd
+      path /var/log/syslog,/var/log/messages
+      pos_file /var/log/fluentd-syslog.log.pos
+      tag "system.*"
+      <parse>
+        @type syslog
+      </parse>
+    </source>
+
+    # Kubernetes metadata filter
+    <filter kubernetes.**>
+      @type kubernetes_metadata
+      @id filter_kube_metadata
+      kubernetes_url "#{ENV['FLUENT_FILTER_KUBERNETES_URL'] || 'https://' + ENV.fetch('KUBERNETES_SERVICE_HOST') + ':' + ENV.fetch('KUBERNETES_SERVICE_PORT') + '/api'}"
+      verify_ssl "#{ENV['KUBERNETES_VERIFY_SSL'] || true}"
+      ca_file "#{ENV['KUBERNETES_CA_FILE']}"
+      skip_labels "#{ENV['FLUENT_KUBERNETES_METADATA_SKIP_LABELS'] || 'false'}"
+      skip_container_metadata "#{ENV['FLUENT_KUBERNETES_METADATA_SKIP_CONTAINER_METADATA'] || 'false'}"
+      skip_master_url "#{ENV['FLUENT_KUBERNETES_METADATA_SKIP_MASTER_URL'] || 'false'}"
+      skip_namespace_metadata "#{ENV['FLUENT_KUBERNETES_METADATA_SKIP_NAMESPACE_METADATA'] || 'false'}"
+    </filter>
+
+    # Elasticsearch output
+    <match **>
+      @type elasticsearch
+      @id out_es
+      @log_level info
+      include_tag_key true
+      host "#{ENV['FLUENT_ELASTICSEARCH_HOST']}"
+      port "#{ENV['FLUENT_ELASTICSEARCH_PORT']}"
+      path "#{ENV['FLUENT_ELASTICSEARCH_PATH']}"
+      scheme "#{ENV['FLUENT_ELASTICSEARCH_SCHEME'] || 'http'}"
+      ssl_verify "#{ENV['FLUENT_ELASTICSEARCH_SSL_VERIFY'] || 'true'}"
+      ssl_version "#{ENV['FLUENT_ELASTICSEARCH_SSL_VERSION'] || 'TLSv1_2'}"
+      user "#{ENV['FLUENT_ELASTICSEARCH_USER'] || use_default}"
+      password "#{ENV['FLUENT_ELASTICSEARCH_PASSWORD'] || use_default}"
+      index_name "#{ENV['FLUENT_ELASTICSEARCH_INDEX_NAME'] || 'logstash'}"
+      type_name "#{ENV['FLUENT_ELASTICSEARCH_TYPE_NAME'] || '_doc'}"
+      logstash_format true
+      logstash_prefix "#{ENV['FLUENT_ELASTICSEARCH_LOGSTASH_PREFIX'] || 'logstash'}"
+      logstash_dateformat "#{ENV['FLUENT_ELASTICSEARCH_LOGSTASH_DATEFORMAT'] || '%Y.%m.%d'}"
+      include_timestamp true
+      reload_connections false
+      reconnect_on_error true
+      reload_on_failure true
+      log_es_400_reason false
+      <buffer>
+        @type file
+        path /var/log/fluentd-buffers/kubernetes.system.buffer
+        flush_mode interval
+        retry_type exponential_backoff
+        flush_thread_count 2
+        flush_interval 5s
+        retry_forever
+        retry_max_interval 30
+        chunk_limit_size "#{ENV['FLUENT_ELASTICSEARCH_BUFFER_CHUNK_LIMIT_SIZE'] || '2M'}"
+        queue_limit_length "#{ENV['FLUENT_ELASTICSEARCH_BUFFER_QUEUE_LIMIT_LENGTH'] || '8'}"
+        overflow_action block
+      </buffer>
+    </match>
