@@ -2,12 +2,15 @@
 # Uses official fluentd image with Elasticsearch plugins
 # Based on https://github.com/fluent/helm-charts/tree/main/charts/fluentd
 
+# Deploy fluentd as deployment (NOT DaemonSet)
+kind: "Deployment"
 replicaCount: 2
 
-# Use official production image with Elasticsearch plugin
+# Use official production image with Elasticsearch plugin  
+# According to documentation: use standard fluentd image for Deployment
 image:
-  repository: fluent/fluentd-kubernetes-daemonset
-  tag: "v1.19-debian-elasticsearch8-1"
+  repository: fluent/fluentd
+  tag: "v1.17"
 
 # Environment variables for Elasticsearch connection
 env:
@@ -45,7 +48,45 @@ service:
       protocol: TCP
       containerPort: 24224
 
-# Use default DaemonSet configuration with environment variables
+# Fluentd plugins to install (required for Deployment)
+plugins:
+  - fluent-plugin-elasticsearch
+
+# Fluentd configuration files for Deployment
+fileConfigs:
+  01_sources.conf: |-
+    # Forward input from FluentBit
+    <source>
+      @type forward
+      port 24224
+      bind 0.0.0.0
+    </source>
+    
+  04_outputs.conf: |-
+    <match **>
+      @type elasticsearch
+      host "#{ENV['FLUENT_ELASTICSEARCH_HOST']}"
+      port "#{ENV['FLUENT_ELASTICSEARCH_PORT']}"
+      scheme "#{ENV['FLUENT_ELASTICSEARCH_SCHEME']}"
+      ssl_verify "#{ENV['FLUENT_ELASTICSEARCH_SSL_VERIFY']}"
+      user "#{ENV['FLUENT_ELASTICSEARCH_USER']}"
+      password "#{ENV['FLUENT_ELASTICSEARCH_PASSWORD']}"
+      logstash_format true
+      logstash_prefix fluentd-k8s
+      include_tag_key true
+      tag_key @log_name
+      <buffer>
+        @type file
+        path /buffers/fluentd-buffers
+        flush_mode interval
+        flush_interval 5s
+        retry_forever true
+        retry_max_interval 30
+        chunk_limit_size 2M
+        total_limit_size 500M
+        overflow_action block
+      </buffer>
+    </match>
 
 # Volume for buffers
 volumeMounts:
@@ -56,6 +97,21 @@ volumes:
   - name: buffer-storage
     emptyDir: {}
 
-# Service monitor for monitoring
+# Disable ServiceAccount and RBAC (Fluentd Deployment doesn't need k8s API access)
+serviceAccount:
+  create: false
+rbac:
+  create: false
+
+# Security context (non-root user)
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# Do not mount host directories (only needed for DaemonSet)
+mountVarLogDirectory: false
+mountDockerContainersDirectory: false
+
+# Service monitor for monitoring  
 serviceMonitor:
   enabled: true
