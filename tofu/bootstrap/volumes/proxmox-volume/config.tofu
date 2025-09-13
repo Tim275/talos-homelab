@@ -8,6 +8,8 @@ resource "restapi_object" "proxmox-volume" {
   id_attribute = "data"
 
   debug = true
+  
+  ignore_all_server_changes = true
 
   data = jsonencode({
     vmid     = var.volume.vmid
