@@ -1,85 +1,147 @@
-# SIMPLE WORKING FLUENTD CONFIGURATION
-# FluentBit → Fluentd → Elasticsearch
+# Log aggregation and distribution (Fluentd)
+# Based on picluster.ricsanfre.com enterprise configuration
 
-# Deploy as Deployment with 1 replica for homelab
+# Deploy as a Deployment (not DaemonSet) - centralized aggregation
 kind: "Deployment"
+
+# Single replica for homelab
 replicaCount: 1
 
-# Use base Fluentd image without default kubernetes configs
+# Use official Fluentd Kubernetes image with all plugins
 image:
-  repository: fluent/fluentd
-  tag: "v1.17-1"
+  repository: "fluent/fluentd-kubernetes-daemonset"
+  pullPolicy: "IfNotPresent"
+  tag: "v1.16.2-debian-elasticsearch7-1.2"
 
-# Environment variables for Elasticsearch connection
+# Environment variables
 env:
-  - name: FLUENTD_CONF
-    value: "/etc/fluent/fluent.conf"
-  - name: FLUENT_ELASTICSEARCH_HOST
-    value: "production-cluster-es-http.elastic-system"
-  - name: FLUENT_ELASTICSEARCH_PORT  
-    value: "9200"
-  - name: FLUENT_ELASTICSEARCH_SCHEME
-    value: "https"
-  - name: FLUENT_ELASTICSEARCH_SSL_VERIFY
-    value: "false"
-  - name: FLUENT_ELASTICSEARCH_USER
-    value: "elastic"
-  - name: FLUENT_ELASTICSEARCH_PASSWORD
-    valueFrom:
-      secretKeyRef:
-        name: production-cluster-es-elastic-user
-        key: elastic
+  - name: "FLUENT_CONF"
+    value: "../../etc/fluent/fluent.conf"
+  - name: "FLUENTD_SYSTEMD_CONF"
+    value: "disable"
+  - name: "FLUENTD_PROMETHEUS_CONF"
+    value: "disable"
 
-# Resource limits
+# Secret with Elasticsearch credentials
+envFrom:
+  - secretRef:
+      name: fluentd-es-secret
+
+# Resource limits for homelab
 resources:
   limits:
-    cpu: 500m
-    memory: 1Gi
+    memory: "1Gi"
+    cpu: "500m"
   requests:
-    cpu: 200m
-    memory: 512Mi
+    memory: "512Mi"
+    cpu: "200m"
 
-# Service for FluentBit → Fluentd communication
+# Service configuration for FluentBit forwarding
 service:
-  enabled: true
-  type: ClusterIP
+  type: "ClusterIP"
+  annotations: {}
   ports:
-    - name: forwarder
+    - name: "forwarder"
       protocol: TCP
       containerPort: 24224
+      servicePort: 24224
 
-# No plugins needed - already in image
-plugins: []
+# Service Account with RBAC
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
 
-# OVERRIDE ALL DEFAULT CONFIGS - SIMPLE WORKING CONFIG
+# RBAC permissions
+rbac:
+  create: true
+
+# Pod Security Context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+# Security Context
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  capabilities:
+    drop:
+    - ALL
+
+# Volume mounts
+volumeMounts:
+  - name: fluentd-buffer
+    mountPath: /var/log/fluentd-buffers/
+  - name: tmp
+    mountPath: /tmp
+  - name: var-log
+    mountPath: /var/log
+
+# Volumes
+volumes:
+  - name: fluentd-buffer
+    emptyDir: {}
+  - name: tmp
+    emptyDir: {}
+  - name: var-log
+    emptyDir: {}
+
+# File configurations - main Fluentd configuration
 fileConfigs:
-  fluent.conf: |-
-    # Receive logs from FluentBit
+  # Main configuration file
+  01_sources.conf: |-
+    # FluentBit forwarding port
     <source>
       @type forward
       port 24224
       bind 0.0.0.0
     </source>
-    
-    # Send everything directly to Elasticsearch
+
+  02_filters.conf: |-
+    # Remove empty log entries
+    <filter **>
+      @type grep
+      <exclude>
+        key log
+        pattern /^$/
+      </exclude>
+    </filter>
+
+    # Add timestamp
+    <filter **>
+      @type record_transformer
+      <record>
+        timestamp ${time}
+      </record>
+    </filter>
+
+  04_outputs.conf: |-
+    # Send all logs to Elasticsearch
     <match **>
       @type elasticsearch
-      host "#{ENV['FLUENT_ELASTICSEARCH_HOST']}"
-      port "#{ENV['FLUENT_ELASTICSEARCH_PORT']}"
-      scheme "#{ENV['FLUENT_ELASTICSEARCH_SCHEME']}"
-      ssl_verify "#{ENV['FLUENT_ELASTICSEARCH_SSL_VERIFY']}"
-      user "#{ENV['FLUENT_ELASTICSEARCH_USER']}"
-      password "#{ENV['FLUENT_ELASTICSEARCH_PASSWORD']}"
+      host production-cluster-es-http.elastic-system
+      port 9200
+      scheme https
+      ssl_verify false
+      user "#{ENV['ELASTICSEARCH_USERNAME']}"
+      password "#{ENV['ELASTICSEARCH_PASSWORD']}"
       logstash_format true
       logstash_prefix homelab-logs
+      logstash_dateformat %Y.%m.%d
       include_tag_key true
       tag_key @log_name
       <buffer>
         @type file
-        path /buffers/fluentd-buffers
+        path /var/log/fluentd-buffers/kubernetes.system.buffer
         flush_mode interval
+        retry_type exponential_backoff
+        flush_thread_count 2
         flush_interval 5s
-        retry_forever true
+        retry_forever
         retry_max_interval 30
         chunk_limit_size 2M
         total_limit_size 500M
@@ -87,47 +149,23 @@ fileConfigs:
       </buffer>
     </match>
 
-# COMPLETELY DISABLE all default file configs that interfere
-configMapConfigs: []
+# Disable default configurations
 defaultConfigs:
   enabled: false
-  
-# OVERRIDE ALL POSSIBLE DEFAULT CONFIGS  
-configMaps:
-  general.conf: ""
-  system.conf: ""
-  forward-input.conf: ""
-  output.conf: ""
-  
-# Disable ALL default configs from Helm chart
-dashboards:
+
+# Disable monitoring for now
+metrics:
   enabled: false
-defaultConfigMap:
-  enabled: false
+  serviceMonitor:
+    enabled: false
 
-# Buffer storage
-volumeMounts:
-  - name: buffer-storage
-    mountPath: /buffers
-
-volumes:
-  - name: buffer-storage
-    emptyDir: {}
-
-# Enable RBAC for Kubernetes metadata
-serviceAccount:
-  create: true
-rbac:
-  create: true
-mountVarLogDirectory: false
-mountDockerContainersDirectory: false
-
-# COMPLETELY disable health checks
-readinessProbe:
-  enabled: false
+# Health checks
 livenessProbe:
   enabled: false
 
-# No monitoring for now
-serviceMonitor:
+readinessProbe:
   enabled: false
+
+# Update strategy
+updateStrategy:
+  type: Recreate
