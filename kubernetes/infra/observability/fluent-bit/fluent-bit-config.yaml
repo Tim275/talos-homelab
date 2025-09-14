@@ -1,0 +1,110 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  namespace: elastic-system
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Daemon          false
+        Flush           1
+        Log_Level       info
+        Parsers_File    /fluent-bit/etc/parsers.conf
+        HTTP_Server     On
+        HTTP_Listen     0.0.0.0
+        HTTP_Port       2020
+        Health_Check    On
+        storage.path    /var/log/fluentbit/storage
+        storage.sync    full
+        storage.checksum    on
+        storage.backlog.mem_limit    5M
+    
+    [INPUT]
+        Name            tail
+        Path            /var/log/containers/*.log
+        Path_Key        filename
+        multiline.parser    cri
+        Tag             kube.*
+        DB              /var/log/fluentbit/tail-db/flb_kube.db
+        storage.type    filesystem
+        Skip_Long_Lines On
+    
+    # Talos-specific host log inputs (replaces traditional syslog)
+    [INPUT]
+        Name              systemd
+        Tag               host.systemd
+        Systemd_Filter    _SYSTEMD_UNIT=kubelet.service
+        Systemd_Filter    _SYSTEMD_UNIT=containerd.service
+        Systemd_Filter    _SYSTEMD_UNIT=etcd.service
+        Systemd_Filter    _SYSTEMD_UNIT=apid.service
+        Systemd_Filter    _SYSTEMD_UNIT=trustd.service
+        Max_Entries       1000
+        
+    [INPUT]
+        Name              kmsg
+        Tag               host.kernel
+        
+    [INPUT]
+        Name              proc
+        Tag               host.proc
+        Proc_Name         /proc/meminfo
+        Interval_Sec      30
+    
+    # OPTIONAL: Traditional syslog files (disabled for Talos - no such files exist)
+    # [INPUT]
+    #     Name            tail
+    #     Path            /var/log/auth.log,/var/log/syslog
+    #     Path_Key        filename
+    #     Parser          syslog-rfc3164-nopri
+    #     Tag             host.*
+    #     DB              /var/log/fluentbit/tail-db/flb_host.db
+    #     storage.type    filesystem
+    
+    [FILTER]
+        Name            kubernetes
+        Match           kube.*
+        Buffer_Size     512k
+        Kube_Tag_Prefix kube.var.log.containers.
+        Merge_Log       Off
+        K8S-Logging.Parser  On
+        K8S-Logging.Exclude On
+        Labels          On
+        Annotations     Off
+    
+    [FILTER]
+        Name        modify
+        Match       kube.*
+        Rename      kubernetes_pod_name pod
+        Rename      kubernetes_namespace_name namespace
+        Rename      kubernetes_container_name container
+        Rename      kubernetes_host host
+        Remove_wildcard kubernetes_
+        Remove      _p
+        Add         index_pattern kubernetes-logs
+    
+    # Add host information to Talos host logs
+    [FILTER]
+        Name        modify
+        Match       host.*
+        Add         source_type talos_host
+        Add         log_category system
+        Add         index_pattern talos-system-logs
+    
+    [OUTPUT]
+        Name        forward
+        Match       *
+        # FIXED: Correct Fluentd service endpoint for EFK pipeline
+        # FluentBit -> Fluentd -> Elasticsearch architecture
+        Host        fluentd.elastic-system.svc.cluster.local
+        Port        24224
+        storage.total_limit_size    5M
+        Retry_Limit 3
+  
+  parsers.conf: |
+    [PARSER]
+        Name        syslog-rfc3164-nopri
+        Format      regex
+        Regex       ^(?<time>[^ ]* {1,2}[^ ]* [^ ]*) (?<host>[^ ]*) (?<ident>[a-zA-Z0-9_/.\-]*)(?:\[(?<pid>[0-9]+)\])?(?:[^:]*)? *(?<log>.*)$
+        Time_Key    time
+        Time_Format %b %d %H:%M:%S
+        Time_Keep   Off

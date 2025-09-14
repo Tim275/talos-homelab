@@ -4,7 +4,7 @@ metadata:
   name: production-cluster
   namespace: elastic-system
 spec:
-  version: 8.15.0
+  version: 8.16.1
   # 3-node production cluster
   nodeSets:
   - name: master-data
@@ -16,8 +16,10 @@ spec:
       cluster.initial_master_nodes: ["production-cluster-master-data-0", "production-cluster-master-data-1", "production-cluster-master-data-2"]
       # Memory settings
       xpack.security.enabled: true
-      # Index settings
-      action.auto_create_index: "+fluent*,-*"
+      # CRITICAL FIX: Allow ALL indices for logging pipeline
+      # Previously was "+fluent*,-*" which blocked logstash* indices - this was the ROOT CAUSE
+      # of the EFK stack failure. FluentBit -> Fluentd -> Elasticsearch requires logstash format
+      action.auto_create_index: "true"
     podTemplate:
       metadata:
         labels:
@@ -76,7 +78,7 @@ metadata:
   name: production-kibana
   namespace: elastic-system
 spec:
-  version: 8.15.0
+  version: 8.16.1
   count: 1
   elasticsearchRef:
     name: production-cluster
