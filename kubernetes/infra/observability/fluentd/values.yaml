@@ -1,8 +1,7 @@
-# Production Fluentd Aggregator Deployment
-# Enterprise EFK Architecture: FluentBit (DaemonSet) → Fluentd (Deployment) → Elasticsearch
-# Based on picluster.ricsanfre.com - Used by Google, Microsoft, Netflix
+# SIMPLE WORKING FLUENTD CONFIGURATION
+# FluentBit → Fluentd → Elasticsearch
 
-# Deploy as Deployment with 1 replica for homelab (NOT DaemonSet)
+# Deploy as Deployment with 1 replica for homelab
 kind: "Deployment"
 replicaCount: 1
 
@@ -29,7 +28,7 @@ env:
         name: production-cluster-es-elastic-user
         key: elastic
 
-# Production resource limits for aggregator workload
+# Resource limits
 resources:
   limits:
     cpu: 500m
@@ -38,7 +37,7 @@ resources:
     cpu: 200m
     memory: 512Mi
 
-# ClusterIP service for FluentBit → Fluentd communication
+# Service for FluentBit → Fluentd communication
 service:
   enabled: true
   type: ClusterIP
@@ -47,57 +46,34 @@ service:
       protocol: TCP
       containerPort: 24224
 
-# No additional plugins needed (included in custom image)
+# No additional plugins needed
 plugins: []
 
-# Clean aggregator configuration - Direct forward to Elasticsearch
+# SUPER SIMPLE CONFIG THAT JUST WORKS
 fileConfigs:
-  01_sources.conf: |-
-    # Receive forwarded logs from FluentBit DaemonSet
+  fluent.conf: |-
+    # Receive logs from FluentBit
     <source>
       @type forward
       port 24224
       bind 0.0.0.0
     </source>
     
-  02_filters.conf: |-
-    # Optional: Add aggregator hostname for troubleshooting
-    <filter **>
-      @type record_transformer
-      <record>
-        fluentd_aggregator "#{Socket.gethostname}"
-      </record>
-    </filter>
-    
-  03_outputs.conf: |-
-    # Direct Elasticsearch output (clean aggregator config)
+    # Send everything to Elasticsearch
     <match **>
       @type elasticsearch
-      host "#{ENV['FLUENT_ELASTICSEARCH_HOST']}"
-      port "#{ENV['FLUENT_ELASTICSEARCH_PORT']}"
-      scheme "#{ENV['FLUENT_ELASTICSEARCH_SCHEME']}"
-      ssl_verify "#{ENV['FLUENT_ELASTICSEARCH_SSL_VERIFY']}"
-      user "#{ENV['FLUENT_ELASTICSEARCH_USER']}"
+      host production-cluster-es-http.elastic-system
+      port 9200
+      scheme https
+      ssl_verify false
+      user elastic
       password "#{ENV['FLUENT_ELASTICSEARCH_PASSWORD']}"
       logstash_format true
-      logstash_prefix fluentbit
-      include_tag_key true
-      tag_key @log_name
-      suppress_type_name true
-      <buffer>
-        @type file
-        path /buffers/fluentd-buffers
-        flush_mode interval
-        flush_interval 5s
-        retry_forever true
-        retry_max_interval 30
-        chunk_limit_size 2M
-        total_limit_size 500M
-        overflow_action block
-      </buffer>
+      logstash_prefix homelab-logs
+      flush_interval 10s
     </match>
 
-# Persistent buffer storage
+# Buffer storage
 volumeMounts:
   - name: buffer-storage
     mountPath: /buffers
@@ -106,25 +82,18 @@ volumes:
   - name: buffer-storage
     emptyDir: {}
 
-# CRITICAL: Disable K8s API access (aggregator doesn't need it)
+# Disable unnecessary features
 serviceAccount:
   create: false
 rbac:
   create: false
-
-# Non-root security context
-securityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-
-# Aggregator doesn't access host filesystem
 mountVarLogDirectory: false
 mountDockerContainersDirectory: false
 
-# Disable health checks completely - metrics endpoint not available  
+# Disable health checks (they don't work anyway)
 readinessProbe: {}
 livenessProbe: {}
 
-# Disable monitoring until metrics endpoint is available
+# No monitoring for now
 serviceMonitor:
   enabled: false
