@@ -50,8 +50,7 @@ service:
 # No additional plugins needed (included in custom image)
 plugins: []
 
-# Pure aggregator configuration - NO kubernetes_metadata filter!
-# FluentBit already enriched logs with K8s metadata
+# Clean aggregator configuration - Direct forward to Elasticsearch
 fileConfigs:
   01_sources.conf: |-
     # Receive forwarded logs from FluentBit DaemonSet
@@ -71,7 +70,7 @@ fileConfigs:
     </filter>
     
   03_outputs.conf: |-
-    # Direct Elasticsearch output (simple aggregator config)
+    # Direct Elasticsearch output (clean aggregator config)
     <match **>
       @type elasticsearch
       host "#{ENV['FLUENT_ELASTICSEARCH_HOST']}"
@@ -81,9 +80,10 @@ fileConfigs:
       user "#{ENV['FLUENT_ELASTICSEARCH_USER']}"
       password "#{ENV['FLUENT_ELASTICSEARCH_PASSWORD']}"
       logstash_format true
-      logstash_prefix homelab-k8s
+      logstash_prefix fluentbit
       include_tag_key true
       tag_key @log_name
+      suppress_type_name true
       <buffer>
         @type file
         path /buffers/fluentd-buffers
