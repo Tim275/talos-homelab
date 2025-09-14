@@ -1,0 +1,129 @@
+---
+# EFK STACK - WORKING CONFIGURATION (2025-09-14)
+# FluentBit -> Fluentd -> Elasticsearch -> Kibana
+# This configuration successfully resolves the index creation blocking issue
+# 
+# CRITICAL: Elasticsearch must have action.auto_create_index: "true" 
+# CRITICAL: Service name MUST be "fluentd" to match FluentBit configuration
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluentd-basic-config
+  namespace: elastic-system
+data:
+  fluent.conf: |-
+    # Ignore Fluentd's own logs to avoid recursion
+    <match fluent.**>
+      @type null
+    </match>
+    
+    # Input: Forward protocol from FluentBit
+    <source>
+      @type forward
+      port 24224
+      bind 0.0.0.0
+    </source>
+    
+    # Output: Send all logs to Elasticsearch
+    <match **>
+       @type elasticsearch
+       @log_level info
+       include_tag_key true
+       host production-cluster-es-http.elastic-system
+       port 9200
+       path ""
+       scheme https
+       ssl_verify false
+       user elastic
+       password 04h26K03zEMhI7I9DRbk5AT5
+       reload_connections false
+       reconnect_on_error true
+       reload_on_failure true
+       logstash_prefix logstash
+       logstash_dateformat %Y.%m.%d       
+       logstash_format true
+       <buffer>
+        @type file
+        path /var/log/fluentd-buffers/kubernetes.system.buffer
+        flush_mode interval
+        flush_interval 5s
+        chunk_limit_size 2M
+        total_limit_size 500M
+        overflow_action block
+        retry_forever true
+        retry_max_interval 30
+       </buffer>
+    </match>
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluentd-basic
+  namespace: elastic-system
+  labels:
+    app.kubernetes.io/name: fluentd-basic
+    app.kubernetes.io/part-of: observability-stack
+    app.kubernetes.io/component: log-aggregator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluentd-basic
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fluentd-basic
+    spec:
+      serviceAccount: fluentd
+      containers:
+      - name: fluentd
+        image: fluent/fluentd-kubernetes-daemonset:v1-debian-elasticsearch
+        env:
+        - name: FLUENTD_CONF
+          value: fluent.conf
+        resources:
+          limits:
+            memory: 1Gi
+            cpu: 500m
+          requests:
+            memory: 512Mi
+            cpu: 200m
+        volumeMounts:
+        - name: fluentd-config
+          mountPath: /fluentd/etc
+        - name: bufferstorage
+          mountPath: /var/log/fluentd-buffers
+        ports:
+        - containerPort: 24224
+          name: forward
+          protocol: TCP
+        - containerPort: 24231
+          name: prometheus
+          protocol: TCP
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: fluentd-config
+        configMap:
+          name: fluentd-basic-config
+      - name: bufferstorage
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluentd  # CRITICAL: Must be "fluentd" to match FluentBit config
+  namespace: elastic-system
+  labels:
+    app.kubernetes.io/name: fluentd-basic
+spec:
+  ports:
+  - name: forward
+    port: 24224
+    protocol: TCP
+    targetPort: 24224
+  selector:
+    app.kubernetes.io/name: fluentd-basic
+  type: ClusterIP
