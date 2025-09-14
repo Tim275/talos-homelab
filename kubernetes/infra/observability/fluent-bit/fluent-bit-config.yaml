@@ -29,14 +29,36 @@ data:
         storage.type    filesystem
         Skip_Long_Lines On
     
+    # Talos-specific host log inputs (replaces traditional syslog)
     [INPUT]
-        Name            tail
-        Path            /var/log/auth.log,/var/log/syslog
-        Path_Key        filename
-        Parser          syslog-rfc3164-nopri
-        Tag             host.*
-        DB              /var/log/fluentbit/tail-db/flb_host.db
-        storage.type    filesystem
+        Name              systemd
+        Tag               host.systemd
+        Systemd_Filter    _SYSTEMD_UNIT=kubelet.service
+        Systemd_Filter    _SYSTEMD_UNIT=containerd.service
+        Systemd_Filter    _SYSTEMD_UNIT=etcd.service
+        Systemd_Filter    _SYSTEMD_UNIT=apid.service
+        Systemd_Filter    _SYSTEMD_UNIT=trustd.service
+        Max_Entries       1000
+        
+    [INPUT]
+        Name              kmsg
+        Tag               host.kernel
+        
+    [INPUT]
+        Name              proc
+        Tag               host.proc
+        Proc_Name         /proc/meminfo
+        Interval_Sec      30
+    
+    # OPTIONAL: Traditional syslog files (disabled for Talos - no such files exist)
+    # [INPUT]
+    #     Name            tail
+    #     Path            /var/log/auth.log,/var/log/syslog
+    #     Path_Key        filename
+    #     Parser          syslog-rfc3164-nopri
+    #     Tag             host.*
+    #     DB              /var/log/fluentbit/tail-db/flb_host.db
+    #     storage.type    filesystem
     
     [FILTER]
         Name            kubernetes
@@ -58,6 +80,13 @@ data:
         Rename      kubernetes_host host
         Remove_wildcard kubernetes_
         Remove      _p
+    
+    # Add host information to Talos host logs
+    [FILTER]
+        Name        modify
+        Match       host.*
+        Add         source_type talos_host
+        Add         log_category system
     
     [OUTPUT]
         Name        forward
