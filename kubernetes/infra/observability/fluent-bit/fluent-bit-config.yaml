@@ -4,110 +4,72 @@ metadata:
   name: fluent-bit-config
   namespace: elastic-system
 data:
-  fluent-bit.yaml: |
-    # Service configuration
-    service:
-      daemon: false
-      flush: 1
-      log_level: info
-      http_server: true
-      http_listen: 0.0.0.0
-      http_port: 2020
-      health_check: true
-      hot_reload: true
-      storage.path: /var/log/fluentbit/storage
-      storage.sync: full
-      storage.checksum: true
-      storage.backlog.mem_limit: 5M
-      storage.metrics: true
+  fluent-bit.conf: |
+    [SERVICE]
+        Daemon          false
+        Flush           1
+        Log_Level       info
+        HTTP_Server     On
+        HTTP_Listen     0.0.0.0
+        HTTP_Port       2020
+        Health_Check    On
+        storage.path    /var/log/fluentbit/storage
+        storage.sync    full
+        storage.checksum    on
+        storage.backlog.mem_limit    5M
     
-    parsers:
-      # Simple syslog parser  
-      - name: syslog-rfc3164-nopri
-        format: regex
-        regex: '^(?<time>[^ ]* {1,2}[^ ]* [^ ]*) (?<host>[^ ]*) (?<ident>[a-zA-Z0-9_/.\\-]*)(?:\\[(?<pid>[0-9]+)\\])?(?:[^:]*:)? *(?<log>.*)$'
-        time_key: time
-        time_format: '%b %d %H:%M:%S'
-        time_keep: false
+    [INPUT]
+        Name            tail
+        Path            /var/log/containers/*.log
+        Path_Key        filename
+        multiline.parser    cri
+        Tag             kube.*
+        DB              /var/log/fluentbit/tail-db/flb_kube.db
+        storage.type    filesystem
+        Skip_Long_Lines On
     
-    pipeline:
-      inputs:
-        # kubernetes logs
-        - name: tail
-          alias: input.kube
-          path: /var/log/containers/*.log
-          path_key: filename
-          multiline.parser: cri
-          tag: kube.*
-          db: /var/log/fluentbit/tail-db/flb_kube.db
-          storage.type: filesystem
-          skip_long_lines: true
-        
-        # K3s and OS level logs  
-        - name: tail
-          alias: input.host
-          path: /var/log/auth.log, /var/log/syslog
-          path_key: filename
-          parser: syslog-rfc3164-nopri
-          tag: host.*
-          db: /var/log/fluentbit/tail-db/flb_host.db
-          storage.type: filesystem
-      
-      filters:
-        - name: multiline
-          match: '*'
-          multiline.key_content: log
-          multiline.parser: go, java, python
-        
-        - name: kubernetes
-          match: kube.*
-          buffer_size: 512k
-          kube_tag_prefix: kube.var.log.containers.
-          merge_log: false
-          k8s-logging.parser: true
-          k8s-logging.exclude: true
-          labels: true
-          annotations: false
-        
-        - name: lua
-          match: kube.*
-          call: extract_app_name
-          code: |
-            function extract_app_name(tag, timestamp, record)
-                if record["kubernetes"] ~= nil then
-                    if record["kubernetes"]["labels"]["app.kubernetes.io/name"] ~= nil then
-                        record["app"] = record["kubernetes"]["labels"]["app.kubernetes.io/name"]
-                    end
-                    if record["kubernetes"]["labels"]["app"] ~= nil then
-                        record["app"] = record["kubernetes"]["labels"]["app"]
-                    end
-                end
-                return 1, timestamp, record
-            end
-        
-        - name: nest
-          match: kube.*
-          operation: lift
-          nested_under: kubernetes
-          add_prefix: kubernetes_
-        
-        - name: modify
-          match: kube.*
-          rename: kubernetes_pod_name pod
-          rename: kubernetes_namespace_name namespace
-          rename: kubernetes_container_name container
-          rename: kubernetes_host host
-          remove_wildcard: kubernetes_
-          remove: _p
-
-      outputs:
-        # ENTERPRISE: FluentBit → Fluentd → Elasticsearch
-        - name: forward
-          alias: output.fluentd
-          match: '*'
-          host: fluentd.elastic-system.svc.cluster.local
-          port: 24224
-          # Enable storage for reliability
-          storage.total_limit_size: 5M
-          # Retry configuration
-          retry_limit: 3
+    [INPUT]
+        Name            tail
+        Path            /var/log/auth.log,/var/log/syslog
+        Path_Key        filename
+        Parser          syslog-rfc3164-nopri
+        Tag             host.*
+        DB              /var/log/fluentbit/tail-db/flb_host.db
+        storage.type    filesystem
+    
+    [PARSER]
+        Name        syslog-rfc3164-nopri
+        Format      regex
+        Regex       ^(?<time>[^ ]* {1,2}[^ ]* [^ ]*) (?<host>[^ ]*) (?<ident>[a-zA-Z0-9_/.\-]*)(?:\[(?<pid>[0-9]+)\])?(?:[^:]*)? *(?<log>.*)$
+        Time_Key    time
+        Time_Format %b %d %H:%M:%S
+        Time_Keep   Off
+    
+    [FILTER]
+        Name            kubernetes
+        Match           kube.*
+        Buffer_Size     512k
+        Kube_Tag_Prefix kube.var.log.containers.
+        Merge_Log       Off
+        K8S-Logging.Parser  On
+        K8S-Logging.Exclude On
+        Labels          On
+        Annotations     Off
+    
+    [FILTER]
+        Name        modify
+        Match       kube.*
+        Rename      kubernetes_pod_name pod
+        Rename      kubernetes_namespace_name namespace
+        Rename      kubernetes_container_name container
+        Rename      kubernetes_host host
+        Remove_wildcard kubernetes_
+        Remove      _p
+    
+    [OUTPUT]
+        Name        forward
+        Match       *
+        Host        fluentd.elastic-system.svc.cluster.local
+        Port        24224
+        storage.total_limit_size    5M
+        Retry_Limit 3
