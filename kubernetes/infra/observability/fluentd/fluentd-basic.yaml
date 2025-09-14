@@ -1,10 +1,14 @@
 ---
-# EFK STACK - WORKING CONFIGURATION (2025-09-14)
+# EFK STACK - PRODUCTION CONFIGURATION (2025-09-14)
 # FluentBit -> Fluentd -> Elasticsearch -> Kibana
-# This configuration successfully resolves the index creation blocking issue
 # 
-# CRITICAL: Elasticsearch must have action.auto_create_index: "true" 
+# FIXED ISSUES:
+# - Elasticsearch action.auto_create_index: "true" (was blocking logstash* indices)
+# - Service selector mismatch fixed (service expects app.kubernetes.io/name: fluentd)
+# - Single Fluentd deployment to avoid conflicts
+# 
 # CRITICAL: Service name MUST be "fluentd" to match FluentBit configuration
+# CRITICAL: Pod labels MUST match service selector for proper traffic routing
 
 apiVersion: v1
 kind: ConfigMap
@@ -63,18 +67,21 @@ metadata:
   name: fluentd-basic
   namespace: elastic-system
   labels:
-    app.kubernetes.io/name: fluentd-basic
+    app.kubernetes.io/name: fluentd
+    app.kubernetes.io/instance: fluentd
     app.kubernetes.io/part-of: observability-stack
     app.kubernetes.io/component: log-aggregator
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: fluentd-basic
+      app.kubernetes.io/name: fluentd
+      app.kubernetes.io/instance: fluentd
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: fluentd-basic
+        app.kubernetes.io/name: fluentd
+        app.kubernetes.io/instance: fluentd
     spec:
       serviceAccount: fluentd
       containers:
@@ -117,7 +124,8 @@ metadata:
   name: fluentd  # CRITICAL: Must be "fluentd" to match FluentBit config
   namespace: elastic-system
   labels:
-    app.kubernetes.io/name: fluentd-basic
+    app.kubernetes.io/name: fluentd
+    app.kubernetes.io/instance: fluentd
 spec:
   ports:
   - name: forward
@@ -125,5 +133,6 @@ spec:
     protocol: TCP
     targetPort: 24224
   selector:
-    app.kubernetes.io/name: fluentd-basic
+    app.kubernetes.io/name: fluentd
+    app.kubernetes.io/instance: fluentd
   type: ClusterIP
