@@ -1,160 +1,56 @@
-# Log aggregation and distribution (Fluentd)
-# Based on picluster.ricsanfre.com enterprise configuration
+# Simple Fluentd Configuration - Use Official Defaults
+# Just override what we need for our Elasticsearch cluster
 
-# Deploy as a Deployment (not DaemonSet) - centralized aggregation
-kind: "Deployment"
-
-# Single replica for homelab
+# Deploy as single replica for homelab
 replicaCount: 1
 
-# Use official Fluentd Kubernetes image with all plugins
+# Use official Fluentd image
 image:
   repository: "fluent/fluentd-kubernetes-daemonset"
-  pullPolicy: "IfNotPresent"
   tag: "v1.16.2-debian-elasticsearch7-1.2"
 
-# Environment variables
+# Environment variables for Elasticsearch
 env:
-  - name: "FLUENT_CONF"
-    value: "../../etc/fluent/fluent.conf"
-  - name: "FLUENTD_SYSTEMD_CONF"
-    value: "disable"
-  - name: "FLUENTD_PROMETHEUS_CONF"
-    value: "disable"
+  - name: "FLUENT_ELASTICSEARCH_HOST"
+    value: "production-cluster-es-http.elastic-system"
+  - name: "FLUENT_ELASTICSEARCH_PORT"
+    value: "9200"
+  - name: "FLUENT_ELASTICSEARCH_SCHEME"
+    value: "https"
+  - name: "FLUENT_ELASTICSEARCH_SSL_VERIFY"
+    value: "false"
+  - name: "FLUENT_ELASTICSEARCH_USER"
+    value: "elastic"
+  - name: "FLUENT_ELASTICSEARCH_PASSWORD"
+    value: "04h26K03zEMhI7I9DRbk5AT5"
 
-# Secret with Elasticsearch credentials
-envFrom:
-  - secretRef:
-      name: fluentd-es-secret
-
-# Resource limits for homelab
-resources:
-  limits:
-    memory: "1Gi"
-    cpu: "500m"
-  requests:
-    memory: "512Mi"
-    cpu: "200m"
-
-# Service configuration for FluentBit forwarding
+# Service for FluentBit forwarding
 service:
   type: "ClusterIP"
-  annotations: {}
   ports:
     - name: "forwarder"
       protocol: TCP
       containerPort: 24224
       servicePort: 24224
 
-# Service Account with RBAC
-serviceAccount:
-  create: true
-  annotations: {}
-  name: ""
+# Resource limits
+resources:
+  limits:
+    memory: "1Gi"
+    cpu: "500m"
+  requests:
+    memory: "512Mi" 
+    cpu: "200m"
 
-# RBAC permissions
+# RBAC
 rbac:
   create: true
 
-# Pod Security Context
-podSecurityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  fsGroup: 1000
+serviceAccount:
+  create: true
 
-# Security Context
-securityContext:
-  allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: true
-  runAsNonRoot: true
-  runAsUser: 1000
-  capabilities:
-    drop:
-    - ALL
-
-# Volume mounts - only add additional ones, let Helm chart handle defaults
-volumeMounts:
-  - name: fluentd-buffer
-    mountPath: /var/log/fluentd-buffers/
-
-# Volumes - only add additional ones, let Helm chart handle defaults  
-volumes:
-  - name: fluentd-buffer
-    emptyDir: {}
-
-# File configurations - main Fluentd configuration
-fileConfigs:
-  # Main configuration file
-  01_sources.conf: |-
-    # FluentBit forwarding port
-    <source>
-      @type forward
-      port 24224
-      bind 0.0.0.0
-    </source>
-
-  02_filters.conf: |-
-    # Remove empty log entries
-    <filter **>
-      @type grep
-      <exclude>
-        key log
-        pattern /^$/
-      </exclude>
-    </filter>
-
-    # Add timestamp
-    <filter **>
-      @type record_transformer
-      <record>
-        timestamp ${time}
-      </record>
-    </filter>
-
-  04_outputs.conf: |-
-    # Send all logs to Elasticsearch
-    <match **>
-      @type elasticsearch
-      host production-cluster-es-http.elastic-system
-      port 9200
-      scheme https
-      ssl_verify false
-      user "#{ENV['ELASTICSEARCH_USERNAME']}"
-      password "#{ENV['ELASTICSEARCH_PASSWORD']}"
-      logstash_format true
-      logstash_prefix homelab-logs
-      logstash_dateformat %Y.%m.%d
-      include_tag_key true
-      tag_key @log_name
-      <buffer>
-        @type file
-        path /var/log/fluentd-buffers/kubernetes.system.buffer
-        flush_mode interval
-        retry_type exponential_backoff
-        flush_thread_count 2
-        flush_interval 5s
-        retry_forever
-        retry_max_interval 30
-        chunk_limit_size 2M
-        total_limit_size 500M
-        overflow_action block
-      </buffer>
-    </match>
-
-# Disable ALL default configurations - we provide our own
+# Use official defaults for everything else
 defaultConfigs:
-  enabled: false
+  enabled: true
 
-# Disable monitoring for now
-metrics:
-  enabled: false
-  serviceMonitor:
-    enabled: false
-
-# Disable health checks completely  
-livenessProbe: {}
-readinessProbe: {}
-
-# Update strategy
-updateStrategy:
-  type: Recreate
+# No custom file configs - let the chart handle it
