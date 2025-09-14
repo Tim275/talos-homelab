@@ -39,10 +39,26 @@ serviceAccount:
 defaultConfigs:
   enabled: false
 
-# COMPREHENSIVE DUAL-INDEX FLUENTD CONFIG FOR TALOS
+# SECURE DUAL-INDEX FLUENTD CONFIG FOR TALOS
 # FluentBit -> Fluentd -> Elasticsearch -> Kibana
 # kube.* tags -> kubernetes-logs-YYYY.MM.DD 
 # host.* tags -> talos-logs-YYYY.MM.DD
+
+# Environment variables for security
+env:
+  - name: ELASTICSEARCH_HOST
+    value: "production-cluster-es-http.elastic-system"
+  - name: ELASTICSEARCH_PORT
+    value: "9200"
+  - name: ELASTICSEARCH_SCHEME
+    value: "https"
+  - name: ELASTICSEARCH_SSL_VERIFY
+    value: "false"
+  - name: ELASTICSEARCH_USERNAME
+    value: "elastic"
+  - name: ELASTICSEARCH_PASSWORD
+    value: "04h26K03zEMhI7I9DRbk5AT5"
+
 fileConfigs:
   01_sources.conf: |-
     # Ignore Fluentd's own logs to prevent recursion
@@ -61,126 +77,27 @@ fileConfigs:
     # No additional filters needed - FluentBit handles all filtering
 
   03_outputs.conf: |-
-    # GRANULAR ROUTING EXAMPLE - Add specific pod routing first!
-    
-    # Route 0: ArgoCD logs to dedicated index (EXAMPLE)
-    <match kube.var.log.containers.argocd-**>
-      @type elasticsearch
-      @log_level info
-      include_tag_key true
-      host production-cluster-es-http.elastic-system
-      port 9200
-      path ""
-      scheme https
-      ssl_verify false
-      user elastic
-      password 04h26K03zEMhI7I9DRbk5AT5
-      reload_connections false
-      reconnect_on_error true
-      reload_on_failure true
-      # ARGOCD DEDICATED INDEX
-      logstash_prefix kubernetes-argocd
-      logstash_dateformat %Y.%m.%d
-      logstash_format true
-      <buffer>
-        @type file
-        path /var/log/fluentd-buffers/argocd.buffer
-        flush_mode interval
-        flush_interval 5s
-        chunk_limit_size 2M
-        total_limit_size 1G
-        overflow_action block
-        retry_forever true
-        retry_max_interval 30
-      </buffer>
-    </match>
-    
-    # Route 1: Monitoring namespace to dedicated index
-    <match kube.var.log.containers.**_monitoring_**>
-      @type elasticsearch
-      @log_level info
-      include_tag_key true
-      host production-cluster-es-http.elastic-system
-      port 9200
-      path ""
-      scheme https
-      ssl_verify false
-      user elastic
-      password 04h26K03zEMhI7I9DRbk5AT5
-      reload_connections false
-      reconnect_on_error true
-      reload_on_failure true
-      # MONITORING LOGS INDEX
-      logstash_prefix kubernetes-monitoring
-      logstash_dateformat %Y.%m.%d
-      logstash_format true
-      <buffer>
-        @type file
-        path /var/log/fluentd-buffers/monitoring.buffer
-        flush_mode interval
-        flush_interval 5s
-        chunk_limit_size 2M
-        total_limit_size 1G
-        overflow_action block
-        retry_forever true
-        retry_max_interval 30
-      </buffer>
-    </match>
-    
-    # Route 2: Platform services (ArgoCD, Istio, Cilium, etc.)
-    <match kube.var.log.containers.**_{argocd,istio-system,kube-system,cert-manager,gateway}_**>
-      @type elasticsearch
-      @log_level info
-      include_tag_key true
-      host production-cluster-es-http.elastic-system
-      port 9200
-      path ""
-      scheme https
-      ssl_verify false
-      user elastic
-      password 04h26K03zEMhI7I9DRbk5AT5
-      reload_connections false
-      reconnect_on_error true
-      reload_on_failure true
-      # PLATFORM LOGS INDEX
-      logstash_prefix kubernetes-platform
-      logstash_dateformat %Y.%m.%d
-      logstash_format true
-      <buffer>
-        @type file
-        path /var/log/fluentd-buffers/platform.buffer
-        flush_mode interval
-        flush_interval 5s
-        chunk_limit_size 2M
-        total_limit_size 1G
-        overflow_action block
-        retry_forever true
-        retry_max_interval 30
-      </buffer>
-    </match>
-    
-    # Route 3: Application logs (everything else) -> kubernetes-apps-*
+    # Route 1: ALL Kubernetes logs (kube.* tags) -> kubernetes-logs-*
     <match kube.**>
       @type elasticsearch
       @log_level info
       include_tag_key true
-      host production-cluster-es-http.elastic-system
-      port 9200
-      path ""
-      scheme https
-      ssl_verify false
-      user elastic
-      password 04h26K03zEMhI7I9DRbk5AT5
+      host "#{ENV['ELASTICSEARCH_HOST']}"
+      port "#{ENV['ELASTICSEARCH_PORT']}"
+      scheme "#{ENV['ELASTICSEARCH_SCHEME']}"
+      ssl_verify "#{ENV['ELASTICSEARCH_SSL_VERIFY']}"
+      user "#{ENV['ELASTICSEARCH_USERNAME']}"
+      password "#{ENV['ELASTICSEARCH_PASSWORD']}"
       reload_connections false
       reconnect_on_error true
       reload_on_failure true
-      # APPLICATION LOGS INDEX (fallback)
-      logstash_prefix kubernetes-apps
+      # KUBERNETES LOGS INDEX
+      logstash_prefix kubernetes-logs
       logstash_dateformat %Y.%m.%d
       logstash_format true
       <buffer>
         @type file
-        path /var/log/fluentd-buffers/apps.buffer
+        path /var/log/fluentd-buffers/kubernetes.buffer
         flush_mode interval
         flush_interval 5s
         chunk_limit_size 2M
@@ -191,18 +108,17 @@ fileConfigs:
       </buffer>
     </match>
     
-    # Route 4: ALL Talos Host System logs (host.* tags) -> talos-logs-*
+    # Route 2: ALL Talos Host System logs (host.* tags) -> talos-logs-*
     <match host.**>
       @type elasticsearch
       @log_level info
       include_tag_key true
-      host production-cluster-es-http.elastic-system
-      port 9200
-      path ""
-      scheme https
-      ssl_verify false
-      user elastic
-      password 04h26K03zEMhI7I9DRbk5AT5
+      host "#{ENV['ELASTICSEARCH_HOST']}"
+      port "#{ENV['ELASTICSEARCH_PORT']}"
+      scheme "#{ENV['ELASTICSEARCH_SCHEME']}"
+      ssl_verify "#{ENV['ELASTICSEARCH_SSL_VERIFY']}"
+      user "#{ENV['ELASTICSEARCH_USERNAME']}"
+      password "#{ENV['ELASTICSEARCH_PASSWORD']}"
       reload_connections false
       reconnect_on_error true
       reload_on_failure true
