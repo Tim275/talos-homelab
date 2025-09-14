@@ -1,0 +1,186 @@
+---
+# FluentBit DaemonSet - Enhanced for Talos Host Log Collection
+# Collects both container logs AND Talos host system logs (etcd, kubelet, kube-apiserver)
+# Routes to dual index architecture: kubernetes-logs-* and talos-system-logs-*
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit
+  namespace: elastic-system
+  labels:
+    app.kubernetes.io/name: fluent-bit
+    app.kubernetes.io/instance: fluent-bit
+    app.kubernetes.io/part-of: observability-stack
+    app.kubernetes.io/component: log-collector
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluent-bit
+      app.kubernetes.io/instance: fluent-bit
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fluent-bit
+        app.kubernetes.io/instance: fluent-bit
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "2020"
+        prometheus.io/path: "/api/v1/metrics/prometheus"
+    spec:
+      serviceAccount: fluent-bit
+      hostNetwork: false
+      dnsPolicy: ClusterFirst
+      containers:
+      - name: fluent-bit
+        image: fluent/fluent-bit:3.1.9
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        resources:
+          limits:
+            memory: 200Mi
+            cpu: 200m
+          requests:
+            memory: 100Mi
+            cpu: 100m
+        volumeMounts:
+        # Container logs
+        - name: varlogcontainers
+          mountPath: /var/log/containers
+          readOnly: true
+        - name: varlogpods  
+          mountPath: /var/log/pods
+          readOnly: true
+        # Talos host access
+        - name: etcmachineid
+          mountPath: /etc/machine-id
+          readOnly: true
+        - name: systemd-journal
+          mountPath: /run/log/journal
+          readOnly: true
+        - name: kmsg
+          mountPath: /dev/kmsg
+          readOnly: true
+        - name: proc
+          mountPath: /host/proc
+          readOnly: true
+        # FluentBit config and storage
+        - name: fluent-bit-config
+          mountPath: /fluent-bit/etc/
+        - name: fluentbit-storage
+          mountPath: /var/log/fluentbit
+        ports:
+        - containerPort: 2020
+          name: http-metrics
+        - containerPort: 24224
+          name: forward
+        livenessProbe:
+          httpGet:
+            path: /api/v1/health
+            port: 2020
+          initialDelaySeconds: 120
+          periodSeconds: 60
+        readinessProbe:
+          httpGet:
+            path: /api/v1/health  
+            port: 2020
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      terminationGracePeriodSeconds: 30
+      volumes:
+      # Container log access
+      - name: varlogcontainers
+        hostPath:
+          path: /var/log/containers
+      - name: varlogpods
+        hostPath:
+          path: /var/log/pods
+      # Talos host system access
+      - name: etcmachineid
+        hostPath:
+          path: /etc/machine-id
+          type: File
+      - name: systemd-journal
+        hostPath:
+          path: /run/log/journal
+          type: DirectoryOrCreate
+      - name: kmsg
+        hostPath:
+          path: /dev/kmsg
+          type: CharDevice
+      - name: proc
+        hostPath:
+          path: /proc
+          type: Directory
+      # FluentBit configuration and storage
+      - name: fluent-bit-config
+        configMap:
+          name: fluent-bit-config
+      - name: fluentbit-storage
+        hostPath:
+          path: /var/log/fluentbit
+          type: DirectoryOrCreate
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fluent-bit
+  namespace: elastic-system
+  labels:
+    app.kubernetes.io/name: fluent-bit
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fluent-bit
+  labels:
+    app.kubernetes.io/name: fluent-bit
+rules:
+- apiGroups: [""]
+  resources: ["namespaces", "pods", "pods/logs", "nodes", "nodes/proxy"]
+  verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fluent-bit
+  labels:
+    app.kubernetes.io/name: fluent-bit
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: fluent-bit
+subjects:
+- kind: ServiceAccount
+  name: fluent-bit
+  namespace: elastic-system
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluent-bit
+  namespace: elastic-system
+  labels:
+    app.kubernetes.io/name: fluent-bit
+spec:
+  ports:
+  - name: http-metrics
+    port: 2020
+    targetPort: 2020
+  - name: forward
+    port: 24224
+    targetPort: 24224
+  selector:
+    app.kubernetes.io/name: fluent-bit
+  type: ClusterIP
