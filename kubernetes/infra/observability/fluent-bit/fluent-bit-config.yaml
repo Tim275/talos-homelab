@@ -30,100 +30,13 @@ data:
         storage.type    filesystem
         Skip_Long_Lines On
     
-    # INPUT 2: Talos kernel messages via kmsg (privileged access)
-    [INPUT]
-        Name              kmsg
-        Tag               host.kernel
-        
-    # INPUT 3: Talos system logs via /proc/kmsg (privileged access)
-    [INPUT]
-        Name              tail
-        Path              /host/proc/kmsg
-        Path_Key          source_file
-        Tag               host.talos.kernel
-        DB                /var/log/fluentbit/tail-db/flb_talos_kernel.db
-        storage.type      filesystem
-        Parser            kmsg
-        
-    # INPUT 4: Talos dmesg kernel ring buffer (via file tail)
-    [INPUT]
-        Name            tail
-        Path            /host/proc/kmsg
-        Path_Key        source_file
-        Tag             host.talos.dmesg
-        DB              /var/log/fluentbit/tail-db/flb_dmesg.db
-        storage.type    filesystem
-        Parser          kmsg
-        Skip_Long_Lines On
-        
-    # INPUT 5: Talos etcd logs (critical for cluster health)
-    [INPUT]
-        Name            tail
-        Path            /host/var/log/etcd/*.log
-        Path_Key        source_file
-        Tag             host.talos.etcd
-        DB              /var/log/fluentbit/tail-db/flb_etcd.db
-        storage.type    filesystem
-        Skip_Long_Lines On
-        
-    # INPUT 6: Kubernetes API server audit logs (Talos static pods)
-    [INPUT]
-        Name            tail
-        Path            /host/var/log/audit/kube/*.log
-        Path_Key        source_file
-        Tag             host.talos.apiserver-audit
-        DB              /var/log/fluentbit/tail-db/flb_apiserver_audit.db
-        storage.type    filesystem
-        Parser          json
-        Skip_Long_Lines On
-        
-    # INPUT 7: Kubelet logs from Talos host
-    [INPUT]
-        Name            tail
-        Path            /host/var/log/kubelet/*.log
-        Path_Key        source_file
-        Tag             host.talos.kubelet
-        DB              /var/log/fluentbit/tail-db/flb_kubelet.db
-        storage.type    filesystem
-        Skip_Long_Lines On
-        
-    # INPUT 8: Containerd logs from Talos host
-    [INPUT]
-        Name            tail
-        Path            /host/var/log/containerd/*.log
-        Path_Key        source_file
-        Tag             host.talos.containerd
-        DB              /var/log/fluentbit/tail-db/flb_containerd.db
-        storage.type    filesystem
-        Skip_Long_Lines On
-        
-    # INPUT 9: Talos system service logs (if available)
+    # INPUT 2: Talos host system logs (existing files only)
     [INPUT]
         Name            tail
         Path            /host/var/log/*.log
         Path_Key        source_file
         Tag             host.talos.system
         DB              /var/log/fluentbit/tail-db/flb_talos_system.db
-        storage.type    filesystem
-        Skip_Long_Lines On
-        
-    # INPUT 10: Talos machine service logs
-    [INPUT]
-        Name            tail
-        Path            /host/run/system/logs/*
-        Path_Key        source_file
-        Tag             host.talos.machine
-        DB              /var/log/fluentbit/tail-db/flb_machine.db
-        storage.type    filesystem
-        Skip_Long_Lines On
-        
-    # INPUT 11: Host system journal logs (via file tail)
-    [INPUT]
-        Name            tail
-        Path            /host/var/log/journal/*/*.journal
-        Path_Key        source_file
-        Tag             host.talos.systemd
-        DB              /var/log/fluentbit/tail-db/flb_systemd.db
         storage.type    filesystem
         Skip_Long_Lines On
     
@@ -154,17 +67,11 @@ data:
     # Add source identification for Talos logs
     [FILTER]
         Name        modify
-        Match       host.talos.*
+        Match       host.*
         Add         log_source talos
         Add         log_type host
     
-    [FILTER]
-        Name        modify
-        Match       host.kernel
-        Add         log_source talos
-        Add         log_type kernel
-    
-    # OUTPUT: Forward everything to Fluentd (SIMPLE)
+    # OUTPUT: Forward everything to Fluentd
     [OUTPUT]
         Name        forward
         Match       *
