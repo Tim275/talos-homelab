@@ -1,5 +1,5 @@
-# Simple Fluentd Configuration - Use Official Defaults
-# Just override what we need for our Elasticsearch cluster
+# Working Fluentd Configuration based on DevOps Blog Example
+# This bypasses broken Helm chart environment variable handling
 
 # Deploy as Deployment, not DaemonSet
 kind: "Deployment"
@@ -10,26 +10,11 @@ image:
   repository: "fluent/fluentd-kubernetes-daemonset"
   tag: "v1-debian-elasticsearch"
 
-# Environment variables for Elasticsearch
-env:
-  - name: "FLUENT_ELASTICSEARCH_HOST"
-    value: "production-cluster-es-http.elastic-system"
-  - name: "FLUENT_ELASTICSEARCH_PORT"
-    value: "9200"
-  - name: "FLUENT_ELASTICSEARCH_SCHEME"
-    value: "https"
-  - name: "FLUENT_ELASTICSEARCH_SSL_VERIFY"
-    value: "false"
-  - name: "FLUENT_ELASTICSEARCH_USER"
-    value: "elastic"
-  - name: "FLUENT_ELASTICSEARCH_PASSWORD"
-    value: "04h26K03zEMhI7I9DRbk5AT5"
-
-# Service for FluentBit forwarding
+# Service for FluentBit forwarding - using port 24224
 service:
   type: "ClusterIP"
   ports:
-    - name: "forwarder"
+    - name: "forward"
       protocol: TCP
       containerPort: 24224
       servicePort: 24224
@@ -50,8 +35,93 @@ rbac:
 serviceAccount:
   create: true
 
-# Use official defaults for everything else
+# CRITICAL: Disable default configs and use our own
 defaultConfigs:
-  enabled: true
+  enabled: false
 
-# No custom file configs - let the chart handle it
+# COMPREHENSIVE DUAL-INDEX FLUENTD CONFIG FOR TALOS
+# FluentBit -> Fluentd -> Elasticsearch -> Kibana
+# kube.* tags -> kubernetes-logs-YYYY.MM.DD 
+# host.* tags -> talos-logs-YYYY.MM.DD
+fileConfigs:
+  01_sources.conf: |-
+    # Ignore Fluentd's own logs to prevent recursion
+    <match fluent.**>
+      @type null
+    </match>
+    
+    # Input: Forward protocol from FluentBit
+    <source>
+      @type forward
+      port 24224
+      bind 0.0.0.0
+    </source>
+
+  02_filters.conf: |-
+    # No additional filters needed - FluentBit handles all filtering
+
+  03_outputs.conf: |-
+    # Route 1: Kubernetes Pod/Container logs (kube.* tags) -> kubernetes-logs-*
+    <match kube.**>
+      @type elasticsearch
+      @log_level info
+      include_tag_key true
+      host production-cluster-es-http.elastic-system
+      port 9200
+      path ""
+      scheme https
+      ssl_verify false
+      user elastic
+      password 04h26K03zEMhI7I9DRbk5AT5
+      reload_connections false
+      reconnect_on_error true
+      reload_on_failure true
+      # KUBERNETES LOGS INDEX
+      logstash_prefix kubernetes-logs
+      logstash_dateformat %Y.%m.%d
+      logstash_format true
+      <buffer>
+        @type file
+        path /var/log/fluentd-buffers/kubernetes.buffer
+        flush_mode interval
+        flush_interval 5s
+        chunk_limit_size 2M
+        total_limit_size 1G
+        overflow_action block
+        retry_forever true
+        retry_max_interval 30
+      </buffer>
+    </match>
+    
+    # Route 2: ALL Talos Host System logs (host.* tags) -> talos-logs-*
+    # This includes: kernel, etcd, kube-apiserver audit, kubelet, containerd, machine services, systemd
+    <match host.**>
+      @type elasticsearch
+      @log_level info
+      include_tag_key true
+      host production-cluster-es-http.elastic-system
+      port 9200
+      path ""
+      scheme https
+      ssl_verify false
+      user elastic
+      password 04h26K03zEMhI7I9DRbk5AT5
+      reload_connections false
+      reconnect_on_error true
+      reload_on_failure true
+      # TALOS HOST LOGS INDEX
+      logstash_prefix talos-logs
+      logstash_dateformat %Y.%m.%d
+      logstash_format true
+      <buffer>
+        @type file
+        path /var/log/fluentd-buffers/talos.buffer
+        flush_mode interval
+        flush_interval 5s
+        chunk_limit_size 2M
+        total_limit_size 1G
+        overflow_action block
+        retry_forever true
+        retry_max_interval 30
+      </buffer>
+    </match>
