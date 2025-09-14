@@ -61,7 +61,105 @@ fileConfigs:
     # No additional filters needed - FluentBit handles all filtering
 
   03_outputs.conf: |-
-    # Route 1: Kubernetes Pod/Container logs (kube.* tags) -> kubernetes-logs-*
+    # GRANULAR ROUTING EXAMPLE - Add specific pod routing first!
+    
+    # Route 0: ArgoCD logs to dedicated index (EXAMPLE)
+    <match kube.var.log.containers.argocd-**>
+      @type elasticsearch
+      @log_level info
+      include_tag_key true
+      host production-cluster-es-http.elastic-system
+      port 9200
+      path ""
+      scheme https
+      ssl_verify false
+      user elastic
+      password 04h26K03zEMhI7I9DRbk5AT5
+      reload_connections false
+      reconnect_on_error true
+      reload_on_failure true
+      # ARGOCD DEDICATED INDEX
+      logstash_prefix kubernetes-argocd
+      logstash_dateformat %Y.%m.%d
+      logstash_format true
+      <buffer>
+        @type file
+        path /var/log/fluentd-buffers/argocd.buffer
+        flush_mode interval
+        flush_interval 5s
+        chunk_limit_size 2M
+        total_limit_size 1G
+        overflow_action block
+        retry_forever true
+        retry_max_interval 30
+      </buffer>
+    </match>
+    
+    # Route 1: Monitoring namespace to dedicated index
+    <match kube.var.log.containers.**_monitoring_**>
+      @type elasticsearch
+      @log_level info
+      include_tag_key true
+      host production-cluster-es-http.elastic-system
+      port 9200
+      path ""
+      scheme https
+      ssl_verify false
+      user elastic
+      password 04h26K03zEMhI7I9DRbk5AT5
+      reload_connections false
+      reconnect_on_error true
+      reload_on_failure true
+      # MONITORING LOGS INDEX
+      logstash_prefix kubernetes-monitoring
+      logstash_dateformat %Y.%m.%d
+      logstash_format true
+      <buffer>
+        @type file
+        path /var/log/fluentd-buffers/monitoring.buffer
+        flush_mode interval
+        flush_interval 5s
+        chunk_limit_size 2M
+        total_limit_size 1G
+        overflow_action block
+        retry_forever true
+        retry_max_interval 30
+      </buffer>
+    </match>
+    
+    # Route 2: Platform services (ArgoCD, Istio, Cilium, etc.)
+    <match kube.var.log.containers.**_{argocd,istio-system,kube-system,cert-manager,gateway}_**>
+      @type elasticsearch
+      @log_level info
+      include_tag_key true
+      host production-cluster-es-http.elastic-system
+      port 9200
+      path ""
+      scheme https
+      ssl_verify false
+      user elastic
+      password 04h26K03zEMhI7I9DRbk5AT5
+      reload_connections false
+      reconnect_on_error true
+      reload_on_failure true
+      # PLATFORM LOGS INDEX
+      logstash_prefix kubernetes-platform
+      logstash_dateformat %Y.%m.%d
+      logstash_format true
+      <buffer>
+        @type file
+        path /var/log/fluentd-buffers/platform.buffer
+        flush_mode interval
+        flush_interval 5s
+        chunk_limit_size 2M
+        total_limit_size 1G
+        overflow_action block
+        retry_forever true
+        retry_max_interval 30
+      </buffer>
+    </match>
+    
+    # Route 3: Application logs (everything else) -> kubernetes-apps-*
     <match kube.**>
       @type elasticsearch
       @log_level info
@@ -76,13 +174,13 @@ fileConfigs:
       reload_connections false
       reconnect_on_error true
       reload_on_failure true
-      # KUBERNETES LOGS INDEX
-      logstash_prefix kubernetes-logs
+      # APPLICATION LOGS INDEX (fallback)
+      logstash_prefix kubernetes-apps
       logstash_dateformat %Y.%m.%d
       logstash_format true
       <buffer>
         @type file
-        path /var/log/fluentd-buffers/kubernetes.buffer
+        path /var/log/fluentd-buffers/apps.buffer
         flush_mode interval
         flush_interval 5s
         chunk_limit_size 2M
@@ -93,8 +191,7 @@ fileConfigs:
       </buffer>
     </match>
     
-    # Route 2: ALL Talos Host System logs (host.* tags) -> talos-logs-*
-    # This includes: kernel, etcd, kube-apiserver audit, kubelet, containerd, machine services, systemd
+    # Route 4: ALL Talos Host System logs (host.* tags) -> talos-logs-*
     <match host.**>
       @type elasticsearch
       @log_level info
