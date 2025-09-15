@@ -52,27 +52,16 @@ data:
         Labels          On
         Annotations     Off
     
-    # FILTER: Enterprise label transformation - Remove problematic labels with dots
+    # FILTER: Enterprise label sanitization - Remove labels object entirely to prevent Elasticsearch conflicts
     [FILTER]
         Name        modify
         Match       kube.*
-        # Remove ALL kubernetes labels with dots to prevent Elasticsearch field mapping conflicts
-        Remove_wildcard kubernetes_labels_*.*
-        # Keep only safe labels without dots
-        # These will be preserved: kubernetes_labels_app, kubernetes_labels_version, etc.
-    
-    # FILTER: Transform remaining safe labels to clean field names (Enterprise pattern)
-    [FILTER]
-        Name        modify
-        Match       kube.*
-        # Transform safe labels to clean field names
-        Rename      kubernetes_labels_app app
-        Rename      kubernetes_labels_version version
-        Rename      kubernetes_labels_component component
-        Rename      kubernetes_labels_tier tier
-        Rename      kubernetes_labels_environment environment
-        Rename      kubernetes_labels_team team
-        Rename      kubernetes_labels_owner owner
+        # Remove the entire labels object that contains dots in field names
+        # This prevents Elasticsearch 400 field mapping conflicts
+        # Labels like "app.kubernetes.io/component" cannot be indexed by Elasticsearch
+        Remove      kubernetes.labels
+        Add         labels_removed enterprise_sanitization
+        Add         sanitization_reason elasticsearch_field_mapping_conflicts
     
     # FILTER: Simplify Kubernetes field names
     [FILTER]
