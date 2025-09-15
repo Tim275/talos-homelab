@@ -19,6 +19,7 @@ data:
         storage.checksum    on
         storage.backlog.mem_limit    5M
     
+    # INPUT 1: Kubernetes pod/container logs
     [INPUT]
         Name            tail
         Path            /var/log/containers/*.log
@@ -29,37 +30,17 @@ data:
         storage.type    filesystem
         Skip_Long_Lines On
     
-    # Talos-specific host log inputs (replaces traditional syslog)
+    # INPUT 2: Talos host system logs (existing files only)
     [INPUT]
-        Name              systemd
-        Tag               host.systemd
-        Systemd_Filter    _SYSTEMD_UNIT=kubelet.service
-        Systemd_Filter    _SYSTEMD_UNIT=containerd.service
-        Systemd_Filter    _SYSTEMD_UNIT=etcd.service
-        Systemd_Filter    _SYSTEMD_UNIT=apid.service
-        Systemd_Filter    _SYSTEMD_UNIT=trustd.service
-        Max_Entries       1000
-        
-    [INPUT]
-        Name              kmsg
-        Tag               host.kernel
-        
-    [INPUT]
-        Name              proc
-        Tag               host.proc
-        Proc_Name         /proc/meminfo
-        Interval_Sec      30
+        Name            tail
+        Path            /host/var/log/*.log
+        Path_Key        source_file
+        Tag             host.talos.system
+        DB              /var/log/fluentbit/tail-db/flb_talos_system.db
+        storage.type    filesystem
+        Skip_Long_Lines On
     
-    # OPTIONAL: Traditional syslog files (disabled for Talos - no such files exist)
-    # [INPUT]
-    #     Name            tail
-    #     Path            /var/log/auth.log,/var/log/syslog
-    #     Path_Key        filename
-    #     Parser          syslog-rfc3164-nopri
-    #     Tag             host.*
-    #     DB              /var/log/fluentbit/tail-db/flb_host.db
-    #     storage.type    filesystem
-    
+    # FILTER: Add Kubernetes metadata to pod logs (Enterprise: Labels disabled to prevent Elasticsearch conflicts)
     [FILTER]
         Name            kubernetes
         Match           kube.*
@@ -68,9 +49,17 @@ data:
         Merge_Log       Off
         K8S-Logging.Parser  On
         K8S-Logging.Exclude On
-        Labels          On
+        Labels          Off
         Annotations     Off
     
+    # FILTER: Enterprise label sanitization - Remove labels object entirely to prevent Elasticsearch conflicts
+    # TEMPORARILY DISABLED: [FILTER]
+    #     Name        lua
+    #     Match       kube.*
+    #     script      /fluent-bit/etc/remove_labels.lua
+    #     call        remove_kubernetes_labels
+    
+    # FILTER: Simplify Kubernetes field names
     [FILTER]
         Name        modify
         Match       kube.*
@@ -80,21 +69,19 @@ data:
         Rename      kubernetes_host host
         Remove_wildcard kubernetes_
         Remove      _p
-        Add         index_pattern kubernetes-logs
+        Add         log_source pod_container
     
-    # Add host information to Talos host logs
+    # Add source identification for Talos logs
     [FILTER]
         Name        modify
         Match       host.*
-        Add         source_type talos_host
-        Add         log_category system
-        Add         index_pattern talos-system-logs
+        Add         log_source talos
+        Add         log_type host
     
+    # OUTPUT: Forward everything to Fluentd
     [OUTPUT]
         Name        forward
         Match       *
-        # FIXED: Correct Fluentd service endpoint for EFK pipeline
-        # FluentBit -> Fluentd -> Elasticsearch architecture
         Host        fluentd.elastic-system.svc.cluster.local
         Port        24224
         storage.total_limit_size    5M
@@ -108,3 +95,29 @@ data:
         Time_Key    time
         Time_Format %b %d %H:%M:%S
         Time_Keep   Off
+        
+    [PARSER]
+        Name        kmsg
+        Format      regex
+        Regex       ^<(?<priority>[0-9]+)>(?<time>[^\]]+)\] (?<log>.*)$
+        Time_Key    time
+        Time_Format %Y-%m-%d %H:%M:%S
+        Time_Keep   Off
+        
+    [PARSER]
+        Name        json
+        Format      json
+        Time_Key    timestamp
+        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
+        Time_Keep   On
+  
+  remove_labels.lua: |
+    function remove_kubernetes_labels(tag, timestamp, record)
+        -- Remove the entire kubernetes.labels object to prevent Elasticsearch field mapping conflicts
+        if record["kubernetes"] and record["kubernetes"]["labels"] then
+            record["kubernetes"]["labels"] = nil
+            record["labels_removed"] = "enterprise_sanitization_lua"
+            record["sanitization_reason"] = "elasticsearch_field_mapping_conflicts"
+        end
+        return 1, timestamp, record
+    end

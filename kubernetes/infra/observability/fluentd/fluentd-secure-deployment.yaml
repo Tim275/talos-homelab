@@ -1,0 +1,217 @@
+---
+# SECURE FLUENTD DEPLOYMENT WITH KUBERNETES SECRETS
+# Dual-Index EFK Stack for Talos Linux
+# FluentBit -> Fluentd -> Elasticsearch -> Kibana
+# kubernetes-logs-* and talos-logs-* indices
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluentd-secure-config
+  namespace: elastic-system
+  labels:
+    app.kubernetes.io/name: fluentd
+    app.kubernetes.io/instance: fluentd
+    app.kubernetes.io/part-of: observability-stack
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+data:
+  fluent.conf: |-
+    # Ignore Fluentd's own logs to prevent log recursion
+    <match fluent.**>
+      @type null
+    </match>
+    
+    # Input: Forward protocol from FluentBit DaemonSet
+    <source>
+      @type forward
+      port 24224
+      bind 0.0.0.0
+    </source>
+    
+    # Route 1: ALL Kubernetes logs (kube.* tags) -> kubernetes-logs-*
+    <match kube.**>
+      @type elasticsearch
+      @log_level info
+      include_tag_key true
+      host "#{ENV['ELASTICSEARCH_HOST']}"
+      port "#{ENV['ELASTICSEARCH_PORT']}"
+      scheme "#{ENV['ELASTICSEARCH_SCHEME']}"
+      ssl_verify "#{ENV['ELASTICSEARCH_SSL_VERIFY']}"
+      user "#{ENV['ELASTICSEARCH_USERNAME']}"
+      password "#{ENV['ELASTICSEARCH_PASSWORD']}"
+      reload_connections false
+      reconnect_on_error true
+      reload_on_failure true
+      # KUBERNETES LOGS INDEX
+      logstash_prefix kubernetes-logs
+      logstash_dateformat %Y.%m.%d
+      logstash_format true
+      <buffer>
+        @type file
+        path /var/log/fluentd-buffers/kubernetes.buffer
+        flush_mode interval
+        flush_interval 5s
+        chunk_limit_size 2M
+        total_limit_size 1G
+        overflow_action block
+        retry_forever true
+        retry_max_interval 30
+      </buffer>
+    </match>
+    
+    # Route 2: ALL Talos Host System logs (host.* tags) -> talos-logs-*
+    <match host.**>
+      @type elasticsearch
+      @log_level info
+      include_tag_key true
+      host "#{ENV['ELASTICSEARCH_HOST']}"
+      port "#{ENV['ELASTICSEARCH_PORT']}"
+      scheme "#{ENV['ELASTICSEARCH_SCHEME']}"
+      ssl_verify "#{ENV['ELASTICSEARCH_SSL_VERIFY']}"
+      user "#{ENV['ELASTICSEARCH_USERNAME']}"
+      password "#{ENV['ELASTICSEARCH_PASSWORD']}"
+      reload_connections false
+      reconnect_on_error true
+      reload_on_failure true
+      # TALOS HOST LOGS INDEX  
+      logstash_prefix talos-logs
+      logstash_dateformat %Y.%m.%d
+      logstash_format true
+      <buffer>
+        @type file
+        path /var/log/fluentd-buffers/talos.buffer
+        flush_mode interval
+        flush_interval 5s
+        chunk_limit_size 2M
+        total_limit_size 1G
+        overflow_action block
+        retry_forever true
+        retry_max_interval 30
+      </buffer>
+    </match>
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluentd-secure
+  namespace: elastic-system
+  labels:
+    app.kubernetes.io/name: fluentd
+    app.kubernetes.io/instance: fluentd
+    app.kubernetes.io/component: log-aggregator
+    app.kubernetes.io/part-of: observability-stack
+  annotations:
+    argocd.argoproj.io/sync-wave: "9"
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluentd
+      app.kubernetes.io/instance: fluentd
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fluentd
+        app.kubernetes.io/instance: fluentd
+        app.kubernetes.io/component: log-aggregator
+        app.kubernetes.io/part-of: observability-stack
+    spec:
+      containers:
+      - name: fluentd
+        image: fluent/fluentd-kubernetes-daemonset:v1-debian-elasticsearch
+        env:
+        - name: FLUENTD_CONF
+          value: fluent.conf
+        - name: ELASTICSEARCH_HOST
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-credentials
+              key: ELASTICSEARCH_HOST
+        - name: ELASTICSEARCH_PORT
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-credentials
+              key: ELASTICSEARCH_PORT
+        - name: ELASTICSEARCH_SCHEME
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-credentials
+              key: ELASTICSEARCH_SCHEME
+        - name: ELASTICSEARCH_SSL_VERIFY
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-credentials
+              key: ELASTICSEARCH_SSL_VERIFY
+        - name: ELASTICSEARCH_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-credentials
+              key: ELASTICSEARCH_USERNAME
+        - name: ELASTICSEARCH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-credentials
+              key: ELASTICSEARCH_PASSWORD
+        resources:
+          limits:
+            memory: 1Gi
+            cpu: 500m
+          requests:
+            memory: 512Mi
+            cpu: 200m
+        volumeMounts:
+        - name: fluentd-config
+          mountPath: /fluentd/etc
+        - name: bufferstorage
+          mountPath: /var/log/fluentd-buffers
+        ports:
+        - containerPort: 24224
+          name: forward
+          protocol: TCP
+        livenessProbe:
+          tcpSocket:
+            port: 24224
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          tcpSocket:
+            port: 24224
+          initialDelaySeconds: 10
+          periodSeconds: 10
+      volumes:
+      - name: fluentd-config
+        configMap:
+          name: fluentd-secure-config
+      - name: bufferstorage
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluentd
+  namespace: elastic-system
+  labels:
+    app.kubernetes.io/name: fluentd
+    app.kubernetes.io/instance: fluentd
+    app.kubernetes.io/component: log-aggregator
+    app.kubernetes.io/part-of: observability-stack
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  ports:
+  - name: forward
+    port: 24224
+    protocol: TCP
+    targetPort: 24224
+  selector:
+    app.kubernetes.io/name: fluentd
+    app.kubernetes.io/instance: fluentd
+  type: ClusterIP
