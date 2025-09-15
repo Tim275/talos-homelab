@@ -40,7 +40,7 @@ data:
         storage.type    filesystem
         Skip_Long_Lines On
     
-    # FILTER: Add Kubernetes metadata to pod logs (FIXED: Labels Off to prevent field mapping conflicts)
+    # FILTER: Add Kubernetes metadata to pod logs (Enterprise: Label whitelisting for safe metadata)
     [FILTER]
         Name            kubernetes
         Match           kube.*
@@ -49,8 +49,31 @@ data:
         Merge_Log       Off
         K8S-Logging.Parser  On
         K8S-Logging.Exclude On
-        Labels          Off
+        Labels          On
         Annotations     Off
+        # Enterprise pattern: Whitelist only safe labels without dots
+        # This preserves important metadata while avoiding field mapping conflicts
+        K8S-Logging.Include app,version,component,tier,environment,team,owner
+    
+    # FILTER: Transform labels to safe field names (Enterprise pattern)
+    [FILTER]
+        Name        modify
+        Match       kube.*
+        # Transform labels with dots to underscores for Elasticsearch compatibility
+        Rename      kubernetes_labels_app.kubernetes.io/name app_name
+        Rename      kubernetes_labels_app.kubernetes.io/instance app_instance
+        Rename      kubernetes_labels_app.kubernetes.io/version app_version
+        Rename      kubernetes_labels_app.kubernetes.io/component app_component
+        Rename      kubernetes_labels_app.kubernetes.io/part-of app_part_of
+        Rename      kubernetes_labels_app.kubernetes.io/managed-by app_managed_by
+        Rename      kubernetes_labels_helm.sh/chart helm_chart
+        Rename      kubernetes_labels_app app
+        Rename      kubernetes_labels_version version
+        Rename      kubernetes_labels_component component
+        Rename      kubernetes_labels_tier tier
+        Rename      kubernetes_labels_environment environment
+        Rename      kubernetes_labels_team team
+        Rename      kubernetes_labels_owner owner
     
     # FILTER: Simplify Kubernetes field names
     [FILTER]
