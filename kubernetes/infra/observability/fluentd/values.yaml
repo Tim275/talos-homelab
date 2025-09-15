@@ -95,7 +95,155 @@ fileConfigs:
     # No additional filters needed - FluentBit handles all filtering
 
   03_outputs.conf: |-
-    # Route 1: ALL Kubernetes logs (kube.* tags) -> kubernetes-logs-*
+    # MICROSERVICE-AWARE INDEX ROUTING STRATEGY
+    # Route logs to dedicated indices based on namespace/service type
+    
+    # Route 1: Infrastructure Services (GitOps, Secrets, Storage, Databases)
+    <match kube.var.log.containers.**_argocd_** kube.var.log.containers.**_cert-manager_** kube.var.log.containers.**_sealed-secrets_** kube.var.log.containers.**_cnpg-system_** kube.var.log.containers.**_rook-ceph_**>
+      @type elasticsearch
+      @log_level info
+      include_tag_key true
+      host "#{ENV['ELASTICSEARCH_HOST']}"
+      port "#{ENV['ELASTICSEARCH_PORT']}"
+      scheme "#{ENV['ELASTICSEARCH_SCHEME']}"
+      ssl_verify "#{ENV['ELASTICSEARCH_SSL_VERIFY']}"
+      user "#{ENV['ELASTICSEARCH_USERNAME']}"
+      password "#{ENV['ELASTICSEARCH_PASSWORD']}"
+      reload_connections false
+      reconnect_on_error true
+      reload_on_failure true
+      logstash_format false
+      index_name infrastructure-logs
+      <buffer>
+        @type file
+        path /var/log/fluentd-buffers/infrastructure.buffer
+        flush_mode interval
+        flush_interval 5s
+        chunk_limit_size 2M
+        total_limit_size 1G
+        overflow_action block
+        retry_forever true
+        retry_max_interval 30
+      </buffer>
+    </match>
+    
+    # Route 2: Monitoring & Observability Stack
+    <match kube.var.log.containers.**_monitoring_** kube.var.log.containers.**_elastic-system_** kube.var.log.containers.**_observability_**>
+      @type elasticsearch
+      @log_level info
+      include_tag_key true
+      host "#{ENV['ELASTICSEARCH_HOST']}"
+      port "#{ENV['ELASTICSEARCH_PORT']}"
+      scheme "#{ENV['ELASTICSEARCH_SCHEME']}"
+      ssl_verify "#{ENV['ELASTICSEARCH_SSL_VERIFY']}"
+      user "#{ENV['ELASTICSEARCH_USERNAME']}"
+      password "#{ENV['ELASTICSEARCH_PASSWORD']}"
+      reload_connections false
+      reconnect_on_error true
+      reload_on_failure true
+      logstash_format false
+      index_name monitoring-logs
+      <buffer>
+        @type file
+        path /var/log/fluentd-buffers/monitoring.buffer
+        flush_mode interval
+        flush_interval 5s
+        chunk_limit_size 2M
+        total_limit_size 1G
+        overflow_action block
+        retry_forever true
+        retry_max_interval 30
+      </buffer>
+    </match>
+    
+    # Route 3: Development Applications
+    <match kube.var.log.containers.**_n8n-dev_** kube.var.log.containers.**_audiobookshelf-dev_** kube.var.log.containers.**_*-dev_**>
+      @type elasticsearch
+      @log_level info
+      include_tag_key true
+      host "#{ENV['ELASTICSEARCH_HOST']}"
+      port "#{ENV['ELASTICSEARCH_PORT']}"
+      scheme "#{ENV['ELASTICSEARCH_SCHEME']}"
+      ssl_verify "#{ENV['ELASTICSEARCH_SSL_VERIFY']}"
+      user "#{ENV['ELASTICSEARCH_USERNAME']}"
+      password "#{ENV['ELASTICSEARCH_PASSWORD']}"
+      reload_connections false
+      reconnect_on_error true
+      reload_on_failure true
+      logstash_format false
+      index_name applications-dev-logs
+      <buffer>
+        @type file
+        path /var/log/fluentd-buffers/applications-dev.buffer
+        flush_mode interval
+        flush_interval 5s
+        chunk_limit_size 2M
+        total_limit_size 1G
+        overflow_action block
+        retry_forever true
+        retry_max_interval 30
+      </buffer>
+    </match>
+    
+    # Route 4: Production Applications
+    <match kube.var.log.containers.**_n8n-prod_** kube.var.log.containers.**_audiobookshelf-prod_** kube.var.log.containers.**_*-prod_**>
+      @type elasticsearch
+      @log_level info
+      include_tag_key true
+      host "#{ENV['ELASTICSEARCH_HOST']}"
+      port "#{ENV['ELASTICSEARCH_PORT']}"
+      scheme "#{ENV['ELASTICSEARCH_SCHEME']}"
+      ssl_verify "#{ENV['ELASTICSEARCH_SSL_VERIFY']}"
+      user "#{ENV['ELASTICSEARCH_USERNAME']}"
+      password "#{ENV['ELASTICSEARCH_PASSWORD']}"
+      reload_connections false
+      reconnect_on_error true
+      reload_on_failure true
+      logstash_format false
+      index_name applications-prod-logs
+      <buffer>
+        @type file
+        path /var/log/fluentd-buffers/applications-prod.buffer
+        flush_mode interval
+        flush_interval 5s
+        chunk_limit_size 2M
+        total_limit_size 1G
+        overflow_action block
+        retry_forever true
+        retry_max_interval 30
+      </buffer>
+    </match>
+    
+    # Route 5: Platform Services (Kafka, Cloudflared, etc.)
+    <match kube.var.log.containers.**_kafka_** kube.var.log.containers.**_cloudflared_** kube.var.log.containers.**_cloudbeaver_** kube.var.log.containers.**_gateway_**>
+      @type elasticsearch
+      @log_level info
+      include_tag_key true
+      host "#{ENV['ELASTICSEARCH_HOST']}"
+      port "#{ENV['ELASTICSEARCH_PORT']}"
+      scheme "#{ENV['ELASTICSEARCH_SCHEME']}"
+      ssl_verify "#{ENV['ELASTICSEARCH_SSL_VERIFY']}"
+      user "#{ENV['ELASTICSEARCH_USERNAME']}"
+      password "#{ENV['ELASTICSEARCH_PASSWORD']}"
+      reload_connections false
+      reconnect_on_error true
+      reload_on_failure true
+      logstash_format false
+      index_name platform-logs
+      <buffer>
+        @type file
+        path /var/log/fluentd-buffers/platform.buffer
+        flush_mode interval
+        flush_interval 5s
+        chunk_limit_size 2M
+        total_limit_size 1G
+        overflow_action block
+        retry_forever true
+        retry_max_interval 30
+      </buffer>
+    </match>
+    
+    # Route 6: Catch-all for any remaining Kubernetes logs
     <match kube.**>
       @type elasticsearch
       @log_level info
@@ -109,13 +257,11 @@ fileConfigs:
       reload_connections false
       reconnect_on_error true
       reload_on_failure true
-      # KUBERNETES LOGS INDEX - Single index (no daily rotation)
-      logstash_prefix kubernetes-logs
       logstash_format false
-      index_name kubernetes-logs
+      index_name kubernetes-other-logs
       <buffer>
         @type file
-        path /var/log/fluentd-buffers/kubernetes.buffer
+        path /var/log/fluentd-buffers/kubernetes-other.buffer
         flush_mode interval
         flush_interval 5s
         chunk_limit_size 2M
