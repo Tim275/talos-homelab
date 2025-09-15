@@ -54,14 +54,10 @@ data:
     
     # FILTER: Enterprise label sanitization - Remove labels object entirely to prevent Elasticsearch conflicts
     [FILTER]
-        Name        modify
+        Name        lua
         Match       kube.*
-        # Remove the entire labels object that contains dots in field names
-        # This prevents Elasticsearch 400 field mapping conflicts
-        # Labels like "app.kubernetes.io/component" cannot be indexed by Elasticsearch
-        Remove      kubernetes.labels
-        Add         labels_removed enterprise_sanitization
-        Add         sanitization_reason elasticsearch_field_mapping_conflicts
+        script      /fluent-bit/etc/remove_labels.lua
+        call        remove_kubernetes_labels
     
     # FILTER: Simplify Kubernetes field names
     [FILTER]
@@ -114,3 +110,14 @@ data:
         Time_Key    timestamp
         Time_Format %Y-%m-%dT%H:%M:%S.%L%z
         Time_Keep   On
+  
+  remove_labels.lua: |
+    function remove_kubernetes_labels(tag, timestamp, record)
+        -- Remove the entire kubernetes.labels object to prevent Elasticsearch field mapping conflicts
+        if record["kubernetes"] and record["kubernetes"]["labels"] then
+            record["kubernetes"]["labels"] = nil
+            record["labels_removed"] = "enterprise_sanitization_lua"
+            record["sanitization_reason"] = "elasticsearch_field_mapping_conflicts"
+        end
+        return 1, timestamp, record
+    end
