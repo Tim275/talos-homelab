@@ -41,10 +41,29 @@ spec:
           while true; do
             TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")
             USER_ID="user-$(shuf -i 1000-9999 -n 1)"
-            EMAIL="${USER_ID}@example.com"
+
+            # RECIPIENT EMAIL ADDRESSES - Who should receive the emails
+            # These are the email addresses that will RECEIVE emails FROM Gmail
+            if [ -n "$RECIPIENT_EMAILS" ]; then
+              # Split RECIPIENT_EMAILS by comma into array
+              IFS=',' read -ra EMAIL_POOL <<< "$RECIPIENT_EMAILS"
+            else
+              # Default recipient email addresses
+              EMAIL_POOL=(
+                "timour.miagol@outlook.de"
+                # Add more recipient addresses here
+                # "another.email@domain.com"
+              )
+            fi
+
+            # Randomly select a recipient email from the pool
+            RECIPIENT_EMAIL=${EMAIL_POOL[$RANDOM % ${#EMAIL_POOL[@]}]}
+
+            # Log the selected recipient for debugging
+            echo "📧 Selected recipient: ${RECIPIENT_EMAIL} (will receive email FROM Gmail)"
             REGION=$(shuf -e "us-east-1" "eu-west-1" "ap-southeast-1" -n 1)
 
-            MESSAGE="{\"user_id\":\"${USER_ID}\",\"email\":\"${EMAIL}\",\"timestamp\":\"${TIMESTAMP}\",\"region\":\"${REGION}\",\"event_type\":\"user_registration\"}"
+            MESSAGE="{\"user_id\":\"${USER_ID}\",\"email\":\"${RECIPIENT_EMAIL}\",\"timestamp\":\"${TIMESTAMP}\",\"region\":\"${REGION}\",\"event_type\":\"user_registration\"}"
 
             echo "Producing: ${MESSAGE}"
             echo "${MESSAGE}" | /opt/kafka/bin/kafka-console-producer.sh \
@@ -58,6 +77,10 @@ spec:
           value: "my-cluster-kafka-bootstrap.kafka:9092"
         - name: TOPIC_NAME
           value: "user-registrations"
+        # Comma-separated list of recipient email addresses for dynamic routing
+        # Example: "user1@domain.com,user2@company.org,test@example.de"
+        - name: RECIPIENT_EMAILS
+          value: "timour.miagol@outlook.de,timour.miagol@gmail.com"
         resources:
           requests:
             memory: "128Mi"
