@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redpanda-console
+  namespace: kafka
+  labels:
+    app.kubernetes.io/name: redpanda-console
+    app.kubernetes.io/component: messaging
+    app.kubernetes.io/part-of: platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redpanda-console
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redpanda-console
+        app.kubernetes.io/component: messaging
+        app.kubernetes.io/part-of: platform
+    spec:
+      containers:
+        - name: redpanda-console
+          image: docker.redpanda.com/vectorized/console:v2.3.8
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: CONFIG_FILEPATH
+              value: /etc/console/config.yaml
+          volumeMounts:
+            - name: config
+              mountPath: /etc/console
+              readOnly: true
+            - name: secrets
+              mountPath: /etc/console/secrets
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /admin/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /admin/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: config
+          configMap:
+            name: redpanda-console-config
+        - name: secrets
+          secret:
+            secretName: redpanda-console-auth
+            items:
+              - key: password
+                path: password
+              - key: jwt-secret
+                path: jwt-secret
+      securityContext:
+        fsGroup: 65534
