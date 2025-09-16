@@ -1,0 +1,45 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: test-email-producer
+  namespace: kafka-demo
+spec:
+  template:
+    spec:
+      containers:
+      - name: producer
+        image: quay.io/strimzi/kafka:latest-kafka-3.8.0
+        command: ["/bin/bash"]
+        args:
+        - -c
+        - |
+          # Wait for Kafka to be ready
+          echo "Waiting for Kafka to be ready..."
+          sleep 10
+
+          echo "🧪 Testing real email delivery to sagichdirnicht259@outlook.de"
+
+          # Create test user registration with your email address
+          TEST_MESSAGE='{"user_id":"test-user-outlook","email":"sagichdirnicht259@outlook.de","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","region":"eu-central-1","event_type":"user_registration"}'
+
+          echo "📤 Sending test registration: $TEST_MESSAGE"
+
+          # Send the test message to user-registrations topic
+          echo "$TEST_MESSAGE" | /opt/kafka/bin/kafka-console-producer.sh \
+            --bootstrap-server my-cluster-kafka-bootstrap.kafka:9092 \
+            --topic user-registrations
+
+          echo "✅ Test registration message sent - should trigger email to sagichdirnicht259@outlook.de"
+
+          # Send a few more test messages
+          for i in {1..3}; do
+            TEST_MSG='{"user_id":"outlook-test-'$i'","email":"sagichdirnicht259@outlook.de","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","region":"test-region","event_type":"registration_test"}'
+            echo "📧 Sending test message $i: $TEST_MSG"
+            echo "$TEST_MSG" | /opt/kafka/bin/kafka-console-producer.sh \
+              --bootstrap-server my-cluster-kafka-bootstrap.kafka:9092 \
+              --topic user-registrations
+            sleep 2
+          done
+
+          echo "🎯 Test complete - check your Outlook inbox for welcome emails!"
+      restartPolicy: Never
