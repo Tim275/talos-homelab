@@ -23,6 +23,16 @@ End User Applications
         <td><a href="https://www.audiobookshelf.org/">Audiobookshelf</a></td>
         <td>Self-hosted audiobook and podcast server</td>
     </tr>
+    <tr>
+        <td><img width="32" src="https://www.vectorlogo.zone/logos/apache_kafka/apache_kafka-icon.svg"></td>
+        <td><a href="kubernetes/apps/base/kafka-demo/">Kafka Email Consumer</a></td>
+        <td>Real-time email notification system consuming Kafka messages and sending welcome emails</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://www.vectorlogo.zone/logos/apache_kafka/apache_kafka-icon.svg"></td>
+        <td><a href="kubernetes/apps/base/kafka-demo/">Kafka User Producer</a></td>
+        <td>Kafka message producer for user registration events with dynamic email routing</td>
+    </tr>
 </table>
 
 
@@ -61,6 +71,26 @@ Everything needed to run my cluster & deploy my applications:
         <td><img width="32" src="https://cdn.jsdelivr.net/gh/grafana/loki@main/docs/sources/logo_and_name.png"></td>
         <td><a href="https://grafana.com/oss/loki/">Loki</a></td>
         <td>Log aggregation system designed for cloud-native applications</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://raw.githubusercontent.com/elastic/elasticsearch/main/docs/reference/images/logo-elastic-elasticsearch-lt.svg"></td>
+        <td><a href="https://www.elastic.co/elasticsearch/">Elasticsearch</a></td>
+        <td>Distributed search and analytics engine for centralized log storage and analysis</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://raw.githubusercontent.com/elastic/kibana/main/src/core/server/core_app/assets/favicons/favicon-32x32.png"></td>
+        <td><a href="https://www.elastic.co/kibana/">Kibana</a></td>
+        <td>Data visualization and exploration platform for Elasticsearch with dashboards and analytics</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://www.fluentd.org/assets/img/miscellany/fluentd-icon_2x.png"></td>
+        <td><a href="https://www.fluentd.org/">Fluentd</a></td>
+        <td>Data collector for building unified logging layer with flexible routing and transformation</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://raw.githubusercontent.com/fluent/fluent-bit/master/fluentbit_logo.png"></td>
+        <td><a href="https://fluentbit.io/">Fluent Bit</a></td>
+        <td>Lightweight log processor and forwarder optimized for containerized environments</td>
     </tr>
     <tr>
         <td><img width="32" src="https://ceph.io/assets/favicons/favicon-32x32.png"></td>
