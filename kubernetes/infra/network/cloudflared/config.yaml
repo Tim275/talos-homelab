@@ -7,18 +7,19 @@ warp-routing:
   enabled: true
 
 ingress:
-  # ArgoCD direct access via LoadBalancer IP
+  # ArgoCD via Envoy Gateway (Production setup)
   - hostname: argo.timourhomelab.org
-    service: http://192.168.68.160:80
+    service: http://envoy-gateway-envoy-gateway-ee418b6e.envoy-gateway-system.svc.cluster.local:80
+    originRequest:
+      httpHostHeader: argo.timourhomelab.org
+      noTLSVerify: true
+  # All other traffic → Envoy Gateway
+  - hostname: "*.timourhomelab.org"
+    service: http://envoy-gateway-envoy-gateway-ee418b6e.envoy-gateway-system.svc.cluster.local:80
     originRequest:
       noTLSVerify: true
-  # All other traffic → Gateway HTTPS (when it works)
-  - hostname: "*.timourhomelab.org"
-    service: https://cilium-gateway-cilium-gateway.gateway.svc.cluster.local:443
-    originRequest:
-      originServerName: "*.timourhomelab.org"
   - hostname: timourhomelab.org
-    service: https://cilium-gateway-cilium-gateway.gateway.svc.cluster.local:443
+    service: http://envoy-gateway-envoy-gateway-ee418b6e.envoy-gateway-system.svc.cluster.local:80
     originRequest:
-      originServerName: timourhomelab.org
+      noTLSVerify: true
   - service: http_status:404
