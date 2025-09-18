@@ -1,17 +1,13 @@
-# Values file for post-bootstrap Cilium configuration
+# https://github.com/cilium/cilium/blob/main/install/kubernetes/cilium/values.yaml
 cluster:
-  name: homelab-k8s
+  name: talos
   id: 1
 
-# 🚀 2025 PRODUCTION: Cilium replaces kube-proxy completely (high performance)
-# With proper CNI chaining for Istio CNI compatibility
 kubeProxyReplacement: true
 
 # Talos specific
 k8sServiceHost: localhost
 k8sServicePort: 7445
-
-# Talos-specific security context (remove SYS_MODULE for Talos compatibility)
 securityContext:
   capabilities:
     ciliumAgent: [ CHOWN, KILL, NET_ADMIN, NET_RAW, IPC_LOCK, SYS_ADMIN, SYS_RESOURCE, DAC_OVERRIDE, FOWNER, SETGID, SETUID ]
@@ -22,16 +18,10 @@ cgroup:
     enabled: false
   hostRoot: /sys/fs/cgroup
 
-# BPF configuration for Talos + Istio Ambient Mode
-# https://docs.cilium.io/en/stable/network/servicemesh/istio/
+# https://www.talos.dev/latest/talos-guides/network/host-dns/#forwarding-kube-dns-to-host-dns
+# https://docs.cilium.io/en/stable/operations/performance/tuning/#ebpf-host-routing
 bpf:
-  # Use legacy host routing for Talos compatibility
   hostLegacyRouting: true
-  # Bypass FIB lookup for improved performance
-  lbBypassFIBLookup: true
-  # 🚀 Enable BPF masquerade for kube-proxy-free mode (better performance)
-  # IMPORTANT: Disabled for Istio link-local IP compatibility (known limitation)
-  masquerade: false
 
 # https://docs.cilium.io/en/stable/network/concepts/ipam/
 ipam:
@@ -40,26 +30,39 @@ ipam:
 
 operator:
   rollOutPods: true
+  prometheus:
+    metricsService: true
+    enabled: true
+    port: 9963
+    serviceMonitor:
+      enabled: true
+  dashboards:
+    enabled: true
   resources:
     limits:
-      cpu: 500m
-      memory: 256Mi
+      cpu: 1000m    # Increased for Gateway API controller
+      memory: 512Mi # Increased for Gateway API controller
     requests:
-      cpu: 50m
-      memory: 128Mi
+      cpu: 100m     # Increased from 50m
+      memory: 256Mi # Increased from 128Mi
 
+# Roll out cilium agent pods automatically when ConfigMap is updated.
 rollOutCiliumPods: true
 resources:
   limits:
     cpu: 1000m
-    memory: 512Mi  # Reduced from 1Gi - Cilium doesn't need that much
+    memory: 1Gi
   requests:
     cpu: 200m
-    memory: 256Mi  # Reduced from 512Mi
+    memory: 512Mi
 
+#debug:
+#  enabled: true
+
+# Increase rate limit when doing L2 announcements and Gateway API operations
 k8sClientRateLimit:
-  qps: 100
-  burst: 200
+  qps: 50     # Increased from 20 for Gateway API controller
+  burst: 200  # Increased from 100 for Gateway API controller
 
 l2announcements:
   enabled: true
@@ -67,62 +70,100 @@ l2announcements:
 externalIPs:
   enabled: true
 
-enableCiliumEndpointSlice: true
-
-# Load balancing optimizations
 loadBalancer:
-  # https://docs.cilium.io/en/stable/network/kubernetes/kubeproxy-free/#maglev-consistent-hashing  
-  # Maglev provides consistent backend selection for better performance
+  # https://docs.cilium.io/en/stable/network/kubernetes/kubeproxy-free/#maglev-consistent-hashing
   algorithm: maglev
-  mode: snat  # Use SNAT mode (compatible with VXLAN)
 
 gatewayAPI:
   enabled: true
-  enableAlpn: true
-  gatewayClass:
-    create: "true"
+  enableAlpn: true        # Enable ALPN support for better HTTP/2 performance
+  enableAppProtocol: true # Enable application protocol detection (GEP-1911)
 
 envoy:
+  prometheus:
+    enabled: true
+    port: "9964"
+    serviceMonitor:
+      enabled: true
   securityContext:
     capabilities:
       keepCapNetBindService: true
       envoy: [ NET_ADMIN, PERFMON, BPF ]
 
-ingressController:
-  enabled: false
-
 hubble:
   enabled: true
+  metrics:
+    enabled:
+      - dns
+      - drop
+      - tcp
+      - flow
+      - port-distribution
+      - icmp
+      - "httpV2:exemplars=true;labelsContext=source_ip,source_namespace,source_workload,destination_ip,destination_namespace,destination_workload,traffic_direction;sourceContext=workload-name|reserved-identity;destinationContext=workload-name|reserved-identity"
+    enableOpenMetrics: true
+    port: 9965
+    serviceMonitor:
+      enabled: true
+    dashboards:
+      enabled: true
   relay:
     enabled: true
     rollOutPods: true
+    prometheus:
+      enabled: true
+      port: 9966
+      serviceMonitor:
+        enabled: true
   ui:
     enabled: true
     rollOutPods: true
 
-# ClusterMesh for multi-cluster connectivity
+ingressController: { enabled: false }
+
+clustermesh:
+  apiserver:
+    metrics:
+      enabled: true
+      port: 9962
+      serviceMonitor:
+        enabled: true
+
+# mTLS
+authentication:
+  enabled: false
+  mutual:
+    spire:
+      enabled: false
+      install:
+        server:
+          dataStorage:
+            storageClass: cilium-spire-sc
+
+prometheus:
+  metricsService: true
+  enabled: true
+  port: 9962
+  serviceMonitor:
+    enabled: true
+    trustCRDsExist: true
+
+dashboards:
+  enabled: true
+
+# ClusterMesh for multi-cluster connectivity (BEIBEHALTEN)
 clustermesh:
   useAPIServer: true
   config:
     enabled: true
-    # Service discovery across clusters
     global:
       services:
         enabled: true
-    # External ETCD for clustermesh
     clusters: []
 
-# Istio configuration
-# https://docs.cilium.io/en/latest/network/servicemesh/istio/
-# REQUIRED: Istio uses a CNI plugin - ensure Cilium doesn't interfere
+# Istio configuration (BEIBEHALTEN)
 cni:
   exclusive: false
 
-# Socket-based load balancing configuration for Istio compatibility
 socketLB:
-  # REQUIRED for Istio: Only apply socket LB in host namespace to avoid interfering with Istio proxies
   hostNamespaceOnly: true
-
-# Network policy enforcement: default allows traffic, policies can be applied selectively
-# This prevents automatic Default Deny that broke DNS resolution
-policyEnforcementMode: "default"
