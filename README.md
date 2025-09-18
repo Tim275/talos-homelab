@@ -118,6 +118,11 @@ Everything needed to run my cluster & deploy my applications:
         <td>Next-generation ingress API for Kubernetes with vendor-neutral traffic routing</td>
     </tr>
     <tr>
+        <td><img width="32" src="https://avatars.githubusercontent.com/u/30125649?s=200&v=4"></td>
+        <td><a href="https://gateway.envoyproxy.io/">Envoy Gateway</a></td>
+        <td>High-performance Gateway API implementation powered by Envoy Proxy with TLS termination and advanced routing</td>
+    </tr>
+    <tr>
         <td><img width="32" src="https://raw.githubusercontent.com/cert-manager/cert-manager/master/logo/logo.svg"></td>
         <td><a href="https://cert-manager.io/">cert-manager</a></td>
         <td>Automatic SSL certificate management with Let's Encrypt integration</td>
