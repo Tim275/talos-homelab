@@ -54,7 +54,7 @@ Everything needed to run my cluster & deploy my applications:
     </tr>
     <tr>
         <td><img width="32" src="https://raw.githubusercontent.com/argoproj/argo-cd/master/docs/assets/argo.png"></td>
-        <td><a href="https://argo-cd.readtreadthedocs.io/">ArgoCD</a></td>
+        <td><a href="https://argo-cd.readthedocs.io/">ArgoCD</a></td>
         <td>Declarative GitOps continuous delivery for Kubernetes</td>
     </tr>
     <tr>
@@ -73,17 +73,17 @@ Everything needed to run my cluster & deploy my applications:
         <td>Log aggregation system designed for cloud-native applications</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://raw.githubusercontent.com/elastic/elasticsearch/main/docs/reference/images/logo-elastic-elasticsearch-lt.svg"></td>
+        <td><img width="32" src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/elasticsearch/elasticsearch-original.svg"></td>
         <td><a href="https://www.elastic.co/elasticsearch/">Elasticsearch</a></td>
         <td>Distributed search and analytics engine for centralized log storage and analysis</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://raw.githubusercontent.com/elastic/kibana/main/src/core/server/core_app/assets/favicons/favicon-32x32.png"></td>
+        <td><img width="32" src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/kibana/kibana-original.svg"></td>
         <td><a href="https://www.elastic.co/kibana/">Kibana</a></td>
         <td>Data visualization and exploration platform for Elasticsearch with dashboards and analytics</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://www.fluentd.org/assets/img/miscellany/fluentd-icon_2x.png"></td>
+        <td><img width="32" src="https://www.vectorlogo.zone/logos/fluentd/fluentd-icon.svg"></td>
         <td><a href="https://www.fluentd.org/">Fluentd</a></td>
         <td>Data collector for building unified logging layer with flexible routing and transformation</td>
     </tr>
