@@ -8,8 +8,11 @@ spec:
   - git:
       repoURL: https://github.com/Tim275/talos-homelab
       revision: HEAD
-      files:
-      - path: "kubernetes/apps/applicationsets/*.yaml"
+      directories:
+      - path: "kubernetes/apps/overlays/*"
+      - path: "kubernetes/apps/book-info"
+      - path: "kubernetes/apps/quant"
+      - path: "kubernetes/apps/trading"
   template:
     metadata:
       name: '{{path.basename}}'
@@ -19,9 +22,7 @@ spec:
       source:
         repoURL: https://github.com/Tim275/talos-homelab
         targetRevision: HEAD
-        path: 'kubernetes/apps/applicationsets'
-        plugin:
-          name: kustomize-build-with-helm
+        path: '{{path.path}}'
       destination:
         server: https://kubernetes.default.svc
       syncPolicy:
@@ -30,3 +31,26 @@ spec:
           selfHeal: true
         syncOptions:
         - CreateNamespace=true
+---
+# ApplicationSets management
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: applicationsets
+  namespace: argocd
+spec:
+  project: app-of-apps
+  source:
+    repoURL: https://github.com/Tim275/talos-homelab
+    targetRevision: HEAD
+    path: 'kubernetes/apps/applicationsets'
+    plugin:
+      name: kustomize-build-with-helm
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
