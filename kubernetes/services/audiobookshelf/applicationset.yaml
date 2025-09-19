@@ -1,0 +1,94 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: audiobookshelf
+  namespace: argocd
+  labels:
+    service: audiobookshelf
+    team: product
+    category: media
+  annotations:
+    # Enterprise-grade configuration
+    argocd.argoproj.io/sync-wave: "3"
+    notifications.argoproj.io/subscribe.on-sync-succeeded: "slack:audiobookshelf"
+    notifications.argoproj.io/subscribe.on-health-degraded: "slack:alerts"
+
+spec:
+  # 🎯 Environment Discovery
+  generators:
+  - list:
+      elements:
+      # Development Environment
+      - env: dev
+        namespace: audiobookshelf-dev
+        autoSync: true
+        project: app-of-apps
+        branch: main
+
+      # Production Environment
+      - env: production
+        namespace: audiobookshelf-prod
+        autoSync: false  # Manual promotion
+        project: app-of-apps
+        branch: main
+
+  # 📋 Application Template
+  template:
+    metadata:
+      name: 'audiobookshelf-{{env}}'
+      namespace: argocd
+      labels:
+        service: audiobookshelf
+        environment: '{{env}}'
+        team: product
+        category: media
+        managed-by: platform-team
+      annotations:
+        argocd.argoproj.io/sync-wave: "3"
+        # Enterprise annotations
+        service.stonegarden.dev/owner: "product@stonegarden.dev"
+        service.stonegarden.dev/slack: "#audiobookshelf"
+        service.stonegarden.dev/docs: "https://wiki.stonegarden.dev/services/audiobookshelf"
+
+    spec:
+      # 🏗️ ArgoCD Project (RBAC & Policies)
+      project: '{{project}}'
+
+      # 📦 Source Configuration
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: '{{branch}}'
+        path: 'services/audiobookshelf/environments/{{env}}'
+
+      # 🎯 Deployment Target
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
+
+      # ⚙️ Sync Policy (Environment-specific)
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+        - ServerSideApply=true
+        - RespectIgnoreDifferences=true
+
+        # Enterprise-grade retry policy
+        retry:
+          limit: 3
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
+
+      # 📊 Health Checks
+      ignoreDifferences:
+      - group: apps
+        kind: Deployment
+        jsonPointers:
+        - /spec/replicas  # Ignore HPA scaling
+
+      # 🔔 Notification Hooks
+      revisionHistoryLimit: 10

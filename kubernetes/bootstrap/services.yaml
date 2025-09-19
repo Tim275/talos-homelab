@@ -1,0 +1,46 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: services-discovery
+  namespace: argocd
+  labels:
+    component: service-discovery
+    managed-by: platform-team
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+
+spec:
+  # 🔍 Auto-Discovery of Services
+  generators:
+  - git:
+      repoURL: https://github.com/Tim275/talos-homelab
+      revision: HEAD
+      files:
+      - path: "services/*/applicationset.yaml"
+
+  template:
+    metadata:
+      name: 'service-{{path[1]}}'  # services/audiobookshelf/applicationset.yaml → service-audiobookshelf
+      namespace: argocd
+      labels:
+        component: service-bootstrap
+        service: '{{path[1]}}'
+
+    spec:
+      project: platform
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: 'services/{{path[1]}}'
+        directory:
+          include: "applicationset.yaml"
+
+      destination:
+        server: https://kubernetes.default.svc
+
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
