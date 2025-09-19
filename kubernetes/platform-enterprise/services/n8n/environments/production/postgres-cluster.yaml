@@ -1,0 +1,55 @@
+# n8n PostgreSQL Cluster
+# Dedicated PostgreSQL database for n8n workflow automation
+
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: n8n-postgres
+  namespace: n8n-prod
+  labels:
+    app.kubernetes.io/name: n8n-postgres
+    app.kubernetes.io/component: database
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"  # After operator (wave 2)
+spec:
+  # Single instance for n8n (can scale later)
+  instances: 1
+  
+  # PostgreSQL version
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.1
+  
+  # Resource allocation (n8n optimized)
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi" 
+      cpu: "500m"
+      
+  # Storage configuration
+  storage:
+    size: 8Gi
+    storageClass: rook-ceph-block-enterprise
+        
+  # Bootstrap from existing cluster or create new
+  bootstrap:
+    initdb:
+      database: n8n
+      owner: n8n
+      secret:
+        name: n8n-postgres-credentials
+
+---
+# n8n database user credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: n8n-postgres-credentials
+  namespace: n8n-prod
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"  # Same as operator, before cluster
+type: kubernetes.io/basic-auth
+stringData:
+  username: n8n
+  password: n8nPassword123  # CHANGE THIS IN PRODUCTION!

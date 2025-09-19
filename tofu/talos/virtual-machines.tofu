@@ -40,25 +40,21 @@ resource "proxmox_virtual_environment_vm" "this" {
     discard      = "on"
     ssd          = true
     file_format  = "raw"
-    size         = 40
+    size         = 20
     file_id      = proxmox_virtual_environment_download_file.this["${each.value.host_node}_${each.value.update == true ? local.update_image_id : local.image_id}"].id
   }
 
-  # Storage Disk for Worker Nodes (Rook-Ceph)
-  dynamic "disk" {
-    for_each = each.value.machine_type == "worker" ? [1] : []
-    content {
-      datastore_id = each.value.datastore_id
-      interface    = "scsi1"
-      iothread     = true
-      cache        = "writethrough"
-      discard      = "on"
-      ssd          = true
-      file_format  = "raw"
-      size         = 50  # 50GB Storage Disk
-    }
+  # Ceph Storage Disk (raw, unformatted) - Restored from working commit afb3456
+  disk {
+    datastore_id = each.value.datastore_id
+    interface    = "scsi1"
+    iothread     = true
+    cache        = "none"
+    discard      = "on"
+    ssd          = true
+    file_format  = "raw"
+    size         = 50  # 50GB für Ceph OSD (increased from 15GB)
   }
-
 
   boot_order = ["scsi0"]
 
@@ -90,4 +86,9 @@ resource "proxmox_virtual_environment_vm" "this" {
   lifecycle {
     create_before_destroy = false
   }
+
+  # Force serial creation to prevent SSH overload
+  depends_on = [
+    proxmox_virtual_environment_download_file.this
+  ]
 }

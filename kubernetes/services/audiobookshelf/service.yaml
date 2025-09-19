@@ -1,0 +1,70 @@
+apiVersion: platform.stonegarden.dev/v1alpha1
+kind: Service
+metadata:
+  name: audiobookshelf
+  namespace: services
+  labels:
+    category: media
+    team: product
+spec:
+  # 👥 Service Ownership
+  owner:
+    team: "product"
+    slack: "#audiobookshelf"
+    email: "product@stonegarden.dev"
+    oncall: "https://grafana.stonegarden.dev/alerting"
+
+  # 🌍 Environment Configuration
+  environments:
+    dev:
+      cluster: homelab
+      namespace: audiobookshelf-dev
+      autoSync: true
+      replicas: 1
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+
+    production:
+      cluster: homelab
+      namespace: audiobookshelf-prod
+      autoSync: false  # Manual promotion required
+      replicas: 2
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          cpu: 1000m
+          memory: 1Gi
+
+  # 📊 Service Level Objectives
+  sla:
+    availability: 99.5%
+    latency: 500ms
+    throughput: "100 req/min"
+
+  # 🔄 Dependencies
+  dependencies:
+    - platform/data/postgres
+    - platform/storage/s3
+
+  # 📈 Monitoring & Observability
+  monitoring:
+    enabled: true
+    dashboards:
+      - grafana/audiobookshelf-overview.json
+      - grafana/audiobookshelf-performance.json
+    alerts:
+      - prometheus/audiobookshelf-availability.yaml
+      - prometheus/audiobookshelf-performance.yaml
+
+  # 🔐 Security
+  security:
+    networkPolicies: true
+    podSecurityStandards: restricted
+    imageScanRequired: true
