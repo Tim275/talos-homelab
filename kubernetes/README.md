@@ -7,13 +7,25 @@ export KUBECONFIG="tofu/output/kube-config.yaml"
 
 # 1. Foundation (REQUIRED ORDER!)
 kubectl kustomize --enable-helm kubernetes/infra/network/cilium | kubectl apply -f -
-kustomize build --enable-helm kubernetes/infra/network/istio | kubectl apply -f -
+
+# Istio (Microservice Architecture - 4 components)
+kustomize build --enable-helm kubernetes/infra/network/istio-cni | kubectl apply -f - && \
+kustomize build --enable-helm kubernetes/infra/network/istio-base | kubectl apply -f - && \
+kustomize build --enable-helm kubernetes/infra/network/istio-control-plane | kubectl apply -f - && \
+kustomize build --enable-helm kubernetes/infra/network/istio-gateway | kubectl apply -f -
+
+# Alternative: Istio (Monolithic - single command, if available)
+# kustomize build --enable-helm kubernetes/infra/network/istio | kubectl apply -f -
+
 kustomize build --enable-helm kubernetes/infra/controllers/sealed-secrets | kubectl apply -f -
 kustomize build --enable-helm kubernetes/infra/storage/proxmox-csi | kubectl apply -f -
 kustomize build --enable-helm kubernetes/infra/controllers/argocd | kubectl apply -f -
 
 # Rook-Ceph (requires 2x deployment for CRDs)
-kustomize build --enable-helm kubernetes/infra/storage/rook-ceph | kubectl apply -f - && sleep 10 && kubectl wait --for=condition=established crd/cephclusters.ceph.rook.io --timeout=60s && kustomize build --enable-helm kubernetes/infra/storage/rook-ceph | kubectl apply -f -
+kustomize build --enable-helm kubernetes/infra/storage/rook-ceph | kubectl apply -f -
+sleep 10
+kubectl wait --for=condition=established crd/cephclusters.ceph.rook.io --timeout=60s
+kustomize build --enable-helm kubernetes/infra/storage/rook-ceph | kubectl apply -f -
 
 # 2. Deploy everything else via GitOps
 kubectl apply -k kubernetes/infra
@@ -75,6 +87,35 @@ kubectl apply -k kubernetes/sets      # Deploy ApplicationSets (Auto-discovery)
 **You deploy EVERYTHING with just 2 commands, but via GitOps Auto-Discovery!** 🚀
 
 This is the difference between imperative (manual) and declarative (GitOps) deployments!
+
+## 🌊 ArgoCD Sync Wave Strategy
+
+**Deployment waves ensure proper order and prevent dependency issues:**
+
+### **Wave 0-5: Infrastructure**
+- Wave 0: CNI (Cilium) - Network foundation
+- Wave 1: Service Mesh (Istio) - Traffic management
+- Wave 2: Certificate Management (Cert-Manager) - TLS certificates
+- Wave 3: Controllers (Sealed Secrets, ArgoCD) - Core controllers
+- Wave 4: Storage (Rook-Ceph, Proxmox CSI) - Storage infrastructure
+- Wave 5: Monitoring/Observability - Metrics & logging
+
+### **Wave 10-19: Platform (Database Layer)**
+- Wave 10: Database Operators (CloudNative-PG, MongoDB Community)
+- Wave 12: Database Clusters (PostgreSQL, MongoDB instances)
+
+### **Wave 20-29: Applications**
+- Wave 20: Core Applications (n8n, etc.)
+
+### **Wave 30-39: Security**
+- Wave 30: Security policies, NetworkPolicies
+- Wave 31: RBAC, Pod Security Standards
+
+**Example sync wave annotation:**
+```yaml
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "10"
+```
 
 ## 🚨 CRITICAL: SealedSecrets After Cluster Recreation
 
