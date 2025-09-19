@@ -93,7 +93,7 @@ Everything needed to run my cluster & deploy my applications:
         <td>Lightweight log processor and forwarder optimized for containerized environments</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://vector.dev/img/logos/vector-logo.svg"></td>
+        <td>🦀</td>
         <td><a href="https://vector.dev/">Vector</a></td>
         <td>Rust-based observability data pipeline with intelligent log collection, transformation and routing to Elasticsearch</td>
     </tr>
