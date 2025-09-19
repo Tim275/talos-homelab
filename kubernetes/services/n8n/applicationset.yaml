@@ -1,0 +1,92 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: n8n
+  namespace: argocd
+  labels:
+    service: n8n
+    team: platform
+    category: automation
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    notifications.argoproj.io/subscribe.on-sync-succeeded: "slack:platform"
+    notifications.argoproj.io/subscribe.on-health-degraded: "slack:alerts"
+
+spec:
+  # 🎯 Environment Discovery
+  generators:
+  - list:
+      elements:
+      # Development Environment
+      - env: dev
+        namespace: n8n-dev
+        autoSync: true
+        project: app-of-apps
+        branch: main
+
+      # Production Environment
+      - env: production
+        namespace: n8n-prod
+        autoSync: false  # Manual promotion
+        project: app-of-apps
+        branch: main
+
+  # 📋 Application Template
+  template:
+    metadata:
+      name: 'n8n-{{env}}'
+      namespace: argocd
+      labels:
+        service: n8n
+        environment: '{{env}}'
+        team: platform
+        category: automation
+        managed-by: platform-team
+      annotations:
+        argocd.argoproj.io/sync-wave: "3"
+        # Enterprise annotations
+        service.stonegarden.dev/owner: "platform@stonegarden.dev"
+        service.stonegarden.dev/slack: "#platform"
+        service.stonegarden.dev/docs: "https://wiki.stonegarden.dev/services/n8n"
+        service.stonegarden.dev/runbook: "https://runbooks.stonegarden.dev/n8n"
+
+    spec:
+      # 🏗️ ArgoCD Project
+      project: '{{project}}'
+
+      # 📦 Source Configuration
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: '{{branch}}'
+        path: 'services/n8n/environments/{{env}}'
+
+      # 🎯 Deployment Target
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
+
+      # ⚙️ Sync Policy
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+        - ServerSideApply=true
+        - RespectIgnoreDifferences=true
+
+        retry:
+          limit: 3
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
+
+      # 📊 Health Checks
+      ignoreDifferences:
+      - group: apps
+        kind: Deployment
+        jsonPointers:
+        - /spec/replicas  # Ignore HPA scaling
+
+      revisionHistoryLimit: 10
