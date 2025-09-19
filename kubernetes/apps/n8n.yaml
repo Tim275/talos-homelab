@@ -1,0 +1,89 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: n8n
+  namespace: argocd
+  labels:
+    app: n8n
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "25"
+    # 🏢 Optional Enterprise Stuff (commented out)
+    # service.timourhomelab.dev/owner: "timour@timourhomelab.dev"
+    # service.timourhomelab.dev/slack: "#homelab"
+
+spec:
+  generators:
+  - list:
+      elements:
+      # 🧪 Development Environment
+      - env: dev
+        namespace: n8n-dev
+        autoSync: true
+        project: app-of-apps
+        branch: main
+        replicas: 1
+        resources:
+          cpu: "200m"
+          memory: "512Mi"
+
+      # 🏭 Production Environment
+      - env: production
+        namespace: n8n-prod
+        autoSync: false  # Manual promotion only
+        project: app-of-apps
+        branch: main
+        replicas: 2  # HA for production
+        resources:
+          cpu: "500m"
+          memory: "1Gi"
+
+  template:
+    metadata:
+      name: 'n8n-{{env}}'
+      namespace: argocd
+      labels:
+        app: n8n
+        environment: '{{env}}'
+        team: timour
+      annotations:
+        argocd.argoproj.io/sync-wave: "25"
+        # 🏢 Optional Enterprise Annotations (commented out)
+        # service.timourhomelab.dev/owner: "timour@timourhomelab.dev"
+        # notifications.argoproj.io/subscribe.on-sync-succeeded: "slack:homelab-deployments"
+
+    spec:
+      # 🏗️ ArgoCD Project
+      project: '{{project}}'
+
+      # 📦 Source Configuration
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: '{{branch}}'
+        path: 'apps/n8n/environments/{{env}}'
+
+      # 🎯 Deployment Target
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
+
+      # ⚙️ Sync Policy
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: '{{autoSync}}'
+        syncOptions:
+        - CreateNamespace=true
+        - ServerSideApply=true
+        - RespectIgnoreDifferences=true
+
+        # 🔄 Optional Retry Policy (commented out)
+        # retry:
+        #   limit: 3
+
+      # 📊 Optional Health Checks (commented out)
+      # ignoreDifferences:
+      # - group: apps
+      #   kind: Deployment
+      #   jsonPointers:
+      #   - /spec/replicas
