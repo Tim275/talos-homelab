@@ -1,81 +1,76 @@
-# 🏢 Enterprise-Grade Application Platform Design
+# 🏢 Enterprise-Grade Platform Design (Netflix/Uber Style)
 
-## 🎯 Design Principles (Netflix/Uber Style)
+## 🎯 Design Principles
 
 ### 1. **Service Ownership Model**
-- Each service owns its entire deployment pipeline
-- Teams are responsible for their service across all environments
-- Clear separation of concerns between platform and applications
+- Each service/platform component owns its entire lifecycle
+- Teams responsible for development, deployment, and operations
+- Clear separation between user services, platform services, and infrastructure
 
 ### 2. **Environment Promotion Pipeline**
 ```
-dev → staging → canary → production
+dev → production (simplified for homelab)
 ```
 
 ### 3. **GitOps with Progressive Delivery**
 - Git as single source of truth
-- Automated progressive rollouts
-- Canary deployments with automated rollback
-- Feature flags for dark launches
+- Automated sync for development environments
+- Manual promotion gates for production
+- Comprehensive rollback capabilities
 
-## 🏗️ New Directory Structure
+### 4. **Layered Architecture**
+- **Services Layer** → User-facing applications (audiobookshelf, n8n)
+- **Platform Layer** → Shared services (databases, messaging)
+- **Infrastructure Layer** → Core platform (networking, monitoring, storage)
+- **Bootstrap Layer** → Meta-configuration and discovery
+
+## 🏗️ Enterprise Directory Structure
 
 ```
 kubernetes/
-├── platform/                           # Platform Team
-│   ├── core/
-│   │   ├── argocd/
-│   │   ├── cert-manager/
-│   │   └── service-mesh/
-│   ├── data/
-│   │   ├── kafka/
-│   │   ├── postgres-operator/
-│   │   └── redis/
-│   └── observability/
-│       ├── prometheus/
-│       ├── grafana/
-│       └── jaeger/
+├── services/                           # User Applications (Product Teams)
+│   ├── audiobookshelf/                # Media Platform Service
+│   ├── n8n/                           # Workflow Automation Service
+│   └── kafka-demo/                    # Event Streaming Demo
 │
-├── services/                           # Application Teams
-│   ├── audiobookshelf/                # Service: Media Platform
-│   │   ├── service.yaml               # Service definition & ownership
-│   │   ├── environments/
-│   │   │   ├── base/                  # Shared base config
-│   │   │   │   ├── deployment.yaml
-│   │   │   │   ├── service.yaml
-│   │   │   │   ├── configmap.yaml
-│   │   │   │   └── kustomization.yaml
-│   │   │   ├── dev/
-│   │   │   │   ├── kustomization.yaml
-│   │   │   │   ├── patches/
-│   │   │   │   └── values.yaml
-│   │   │   ├── staging/
-│   │   │   │   ├── kustomization.yaml
-│   │   │   │   ├── patches/
-│   │   │   │   └── values.yaml
-│   │   │   ├── canary/
-│   │   │   │   ├── kustomization.yaml
-│   │   │   │   ├── rollout.yaml       # Argo Rollouts
-│   │   │   │   └── analysis.yaml      # Success metrics
-│   │   │   └── production/
-│   │   │       ├── kustomization.yaml
-│   │   │       ├── patches/
-│   │   │       └── values.yaml
-│   │   └── applicationset.yaml        # Manages all environments
-│   │
-│   ├── n8n/                          # Service: Workflow Automation
-│   │   ├── service.yaml              # Owner: Platform Team
-│   │   ├── environments/
-│   │   │   ├── base/
-│   │   │   ├── dev/
-│   │   │   ├── staging/
-│   │   │   └── production/
-│   │   └── applicationset.yaml
-│   │
-│   └── kafka-demo/                   # Service: Event Streaming Demo
-│       ├── service.yaml
-│       ├── environments/
-│       └── applicationset.yaml
+├── platform/                          # Platform Services (Platform Team)
+│   ├── data/
+│   │   ├── postgres-operator/         # Database Platform
+│   │   ├── mongodb/                   # Document Storage
+│   │   ├── influxdb/                  # Time Series DB
+│   │   └── cloudbeaver/               # DB Management
+│   └── messaging/
+│       ├── kafka/                     # Event Streaming
+│       ├── schema-registry/           # Schema Management
+│       └── redpanda-console/          # Kafka UI
+│
+├── infra/                             # Infrastructure (SRE Team)
+│   ├── controllers/
+│   │   ├── argocd/                    # GitOps
+│   │   ├── cert-manager/              # PKI
+│   │   └── sealed-secrets/            # Secret Management
+│   ├── network/
+│   │   ├── cilium/                    # CNI
+│   │   ├── istio-cni/                 # Service Mesh
+│   │   └── cloudflared/               # Tunnel
+│   ├── monitoring/
+│   │   ├── prometheus/                # Metrics
+│   │   ├── grafana/                   # Dashboards
+│   │   └── jaeger/                    # Tracing
+│   ├── observability/
+│   │   ├── elasticsearch/             # Log Storage
+│   │   ├── kibana/                    # Log Analytics
+│   │   ├── vector/                    # Log Routing
+│   │   └── opentelemetry/             # Telemetry
+│   ├── storage/
+│   │   └── rook-ceph/                 # Storage Platform
+│   └── backup/
+│       └── velero/                    # Backup & DR
+│
+└── bootstrap/                          # Meta Configuration (Platform Team)
+    ├── core.yaml                       # Core platform bootstrap
+    ├── services.yaml                   # Service discovery
+    └── teams.yaml                      # Team onboarding
 │
 ├── teams/                            # Team-specific configs
 │   ├── platform/
