@@ -1,0 +1,100 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform
+  namespace: argocd
+  labels:
+    category: platform
+    team: platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+    # Enterprise-grade platform management
+    service.stonegarden.dev/owner: "platform@stonegarden.dev"
+    service.stonegarden.dev/slack: "#platform"
+    service.stonegarden.dev/docs: "https://wiki.stonegarden.dev/platform"
+
+spec:
+  generators:
+  - list:
+      elements:
+      # 📊 Data Services
+      - service: n8n
+        team: platform
+        category: automation
+        environment: production
+
+      - service: influxdb
+        team: platform
+        category: database
+        environment: production
+
+      - service: cloudbeaver
+        team: platform
+        category: database
+        environment: production
+
+      # 📨 Messaging Services
+      - service: kafka
+        team: platform
+        category: messaging
+        environment: production
+
+      - service: redpanda-console
+        team: platform
+        category: messaging
+        environment: production
+
+      - service: schema-registry
+        team: platform
+        category: messaging
+        environment: production
+
+      # Optional services (commented out for now)
+      # - service: mongodb
+      #   team: platform
+      #   category: database
+      #   environment: production
+
+  template:
+    metadata:
+      name: 'platform-{{service}}'
+      namespace: argocd
+      labels:
+        service: '{{service}}'
+        team: '{{team}}'
+        category: '{{category}}'
+        environment: '{{environment}}'
+        managed-by: platform-team
+      annotations:
+        argocd.argoproj.io/sync-wave: "5"
+        # Enterprise annotations
+        service.stonegarden.dev/owner: "{{team}}@stonegarden.dev"
+        service.stonegarden.dev/category: "{{category}}"
+
+    spec:
+      project: app-of-apps
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: 'platform-enterprise/services/{{service}}/environments/{{environment}}'
+
+      destination:
+        server: https://kubernetes.default.svc
+
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+        - ServerSideApply=true
+        - RespectIgnoreDifferences=true
+
+        retry:
+          limit: 3
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
+
+      revisionHistoryLimit: 10
