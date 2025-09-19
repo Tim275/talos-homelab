@@ -27,8 +27,10 @@ sleep 10
 kubectl wait --for=condition=established crd/cephclusters.ceph.rook.io --timeout=60s
 kustomize build --enable-helm kubernetes/infra/storage/rook-ceph | kubectl apply -f -
 
-# 2. Deploy everything else via GitOps
-kubectl apply -k kubernetes/infra
+# 2. 🚨 CRITICAL: Fix Sealed Secrets after cluster recreation
+./post-deploy-restore.sh
+
+# 3. Deploy everything else via GitOps (Enterprise Structure)
 kubectl apply -k kubernetes/sets
 ```
 
@@ -46,23 +48,26 @@ kubectl apply -k kubernetes/infra     # Foundation components - ArgoCD, etc.
 kubectl apply -k kubernetes/sets      # Deploy ApplicationSets (Auto-discovery)
 ```
 
-### 🔄 What `kubernetes/sets` actually does:
+### 🔄 What `kubernetes/sets` actually does (Enterprise Structure):
 
-**ApplicationSets are "Apps that create Apps"** - they automatically scan:
+**ApplicationSets are "Apps that create Apps"** - they deploy controlled services:
 
 **`infrastructure.yaml` ApplicationSet:**
-- Scans `kubernetes/infra/storage` ✅
-- Scans `kubernetes/infra/controllers` ✅  
-- Scans `kubernetes/infra/monitoring` ✅
-- Scans `kubernetes/infra/network` ✅
-- Scans `kubernetes/infra/observability` ✅
+- Deploys `kubernetes/infrastructure/services/longhorn` ✅ (Enterprise Storage)
+- Deploys `kubernetes/infrastructure/services/cert-manager` ✅ (Enterprise TLS)
+- Legacy `kubernetes/infra/monitoring` ✅ (Being migrated)
+- Legacy `kubernetes/infra/network` ✅ (Being migrated)
+- Legacy `kubernetes/infra/observability` ✅ (Being migrated)
 
 **`platform.yaml` ApplicationSet:**
-- Scans `kubernetes/platform/messaging/*` ✅
-- Scans `kubernetes/platform/data/*` ✅
+- Deploys `kubernetes/platform-enterprise/services/n8n` ✅ (Enterprise Automation)
+- Deploys `kubernetes/platform-enterprise/services/influxdb` ✅ (Enterprise Metrics)
+- Deploys `kubernetes/platform-enterprise/services/kafka` ✅ (Enterprise Messaging)
+- 🚫 EXCLUDES: kafdrop, mongodb, quantlab-postgres (commented out)
 
 **`apps.yaml` ApplicationSet:**
-- Scans `kubernetes/apps/applicationsets/*.yaml` ✅
+- Deploys `kubernetes/services/audiobookshelf` ✅ (Enterprise Service Pattern)
+- Deploys `kubernetes/services/n8n` ✅ (Enterprise Service Pattern)
 
 ### 🤔 Why not directly `kubectl apply -k kubernetes/platform`?
 
@@ -76,15 +81,19 @@ kubectl apply -k kubernetes/sets      # Deploy ApplicationSets (Auto-discovery)
 ### 🎯 Summary:
 
 ```bash
-kubectl apply -k kubernetes/infra     # Bootstrap basis (ArgoCD, etc.)
-kubectl apply -k kubernetes/sets      # Deploy ApplicationSets (Auto-discovery)
+# Manual Bootstrap (Foundation)
+kubectl kustomize --enable-helm kubernetes/infra/network/cilium | kubectl apply -f -
+# ... (other manual steps - see above)
+
+# GitOps Bootstrap (Enterprise)
+kubectl apply -k kubernetes/sets      # Deploy Enterprise ApplicationSets
 # ApplicationSets then automatically deploy:
-# - kubernetes/infra/* (everything else)
-# - kubernetes/platform/*  
-# - kubernetes/apps/*
+# - kubernetes/infrastructure/services/* (Enterprise Infrastructure)
+# - kubernetes/platform-enterprise/services/*  (Enterprise Platform)
+# - kubernetes/services/* (Enterprise Applications)
 ```
 
-**You deploy EVERYTHING with just 2 commands, but via GitOps Auto-Discovery!** 🚀
+**You deploy EVERYTHING with GitOps Enterprise Structure!** 🚀
 
 This is the difference between imperative (manual) and declarative (GitOps) deployments!
 
@@ -156,65 +165,63 @@ rm secret.yaml
 git add sealed-secret.yaml
 ```
 
-## Complete File Structure
+## Complete File Structure (Enterprise-Grade)
 
 ```
 kubernetes/
-├── apps/                                # 🎯 USER APPLICATIONS
-│   ├── README.md
-│   ├── base/
-│   │   ├── audiobookshelf/
-│   │   │   ├── kustomization.yaml
-│   │   │   ├── deployment.yaml          # Audiobook server
-│   │   │   ├── service.yaml
-│   │   │   ├── ingress.yaml
-│   │   │   └── pvc.yaml                 # 100Gi storage
-│   │   └── n8n/
-│   │       ├── kustomization.yaml
-│   │       ├── deployment.yaml          # Workflow automation
-│   │       ├── service.yaml
-│   │       ├── storage.yaml             # Persistent data
-│   │       └── postgres-cluster.yaml    # CloudNative-PG database
-│   └── overlays/
-│       ├── dev/
-│       │   └── kustomization.yaml       # Latest tags, minimal resources
-│       └── production/
-│           └── kustomization.yaml       # Pinned versions, backups enabled
+├── services/                           # 🎯 ENTERPRISE USER APPLICATIONS
+│   ├── audiobookshelf/
+│   │   ├── applicationset.yaml         # Service ownership (team, SLA)
+│   │   └── environments/
+│   │       ├── dev/                    # Development environment
+│   │       └── production/             # Production environment
+│   └── n8n/
+│       ├── applicationset.yaml         # Enterprise service pattern
+│       └── environments/
+│           ├── dev/
+│           └── production/
 │
-├── platform/                            # 🗄️ DATA LAYER
-│   └── data/
-│       ├── mongodb/
-│       │   ├── kustomization.yaml
-│       │   ├── namespace.yaml
-│       │   ├── rbac.yaml               # ServiceAccount + permissions
-│       │   └── mongodb-cluster.yaml    # MongoDB ReplicaSet
-│       └── postgresql/
-│           ├── kustomization.yaml
-│           └── cnpg-cluster.yaml       # PostgreSQL HA clusters
+├── infrastructure/                     # 🏗️ ENTERPRISE INFRASTRUCTURE
+│   ├── sets/
+│   │   └── infrastructure.yaml         # Controlled infrastructure ApplicationSet
+│   └── services/
+│       ├── longhorn/                   # Enterprise storage
+│       │   ├── applicationset.yaml     # Service ownership
+│       │   └── environments/production/
+│       └── cert-manager/               # Enterprise TLS
+│           ├── applicationset.yaml
+│           └── environments/production/
 │
-├── infra/                              # 🏗️ INFRASTRUCTURE
-│   ├── kustomization.yaml
-│   ├── network/
-│   │   ├── cilium/                    # CNI + LoadBalancer
-│   │   ├── cert-manager/              # TLS certificates
-│   │   ├── gateway/                   # Gateway API
-│   │   └── cloudflared/               # Tunnel for external access
-│   ├── controllers/
-│   │   ├── argocd/                    # GitOps engine
-│   │   └── sealed-secrets/            # Secret encryption
-│   ├── storage/
-│   │   ├── proxmox-csi/               # Proxmox volumes
-│   │   └── rook-ceph/                 # Distributed storage
-│   └── monitoring/
-│       ├── prometheus/                # Metrics
-│       └── grafana/                   # Dashboards
+├── platform-enterprise/               # 🗄️ ENTERPRISE PLATFORM LAYER
+│   ├── sets/
+│   │   └── platform.yaml              # Controlled platform ApplicationSet
+│   └── services/
+│       ├── n8n/                       # Enterprise automation
+│       │   └── environments/production/
+│       ├── kafka/                     # Enterprise messaging
+│       └── influxdb/                  # Enterprise metrics
 │
-├── sets/                               # 🔄 AUTO-DISCOVERY
-│   └── applicationsets.yaml           # Matrix generator for all apps
+├── infra/                             # 🏗️ LEGACY INFRASTRUCTURE (being migrated)
+│   ├── network/cilium/                # CNI + LoadBalancer
+│   ├── controllers/argocd/            # GitOps engine
+│   ├── storage/rook-ceph/             # Distributed storage
+│   └── monitoring/prometheus/         # Metrics
 │
-└── bootstrap-infrastructure.yaml      # One-shot bootstrap
+├── sets/                              # 🔄 ENTERPRISE APPLICATIONSETS
+│   ├── infrastructure.yaml            # Enterprise infrastructure control
+│   ├── platform.yaml                 # Enterprise platform control
+│   └── apps.yaml                     # Enterprise applications control
+│
+└── README.md                          # This file
 
 ```
+
+## 🎯 Enterprise Benefits:
+- ✅ **Service Ownership**: Each service has clear team responsibility
+- ✅ **Controlled Deployment**: No more auto-discovery chaos
+- ✅ **Environment Promotion**: Consistent dev → production flow
+- ✅ **SLA Management**: Enterprise annotations for monitoring
+- ✅ **Excluded Services**: kafdrop, mongodb, quantlab-postgres disabled by default
 
 ## ArgoCD Access
 
