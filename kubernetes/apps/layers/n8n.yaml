@@ -1,0 +1,62 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: app-n8n
+  namespace: argocd
+  labels:
+    enterprise.tier: applications
+    enterprise.granular: n8n-only
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+spec:
+  goTemplate: true
+  generators:
+    # 🔄 GRANULAR CONTROL: N8N Only
+    - matrix:
+        generators:
+          - list:
+              elements:
+                - app: n8n
+          - list:
+              elements:
+                - env: dev
+                  server: https://kubernetes.default.svc
+                - env: prod
+                  server: https://kubernetes.default.svc
+  template:
+    metadata:
+      name: '{{.app}}-{{.env}}'
+      labels:
+        app.kubernetes.io/name: '{{.app}}'
+        app.kubernetes.io/environment: '{{.env}}'
+        app.kubernetes.io/managed-by: argocd
+        enterprise.granular: n8n-only
+        team: timour
+        owner: timour
+        service.tier: "application"
+        service.lifecycle: "production"
+        service.support: "24x7"
+        cost.center: "engineering"
+        business.unit: "platform"
+      annotations:
+        owner.email: "timour@stonegarden.dev"
+        owner.slack: "#timour-team"
+        service.runbook: "https://runbooks.stonegarden.dev/{{.app}}"
+        service.dashboard: "https://grafana.stonegarden.dev/d/{{.app}}"
+        service.oncall: "https://pagerduty.com/{{.app}}"
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: 'kubernetes/apps/overlays/{{.env}}/{{.app}}'
+      destination:
+        server: '{{.server}}'
+        namespace: '{{.app}}-{{.env}}'
+      syncPolicy:
+        automated:
+          selfHeal: true
+          prune: true
+        syncOptions:
+          - CreateNamespace=true
