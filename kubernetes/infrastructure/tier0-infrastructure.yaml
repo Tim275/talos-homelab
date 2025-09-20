@@ -1,0 +1,48 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tier0-infrastructure
+  namespace: argocd
+  labels:
+    enterprise.tier: tier0
+    infrastructure.pattern: netflix-google-meta
+    app.kubernetes.io/managed-by: argocd
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Tim275/talos-homelab
+    targetRevision: HEAD
+    path: kubernetes/infrastructure/network
+    # Direct Kustomize - TRUE Enterprise Pattern
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+  # Enhanced webhook handling for Istio
+  ignoreDifferences:
+    # Ignore Istio webhook drift (certificate rotation)
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jqPathExpressions:
+        - '.webhooks[]?.clientConfig.caBundle'
+        - '.webhooks[]?.failurePolicy'
+      managedFieldsManagers:
+        - istiod
+        - kube-controller-manager
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      jqPathExpressions:
+        - '.webhooks[]?.clientConfig.caBundle'
+        - '.webhooks[]?.failurePolicy'
+      managedFieldsManagers:
+        - istiod
+        - kube-controller-manager
