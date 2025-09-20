@@ -184,80 +184,80 @@ For learning, debugging, or fine-grained control:
 export KUBECONFIG="tofu/output/kube-config.yaml"
 
 # === WAVE 0: FOUNDATION (Manual Bootstrap Required) ===
-echo "🌐 Deploying Cilium CNI (Network Foundation)..."
-kubectl apply -k kubernetes/infrastructure/network/cilium
+echo "🌐 Updating Cilium CNI with Enterprise settings..."
+kubectl kustomize --enable-helm kubernetes/infrastructure/network/cilium | kubectl apply -f -
 
 echo "⏳ Waiting for Cilium to be ready..."
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=cilium-operator -n kube-system --timeout=300s
 
 # === WAVE 1: SERVICE MESH ===
 echo "🌊 Deploying Istio Service Mesh (4 components)..."
-kubectl apply -k kubernetes/infrastructure/network/istio-cni
+kubectl kustomize --enable-helm kubernetes/infrastructure/network/istio-cni | kubectl apply -f -
 kubectl wait --for=condition=ready pod -l app=istio-cni-node -n istio-system --timeout=300s
 
-kubectl apply -k kubernetes/infrastructure/network/istio-base
+kubectl kustomize --enable-helm kubernetes/infrastructure/network/istio-base | kubectl apply -f -
 kubectl wait --for=condition=established crd/gateways.gateway.networking.k8s.io --timeout=300s
 
-kubectl apply -k kubernetes/infrastructure/network/istio-control-plane
+kubectl kustomize --enable-helm kubernetes/infrastructure/network/istio-control-plane | kubectl apply -f -
 kubectl wait --for=condition=ready pod -l app=istiod -n istio-system --timeout=300s
 
-kubectl apply -k kubernetes/infrastructure/network/istio-gateway
+kubectl kustomize --enable-helm kubernetes/infrastructure/network/istio-gateway | kubectl apply -f -
 kubectl wait --for=condition=ready pod -l app=istio-gateway -n istio-gateway --timeout=300s
 
 # === WAVE 2: CONTROLLERS ===
 echo "🔐 Deploying Core Controllers..."
-kubectl apply -k kubernetes/infrastructure/controllers/sealed-secrets
+kubectl kustomize --enable-helm kubernetes/infrastructure/controllers/sealed-secrets | kubectl apply -f -
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=sealed-secrets -n sealed-secrets --timeout=300s
 
-kubectl apply -k kubernetes/infrastructure/controllers/cert-manager
+kubectl kustomize --enable-helm kubernetes/infrastructure/controllers/cert-manager | kubectl apply -f -
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=cert-manager -n cert-manager --timeout=300s
 
-kubectl apply -k kubernetes/infrastructure/controllers/argocd
+kubectl kustomize --enable-helm kubernetes/infrastructure/controllers/argocd | kubectl apply -f -
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=300s
 
 echo "🚀 Deploying Progressive Delivery..."
-kubectl apply -k kubernetes/infrastructure/controllers/argo-rollouts
+kubectl kustomize --enable-helm kubernetes/infrastructure/controllers/argo-rollouts | kubectl apply -f -
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argo-rollouts -n argo-rollouts --timeout=300s
 
 # === WAVE 3: STORAGE ===
 echo "🐙 Deploying Rook-Ceph Storage..."
-kubectl apply -k kubernetes/infrastructure/storage/rook-ceph
+kubectl kustomize --enable-helm kubernetes/infrastructure/storage/rook-ceph | kubectl apply -f -
 kubectl wait --for=condition=established crd/cephclusters.ceph.rook.io --timeout=60s
 # Second apply after CRDs are ready
-kubectl apply -k kubernetes/infrastructure/storage/rook-ceph
+kubectl kustomize --enable-helm kubernetes/infrastructure/storage/rook-ceph | kubectl apply -f -
 
 echo "🗂️ Deploying MinIO Object Storage..."
-kubectl apply -k kubernetes/infrastructure/storage/minio
+kubectl kustomize --enable-helm kubernetes/infrastructure/storage/minio | kubectl apply -f -
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=minio -n minio --timeout=300s
 
 # === WAVE 4: MONITORING ===
 echo "📊 Deploying Monitoring Stack..."
-kubectl apply -k kubernetes/infrastructure/monitoring/prometheus
-kubectl apply -k kubernetes/infrastructure/monitoring/grafana
-kubectl apply -k kubernetes/infrastructure/monitoring/loki
+kubectl kustomize --enable-helm kubernetes/infrastructure/monitoring/prometheus | kubectl apply -f -
+kubectl kustomize --enable-helm kubernetes/infrastructure/monitoring/grafana | kubectl apply -f -
+kubectl kustomize --enable-helm kubernetes/infrastructure/monitoring/loki | kubectl apply -f -
 
 echo "💰 Deploying OpenCost (FinOps)..."
-kubectl apply -k kubernetes/infrastructure/monitoring/opencost
+kubectl kustomize --enable-helm kubernetes/infrastructure/monitoring/opencost | kubectl apply -f -
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=opencost -n opencost --timeout=300s
 
 # === WAVE 5: BACKUP ===
 echo "💾 Deploying Velero Backup..."
-kubectl apply -k kubernetes/infrastructure/backup/velero
+kubectl kustomize --enable-helm kubernetes/infrastructure/backup/velero | kubectl apply -f -
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=velero -n velero --timeout=300s
 
 # === WAVE 6: PLATFORM SERVICES ===
 echo "🌊 Deploying Kafka Platform..."
-kubectl apply -k kubernetes/platform/messaging/kafka
-kubectl apply -k kubernetes/platform/messaging/redpanda-console
-kubectl apply -k kubernetes/platform/messaging/schema-registry
+kubectl kustomize --enable-helm kubernetes/platform/messaging/kafka | kubectl apply -f -
+kubectl kustomize --enable-helm kubernetes/platform/messaging/redpanda-console | kubectl apply -f -
+kubectl kustomize --enable-helm kubernetes/platform/messaging/schema-registry | kubectl apply -f -
 
 echo "🗄️ Deploying Data Platform..."
-kubectl apply -k kubernetes/platform/data/influxdb
-kubectl apply -k kubernetes/platform/data/mongodb
-kubectl apply -k kubernetes/platform/data/cloudbeaver
+kubectl kustomize --enable-helm kubernetes/platform/data/influxdb | kubectl apply -f -
+kubectl kustomize --enable-helm kubernetes/platform/data/mongodb | kubectl apply -f -
+kubectl kustomize --enable-helm kubernetes/platform/data/cloudbeaver | kubectl apply -f -
 
 echo "🌟 Deploying Backstage Developer Portal..."
-kubectl apply -k kubernetes/platform/developer/backstage
+kubectl kustomize --enable-helm kubernetes/platform/developer/backstage | kubectl apply -f -
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=backstage -n backstage --timeout=300s
 
 # === WAVE 7: ENTERPRISE AUTOMATION ===
