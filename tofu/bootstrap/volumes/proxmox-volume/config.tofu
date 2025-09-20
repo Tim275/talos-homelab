@@ -22,6 +22,10 @@ resource "restapi_object" "proxmox-volume" {
 
   lifecycle {
     prevent_destroy = false
+    # Enterprise fix: Ignore changes during destroy operations
+    ignore_changes = [
+      data
+    ]
   }
 }
 
