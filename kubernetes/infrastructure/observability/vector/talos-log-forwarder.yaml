@@ -1,0 +1,217 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: talos-log-forwarder-script
+  namespace: elastic-system
+data:
+  forwarder.sh: |
+    #!/bin/bash
+    # Talos Log Forwarder Script - sends etcd/kubelet logs to Vector
+
+    VECTOR_ENDPOINT="http://vector-aggregator.elastic-system.svc.cluster.local:6000"
+
+    # Talos Node Configuration (adjust to your setup)
+    CONTROL_PLANE_NODE="192.168.68.101"
+    WORKER_NODES=(
+      "192.168.68.103"
+      "192.168.68.104"
+      "192.168.68.105"
+      "192.168.68.107"
+      "192.168.68.108"
+      "192.168.68.109"
+    )
+
+    echo "Starting Talos log forwarder..."
+
+    # Function to forward logs to Vector
+    forward_log() {
+      local service="$1"
+      local node_ip="$2"
+      local node_role="$3"
+      local message="$4"
+
+      # Create JSON payload for Vector
+      curl -X POST "$VECTOR_ENDPOINT" \
+           -H "Content-Type: application/json" \
+           -d "{
+             \"@timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\",
+             \"message\": \"$message\",
+             \"source\": \"talos-direct\",
+             \"service\": \"$service\",
+             \"node_ip\": \"$node_ip\",
+             \"node_role\": \"$node_role\",
+             \"cluster\": \"talos-homelab\",
+             \"environment\": \"production\",
+             \"index_name\": \"${service}-${node_role}-direct\"
+           }" 2>/dev/null
+    }
+
+    # Collect etcd logs from control plane
+    echo "Collecting etcd logs from control plane: $CONTROL_PLANE_NODE"
+    talosctl -n "$CONTROL_PLANE_NODE" logs etcd --tail 10 2>/dev/null | while read -r line; do
+      if [[ -n "$line" ]]; then
+        # Clean the line (remove node prefix)
+        clean_line=$(echo "$line" | sed "s/^$CONTROL_PLANE_NODE: //")
+        forward_log "etcd" "$CONTROL_PLANE_NODE" "control-plane" "$clean_line"
+      fi
+    done &
+
+    # Collect kubelet logs from workers
+    for worker in "${WORKER_NODES[@]}"; do
+      echo "Collecting kubelet logs from worker: $worker"
+      talosctl -n "$worker" logs kubelet --tail 5 2>/dev/null | while read -r line; do
+        if [[ -n "$line" ]]; then
+          # Clean the line (remove node prefix)
+          clean_line=$(echo "$line" | sed "s/^$worker: //")
+          forward_log "kubelet" "$worker" "worker" "$clean_line"
+        fi
+      done &
+    done
+
+    # Wait for all background jobs
+    wait
+    echo "Talos log collection completed"
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: talos-log-forwarder
+  namespace: elastic-system
+  labels:
+    app: talos-log-forwarder
+    component: logging
+spec:
+  schedule: "*/2 * * * *"  # Every 2 minutes
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: talos-log-forwarder
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: vector  # Use Vector's service account
+          containers:
+          - name: talos-forwarder
+            image: siderolabs/talos:v1.10.6
+            command: ["/bin/bash", "/scripts/forwarder.sh"]
+            env:
+            - name: TALOSCONFIG
+              value: "/var/run/secrets/talos/talosconfig"
+            resources:
+              requests:
+                memory: 64Mi
+                cpu: 50m
+              limits:
+                memory: 128Mi
+                cpu: 100m
+            volumeMounts:
+            - name: forwarder-script
+              mountPath: /scripts
+              readOnly: true
+            - name: talos-config
+              mountPath: /var/run/secrets/talos
+              readOnly: true
+          volumes:
+          - name: forwarder-script
+            configMap:
+              name: talos-log-forwarder-script
+              defaultMode: 0755
+          - name: talos-config
+            secret:
+              secretName: talos-config
+              optional: true
+
+---
+# Alternative: Simple HTTP-based log forwarder using curl
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: simple-talos-forwarder
+  namespace: elastic-system
+data:
+  simple-forwarder.sh: |
+    #!/bin/bash
+    # Simple Talos log forwarder using kubectl logs instead of talosctl
+
+    VECTOR_ENDPOINT="http://vector-aggregator.elastic-system.svc.cluster.local:6000"
+
+    # Get etcd logs from static pods
+    echo "Collecting etcd logs from static pods..."
+    kubectl logs -n kube-system etcd-ctrl-0 --tail=5 --prefix=true | while read -r line; do
+      if [[ -n "$line" ]]; then
+        curl -X POST "$VECTOR_ENDPOINT" \
+             -H "Content-Type: application/json" \
+             -d "{
+               \"@timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\",
+               \"message\": \"$line\",
+               \"source\": \"kubernetes-static-pod\",
+               \"service\": \"etcd\",
+               \"node_role\": \"control-plane\",
+               \"cluster\": \"talos-homelab\",
+               \"index_name\": \"etcd-control-plane-static\"
+             }" 2>/dev/null
+      fi
+    done
+
+    # Get kube-apiserver logs
+    echo "Collecting kube-apiserver logs..."
+    kubectl logs -n kube-system kube-apiserver-ctrl-0 --tail=5 --prefix=true | while read -r line; do
+      if [[ -n "$line" ]]; then
+        curl -X POST "$VECTOR_ENDPOINT" \
+             -H "Content-Type: application/json" \
+             -d "{
+               \"@timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\",
+               \"message\": \"$line\",
+               \"source\": \"kubernetes-static-pod\",
+               \"service\": \"kube-apiserver\",
+               \"node_role\": \"control-plane\",
+               \"cluster\": \"talos-homelab\",
+               \"index_name\": \"kube-apiserver-control-plane-static\"
+             }" 2>/dev/null
+      fi
+    done
+
+    echo "Simple forwarder completed"
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: simple-talos-forwarder
+  namespace: elastic-system
+  labels:
+    app: simple-talos-forwarder
+    component: logging
+spec:
+  schedule: "*/3 * * * *"  # Every 3 minutes
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: simple-talos-forwarder
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: vector
+          containers:
+          - name: simple-forwarder
+            image: bitnami/kubectl:latest
+            command: ["/bin/bash", "/scripts/simple-forwarder.sh"]
+            resources:
+              requests:
+                memory: 32Mi
+                cpu: 25m
+              limits:
+                memory: 64Mi
+                cpu: 50m
+            volumeMounts:
+            - name: simple-script
+              mountPath: /scripts
+              readOnly: true
+          volumes:
+          - name: simple-script
+            configMap:
+              name: simple-talos-forwarder
+              defaultMode: 0755

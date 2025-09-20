@@ -1,0 +1,96 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure-controllers
+  namespace: argocd
+  labels:
+    infrastructure.layer: controllers
+    enterprise.tier: platform
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  goTemplate: true
+  generators:
+    # 🎮 ENTERPRISE PATTERN: Platform Controllers Layer
+    - list:
+        elements:
+          # Wave 2: Core Controllers (manually bootstrapped)
+          - name: argocd
+            path: kubernetes/infrastructure/controllers/argocd
+            namespace: argocd
+            critical: "true"
+            wave: "2"
+            enabled: "true"
+          - name: sealed-secrets
+            path: kubernetes/infrastructure/controllers/sealed-secrets
+            namespace: sealed-secrets
+            critical: "true"
+            wave: "2"
+            enabled: "true"
+          - name: cert-manager
+            path: kubernetes/infrastructure/controllers/cert-manager
+            namespace: cert-manager
+            critical: "true"
+            wave: "2"
+            enabled: "true"
+          # Wave 3: Advanced Controllers
+          - name: cloudnative-pg
+            path: kubernetes/infrastructure/controllers/cloudnative-pg
+            namespace: cnpg-system
+            critical: "false"
+            wave: "3"
+            enabled: "true"
+          - name: external-secrets
+            path: kubernetes/infrastructure/controllers/external-secrets
+            namespace: external-secrets-system
+            critical: "false"
+            wave: "3"
+            enabled: "false"  # Can be enabled later
+          - name: keda
+            path: kubernetes/infrastructure/controllers/keda
+            namespace: keda
+            critical: "false"
+            wave: "3"
+            enabled: "false"  # Can be enabled later
+          - name: vpa
+            path: kubernetes/infrastructure/controllers/vpa
+            namespace: kube-system
+            critical: "false"
+            wave: "3"
+            enabled: "false"  # Can be enabled later
+  template:
+    metadata:
+      name: 'controllers-{{.name}}'
+      labels:
+        infrastructure.layer: controllers
+        infrastructure.component: '{{.name}}'
+        infrastructure.critical: '{{.critical}}'
+        app.kubernetes.io/managed-by: argocd
+        team: timour
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{.wave}}'
+    spec:
+      project: app-of-apps
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+      # 🎯 ENTERPRISE PATTERN: Conditional Sync
+      syncPolicy:
+        {{- if eq .enabled "true"}}
+        automated:
+          prune: true
+          selfHeal: true
+        {{- else}}
+        syncPolicy: {}  # Manual sync when enabled=false
+        {{- end}}
