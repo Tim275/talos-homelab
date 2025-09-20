@@ -1,0 +1,41 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: observability-kibana
+  namespace: argocd
+  labels:
+    # 🏢 Enterprise Labels
+    app.kubernetes.io/layer: infrastructure
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/part-of: timour-homelab
+    enterprise.pattern: applicationset
+    team: timour
+
+    # 🔍 Infrastructure Labels
+    infrastructure.layer: observability
+    infrastructure.component: kibana
+    infrastructure.critical: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"
+spec:
+  project: infrastructure
+  source:
+    repoURL: https://github.com/Tim275/talos-homelab
+    targetRevision: HEAD
+    path: kubernetes/infrastructure/observability/kibana
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
