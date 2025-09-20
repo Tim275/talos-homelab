@@ -1,0 +1,108 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform-developer
+  namespace: argocd
+  labels:
+    platform.layer: developer
+    enterprise.tier: platform
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "16"
+spec:
+  goTemplate: true
+  generators:
+    # 🔧 ENTERPRISE PATTERN: Developer Platform Services
+    - list:
+        elements:
+          # CI/CD Platform
+          - name: jenkins
+            path: kubernetes/platform/developer/jenkins
+            namespace: jenkins
+            critical: "false"
+            component: "ci-cd"
+            wave: "16"
+            enabled: "false"  # To be implemented
+          # Code Quality Platform
+          - name: sonarqube
+            path: kubernetes/platform/developer/sonarqube
+            namespace: sonarqube
+            critical: "false"
+            component: "code-quality"
+            wave: "17"
+            enabled: "false"  # To be implemented
+          # Artifact Repository
+          - name: nexus
+            path: kubernetes/platform/developer/nexus
+            namespace: nexus
+            critical: "false"
+            component: "artifact-repo"
+            wave: "17"
+            enabled: "false"  # To be implemented
+          # Git Platform
+          - name: gitlab
+            path: kubernetes/platform/developer/gitlab
+            namespace: gitlab
+            critical: "false"
+            component: "git-platform"
+            wave: "16"
+            enabled: "false"  # Alternative to GitHub
+          # Container Registry
+          - name: harbor
+            path: kubernetes/platform/developer/harbor
+            namespace: harbor
+            critical: "false"
+            component: "container-registry"
+            wave: "17"
+            enabled: "false"  # Container images
+          # Developer Portal (Backstage) - TIER 0 ENTERPRISE
+          - name: backstage
+            path: kubernetes/platform/developer/backstage
+            namespace: backstage
+            critical: "true"
+            component: "developer-portal"
+            wave: "18"
+            enabled: "true"  # Essential for enterprise self-service
+          # Testing Platform
+          - name: testcafe
+            path: kubernetes/platform/developer/testcafe
+            namespace: testing
+            critical: "false"
+            component: "e2e-testing"
+            wave: "17"
+            enabled: "false"  # E2E testing
+          # Security Scanning
+          - name: trivy
+            path: kubernetes/platform/developer/trivy
+            namespace: security
+            critical: "true"
+            component: "vulnerability-scanning"
+            wave: "17"
+            enabled: "false"  # Security first
+  template:
+    metadata:
+      name: 'platform-developer-{{.name}}'
+      labels:
+        platform.layer: developer
+        platform.component: '{{.component}}'
+        platform.critical: '{{.critical}}'
+        app.kubernetes.io/managed-by: argocd
+        team: timour
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{.wave}}'
+    spec:
+      project: app-of-apps
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true

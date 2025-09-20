@@ -1,0 +1,79 @@
+# 💰 ENTERPRISE FINOPS - Self-Hosted Cost Management
+# ===================================================
+
+opencost:
+  exporter:
+    replicas: 2  # HA for enterprise
+
+    # Self-Hosted Custom Pricing (Based on typical homelab costs)
+    customPricing:
+      enabled: true
+      costModel:
+        description: "Self-hosted homelab pricing model"
+        # CPU cost per core hour (estimate based on hardware depreciation)
+        CPU: 0.031  # ~$0.031/hour per vCPU (typical server depreciation)
+        # RAM cost per GB hour
+        RAM: 0.004  # ~$0.004/hour per GB RAM
+        # Storage cost per GB hour
+        storage: 0.000138  # ~$0.10/month per GB
+        # GPU cost per hour (if applicable)
+        GPU: 0.50  # Adjust based on your GPU setup
+
+    # Prometheus Integration
+    prometheus:
+      # Connect to existing Prometheus
+      external:
+        enabled: true
+        url: "http://prometheus-server.monitoring.svc.cluster.local"
+
+    resources:
+      limits:
+        cpu: 999m
+        memory: 1Gi
+      requests:
+        cpu: 100m
+        memory: 55Mi
+
+  # UI Configuration
+  ui:
+    enabled: true
+    replicas: 2
+
+    resources:
+      limits:
+        cpu: 999m
+        memory: 1Gi
+      requests:
+        cpu: 10m
+        memory: 55Mi
+
+    ingress:
+      enabled: false  # Will use Gateway API
+
+    # Grafana Integration
+    grafana:
+      # Enable Grafana dashboards
+      enabled: true
+
+# ServiceMonitor for Prometheus
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/component: opencost
+    app.kubernetes.io/part-of: timour-homelab
+
+# Enterprise Security
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1001
+  fsGroup: 1001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
