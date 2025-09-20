@@ -36,6 +36,9 @@ spec:
       name: '{{ path.basename }}'
       labels:
         dev.stonegarden: network
+      annotations:
+        # Enhanced comparison for webhook certificate management
+        argocd.argoproj.io/compare-options: ServerSideDiff=true,IncludeMutationWebhook=true
     spec:
       project: network
       source:
@@ -56,17 +59,22 @@ spec:
           - RespectIgnoreDifferences=true
           - ApplyOutOfSyncOnly=true
       ignoreDifferences:
-        # Ignore ALL Istio ValidatingWebhookConfiguration drift (caBundle dynamically managed by istiod)
+        # FIXED: Use jqPathExpressions instead of jsonPointers (ArgoCD bugs #12961, #9323)
+        # Ignore Istio ValidatingWebhookConfiguration certificate rotation
         - group: admissionregistration.k8s.io
           kind: ValidatingWebhookConfiguration
-          jsonPointers:
-            - /webhooks/0/clientConfig/caBundle
-            - /webhooks/1/clientConfig/caBundle
-            - /webhooks/2/clientConfig/caBundle
-        # Ignore ALL MutatingWebhookConfiguration drift
+          jqPathExpressions:
+            - '.webhooks[]?.clientConfig.caBundle'
+            - '.webhooks[]?.failurePolicy'
+          managedFieldsManagers:
+            - istiod
+            - kube-controller-manager
+        # Ignore MutatingWebhookConfiguration certificate rotation
         - group: admissionregistration.k8s.io
           kind: MutatingWebhookConfiguration
-          jsonPointers:
-            - /webhooks/0/clientConfig/caBundle
-            - /webhooks/1/clientConfig/caBundle
-            - /webhooks/2/clientConfig/caBundle
+          jqPathExpressions:
+            - '.webhooks[]?.clientConfig.caBundle'
+            - '.webhooks[]?.failurePolicy'
+          managedFieldsManagers:
+            - istiod
+            - kube-controller-manager
