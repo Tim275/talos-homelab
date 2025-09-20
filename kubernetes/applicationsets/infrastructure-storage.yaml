@@ -1,0 +1,71 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure-storage
+  namespace: argocd
+  labels:
+    infrastructure.layer: storage
+    enterprise.tier: platform
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  goTemplate: true
+  generators:
+    # 💾 ENTERPRISE PATTERN: Storage Platform Layer
+    - list:
+        elements:
+          # Wave 4: Storage Foundation
+          - name: rook-ceph
+            path: kubernetes/infrastructure/storage/rook-ceph
+            namespace: rook-ceph
+            critical: "true"
+            tier: "distributed"
+            wave: "4"
+          - name: minio
+            path: kubernetes/infrastructure/storage/minio
+            namespace: minio
+            critical: "false"
+            tier: "object"
+            wave: "4"
+          - name: velero
+            path: kubernetes/infrastructure/backup/velero
+            namespace: velero
+            critical: "true"
+            tier: "backup"
+            wave: "4"
+          # Alternative Storage (Optional)
+          - name: longhorn
+            path: kubernetes/infrastructure/storage/longhorn
+            namespace: longhorn-system
+            critical: "false"
+            tier: "block"
+            wave: "4"
+            enabled: "false"  # Alternative to rook-ceph
+  template:
+    metadata:
+      name: 'storage-{{.name}}'
+      labels:
+        infrastructure.layer: storage
+        infrastructure.component: '{{.name}}'
+        infrastructure.critical: '{{.critical}}'
+        storage.tier: '{{.tier}}'
+        app.kubernetes.io/managed-by: argocd
+        team: timour
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{.wave}}'
+    spec:
+      project: app-of-apps
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

@@ -1,0 +1,93 @@
+# Deploy fluent-bit as daemonSet. One POD per node
+kind: DaemonSet
+
+# Host directories containing Host and POD logs files
+# Mounted into Fluent-bit DaemonSet POD
+daemonSetVolumes:
+  # Mount file containing host and POD logs
+  # In K3S, PODS logs are located in /var/log/pods
+  # Host OS logs located in /var/logs
+  - name: varlog
+    hostPath:
+      path: /var/log
+  # Mount /etc/machine-id identifying node
+  - name: etcmachineid
+    hostPath:
+      path: /etc/machine-id
+      type: File
+
+daemonSetVolumeMounts:
+  - name: varlog
+    mountPath: /var/log
+  - name: etcmachineid
+    mountPath: /etc/machine-id
+    readOnly: true
+    
+# Environment variables used by Fluent Config files
+env:
+  # Enterprise FluentBit → Fluentd forwarding (no direct ES connection needed)
+  # Setting nodeName as environment variable
+  - name: FLUENT_SELFHOSTNAME
+    valueFrom:
+      fieldRef:
+        fieldPath: spec.nodeName
+    
+# Define configuration file in external configMap using YAML syntax
+# Remove classic default configuration
+config: {}
+customParsers: {}
+# Instead of using pre-defined configMap created by Helm Chart, use a existing configMap
+# ConfigMap mounted as /fluent-bit/etc/conf directory
+existingConfigMap: fluent-bit-config
+    
+# Use standard fluent-bit.conf format
+command:
+  - /fluent-bit/bin/fluent-bit
+    
+args:
+  - --workdir=/fluent-bit/etc
+  - --config=/fluent-bit/etc/conf/fluent-bit.conf
+  
+# Mount parsers.conf from ConfigMap
+volumeMounts:
+  - name: config
+    mountPath: /fluent-bit/etc/parsers.conf
+    subPath: parsers.conf
+    
+# Lua Scripts. ConfigMap luascripts mounted as /fluent-bit/scripts
+luaScripts: {}
+    
+# Enable fluentbit installation on control-plane nodes
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+    
+# Init container. Create directory for fluentbit
+initContainers:
+  - name: init-fluentbit-directory
+    image: busybox
+    command: ['/bin/sh', '-c', 'if [ ! -d /var/log/fluentbit ]; then mkdir -p /var/log/fluentbit; fi ; if [ ! -d /var/log/fluentbit/tail-db ]; then mkdir -p /var/log/fluentbit/tail-db; fi ; if [ ! -d /var/log/fluentbit/storage ]; then mkdir -p /var/log/fluentbit/storage; fi']
+    volumeMounts:
+      - name: varlog
+        mountPath: /var/log
+    
+# Enable hot-reload
+# jimmidyson/configmap-reload is deployed as side-car
+# By default it watches for changes in /fluent-bit/etc/conf/ (fluent-conf) and /fluent-bit/scripts (luascripts)
+# If any change is detected reload endpoint is ivoked: 
+# http://localhost:2020/api/v2/reload
+hotReload:
+  enabled: true
+    
+# Enable Prometheus operator service monitor
+serviceMonitor:
+  enabled: true
+    
+# Enable Grafana dashboard
+dashboards:
+  enabled: true
+  labelKey: grafana_dashboard
+  labelValue: 1
+  annotations:
+    grafana_folder: "Logging"
