@@ -19,4 +19,8 @@ kubernetes_volumes = {
     node = "msa2proxmox"
     size = "5G"
   }
+  "velero-backup-data" = {
+    node = "msa2proxmox"
+    size = "20G"
+  }
 }
