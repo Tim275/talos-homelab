@@ -87,6 +87,21 @@ kubectl apply -k kubernetes/apps/layers/kustomization-kafka-demo.yaml
 kubectl apply -k kubernetes/apps/layers/all-apps.yaml
 ```
 
+**🎯 Complete Service Stacks**
+```bash
+# 🌐 Complete Istio Service Mesh (all 4 components)
+kubectl apply -k kubernetes/infrastructure/layers/istio-complete.yaml
+
+# 🛠️ Complete Platform Services (data + messaging + developer)
+kubectl apply -k kubernetes/platform/layers/all-platform.yaml
+
+# 💾 Complete Storage Stack (Rook Ceph + Proxmox CSI)
+kubectl apply -k kubernetes/infrastructure/layers/storage-complete.yaml
+
+# 🔐 Complete Security Stack (Sealed Secrets + Cert Manager)
+kubectl apply -k kubernetes/infrastructure/layers/security-complete.yaml
+```
+
 #### **🏗️ Full Layer Deployment**
 ```bash
 # 🏗️ Deploy all Infrastructure ApplicationSets
