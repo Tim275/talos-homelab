@@ -1,0 +1,100 @@
+# SIMPLE WORKING FLUENTD CONFIGURATION
+# FluentBit → Fluentd → Elasticsearch
+
+# Deploy as Deployment with 1 replica for homelab
+kind: "Deployment"
+replicaCount: 1
+
+# Use pre-built image with Elasticsearch plugin but no K8s defaults
+image:
+  repository: fluent/fluentd
+  tag: "v1.16-debian-1"
+
+# Environment variables for Elasticsearch connection
+env:
+  - name: FLUENT_ELASTICSEARCH_HOST
+    value: "production-cluster-es-http.elastic-system"
+  - name: FLUENT_ELASTICSEARCH_PORT  
+    value: "9200"
+  - name: FLUENT_ELASTICSEARCH_SCHEME
+    value: "https"
+  - name: FLUENT_ELASTICSEARCH_SSL_VERIFY
+    value: "false"
+  - name: FLUENT_ELASTICSEARCH_USER
+    value: "elastic"
+  - name: FLUENT_ELASTICSEARCH_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: production-cluster-es-elastic-user
+        key: elastic
+
+# Resource limits
+resources:
+  limits:
+    cpu: 500m
+    memory: 1Gi
+  requests:
+    cpu: 200m
+    memory: 512Mi
+
+# Service for FluentBit → Fluentd communication
+service:
+  enabled: true
+  type: ClusterIP
+  ports:
+    - name: forwarder
+      protocol: TCP
+      containerPort: 24224
+
+# Install Elasticsearch plugin at runtime
+plugins:
+  - fluent-plugin-elasticsearch
+
+# ULTRA SIMPLE CONFIG - NO K8S METADATA
+fileConfigs:
+  fluent.conf: |-
+    # Receive logs from FluentBit
+    <source>
+      @type forward
+      port 24224
+      bind 0.0.0.0
+    </source>
+    
+    # Send everything to Elasticsearch (no fancy stuff)
+    <match **>
+      @type elasticsearch
+      host production-cluster-es-http.elastic-system
+      port 9200
+      scheme https
+      ssl_verify false
+      user elastic
+      password "#{ENV['FLUENT_ELASTICSEARCH_PASSWORD']}"
+      index_name homelab-logs-%Y.%m.%d
+      type_name _doc
+      include_timestamp true
+    </match>
+
+# Buffer storage
+volumeMounts:
+  - name: buffer-storage
+    mountPath: /buffers
+
+volumes:
+  - name: buffer-storage
+    emptyDir: {}
+
+# Disable unnecessary features
+serviceAccount:
+  create: false
+rbac:
+  create: false
+mountVarLogDirectory: false
+mountDockerContainersDirectory: false
+
+# Disable health checks (they don't work anyway)
+readinessProbe: {}
+livenessProbe: {}
+
+# No monitoring for now
+serviceMonitor:
+  enabled: false

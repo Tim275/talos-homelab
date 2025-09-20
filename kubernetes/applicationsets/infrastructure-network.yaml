@@ -1,0 +1,80 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure-network
+  namespace: argocd
+  labels:
+    infrastructure.layer: network
+    enterprise.tier: platform
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  goTemplate: true
+  generators:
+    # 🌐 ENTERPRISE PATTERN: Network Foundation Layer
+    - list:
+        elements:
+          # Wave 0: Network Foundation
+          - name: cilium
+            path: kubernetes/infrastructure/network/cilium
+            namespace: kube-system
+            critical: "true"
+            wave: "0"
+          - name: gateway-api
+            path: kubernetes/infrastructure/network/gateway
+            namespace: gateway-system
+            critical: "true"
+            wave: "1"
+          - name: certificates
+            path: kubernetes/infrastructure/network/cert-manager
+            namespace: cert-manager
+            critical: "true"
+            wave: "1"
+          # Wave 1: Service Mesh (Optional)
+          - name: istio-base
+            path: kubernetes/infrastructure/network/istio-base
+            namespace: istio-system
+            critical: "false"
+            wave: "1"
+          - name: istio-cni
+            path: kubernetes/infrastructure/network/istio-cni
+            namespace: istio-system
+            critical: "false"
+            wave: "1"
+          - name: istio-control-plane
+            path: kubernetes/infrastructure/network/istio-control-plane
+            namespace: istio-system
+            critical: "false"
+            wave: "1"
+          - name: cloudflared
+            path: kubernetes/infrastructure/network/cloudflared
+            namespace: cloudflared
+            critical: "false"
+            wave: "1"
+  template:
+    metadata:
+      name: 'network-{{.name}}'
+      labels:
+        infrastructure.layer: network
+        infrastructure.component: '{{.name}}'
+        infrastructure.critical: '{{.critical}}'
+        app.kubernetes.io/managed-by: argocd
+        team: timour
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{.wave}}'
+    spec:
+      project: app-of-apps
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

@@ -1,0 +1,123 @@
+# Vector Helm Chart Values
+# Official Vector Helm chart configuration
+
+# Role configuration - Agent and Aggregator
+role: "Agent"
+
+# Resource limits (from official docs)
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "500m"
+  limits:
+    memory: "1024Mi"
+    cpu: "6000m"
+
+# Environment variables
+env:
+  - name: ELASTICSEARCH_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: production-cluster-es-elastic-user
+        key: elastic
+
+# Vector configuration
+customConfig:
+  data_dir: "/vector-data-dir"
+
+  api:
+    enabled: true
+    address: "0.0.0.0:8686"
+
+  # Sources
+  sources:
+    vector_agents:
+      type: "vector"
+      address: "0.0.0.0:6000"
+      version: "2"
+
+    proxmox_syslog:
+      type: "syslog"
+      address: "0.0.0.0:514"
+      mode: "udp"
+
+  # Transforms
+  transforms:
+    process_proxmox_logs:
+      type: "remap"
+      inputs: ["proxmox_syslog"]
+      source: |
+        .source = "proxmox"
+        .cluster = "talos-homelab"
+        .datacenter = "homelab"
+        .node_type = "hypervisor"
+
+    enrich_logs:
+      type: "remap"
+      inputs: ["vector_agents", "process_proxmox_logs"]
+      source: |
+        # Add timestamp if missing
+        if !exists(.timestamp) {
+          .timestamp = now()
+        }
+
+        # Standardize log level
+        if exists(.level) {
+          .level = downcase(string!(.level))
+        } else if contains(string!(.message), "ERROR") || contains(string!(.message), "error") {
+          .level = "error"
+        } else if contains(string!(.message), "WARN") || contains(string!(.message), "warn") {
+          .level = "warn"
+        } else {
+          .level = "info"
+        }
+
+        # Add granular index routing
+        if exists(.kubernetes.namespace) && exists(.kubernetes.pod_name) {
+          if exists(.kubernetes.pod_labels.app) {
+            .index_name = string!(.kubernetes.pod_labels.app) + "-" + string!(.kubernetes.namespace)
+          } else if exists(.kubernetes.pod_labels."app.kubernetes.io/name") {
+            .index_name = string!(.kubernetes.pod_labels."app.kubernetes.io/name") + "-" + string!(.kubernetes.namespace)
+          } else {
+            .index_name = "pod-" + string!(.kubernetes.namespace)
+          }
+        } else if .source == "proxmox" && exists(.host) {
+          .index_name = "proxmox-" + string!(.host)
+        } else {
+          .index_name = "general"
+        }
+
+  # Sinks
+  sinks:
+    elasticsearch:
+      type: "elasticsearch"
+      inputs: ["enrich_logs"]
+      endpoints: ["https://production-cluster-es-http.elastic-system.svc.cluster.local:9200"]
+      mode: "bulk"
+      bulk:
+        index: "vector-{{ .index_name }}-%Y.%m.%d"
+      api_version: "v8"
+      auth:
+        strategy: "basic"
+        user: "elastic"
+        password: "${ELASTICSEARCH_PASSWORD}"
+      tls:
+        verify_certificate: false
+        verify_hostname: false
+
+# Environment variables
+env:
+  - name: ELASTICSEARCH_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: production-cluster-es-elastic-user
+        key: elastic
+
+# Resource limits
+resources:
+  requests:
+    memory: 512Mi
+    cpu: 500m
+  limits:
+    memory: 1Gi
+    cpu: 1000m

@@ -1,0 +1,198 @@
+---
+# Clean Fluentd Configuration - DevOps Blog Style
+# Direct ConfigMap approach that actually works
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluentd-config
+  namespace: elastic-system
+data:
+  fluent.conf: |-
+    # Ignore Fluentd's own logs
+    <match fluent.**>
+      @type null
+    </match>
+
+    # Forward input from FluentBit
+    <source>
+      @type forward
+      port 24224
+      bind 0.0.0.0
+    </source>
+
+    # Output: Send to our Elasticsearch cluster
+    <match **>
+       @type elasticsearch
+       @log_level info
+       include_tag_key true
+       host "#{ENV['FLUENT_ELASTICSEARCH_HOST']}"
+       port "#{ENV['FLUENT_ELASTICSEARCH_PORT']}"
+       path ""
+       scheme "#{ENV['FLUENT_ELASTICSEARCH_SCHEME']}"
+       ssl_verify "#{ENV['FLUENT_ELASTICSEARCH_SSL_VERIFY']}"
+       user "#{ENV['FLUENT_ELASTICSEARCH_USER']}"
+       password "#{ENV['FLUENT_ELASTICSEARCH_PASSWORD']}"
+       reload_connections false
+       reconnect_on_error true
+       reload_on_failure true
+       logstash_prefix logstash
+       logstash_dateformat %Y.%m.%d       
+       logstash_format true
+       <buffer>
+        @type file
+        path /var/log/fluentd_disk_buffer
+        total_limit_size 2GB
+        flush_thread_count 8
+        flush_interval 30s
+        chunk_limit_size 20M
+        queue_limit_length 100
+        retry_max_interval 30
+        retry_forever true
+       </buffer>
+    </match>
+
+    # Exclude logging stack logs to avoid recursion
+    <match kubernetes.var.log.containers.**elastic-system**.log>
+        @type null
+    </match>
+
+    <match kubernetes.var.log.containers.**monitoring**.log>
+        @type null
+    </match>
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluentd
+  namespace: elastic-system
+  labels:
+    app.kubernetes.io/name: fluentd
+    app.kubernetes.io/part-of: observability-stack
+    app.kubernetes.io/component: log-aggregator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluentd
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fluentd
+    spec:
+      serviceAccount: fluentd
+      containers:
+      - name: fluentd
+        image: fluent/fluentd-kubernetes-daemonset:v1-debian-elasticsearch
+        env:
+        - name: FLUENTD_CONF
+          value: fluent.conf
+        - name: FLUENT_ELASTICSEARCH_HOST
+          value: production-cluster-es-http.elastic-system
+        - name: FLUENT_ELASTICSEARCH_PORT
+          value: "9200"
+        - name: FLUENT_ELASTICSEARCH_SCHEME
+          value: https
+        - name: FLUENT_ELASTICSEARCH_SSL_VERIFY
+          value: "false"
+        - name: FLUENT_ELASTICSEARCH_USER
+          value: elastic
+        - name: FLUENT_ELASTICSEARCH_PASSWORD
+          value: 04h26K03zEMhI7I9DRbk5AT5
+        resources:
+          limits:
+            memory: 1Gi
+            cpu: 500m
+          requests:
+            memory: 512Mi
+            cpu: 200m
+        volumeMounts:
+        - name: fluentd-config
+          mountPath: /fluentd/etc/fluent.conf
+          subPath: fluent.conf
+        - name: varlog
+          mountPath: /var/log
+        - name: varlibdockercontainers
+          mountPath: /var/lib/docker/containers
+          readOnly: true
+        - name: bufferstorage
+          mountPath: /var/log/fluentd_disk_buffer
+        ports:
+        - containerPort: 24231
+          name: prometheus
+          protocol: TCP
+        - containerPort: 24224
+          name: forward
+          protocol: TCP
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: fluentd-config
+        configMap:
+          name: fluentd-config
+      - name: varlog
+        hostPath:
+          path: /var/log
+      - name: varlibdockercontainers
+        hostPath:
+          path: /var/lib/docker/containers
+      - name: bufferstorage
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluentd
+  namespace: elastic-system
+  labels:
+    app.kubernetes.io/name: fluentd
+spec:
+  ports:
+  - name: forward
+    port: 24224
+    protocol: TCP
+    targetPort: 24224
+  - name: prometheus
+    port: 24231
+    protocol: TCP
+    targetPort: 24231
+  selector:
+    app.kubernetes.io/name: fluentd
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fluentd
+  namespace: elastic-system
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fluentd
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fluentd
+roleRef:
+  kind: ClusterRole
+  name: fluentd
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- kind: ServiceAccount
+  name: fluentd
+  namespace: elastic-system
