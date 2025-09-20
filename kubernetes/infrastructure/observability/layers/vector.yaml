@@ -1,0 +1,49 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: observability-vector
+  namespace: argocd
+  labels:
+    infrastructure.layer: observability
+    enterprise.granular: vector-only
+    team: timour
+spec:
+  goTemplate: true
+  generators:
+    # 🦀 GRANULAR CONTROL: Vector Only (Rust-based log processing)
+    - list:
+        elements:
+          - name: vector
+            path: kubernetes/infrastructure/observability/vector
+            namespace: elastic-system
+            critical: "true"
+            component: "log-processing"
+            wave: "5"
+            logo: "🦀"
+  template:
+    metadata:
+      name: 'observability-{{.name}}'
+      labels:
+        infrastructure.layer: observability
+        infrastructure.component: '{{.component}}'
+        infrastructure.critical: '{{.critical}}'
+        app.kubernetes.io/managed-by: argocd
+        enterprise.granular: vector-only
+        team: timour
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{.wave}}'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

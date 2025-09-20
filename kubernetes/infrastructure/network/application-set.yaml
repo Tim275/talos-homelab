@@ -1,0 +1,80 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: network
+  namespace: argocd
+  labels:
+    dev.stonegarden: network
+spec:
+  generators:
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/infrastructure/network/*"
+          # Exclude files that aren't applications
+          - path: "kubernetes/infrastructure/network/application-set.yaml"
+            exclude: true
+          - path: "kubernetes/infrastructure/network/project.yaml"
+            exclude: true
+          - path: "kubernetes/infrastructure/network/kustomization.yaml"
+            exclude: true
+          # COMPONENT TOGGLES - uncomment to disable:
+          # - path: "kubernetes/infrastructure/network/cloudflared"
+          #   exclude: true
+          # - path: "kubernetes/infrastructure/network/gateway"
+          #   exclude: true
+          - path: "kubernetes/infrastructure/network/kube-vip"
+            exclude: true
+          - path: "kubernetes/infrastructure/network/kube-vip.disabled"
+            exclude: true
+          # EXCLUDE ALL .disabled directories
+          - path: "kubernetes/infrastructure/network/*.disabled"
+            exclude: true
+  template:
+    metadata:
+      name: '{{ path.basename }}'
+      labels:
+        dev.stonegarden: network
+      annotations:
+        # Enhanced comparison for webhook certificate management
+        argocd.argoproj.io/compare-options: ServerSideDiff=true,IncludeMutationWebhook=true
+    spec:
+      project: network
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{ path }}'
+        plugin:
+          name: kustomize-build-with-helm
+      destination:
+        server: https://kubernetes.default.svc
+      syncPolicy:
+        automated:
+          selfHeal: true
+          prune: true
+        syncOptions:
+          - ServerSideApply=true
+          - CreateNamespace=true
+          - RespectIgnoreDifferences=true
+          - ApplyOutOfSyncOnly=true
+      ignoreDifferences:
+        # FIXED: Use jqPathExpressions instead of jsonPointers (ArgoCD bugs #12961, #9323)
+        # Ignore Istio ValidatingWebhookConfiguration certificate rotation
+        - group: admissionregistration.k8s.io
+          kind: ValidatingWebhookConfiguration
+          jqPathExpressions:
+            - '.webhooks[]?.clientConfig.caBundle'
+            - '.webhooks[]?.failurePolicy'
+          managedFieldsManagers:
+            - istiod
+            - kube-controller-manager
+        # Ignore MutatingWebhookConfiguration certificate rotation
+        - group: admissionregistration.k8s.io
+          kind: MutatingWebhookConfiguration
+          jqPathExpressions:
+            - '.webhooks[]?.clientConfig.caBundle'
+            - '.webhooks[]?.failurePolicy'
+          managedFieldsManagers:
+            - istiod
+            - kube-controller-manager

@@ -1,0 +1,51 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform-developer
+  namespace: argocd
+  labels:
+    platform.layer: developer
+    enterprise.tier: platform
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "16"
+spec:
+  goTemplate: true
+  generators:
+    # 🔧 ENTERPRISE PATTERN: Developer Platform Services
+    - list:
+        elements:
+          # Only services we actually have
+          - name: backstage
+            path: kubernetes/platform/developer/backstage
+            namespace: backstage
+            critical: "true"
+            component: "developer-portal"
+            wave: "16"
+  template:
+    metadata:
+      name: 'platform-developer-{{.name}}'
+      labels:
+        platform.layer: developer
+        platform.component: '{{.component}}'
+        platform.critical: '{{.critical}}'
+        app.kubernetes.io/managed-by: argocd
+        team: timour
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{.wave}}'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true

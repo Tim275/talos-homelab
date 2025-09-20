@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 🌊 Sync Wave 1: Envoy Gateway Controller + Gateway Resources
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "1"
+
+# Envoy Gateway Installation via official manifests
+resources:
+  - ns.yaml
+  - https://github.com/envoyproxy/gateway/releases/download/v1.2.4/install.yaml
+  - sealed-cloudflare-api-token.yaml
+  - cloudflare-issuer.yaml
+  - certificate-timourhomelab.yaml
+  - envoy-gatewayclass.yaml
+  - gateway.yaml
+  - http-redirect-to-https.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: network-infrastructure
+
+# Fix for CRD annotation too long issue
+patches:
+  - target:
+      kind: CustomResourceDefinition
+      name: envoyproxies.gateway.envoyproxy.io
+    patch: |
+      - op: remove
+        path: /metadata/annotations/controller-gen.kubebuilder.io~1version

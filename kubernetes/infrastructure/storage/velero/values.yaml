@@ -1,0 +1,94 @@
+# 🛡️ ENTERPRISE DISASTER RECOVERY - Tier 0 Backup
+# ===================================================
+
+# Velero Configuration
+image:
+  repository: velero/velero
+  tag: v1.14.1
+
+# Enterprise HA Configuration
+replicas: 2
+
+# Credentials for backup storage (MinIO/S3 Compatible)
+credentials:
+  useSecret: true
+  name: velero-credentials
+  secretContents:
+    cloud: |
+      [default]
+      aws_access_key_id=velero-backup-user
+      aws_secret_access_key=velero-backup-password
+
+# Backup Configuration
+configuration:
+  # Default Backup TTL (30 days)
+  defaultBackupTTL: 720h
+
+  backupStorageLocation:
+    - name: default
+      provider: aws
+      bucket: velero-backups
+      config:
+        region: homelab
+        s3ForcePathStyle: true
+        s3Url: http://minio.minio.svc.cluster.local:9000
+
+  # Volume Snapshot Location (for PV snapshots)
+  volumeSnapshotLocation:
+    - name: default
+      provider: csi
+
+# Enable CSI Snapshots
+snapshotsEnabled: true
+
+# Resource Configuration
+resources:
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+  requests:
+    cpu: 500m
+    memory: 256Mi
+
+# Monitoring
+metrics:
+  enabled: true
+  scrapeInterval: 30s
+  scrapeTimeout: 10s
+  service:
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8085"
+      prometheus.io/path: "/metrics"
+
+# Node Agent (for pod volume backup)
+nodeAgent:
+  enable: true
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+
+# Security
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+
+# Service Account
+serviceAccount:
+  server:
+    create: true
+    name: velero

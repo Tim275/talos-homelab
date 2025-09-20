@@ -1,40 +1,25 @@
 apiVersion: argoproj.io/v1alpha1
-kind: ApplicationSet
+kind: Application  # Eine Application die kustomization.yaml lädt!
 metadata:
   name: infrastructure
   namespace: argocd
   labels:
-    dev.stonegarden: infrastructure
+    dev.timourhomelab: infrastructure
+    team: timour
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/part-of: timour-homelab
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-wave: "5"
 spec:
-  generators:
-    - git:
-        repoURL: https://github.com/Tim275/talos-homelab
-        revision: HEAD
-        directories:
-          # 🏗️ Enterprise Infrastructure Services (Essential Only)
-          - path: "kubernetes/infrastructure/services/cert-manager"
-          # 🚫 longhorn disabled - deploy manually when needed
-          # Legacy infra (will be migrated)
-          - path: "kubernetes/infra/monitoring"
-          - path: "kubernetes/infra/network"
-          - path: "kubernetes/infra/backup"
-          - path: "kubernetes/infra/observability"
-  template:
-    metadata:
-      name: '{{ path.basename }}'
-      labels:
-        dev.stonegarden: infrastructure
-    spec:
-      project: app-of-apps
-      source:
-        repoURL: https://github.com/Tim275/talos-homelab
-        targetRevision: HEAD
-        path: '{{ path }}'
-      destination:
-        server: https://kubernetes.default.svc
-      syncPolicy:
-        automated:
-          selfHeal: true
-          prune: true
+  project: app-of-apps
+  source:
+    repoURL: https://github.com/Tim275/talos-homelab
+    targetRevision: HEAD
+    path: kubernetes/infrastructure  # Lädt kustomization.yaml mit allen Individual YAMLs!
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
