@@ -1,0 +1,92 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform-messaging
+  namespace: argocd
+  labels:
+    platform.layer: messaging
+    enterprise.tier: platform
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  goTemplate: true
+  generators:
+    # 📬 ENTERPRISE PATTERN: Messaging Platform Services
+    - list:
+        elements:
+          # Event Streaming Platform
+          - name: kafka
+            path: kubernetes/platform/messaging/kafka
+            namespace: kafka
+            critical: "true"
+            component: "event-streaming"
+            wave: "10"
+            enabled: "true"
+          # Kafka Management UI (Redpanda Console)
+          - name: redpanda-console
+            path: kubernetes/platform/messaging/redpanda-console
+            namespace: kafka
+            critical: "false"
+            component: "stream-management"
+            wave: "11"
+            enabled: "true"
+          # Schema Registry
+          - name: schema-registry
+            path: kubernetes/platform/messaging/schema-registry
+            namespace: kafka
+            critical: "false"
+            component: "schema-management"
+            wave: "11"
+            enabled: "true"
+          # Cloud-Native Messaging (Alternative)
+          - name: nats
+            path: kubernetes/platform/messaging/nats
+            namespace: nats
+            critical: "false"
+            component: "cloud-messaging"
+            wave: "10"
+            enabled: "false"  # Alternative to Kafka
+          # Apache Pulsar (Enterprise Alternative)
+          - name: pulsar
+            path: kubernetes/platform/messaging/pulsar
+            namespace: pulsar
+            critical: "false"
+            component: "enterprise-streaming"
+            wave: "10"
+            enabled: "false"  # Heavy enterprise stack
+          # Legacy Kafdrop (Being Replaced)
+          - name: kafdrop
+            path: kubernetes/platform/messaging/kafdrop
+            namespace: kafka
+            critical: "false"
+            component: "legacy-ui"
+            wave: "11"
+            enabled: "false"  # Replaced by Redpanda Console
+  template:
+    metadata:
+      name: 'platform-messaging-{{.name}}'
+      labels:
+        platform.layer: messaging
+        platform.component: '{{.component}}'
+        platform.critical: '{{.critical}}'
+        app.kubernetes.io/managed-by: argocd
+        team: timour
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{.wave}}'
+    spec:
+      project: app-of-apps
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true

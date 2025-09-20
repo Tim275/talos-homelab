@@ -1,0 +1,61 @@
+# 🚀 ENTERPRISE PROGRESSIVE DELIVERY - Netflix/Google Level
+# =======================================================
+
+# Controller Configuration
+controller:
+  replicas: 2  # HA for enterprise
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+  metrics:
+    enabled: true
+    service:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8090"
+        prometheus.io/path: "/metrics"
+
+# Dashboard Configuration
+dashboard:
+  enabled: true
+  service:
+    type: ClusterIP
+  ingress:
+    enabled: false  # Will use Gateway API
+
+# Notifications (integrate with existing Grafana/Slack)
+notifications:
+  notifiers:
+    service.slack: |
+      username: argo-rollouts
+      channel: "#deployments"
+      title: Rollout Notification
+      text: |
+        Rollout {{.rollout.metadata.name}} is {{.rollout.status.phase}}
+        {{if .rollout.status.message}}Message: {{.rollout.status.message}}{{end}}
+
+# Enterprise Security
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 999
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+
+# Service Monitor for Prometheus
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/component: argo-rollouts
+    app.kubernetes.io/part-of: timour-homelab

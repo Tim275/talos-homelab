@@ -1,0 +1,100 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform-data
+  namespace: argocd
+  labels:
+    platform.layer: data
+    enterprise.tier: platform
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+spec:
+  goTemplate: true
+  generators:
+    # 🗄️ ENTERPRISE PATTERN: Data Platform Services
+    - list:
+        elements:
+          # Time-Series Data
+          - name: influxdb
+            path: kubernetes/platform/data/influxdb
+            namespace: influxdb
+            critical: "false"
+            component: "time-series-db"
+            wave: "12"
+            enabled: "true"
+          # Document Database
+          - name: mongodb
+            path: kubernetes/platform/data/mongodb
+            namespace: mongodb
+            critical: "false"
+            component: "document-db"
+            wave: "12"
+            enabled: "true"
+          # Database Management
+          - name: cloudbeaver
+            path: kubernetes/platform/data/cloudbeaver
+            namespace: cloudbeaver
+            critical: "false"
+            component: "db-management"
+            wave: "13"
+            enabled: "true"
+          # Analytics Database
+          - name: quantlab-postgres
+            path: kubernetes/platform/data/quantlab-postgres
+            namespace: quantlab
+            critical: "false"
+            component: "analytics-db"
+            wave: "12"
+            enabled: "true"
+          # Workflow Database
+          - name: n8n
+            path: kubernetes/platform/data/n8n
+            namespace: n8n
+            critical: "false"
+            component: "workflow-db"
+            wave: "12"
+            enabled: "true"
+          # In-Memory Cache (Future)
+          - name: redis
+            path: kubernetes/platform/data/redis
+            namespace: redis
+            critical: "false"
+            component: "cache"
+            wave: "12"
+            enabled: "false"  # To be implemented
+          # Search & Analytics (Heavy - Optional)
+          - name: elasticsearch
+            path: kubernetes/platform/data/elasticsearch
+            namespace: elastic-system
+            critical: "false"
+            component: "search-analytics"
+            wave: "13"
+            enabled: "false"  # Heavy stack
+  template:
+    metadata:
+      name: 'platform-data-{{.name}}'
+      labels:
+        platform.layer: data
+        platform.component: '{{.component}}'
+        platform.critical: '{{.critical}}'
+        app.kubernetes.io/managed-by: argocd
+        team: timour
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{.wave}}'
+    spec:
+      project: app-of-apps
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
