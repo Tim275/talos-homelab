@@ -1,0 +1,72 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: network
+  namespace: argocd
+  labels:
+    dev.stonegarden: network
+spec:
+  generators:
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/infra/network/*"
+          # Exclude files that aren't applications
+          - path: "kubernetes/infra/network/application-set.yaml"
+            exclude: true
+          - path: "kubernetes/infra/network/project.yaml"
+            exclude: true
+          - path: "kubernetes/infra/network/kustomization.yaml"
+            exclude: true
+          # COMPONENT TOGGLES - uncomment to disable:
+          # - path: "kubernetes/infra/network/cloudflared"
+          #   exclude: true
+          # - path: "kubernetes/infra/network/gateway"
+          #   exclude: true
+          - path: "kubernetes/infra/network/kube-vip"  
+            exclude: true
+          - path: "kubernetes/infra/network/kube-vip.disabled"  
+            exclude: true
+          # EXCLUDE ALL .disabled directories
+          - path: "kubernetes/infra/network/*.disabled"
+            exclude: true
+  template:
+    metadata:
+      name: '{{ path.basename }}'
+      labels:
+        dev.stonegarden: network
+    spec:
+      project: network
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{ path }}'
+        plugin:
+          name: kustomize-build-with-helm
+      destination:
+        server: https://kubernetes.default.svc
+      syncPolicy:
+        automated:
+          selfHeal: true
+          prune: true
+        syncOptions:
+          - ServerSideApply=true
+          - CreateNamespace=true
+          - RespectIgnoreDifferences=true
+          - ApplyOutOfSyncOnly=true
+      ignoreDifferences:
+        # Ignore ALL Istio ValidatingWebhookConfiguration drift (caBundle dynamically managed by istiod)
+        - group: admissionregistration.k8s.io
+          kind: ValidatingWebhookConfiguration
+          jsonPointers:
+            - /webhooks/0/clientConfig/caBundle
+            - /webhooks/1/clientConfig/caBundle
+            - /webhooks/2/clientConfig/caBundle
+        # Ignore ALL MutatingWebhookConfiguration drift
+        - group: admissionregistration.k8s.io
+          kind: MutatingWebhookConfiguration
+          jsonPointers:
+            - /webhooks/0/clientConfig/caBundle
+            - /webhooks/1/clientConfig/caBundle
+            - /webhooks/2/clientConfig/caBundle

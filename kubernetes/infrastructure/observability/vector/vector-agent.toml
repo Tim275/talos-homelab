@@ -1,0 +1,79 @@
+# Vector Agent Configuration - Lightweight log collector (replaces Fluent Bit)
+# Runs as DaemonSet on each node
+
+# Performance settings
+data_dir = "/vector-data-dir"
+
+[api]
+enabled = true
+address = "0.0.0.0:8686"
+
+# Kubernetes logs source
+[sources.kubernetes_logs]
+type = "kubernetes_logs"
+auto_partial_merge = true
+exclude_paths_glob_patterns = ["**/fluent*/**", "**/fluentd*/**", "**/vector*/**"]
+
+# Host metrics source (optional)
+[sources.host_metrics]
+type = "host_metrics"
+collectors = ["cpu", "memory", "disk"]
+
+# Parse Kubernetes metadata
+[transforms.kubernetes_metadata]
+type = "remap"
+inputs = ["kubernetes_logs"]
+source = '''
+.kubernetes.namespace = .kubernetes.pod_namespace
+.kubernetes.deployment = .kubernetes.pod_labels.deployment
+.kubernetes.pod_name = .kubernetes.pod_name
+.kubernetes.container_name = .kubernetes.container_name
+.kubernetes.node_name = .kubernetes.pod_node_name
+.kubernetes.pod_labels = .kubernetes.pod_labels
+.cluster = "talos-homelab"
+.environment = "production"
+'''
+
+# Parse JSON logs
+[transforms.parse_json]
+type = "remap"
+inputs = ["kubernetes_metadata"]
+source = '''
+parsed, err = parse_json(.message)
+if err == null {
+  . = merge!(., parsed)
+}
+'''
+
+# Filter out noisy logs
+[transforms.filter_noise]
+type = "filter"
+inputs = ["parse_json"]
+condition = '''
+!contains(string!(.message), "GET /healthz") &&
+!contains(string!(.message), "GET /readyz") &&
+!contains(string!(.kubernetes.namespace), "kube-system") ||
+contains(string!(.level), "error") ||
+contains(string!(.level), "warn")
+'''
+
+# Forward to Vector Aggregator
+[sinks.vector_aggregator]
+type = "vector"
+inputs = ["filter_noise"]
+address = "vector-aggregator.elastic-system.svc.cluster.local:6000"
+version = "2"
+
+[sinks.vector_aggregator.buffer]
+type = "disk"
+max_size = 268435488  # 256MB buffer per node
+when_full = "drop_newest"
+
+[sinks.vector_aggregator.healthcheck]
+enabled = true
+
+# Prometheus metrics
+[sinks.prometheus_metrics]
+type = "prometheus_exporter"
+inputs = ["host_metrics"]
+address = "0.0.0.0:9090"

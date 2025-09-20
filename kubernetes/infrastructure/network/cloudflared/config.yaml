@@ -1,0 +1,33 @@
+tunnel: b5f4258e-8cd9-4454-b46e-6f4f34219bb4
+credentials-file: /etc/cloudflared/credentials/credentials.json
+metrics: 0.0.0.0:2000
+no-autoupdate: true
+
+warp-routing:
+  enabled: true
+
+ingress:
+  # ArgoCD direct access (bypassing Gateway for reliability)
+  - hostname: argo.timourhomelab.org
+    service: http://argocd-server.argocd.svc.cluster.local:80
+    originRequest:
+      httpHostHeader: argo.timourhomelab.org
+
+  # n8n direct access (bypassing Gateway for reliability)
+  - hostname: n8n.timourhomelab.org
+    service: http://n8n.n8n-prod.svc.cluster.local:80
+    originRequest:
+      httpHostHeader: n8n.timourhomelab.org
+
+  # All other services via Envoy Gateway (Gateway API routing)
+  - hostname: "*.timourhomelab.org"
+    service: http://envoy-gateway-envoy-gateway-ee418b6e.envoy-gateway-system.svc.cluster.local:80
+    originRequest:
+      noTLSVerify: true
+
+  - hostname: timourhomelab.org
+    service: http://envoy-gateway-envoy-gateway-ee418b6e.envoy-gateway-system.svc.cluster.local:80
+    originRequest:
+      noTLSVerify: true
+
+  - service: http_status:404

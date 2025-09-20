@@ -1,0 +1,65 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/part-of: timour-homelab
+    app.kubernetes.io/layer: platform
+    team: timour
+spec:
+  description: "🏗️ Enterprise Platform Services - Google/AWS/Netflix Level"
+
+  # Platform services can deploy to any namespace
+  destinations:
+    - namespace: '*'
+      server: https://kubernetes.default.svc
+
+  # Platform can use platform layer resources
+  sourceRepos:
+    - 'https://github.com/Tim275/talos-homelab'
+    - 'https://charts.bitnami.com/bitnami'
+    - 'https://charts.jetstack.io'
+    - 'https://kubernetes-sigs.github.io/gateway-api'
+    - 'https://strimzi.io/charts/'
+    - 'https://helm.releases.hashicorp.com'
+    - 'https://kubernetes.github.io/ingress-nginx'
+    - 'https://prometheus-community.github.io/helm-charts'
+    - 'https://grafana.github.io/helm-charts'
+    - 'https://charts.konghq.com'
+
+  # Platform resource permissions
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+
+  # Platform sync policies
+  syncWindows:
+    - kind: allow
+      schedule: '* * * * *'
+      duration: 24h
+      applications:
+        - '*'
+
+  # Platform RBAC
+  roles:
+    - name: platform-admin
+      description: "Full access to platform services"
+      policies:
+        - p, proj:platform:platform-admin, applications, *, platform/*, allow
+        - p, proj:platform:platform-admin, exec, *, platform/*, allow
+      groups:
+        - timour:platform-admins
+
+    - name: platform-operator
+      description: "Operational access to platform services"
+      policies:
+        - p, proj:platform:platform-operator, applications, get, platform/*, allow
+        - p, proj:platform:platform-operator, applications, sync, platform/*, allow
+      groups:
+        - timour:platform-operators

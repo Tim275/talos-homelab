@@ -1,0 +1,82 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure-observability
+  namespace: argocd
+  labels:
+    infrastructure.layer: observability
+    enterprise.tier: advanced
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  goTemplate: true
+  generators:
+    # 📊 ENTERPRISE PATTERN: Advanced Observability Stack
+    - list:
+        elements:
+          # Advanced Log Processing
+          - name: vector
+            path: kubernetes/infrastructure/observability/vector
+            namespace: monitoring
+            critical: "true"
+            component: "log-processing"
+            wave: "5"
+            logo: "🦀"
+          - name: opentelemetry
+            path: kubernetes/infrastructure/observability/opentelemetry
+            namespace: monitoring
+            critical: "false"
+            component: "telemetry-collection"
+            wave: "5"
+          # Search & Analytics (Heavy - Optional)
+          - name: elasticsearch
+            path: kubernetes/infrastructure/observability/elasticsearch
+            namespace: elastic-system
+            critical: "false"
+            component: "search-analytics"
+            wave: "5"
+            enabled: "false"  # Heavy stack
+          - name: kibana
+            path: kubernetes/infrastructure/observability/kibana
+            namespace: elastic-system
+            critical: "false"
+            component: "log-visualization"
+            wave: "5"
+            enabled: "false"  # Requires elasticsearch
+          - name: fluent-bit
+            path: kubernetes/infrastructure/observability/fluent-bit
+            namespace: monitoring
+            critical: "false"
+            component: "log-collection"
+            wave: "5"
+            enabled: "false"  # Alternative to vector
+  template:
+    metadata:
+      name: 'observability-{{.name}}'
+      labels:
+        infrastructure.layer: observability
+        infrastructure.component: '{{.component}}'
+        infrastructure.critical: '{{.critical}}'
+        app.kubernetes.io/managed-by: argocd
+        team: timour
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{.wave}}'
+        {{- if .logo}}
+        logo: '{{.logo}}'
+        {{- end}}
+    spec:
+      project: app-of-apps
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

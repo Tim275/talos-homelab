@@ -1,0 +1,134 @@
+---
+# Enterprise RBD Pool - High Performance with 3x Replication
+apiVersion: ceph.rook.io/v1
+kind: CephBlockPool
+metadata:
+  name: replicapool-enterprise
+  namespace: rook-ceph
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  failureDomain: host
+  replicated:
+    size: 3
+    requireSafeReplicaSize: true
+  parameters:
+    min_size: "2"
+    pg_num: "32"
+    pgp_num: "32"
+    # Optimized for enterprise workloads
+    compression_algorithm: "lz4"
+    compression_mode: "aggressive"
+    compression_required_ratio: "0.875"
+    compression_max_blob_size: "131072"
+    compression_min_blob_size: "8192"
+  # Enable mirroring for disaster recovery
+  mirroring:
+    enabled: false
+    mode: image
+
+---
+# SSD Pool - Ultra High Performance
+apiVersion: ceph.rook.io/v1
+kind: CephBlockPool
+metadata:
+  name: ssd-pool
+  namespace: rook-ceph
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  failureDomain: host
+  replicated:
+    size: 2
+    requireSafeReplicaSize: false
+  parameters:
+    min_size: "1"
+    pg_num: "16"
+    pgp_num: "16"
+    # Optimized for speed over compression
+    compression_mode: "none"
+  deviceClass: ssd
+  mirroring:
+    enabled: false
+
+---
+# Backup Pool - Cost-Optimized with EC
+apiVersion: ceph.rook.io/v1
+kind: CephBlockPool
+metadata:
+  name: backup-pool
+  namespace: rook-ceph
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  failureDomain: host
+  erasureCoded:
+    dataChunks: 3
+    codingChunks: 1
+  parameters:
+    pg_num: "16"
+    pgp_num: "16"
+    # Maximum compression for backup storage
+    compression_algorithm: "zstd"
+    compression_mode: "aggressive"
+    compression_required_ratio: "0.5"
+  mirroring:
+    enabled: true
+    mode: pool
+
+---
+# CephFS Filesystem for Shared Storage
+apiVersion: ceph.rook.io/v1
+kind: CephFilesystem
+metadata:
+  name: myfs-enterprise
+  namespace: rook-ceph
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  metadataPool:
+    failureDomain: host
+    replicated:
+      size: 3
+      requireSafeReplicaSize: true
+    parameters:
+      pg_num: "8"
+      pgp_num: "8"
+      min_size: "2"
+  dataPools:
+    - name: replicated
+      failureDomain: host
+      replicated:
+        size: 3
+        requireSafeReplicaSize: true
+      parameters:
+        pg_num: "32"
+        pgp_num: "32" 
+        min_size: "2"
+        compression_algorithm: "lz4"
+        compression_mode: "aggressive"
+  preserveFilesystemOnDelete: false
+  metadataServer:
+    activeCount: 1  # Reduced from 2 to avoid scheduling conflicts
+    activeStandby: true
+    priorityClassName: system-cluster-critical
+    placement:
+      # Removed nodeAffinity to allow scheduling on any node
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+                - key: app
+                  operator: In
+                  values: ["rook-ceph-mds"]
+            topologyKey: kubernetes.io/hostname
+      tolerations:
+        - effect: NoSchedule
+          operator: Exists
+    resources:
+      limits:
+        cpu: "500m"
+        memory: "1Gi"  # Reduced from 2Gi to save memory
+      requests:
+        cpu: "100m"
+        memory: "512Mi"  # Reduced from 1Gi

@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 🌊 Sync Wave 5: Prometheus Monitoring Stack (After Storage)
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "5"
+
+resources:
+  - istio-monitoring.yaml
+  - kafka-monitoring.yaml
+  - kafka-metrics.yaml
+# Namespace managed by parent monitoring app
+# CRDs are managed by the helm chart with includeCRDs: true
+
+helmCharts:
+  # ✅ ONLY kube-prometheus-stack (industry standard, all-in-one)
+  - name: kube-prometheus-stack
+    repo: https://prometheus-community.github.io/helm-charts
+    version: "65.1.1" # renovate: helm=prometheus-community/kube-prometheus-stack
+    releaseName: prometheus-operator
+    namespace: monitoring
+    valuesFile: values.yaml
+    includeCRDs: true  # ← ENABLE CRDs (was false, causing problems!)
