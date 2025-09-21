@@ -4,27 +4,63 @@ metadata:
   name: security
   namespace: argocd
   labels:
-    dev.timourhomelab: security
-    team: timour
     app.kubernetes.io/managed-by: argocd
     app.kubernetes.io/part-of: timour-homelab
+    app.kubernetes.io/layer: security
+    team: timour
 spec:
-  sourceRepos:
-    - 'https://github.com/Tim275/talos-homelab.git'
+  description: "🔐 Enterprise Security Foundation - Zero Trust Architecture"
+
+  # Security policies can deploy to any namespace
   destinations:
-    # Security layer namespaces
-    - namespace: 'lldap'
-      server: '*'
-    - namespace: 'falco-system'
-      server: '*'
-    - namespace: 'kube-system'
-      server: '*'
-    - namespace: 'gatekeeper-system'
-      server: '*'
-    - namespace: 'security-monitoring'
-      server: '*'
-    - namespace: 'vault'
-      server: '*'
+    - namespace: '*'
+      server: https://kubernetes.default.svc
+
+  # Security layer resources
+  sourceRepos:
+    - 'https://github.com/Tim275/talos-homelab'
+
+  # Security resource permissions
   clusterResourceWhitelist:
-    - group: '*'
+    - group: 'networking.k8s.io'
+      kind: 'NetworkPolicy'
+    - group: 'rbac.authorization.k8s.io'
       kind: '*'
+    - group: 'security.istio.io'
+      kind: 'AuthorizationPolicy'
+    - group: 'policy'
+      kind: 'PodSecurityPolicy'
+
+  namespaceResourceWhitelist:
+    - group: 'networking.k8s.io'
+      kind: 'NetworkPolicy'
+    - group: 'rbac.authorization.k8s.io'
+      kind: '*'
+    - group: 'security.istio.io'
+      kind: 'AuthorizationPolicy'
+
+  # Security sync policies
+  syncWindows:
+    - kind: allow
+      schedule: '* * * * *'
+      duration: 24h
+      applications:
+        - '*'
+
+  # Security RBAC
+  roles:
+    - name: security-admin
+      description: "Full access to security policies"
+      policies:
+        - p, proj:security:security-admin, applications, *, security/*, allow
+        - p, proj:security:security-admin, exec, *, security/*, allow
+      groups:
+        - timour:security-admins
+
+    - name: security-operator
+      description: "Operational access to security policies"
+      policies:
+        - p, proj:security:security-operator, applications, get, security/*, allow
+        - p, proj:security:security-operator, applications, sync, security/*, allow
+      groups:
+        - timour:security-operators
