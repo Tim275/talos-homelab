@@ -8,9 +8,34 @@ Enterprise GitOps homelab powered by ArgoCD and Kustomize.
 export KUBECONFIG="../tofu/output/kube-config.yaml"
 
 # Deploy all layers
+kubectl apply -k security/
 kubectl apply -k infrastructure/
 kubectl apply -k platform/
 kubectl apply -k apps/
+```
+
+## One-Command Deploy Everything (App-of-Apps)
+
+```bash
+export KUBECONFIG="../tofu/output/kube-config.yaml"
+
+# Deploy ALL layers with single command via ArgoCD App-of-Apps
+kubectl apply -k sets/
+
+# ArgoCD will automatically deploy in correct order:
+# 0. Security (sync-wave: 0)
+# 1. Infrastructure (sync-wave: 1)
+# 2. Platform (sync-wave: 15)
+# 3. Apps (sync-wave: 25)
+```
+
+## One-Command Deploy Everything (Direct)
+
+```bash
+export KUBECONFIG="../tofu/output/kube-config.yaml"
+
+# Deploy ALL layers with single command (direct)
+kubectl apply -k security/ && kubectl apply -k infrastructure/ && kubectl apply -k platform/ && kubectl apply -k apps/
 ```
 
 ## All-in-One Bootstrap
@@ -120,6 +145,20 @@ kubectl apply -k apps/
 
 ```
 kubernetes/
+├── sets/                              # App-of-Apps Bootstrap (vehagn pattern)
+│   ├── kustomization.yaml            # Main bootstrap control
+│   ├── project.yaml                  # ArgoCD project for timour-homelab
+│   ├── security.yaml                 # Security Application (sync-wave: 0)
+│   ├── infrastructure.yaml           # Infrastructure Application (sync-wave: 1)
+│   ├── platform.yaml                 # Platform Application (sync-wave: 15)
+│   └── apps.yaml                     # Apps Application (sync-wave: 25)
+│
+├── security/                          # Zero Trust security foundation
+│   ├── kustomization.yaml            # Main security control
+│   ├── project.yaml                  # ArgoCD project definition
+│   └── foundation/                   # Security foundation layer
+│       └── network-policies/         # Kubernetes Network Policies
+│
 ├── infrastructure/                    # Core cluster services (22 Apps)
 │   ├── kustomization.yaml            # Main infrastructure control
 │   ├── project.yaml                  # ArgoCD project definition
@@ -189,8 +228,11 @@ kubernetes/
 ## Verification
 
 ```bash
-# Check applications
+# Check App-of-Apps applications
 kubectl get applications -n argocd
+
+# Check all ApplicationSets
+kubectl get applicationsets -n argocd
 
 # Get ArgoCD password
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
