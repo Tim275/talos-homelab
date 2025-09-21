@@ -1,0 +1,161 @@
+# Istio Gateway Deployment - Production Ready 2025
+# Managed by Istio Service Mesh for ingress traffic
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: istio-gateway
+  namespace: istio-system
+  labels:
+    app: istio-gateway
+    app.kubernetes.io/name: istio-gateway
+    app.kubernetes.io/component: gateway
+    infrastructure.layer: network
+    infrastructure.component: istio-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: istio-gateway
+  template:
+    metadata:
+      labels:
+        app: istio-gateway
+        sidecar.istio.io/inject: "true"
+      annotations:
+        inject.istio.io/templates: gateway
+    spec:
+      serviceAccountName: istio-gateway
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1337
+        runAsGroup: 1337
+        fsGroup: 1337
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: istio-proxy
+        image: docker.io/istio/proxyv2:1.26.1
+        ports:
+        - containerPort: 8080
+          name: http2
+          protocol: TCP
+        - containerPort: 8443
+          name: https
+          protocol: TCP
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1337
+          runAsGroup: 1337
+          seccompProfile:
+            type: RuntimeDefault
+          capabilities:
+            drop:
+            - ALL
+            add:
+            - NET_BIND_SERVICE
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        env:
+        - name: ISTIO_META_UNPRIVILEGED_POD
+          value: "true"
+        - name: ISTIO_META_CLUSTER_ID
+          value: "Kubernetes"
+        - name: ISTIO_META_INTERCEPTION_MODE
+          value: "REDIRECT"
+        - name: ISTIO_META_WORKLOAD_NAME
+          value: "istio-gateway"
+        - name: ISTIO_META_OWNER
+          value: "kubernetes://apis/apps/v1/namespaces/istio-system/deployments/istio-gateway"
+        - name: ISTIO_META_MESH_ID
+          value: "cluster.local"
+        - name: TRUST_DOMAIN
+          value: "cluster.local"
+        - name: ISTIO_META_ROUTER_MODE
+          value: "standard"
+        volumeMounts:
+        - name: workload-socket
+          mountPath: /var/run/secrets/workload-spiffe-uds
+        - name: credential-socket
+          mountPath: /var/run/secrets/credential-uds
+        - name: workload-certs
+          mountPath: /var/run/secrets/workload-spiffe-credentials
+        - name: istio-envoy
+          mountPath: /etc/istio/proxy
+        - name: istio-data
+          mountPath: /var/lib/istio/data
+        - name: istio-podinfo
+          mountPath: /etc/istio/pod
+        - name: istio-token
+          mountPath: /var/run/secrets/tokens
+          readOnly: true
+        - name: istiod-ca-cert
+          mountPath: /var/run/secrets/istio
+          readOnly: true
+      volumes:
+      - name: workload-socket
+        emptyDir: {}
+      - name: credential-socket
+        emptyDir: {}
+      - name: workload-certs
+        emptyDir: {}
+      - name: istio-envoy
+        emptyDir: {}
+      - name: istio-data
+        emptyDir: {}
+      - name: istio-podinfo
+        downwardAPI:
+          items:
+          - path: "labels"
+            fieldRef:
+              fieldPath: metadata.labels
+          - path: "annotations"
+            fieldRef:
+              fieldPath: metadata.annotations
+      - name: istio-token
+        projected:
+          sources:
+          - serviceAccountToken:
+              path: istio-token
+              expirationSeconds: 43200
+              audience: istio-ca
+      - name: istiod-ca-cert
+        configMap:
+          name: istio-ca-root-cert
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: istio-gateway
+  namespace: istio-system
+  labels:
+    app: istio-gateway
+    app.kubernetes.io/name: istio-gateway
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: istio-gateway
+  namespace: istio-system
+  labels:
+    app: istio-gateway
+    app.kubernetes.io/name: istio-gateway
+spec:
+  type: LoadBalancer
+  selector:
+    app: istio-gateway
+  ports:
+  - port: 80
+    targetPort: 8080
+    name: http2
+    protocol: TCP
+  - port: 443
+    targetPort: 8443
+    name: https
+    protocol: TCP
