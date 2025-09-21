@@ -1,0 +1,53 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform-messaging
+  namespace: argocd
+  labels:
+    # 🏢 TIER-0 ENTERPRISE LABELS
+    enterprise.tier: "0"
+    enterprise.layer: platform
+    enterprise.sublayer: messaging
+    app.kubernetes.io/name: platform-messaging
+    app.kubernetes.io/instance: production
+  annotations:
+    argocd.argoproj.io/sync-wave: "11"
+spec:
+  goTemplate: true
+  generators:
+    - list:
+        elements:
+        - name: kafka
+          namespace: platform-messaging
+          enabled: "true"
+        - name: schema-registry
+          namespace: platform-messaging
+          enabled: "false"
+        - name: redpanda-console
+          namespace: platform-messaging
+          enabled: "false"
+  template:
+    metadata:
+      name: 'platform-messaging-{{.name}}'
+      namespace: argocd
+      labels:
+        enterprise.tier: "0"
+        enterprise.layer: platform
+        enterprise.sublayer: messaging
+        app.kubernetes.io/name: '{{.name}}'
+    spec:
+      project: platform
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: 'kubernetes/platform/messaging/{{.name}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
