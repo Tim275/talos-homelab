@@ -1,0 +1,52 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure
+  namespace: argocd
+  labels:
+    enterprise.tier: infrastructure
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  goTemplate: true
+  generators:
+    # 🎯 ENTERPRISE PATTERN: ApplicationSet discovers, Kustomize controls
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/infrastructure/*/*"
+          # Exclude directories that shouldn't be apps
+          - path: "kubernetes/infrastructure/base/*"
+            exclude: true
+          - path: "kubernetes/infrastructure/overlays/*"
+            exclude: true
+          - path: "kubernetes/infrastructure/layers/*"
+            exclude: true
+  template:
+    metadata:
+      name: 'infra-{{.path.basenameNormalized}}'
+      labels:
+        app.kubernetes.io/name: '{{.path.basenameNormalized}}'
+        app.kubernetes.io/category: '{{index .path.segments 2}}'
+        app.kubernetes.io/managed-by: argocd
+        infrastructure.tier: "core"
+        team: timour
+      annotations:
+        argocd.argoproj.io/sync-wave: "10"
+    spec:
+      project: infrastructure
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path.path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.path.basenameNormalized}}'
+      syncPolicy:
+        automated:
+          selfHeal: true
+          prune: true
+        syncOptions:
+          - CreateNamespace=true
