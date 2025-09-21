@@ -1,0 +1,53 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform-developer
+  namespace: argocd
+  labels:
+    # 🏢 TIER-0 ENTERPRISE LABELS
+    enterprise.tier: "0"
+    enterprise.layer: platform
+    enterprise.sublayer: developer
+    app.kubernetes.io/name: platform-developer
+    app.kubernetes.io/instance: production
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+spec:
+  goTemplate: true
+  generators:
+    - list:
+        elements:
+        - name: backstage
+          namespace: platform-developer
+          enabled: "true"
+        - name: gitops-tools
+          namespace: platform-developer
+          enabled: "false"
+        - name: ci-cd
+          namespace: platform-developer
+          enabled: "false"
+  template:
+    metadata:
+      name: 'platform-developer-{{.name}}'
+      namespace: argocd
+      labels:
+        enterprise.tier: "0"
+        enterprise.layer: platform
+        enterprise.sublayer: developer
+        app.kubernetes.io/name: '{{.name}}'
+    spec:
+      project: platform
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: 'kubernetes/platform/developer/{{.name}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true

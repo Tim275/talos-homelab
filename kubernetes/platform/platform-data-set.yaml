@@ -1,0 +1,56 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform-data
+  namespace: argocd
+  labels:
+    # 🏢 TIER-0 ENTERPRISE LABELS
+    enterprise.tier: "0"
+    enterprise.layer: platform
+    enterprise.sublayer: data
+    app.kubernetes.io/name: platform-data
+    app.kubernetes.io/instance: production
+  annotations:
+    argocd.argoproj.io/sync-wave: "11"
+spec:
+  goTemplate: true
+  generators:
+    - list:
+        elements:
+        - name: influxdb
+          namespace: platform-data
+          enabled: "true"
+        - name: mongodb
+          namespace: platform-data
+          enabled: "true"
+        - name: cloudbeaver
+          namespace: platform-data
+          enabled: "false"
+        - name: quantlab-postgres
+          namespace: platform-data
+          enabled: "false"
+  template:
+    metadata:
+      name: 'platform-data-{{.name}}'
+      namespace: argocd
+      labels:
+        enterprise.tier: "0"
+        enterprise.layer: platform
+        enterprise.sublayer: data
+        app.kubernetes.io/name: '{{.name}}'
+    spec:
+      project: platform
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: 'kubernetes/platform/data/{{.name}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
