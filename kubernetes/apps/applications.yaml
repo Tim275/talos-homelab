@@ -11,38 +11,18 @@ metadata:
 spec:
   goTemplate: true
   generators:
-    # 🎯 ENTERPRISE PATTERN: Kustomize-controlled Applications
-    - list:
-        elements:
-          - appName: audiobookshelf
-            env: dev
-            server: https://kubernetes.default.svc
-          - appName: audiobookshelf
-            env: prod
-            server: https://kubernetes.default.svc
-          - appName: n8n
-            env: dev
-            server: https://kubernetes.default.svc
-          - appName: n8n
-            env: prod
-            server: https://kubernetes.default.svc
-          - appName: kafka-demo
-            env: dev
-            server: https://kubernetes.default.svc
-          # - appName: kafka-demo
-          #   env: prod
-          #   server: https://kubernetes.default.svc
-          # - appName: quantlab  # Disabled
-          #   env: dev
-          #   server: https://kubernetes.default.svc
-                # - env: staging
-                #   server: https://staging-cluster.example.com
+    # 🎯 ENTERPRISE PATTERN: ApplicationSet discovers, Kustomize controls
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/apps/overlays/*/*"
   template:
     metadata:
-      name: '{{.appName}}-{{.env}}'
+      name: '{{.path.basenameNormalized}}-{{index .path.segments 2}}'
       labels:
-        app.kubernetes.io/name: '{{.appName}}'
-        app.kubernetes.io/environment: '{{.env}}'
+        app.kubernetes.io/name: '{{.path.basenameNormalized}}'
+        app.kubernetes.io/environment: '{{index .path.segments 2}}'
         app.kubernetes.io/managed-by: argocd
         # TIER 0 ENTERPRISE: Service Ownership Pattern
         team: timour
@@ -56,23 +36,18 @@ spec:
         # Service Ownership Metadata
         owner.email: "timour@stonegarden.dev"
         owner.slack: "#timour-team"
-        service.runbook: "https://runbooks.stonegarden.dev/{{.appName}}"
-        service.dashboard: "https://grafana.stonegarden.dev/d/{{.appName}}"
-        service.oncall: "https://pagerduty.com/{{.appName}}"
+        service.runbook: "https://runbooks.stonegarden.dev/{{.path.basenameNormalized}}"
+        service.dashboard: "https://grafana.stonegarden.dev/d/{{.path.basenameNormalized}}"
+        service.oncall: "https://pagerduty.com/{{.path.basenameNormalized}}"
     spec:
       project: default
-      sources:
-        # Primary application source
-        - repoURL: https://github.com/Tim275/talos-homelab
-          targetRevision: HEAD
-          path: 'kubernetes/apps/overlays/{{.env}}/{{.appName}}'
-        # Security policies source
-        - repoURL: https://github.com/Tim275/talos-homelab
-          targetRevision: HEAD
-          path: 'kubernetes/security/foundation/network-policies'
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path.path}}'
       destination:
-        server: '{{.server}}'
-        namespace: '{{.appName}}-{{.env}}'
+        server: https://kubernetes.default.svc
+        namespace: '{{.path.basenameNormalized}}-{{index .path.segments 2}}'
       syncPolicy:
         automated:
           selfHeal: true
