@@ -11,32 +11,37 @@ metadata:
 spec:
   goTemplate: true
   generators:
-    # 🎯 ENTERPRISE PATTERN: Multi-Environment Matrix Generator
-    - matrix:
-        generators:
-          - git:
-              repoURL: https://github.com/Tim275/talos-homelab
-              revision: HEAD
-              directories:
-                - path: "kubernetes/apps/base/*"
-                  exclude: true
-                - path: "kubernetes/apps/base/audiobookshelf"
-                - path: "kubernetes/apps/base/n8n"
-                - path: "kubernetes/apps/base/kafka-demo"
-                # - path: "kubernetes/apps/base/quantlab"  # Disabled
-          - list:
-              elements:
-                - env: dev
-                  server: https://kubernetes.default.svc
-                - env: prod
-                  server: https://kubernetes.default.svc
+    # 🎯 ENTERPRISE PATTERN: Kustomize-controlled Applications
+    - list:
+        elements:
+          - appName: audiobookshelf
+            env: dev
+            server: https://kubernetes.default.svc
+          - appName: audiobookshelf
+            env: prod
+            server: https://kubernetes.default.svc
+          - appName: n8n
+            env: dev
+            server: https://kubernetes.default.svc
+          - appName: n8n
+            env: prod
+            server: https://kubernetes.default.svc
+          - appName: kafka-demo
+            env: dev
+            server: https://kubernetes.default.svc
+          # - appName: kafka-demo
+          #   env: prod
+          #   server: https://kubernetes.default.svc
+          # - appName: quantlab  # Disabled
+          #   env: dev
+          #   server: https://kubernetes.default.svc
                 # - env: staging
                 #   server: https://staging-cluster.example.com
   template:
     metadata:
-      name: '{{.path.basename}}-{{.env}}'
+      name: '{{.appName}}-{{.env}}'
       labels:
-        app.kubernetes.io/name: '{{.path.basename}}'
+        app.kubernetes.io/name: '{{.appName}}'
         app.kubernetes.io/environment: '{{.env}}'
         app.kubernetes.io/managed-by: argocd
         # TIER 0 ENTERPRISE: Service Ownership Pattern
@@ -51,23 +56,23 @@ spec:
         # Service Ownership Metadata
         owner.email: "timour@stonegarden.dev"
         owner.slack: "#timour-team"
-        service.runbook: "https://runbooks.stonegarden.dev/{{.path.basename}}"
-        service.dashboard: "https://grafana.stonegarden.dev/d/{{.path.basename}}"
-        service.oncall: "https://pagerduty.com/{{.path.basename}}"
+        service.runbook: "https://runbooks.stonegarden.dev/{{.appName}}"
+        service.dashboard: "https://grafana.stonegarden.dev/d/{{.appName}}"
+        service.oncall: "https://pagerduty.com/{{.appName}}"
     spec:
       project: default
       sources:
         # Primary application source
         - repoURL: https://github.com/Tim275/talos-homelab
           targetRevision: HEAD
-          path: 'kubernetes/apps/overlays/{{.env}}/{{.path.basename}}'
+          path: 'kubernetes/apps/overlays/{{.env}}/{{.appName}}'
         # Security policies source
         - repoURL: https://github.com/Tim275/talos-homelab
           targetRevision: HEAD
           path: 'kubernetes/security/foundation/network-policies'
       destination:
         server: '{{.server}}'
-        namespace: '{{.path.basename}}-{{.env}}'
+        namespace: '{{.appName}}-{{.env}}'
       syncPolicy:
         automated:
           selfHeal: true
