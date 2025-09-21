@@ -1,0 +1,79 @@
+# AnalysisTemplate for automated rollback decisions
+# Enterprise pattern for observability-driven deployments
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: success-rate
+  namespace: n8n-prod
+  labels:
+    app.kubernetes.io/name: n8n
+    component: analysis
+spec:
+  args:
+  - name: service-name
+
+  metrics:
+  # HTTP Success Rate Analysis
+  - name: success-rate
+    interval: 30s
+    successCondition: result[0] >= 0.95  # 95% success rate required
+    failureCondition: result[0] < 0.90   # Auto-rollback below 90%
+    provider:
+      prometheus:
+        address: http://prometheus.monitoring.svc.cluster.local:9090
+        query: |
+          sum(
+            rate(
+              http_requests_total{
+                service="{{args.service-name}}",
+                status!~"5.."
+              }[2m]
+            )
+          ) /
+          sum(
+            rate(
+              http_requests_total{
+                service="{{args.service-name}}"
+              }[2m]
+            )
+          )
+
+  # Response Time Analysis
+  - name: avg-response-time
+    interval: 30s
+    successCondition: result[0] <= 500   # 500ms max response time
+    failureCondition: result[0] > 1000   # Auto-rollback above 1s
+    provider:
+      prometheus:
+        address: http://prometheus.monitoring.svc.cluster.local:9090
+        query: |
+          avg(
+            rate(
+              http_request_duration_seconds_sum{
+                service="{{args.service-name}}"
+              }[2m]
+            ) /
+            rate(
+              http_request_duration_seconds_count{
+                service="{{args.service-name}}"
+              }[2m]
+            )
+          ) * 1000
+
+  # Pod Restart Analysis
+  - name: pod-restarts
+    interval: 60s
+    successCondition: result[0] <= 1     # Max 1 restart allowed
+    failureCondition: result[0] > 3      # Auto-rollback above 3 restarts
+    provider:
+      prometheus:
+        address: http://prometheus.monitoring.svc.cluster.local:9090
+        query: |
+          sum(
+            increase(
+              kube_pod_container_status_restarts_total{
+                namespace="n8n-prod",
+                pod=~"{{args.service-name}}-.*"
+              }[5m]
+            )
+          )

@@ -1,0 +1,92 @@
+# N8N Progressive Delivery with Argo Rollouts
+# Enterprise Canary Deployment Strategy
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: n8n-rollout
+  namespace: n8n-prod
+  labels:
+    app.kubernetes.io/name: n8n
+    environment: production
+    team: automation
+    strategy: canary
+spec:
+  replicas: 3
+  strategy:
+    canary:
+      # Traffic Splitting
+      canaryService: n8n-canary
+      stableService: n8n-stable
+
+      # Canary Steps - Enterprise Progressive Pattern
+      steps:
+      - setWeight: 20    # 20% traffic to canary
+      - pause:
+          duration: 2m   # Wait 2 minutes
+      - setWeight: 40    # 40% traffic to canary
+      - pause:
+          duration: 5m   # Wait 5 minutes
+      - setWeight: 60    # 60% traffic to canary
+      - pause:
+          duration: 10m  # Wait 10 minutes - observe metrics
+      - setWeight: 100   # Full rollout
+
+      # Automatic rollback conditions
+      analysis:
+        templates:
+        - templateName: success-rate
+        args:
+        - name: service-name
+          value: n8n
+
+      # Manual approval gate (Enterprise pattern)
+      canaryMetadata:
+        labels:
+          role: canary
+        annotations:
+          deployment.kubernetes.io/canary: "true"
+
+  selector:
+    matchLabels:
+      app: n8n
+
+  template:
+    metadata:
+      labels:
+        app: n8n
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 2501
+        runAsGroup: 2501
+        fsGroup: 2501
+      containers:
+      - name: n8n
+        image: docker.io/n8nio/n8n:1.78.0
+        ports:
+        - containerPort: 5678
+          name: http
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: N8N_HOST
+          value: "n8n.talos-homelab.local"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 5678
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 5678
+          initialDelaySeconds: 10
+          periodSeconds: 5
