@@ -1,0 +1,79 @@
+# Alertmanager Configuration
+# Alert routing and notification system
+
+# Alertmanager configuration
+alertmanager:
+  enabled: true
+
+  # Image configuration
+  image:
+    repository: quay.io/prometheus/alertmanager
+    tag: "v0.27.0"
+
+  # Resource configuration
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  # Persistence
+  persistence:
+    enabled: true
+    size: 2Gi
+    storageClass: rook-ceph-block-enterprise
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 9093
+
+  # Ingress
+  ingress:
+    enabled: false
+
+  # Configuration file
+  config:
+    global:
+      smtp_smarthost: 'localhost:587'
+      smtp_from: 'alertmanager@talos-homelab.local'
+      smtp_auth_username: ''
+      smtp_auth_password: ''
+
+    # Default route
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 1h
+      receiver: 'slack-notifications'
+      routes:
+      - match:
+          severity: critical
+        receiver: 'critical-slack'
+        group_wait: 5s
+        repeat_interval: 30m
+
+    # Receivers
+    receivers:
+    - name: 'slack-notifications'
+      slack_configs:
+      - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+        channel: '#homelab-alerts'
+        title: 'Homelab Alert'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+
+    - name: 'critical-slack'
+      slack_configs:
+      - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+        channel: '#homelab-critical'
+        title: '🚨 CRITICAL ALERT 🚨'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+
+# ServiceMonitor for Prometheus scraping
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  scrapeTimeout: 10s
