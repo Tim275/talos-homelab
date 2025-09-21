@@ -151,6 +151,30 @@ kubectl apply -k platform/
 kubectl apply -k apps/
 ```
 
+### **Manual Bootstrap (Step-by-Step)**
+```bash
+export KUBECONFIG="../tofu/output/kube-config.yaml"
+
+# 1. Cilium CNI
+kubectl kustomize --enable-helm infrastructure/network/cilium | kubectl apply -f -
+
+# 2. Sealed Secrets
+kustomize build --enable-helm infrastructure/controllers/sealed-secrets | kubectl apply -f -
+
+# 3. Proxmox CSI Plugin
+kustomize build --enable-helm infrastructure/storage/proxmox-csi | kubectl apply -f -
+kubectl get csistoragecapacities -ocustom-columns=CLASS:.storageClassName,AVAIL:.capacity,ZONE:.nodeTopology.matchLabels -A
+
+# 4. ArgoCD
+kustomize build --enable-helm infrastructure/controllers/argocd | kubectl apply -f -
+kubectl -n argocd get secret argocd-initial-admin-secret -ojson | jq -r '.data.password | @base64d'
+
+# 5. Deploy everything else via GitOps
+kubectl apply -k infrastructure
+kubectl apply -k platform
+kubectl apply -k apps
+```
+
 ### **Direct Kustomize Deployment (without ArgoCD)**
 ```bash
 # Enable Helm in kustomize and deploy directly
