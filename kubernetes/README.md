@@ -1,389 +1,366 @@
-# 🏢 Enterprise Tier-0 GitOps Architecture
+# 🚀 Enterprise Kubernetes Homelab
+## Netflix/Google/Meta Tier-0 Architecture Pattern
 
-Netflix/Google/Amazon/Meta Style Platform Engineering
+**30 Applications deployed across 3 enterprise layers with granular Kustomize control**
 
 ---
 
-## 🚀 Bootstrap Commands
+## 🏗️ **Enterprise Tier-0 Architecture Principles**
 
-### **Foundation Bootstrap (Manual)**
+### **🏗️ Infrastructure Layer** = **Cluster-Wide Foundation**
+- **CRDs & Operators** - Custom resources and controllers
+- **Networking** - CNI, Service Mesh, Gateways
+- **Storage** - CSI drivers, distributed storage
+- **Security** - RBAC controllers, certificate management
+- **Monitoring** - Metrics collection, alerting infrastructure
+- **GitOps** - ArgoCD controllers, Argo Rollouts controller
+
+### **🛠️ Platform Layer** = **Platform Engineering**
+- **Resource Management** - Quotas, limits, cost controls
+- **Progressive Delivery** - Canary templates, analysis patterns
+- **Data Services** - Databases, message brokers, caching
+- **Shared Services** - Logging, tracing, service discovery
+- **Developer Experience** - CI/CD templates, environment patterns
+
+### **📱 Applications Layer** = **Developer-Focused**
+- **Business Logic** - Application deployments and services
+- **Configuration** - App-specific configs and secrets
+- **Simple Patterns** - Standard deployments, no complex platform features
+- **Team Ownership** - Developer-managed, business-focused
+
+---
+
+## 🎯 Quick Start
+
+### **One Command Bootstrap**
 ```bash
 export KUBECONFIG="tofu/output/kube-config.yaml"
 
-# 📋 Step 0: CRDs and Gateway API
-kubectl apply -k kubernetes/infrastructure/crds
+# 🏗️ Infrastructure Layer (22 apps)
+kubectl apply -k kubernetes/infrastructure/
 
-# 🌐 Step 1: Network Foundation
-kubectl kustomize --enable-helm kubernetes/infrastructure/network/cilium | kubectl apply -f -
-kubectl kustomize --enable-helm kubernetes/infrastructure/network/istio-base | kubectl apply -f -
-kubectl kustomize --enable-helm kubernetes/infrastructure/network/istio-cni | kubectl apply -f -
-kubectl kustomize --enable-helm kubernetes/infrastructure/network/istio-control-plane | kubectl apply -f -
-kubectl kustomize --enable-helm kubernetes/infrastructure/network/istio-gateway | kubectl apply -f -
+# 🛠️ Platform Layer (6 apps)
+kubectl apply -k kubernetes/platform/
 
-# 🔐 Step 2: Security & Secrets
-kustomize build --enable-helm kubernetes/infrastructure/controllers/sealed-secrets | kubectl apply -f -
-
-# 💾 Step 3: Storage Foundation
-kustomize build --enable-helm kubernetes/infrastructure/storage/proxmox-csi | kubectl apply -f -
-kubectl get csistoragecapacities -ocustom-columns=CLASS:.storageClassName,AVAIL:.capacity,ZONE:.nodeTopology.matchLabels -A
-kustomize build --enable-helm kubernetes/infrastructure/storage/rook-ceph | kubectl apply -f -
-
-# 🎮 Step 4: GitOps Engine
-kustomize build --enable-helm kubernetes/infrastructure/controllers/argocd | kubectl apply -f -
-
-# Get ArgoCD admin password
-kubectl -n argocd get secret argocd-initial-admin-secret -ojson | jq -r '.data.password | @base64d'
-
-# Wait for ArgoCD to be ready, then deploy ApplicationSets
-kubectl wait --for=condition=available deployment/argocd-server -n argocd --timeout=300s
+# 📱 Applications Layer (2 apps x 2 environments)
+kubectl apply -k kubernetes/apps/
 ```
 
-### **ApplicationSet Deployment (After Foundation)**
-
-#### **🎯 ENTERPRISE TIER-0: Granular Service Control**
-
-**🏗️ Infrastructure Layers**
+### **Verification**
 ```bash
-# 🌐 Network only (Cilium, Istio, Gateway)
-kubectl apply -k kubernetes/infrastructure/layers/network
-
-# 🎮 Controllers only (ArgoCD, Cert-Manager, Sealed Secrets)
-kubectl apply -k kubernetes/infrastructure/layers/controllers
-
-# 💾 Storage only (Rook Ceph, Proxmox CSI, Velero)
-kubectl apply -k kubernetes/infrastructure/layers/storage
-
-# 📊 Monitoring only (Prometheus, Grafana, Metrics Server)
-kubectl apply -k kubernetes/infrastructure/layers/monitoring
-
-# 🔍 Observability only (Jaeger, OpenTelemetry, Vector)
-kubectl apply -k kubernetes/infrastructure/layers/observability
-```
-
-**🛠️ Platform Services**
-```bash
-# 💾 Data Platform only (N8N, InfluxDB, CloudBeaver, PostgreSQL)
-kubectl apply -k kubernetes/platform/layers/data
-
-# 📬 Messaging only (Kafka, Schema Registry, Redpanda Console)
-kubectl apply -k kubernetes/platform/layers/messaging
-
-# 🔧 Developer Portal only (Backstage)
-kubectl apply -k kubernetes/platform/layers/developer
-```
-
-**📱 Individual Applications**
-```bash
-# 🎵 Audiobookshelf only (dev + prod)
-kubectl apply -k kubernetes/apps/layers/kustomization-audiobookshelf.yaml
-
-# 🔄 N8N only (dev + prod)
-kubectl apply -k kubernetes/apps/layers/kustomization-n8n.yaml
-
-# 📨 Kafka Demo only (dev + prod)
-kubectl apply -k kubernetes/apps/layers/kustomization-kafka-demo.yaml
-
-# 🚀 All applications together
-kubectl apply -k kubernetes/apps/layers/all-apps.yaml
-```
-
-**🎯 Complete Service Stacks**
-```bash
-# 🌐 Complete Istio Service Mesh (all 4 components)
-kubectl apply -k kubernetes/infrastructure/layers/istio-complete.yaml
-
-# 🛠️ Complete Platform Services (data + messaging + developer)
-kubectl apply -k kubernetes/platform/layers/all-platform.yaml
-
-# 💾 Complete Storage Stack (Rook Ceph + Proxmox CSI)
-kubectl apply -k kubernetes/infrastructure/layers/storage-complete.yaml
-
-# 🔐 Complete Security Stack (Sealed Secrets + Cert Manager)
-kubectl apply -k kubernetes/infrastructure/layers/security-complete.yaml
-```
-
-#### **🏗️ Full Layer Deployment**
-```bash
-# 🏗️ Deploy all Infrastructure ApplicationSets
-kubectl apply -k kubernetes/infrastructure
-
-# 🛠️ Deploy all Platform ApplicationSets
-kubectl apply -k kubernetes/platform
-
-# 📱 Deploy all Application ApplicationSets
-kubectl apply -k kubernetes/apps
-
-# 🚀 OR single command (deploys everything)
-kubectl apply -k kubernetes/sets
-```
-
-### **Verification Commands**
-```bash
-# Check foundation pods
-kubectl get pods -n cilium-system
-kubectl get pods -n istio-system
-kubectl get pods -n argocd
-kubectl get pods -n rook-ceph
-
-# Check storage capacity
-kubectl get csistoragecapacities -ocustom-columns=CLASS:.storageClassName,AVAIL:.capacity,ZONE:.nodeTopology.matchLabels -A
-
-# Check ApplicationSets
-kubectl get applicationsets -n argocd
-
-# Check generated Applications (should show 60+)
+# Check all applications (should show 30)
 kubectl get applications -n argocd
+
+# Check application health
+kubectl get applications -n argocd -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.sync.status}{"\t"}{.status.health.status}{"\n"}{end}'
 ```
 
 ---
 
-## 📋 SBOM (Software Bill of Materials)
-
-### **✅ Foundation Components**
-- ✅ **Cilium** - CNI with Gateway API and L2 announcements
-- ✅ **Hubble** - Network observability and monitoring
-- ✅ **Istio Service Mesh** - Ambient mode with ztunnel
-- ✅ **ArgoCD** - GitOps engine with ApplicationSets
-- ✅ **Sealed Secrets** - Secret encryption controller
-- ✅ **Proxmox CSI** - VM storage integration
-- ✅ **Rook Ceph** - Distributed storage cluster
-- ✅ **Gateway API** - Next-gen ingress and traffic management
-
-### **🔄 Platform Services**
-- ✅ **CNPG** - Cloud Native PostgreSQL operator
-- ✅ **Cert-Manager** - Certificate lifecycle management
-- ✅ **Cloudflared** - Tunnel management
-
-### **📊 Monitoring Stack**
-- ✅ **Prometheus** - Metrics collection and alerting
-- ✅ **Grafana** - Dashboards and visualization
-- ✅ **Loki** - Log aggregation
-- ✅ **Jaeger** - Distributed tracing
-
-### **🚧 TODO - Tier-0 Enterprise Roadmap**
-
-**🎯 Current Status: LEVEL 4/5 (Advanced) - 90% Tier-0 Complete**
-
-**Phase 1: Policy & Governance (Tier-0 Completion)**
-- [ ] **OPA Gatekeeper** - Policy as Code (`kubernetes/governance/policies/`)
-- [ ] **Security Policies** - Automated compliance enforcement
-- [ ] **Resource Quotas** - Enterprise resource governance
-
-**Phase 2: Multi-Cluster Governance**
-- [ ] **Cluster Generators** - Netflix-style cluster management
-- [ ] **Environment Classification** - Production/staging cluster patterns
-- [ ] **Cross-Cluster ApplicationSets** - Uber-level multi-cluster orchestration
-
-**Phase 3: Zero-Trust Security**
-- [ ] **External Secrets Operator** - Enterprise secret management (`kubernetes/infrastructure/controllers/external-secrets/`)
-- [ ] **Vault Integration** - HashiCorp Vault for zero-trust secrets
-- [ ] **Network Policies** - Micro-segmentation with Cilium
-
-**Phase 4: Enhanced Observability**
-- [ ] **GitOps Metrics** - ArgoCD metrics integration with Prometheus
-- [ ] **Business KPI Correlation** - Git commit → deployment success tracking
-- [ ] **MTTR Tracking** - Mean Time To Recovery analytics
-- [ ] **Deployment Frequency** - DevOps DORA metrics
-
-**Phase 5: Platform Engineering**
-- [ ] **Component Library** - Reusable Kustomize components (`kubernetes/components/`)
-- [ ] **API Management** - Enterprise API gateway layer
-- [ ] **Developer Self-Service** - Backstage integration enhancement
-
-### **📊 Tier-0 Benchmarks (Target Metrics)**
-- **Deployment Frequency**: >10 deployments/day per team ✅ (Architecture Ready)
-- **Lead Time**: <1 hour commit→production ✅ (Infrastructure Ready)
-- **MTTR**: <30 minutes for infrastructure issues ✅ (Monitoring Ready)
-- **Change Failure Rate**: <5% ✅ (GitOps + Testing Ready)
-- **Multi-Cluster Scale**: Support 50+ clusters 🔄 (Needs cluster generators)
-- **Policy Compliance**: 100% automated enforcement 🔄 (Needs OPA/Gatekeeper)
-
-### **🏆 Current Enterprise Features (Already Tier-0)**
-- ✅ **Sophisticated ApplicationSet Patterns** (15+ specialized ApplicationSets)
-- ✅ **Multi-Layer Architecture** (Infrastructure/Platform/Apps separation)
-- ✅ **Granular Kustomize Control** (Superior to many Big Tech implementations)
-- ✅ **Sync Wave Orchestration** (Proper dependency management)
-- ✅ **Progressive Delivery** (Argo Rollouts integration)
-- ✅ **Advanced Helm Integration** (Enterprise patterns with --enable-helm)
-
-### **🎯 Legacy TODO (Lower Priority)**
-- [ ] **Keycloak/Authentik** - Identity and access management
-- [ ] **Velero** - Backup and disaster recovery
-- [ ] **OpenTelemetry** - Observability framework
-
----
-
-## 🏗️ Directory Structure
+## 📁 Directory Structure
 
 ```
 kubernetes/
-├── sets/                              # 🚀 Bootstrap Layer
-│   ├── kustomization.yaml           # App-of-Apps entry point
-│   ├── infrastructure.yaml          # Infrastructure meta-app
-│   ├── platform.yaml               # Platform meta-app
-│   ├── apps.yaml                   # Applications meta-app
-│   └── applicationsets.yaml        # ApplicationSets bootstrap
+├── infrastructure/                    # 🏗️ INFRASTRUCTURE LAYER (22 Apps)
+│   ├── kustomization.yaml            #     Main infrastructure control
+│   ├── project.yaml                  #     ArgoCD project definition
+│   │
+│   ├── network/                      # 🌐 Network Layer (Wave 0-1)
+│   │   ├── cilium-app.yaml          #     ✅ CNI with eBPF
+│   │   ├── gateway-app.yaml         #     ✅ Gateway API CRDs
+│   │   ├── envoy-gateway-app.yaml   #     ✅ Envoy Gateway implementation
+│   │   ├── istio-base-app.yaml      #     ✅ Service mesh base
+│   │   ├── istio-cni-app.yaml       #     ✅ Istio CNI plugin
+│   │   ├── istio-control-plane-app.yaml # ✅ Istiod control plane
+│   │   ├── istio-gateway-app.yaml   #     ✅ Istio ingress gateway
+│   │   ├── istio-operator-app.yaml  #     ✅ Sail Operator
+│   │   └── cloudflared-app.yaml     #     ✅ Cloudflare tunnel
+│   │
+│   ├── controllers/                  # 🎮 Controllers Layer (Wave 2-3)
+│   │   ├── argocd-app.yaml          #     ✅ GitOps engine
+│   │   ├── cert-manager-app.yaml    #     ✅ Certificate management
+│   │   ├── sealed-secrets-app.yaml  #     ✅ Secret encryption
+│   │   ├── argo-rollouts-app.yaml   #     ✅ Progressive delivery
+│   │   └── cloudnative-pg-app.yaml  #     ✅ PostgreSQL operator
+│   │
+│   ├── storage/                      # 💾 Storage Layer (Wave 1)
+│   │   ├── rook-ceph-app.yaml       #     ✅ Distributed storage
+│   │   ├── proxmox-csi-app.yaml     #     ✅ VM storage integration
+│   │   └── velero-app.yaml          #     ✅ Backup & disaster recovery
+│   │
+│   ├── monitoring/                   # 📊 Monitoring Layer (Wave 5)
+│   │   ├── prometheus-app.yaml      #     ✅ Metrics & alerting
+│   │   ├── alertmanager-app.yaml    #     ✅ Alert routing & notifications
+│   │   ├── grafana-app.yaml         #     ✅ Dashboards & visualization
+│   │   └── jaeger-app.yaml          #     ✅ Distributed tracing
+│   │
+│   └── observability/                # 🔍 Observability Layer (Wave 5-6)
+│       ├── vector-app.yaml          #     ✅ Log collection & processing
+│       ├── elasticsearch-app.yaml   #     ✅ Search & analytics
+│       └── kibana-app.yaml          #     ✅ Log visualization
 │
-├── applicationsets/                   # 🎯 ApplicationSet Definitions
-│   ├── applications.yaml           # Multi-env app generator
-│   ├── infrastructure-*.yaml       # Infrastructure ApplicationSets
-│   ├── platform-*.yaml            # Platform ApplicationSets
-│   └── storage-*.yaml              # Storage ApplicationSets
+├── platform/                         # 🛠️ PLATFORM LAYER (6 Apps)
+│   ├── kustomization.yaml            #     Main platform control
+│   ├── project.yaml                  #     ArgoCD project definition
+│   │
+│   ├── data/                         # 🗄️ Data Layer (Wave 12)
+│   │   ├── influxdb-app.yaml        #     ✅ Time-series database
+│   │   ├── cloudbeaver-app.yaml     #     ✅ Database management UI
+│   │   └── n8n-app.yaml             #     ✅ N8N PostgreSQL cluster
+│   │
+│   └── messaging/                    # 📨 Messaging Layer (Wave 12-13)
+│       ├── kafka-app.yaml           #     ✅ Message broker
+│       ├── schema-registry-app.yaml #     ✅ Schema management
+│       └── redpanda-console-app.yaml#     ✅ Modern Kafka UI
 │
-├── infrastructure/                    # 🏗️ Foundation (37 Services)
-│   ├── kustomization.yaml          # ApplicationSet references only
-│   ├── layers/                     # 🎯 GRANULAR CONTROL
-│   │   ├── network.yaml           # Network layer only
-│   │   ├── controllers.yaml       # Controllers layer only
-│   │   ├── storage.yaml           # Storage layer only
-│   │   ├── monitoring.yaml        # Monitoring layer only
-│   │   └── observability.yaml     # Observability layer only
-│   ├── network/
-│   │   ├── cilium/                 # CNI with Gateway API
-│   │   ├── istio-*/                # Service mesh stack
-│   │   └── gateway/                # Envoy Gateway
-│   ├── storage/
-│   │   ├── rook-ceph/             # Distributed storage
-│   │   ├── proxmox-csi/           # VM storage
-│   │   └── minio/                 # Object storage
-│   ├── controllers/
-│   │   ├── argocd/                # GitOps engine
-│   │   ├── cert-manager/          # Certificates
-│   │   └── sealed-secrets/        # Secret encryption
-│   ├── monitoring/
-│   │   ├── prometheus/            # Metrics
-│   │   ├── grafana/               # Dashboards
-│   │   └── loki/                  # Logs (disabled)
-│   └── backup/
-│       └── velero/                 # Disaster recovery
-│
-├── platform/                         # 🛠️ Platform Services (10 Services)
-│   ├── kustomization.yaml          # Platform ApplicationSets
-│   ├── layers/                     # 🎯 GRANULAR CONTROL
-│   │   ├── data.yaml              # Data platform only
-│   │   ├── messaging.yaml         # Messaging platform only
-│   │   └── developer.yaml         # Developer platform only
-│   ├── data/
-│   │   ├── n8n/                   # Workflow DB (PostgreSQL)
-│   │   ├── cloudbeaver/           # DB management UI
-│   │   └── influxdb/              # Time-series DB
-│   ├── messaging/
-│   │   ├── kafka/                 # Event streaming
-│   │   ├── schema-registry/       # Schema management
-│   │   └── redpanda-console/      # Kafka UI
-│   └── developer/
-│       └── backstage/             # Developer portal
-│
-└── apps/                            # 📱 Applications (4 Services x 2 Envs)
-    ├── applications.yaml           # Matrix generator
-    ├── layers/                     # 🎯 GRANULAR CONTROL
-    │   ├── audiobookshelf.yaml    # Audiobookshelf only
-    │   ├── n8n.yaml               # N8N only
-    │   ├── kafka-demo.yaml        # Kafka Demo only
-    │   ├── kustomization-*.yaml   # Individual app kustomizations
-    │   └── all-apps.yaml          # All applications together
-    ├── base/                      # Service templates
-    │   ├── audiobookshelf/        # Media platform
-    │   ├── n8n/                   # Workflow automation
-    │   ├── kafka-demo/            # Event demo
-    │   └── quantlab.disabled/     # Analytics (disabled)
-    └── overlays/                   # Environment configs
-        ├── dev/                   # Development
-        └── prod/                  # Production
+└── apps/                             # 📱 APPLICATIONS LAYER (5 Apps)
+    ├── kustomization.yaml            #     Main applications control
+    │
+    ├── base/                         # Service base configurations
+    │   ├── audiobookshelf/          #     Media server templates
+    │   ├── n8n/                     #     Workflow automation with rollouts
+    │   │   └── environments/        #     Environment-specific configs
+    │   │       ├── dev/             #     Development environment
+    │   │       └── production/      #     Production with Argo Rollouts
+    │   │           ├── rollout.yaml #     ✅ Progressive delivery
+    │   │           ├── analysis-template.yaml # ✅ Automated rollback
+    │   │           └── resource-quota.yaml    # ✅ Enterprise quotas
+    │   └── kafka-demo/              #     Kafka demo applications
+    │
+    ├── overlays/                     # 🎯 ENTERPRISE TIER-0 PATTERNS
+    │   ├── dev/                     #     Development overrides
+    │   │   └── patches/             #     Environment-specific patches
+    │   │       ├── resource-limits.yaml    # ✅ Conservative dev limits
+    │   │       ├── security-context.yaml   # ✅ Relaxed dev security
+    │   │       └── environment-vars.yaml   # ✅ Dev configurations
+    │   └── prod/                    #     Production overrides
+    │       └── patches/             #     Production-grade patches
+    │           ├── resource-limits.yaml    # ✅ High-performance limits
+    │           ├── security-context.yaml   # ✅ Strict prod security
+    │           └── environment-vars.yaml   # ✅ Prod configurations
+    │
+    ├── audiobookshelf-dev-app.yaml  # ✅ Media server (development)
+    ├── audiobookshelf-prod-app.yaml # ✅ Media server (production)
+    ├── n8n-dev-app.yaml             # ✅ Workflow automation (dev)
+    ├── n8n-prod-app.yaml            # ✅ Workflow automation (prod w/ rollouts)
+    └── kafka-demo-dev-app.yaml      # ✅ Kafka demo (development)
 ```
 
 ---
 
-## 🎛️ Kustomize Control
+## 🎛️ Granular Control System
 
-### **Bootstrap Layer**
+### **🔥 Infrastructure Control** (`infrastructure/kustomization.yaml`)
 ```yaml
-# sets/kustomization.yaml
 resources:
-  - infrastructure.yaml    # Deploys infrastructure ApplicationSets
-  - platform.yaml        # Deploys platform ApplicationSets
-  - apps.yaml            # Deploys application ApplicationSets
+  # 🌐 NETWORK LAYER (Wave 0-1) - Comment/uncomment to enable/disable
+  - network/cilium-app.yaml           # ✅ Core CNI
+  - network/gateway-app.yaml          # ✅ Gateway API
+  - network/envoy-gateway-app.yaml    # ✅ Envoy Gateway
+  - network/istio-base-app.yaml       # ✅ Service Mesh Base
+  # - network/cloudflared-app.yaml    # ❌ DISABLED - Tunnel not needed
+
+  # 🎮 CONTROLLERS LAYER (Wave 2-3)
+  - controllers/argocd-app.yaml       # ✅ GitOps Controller
+  - controllers/cert-manager-app.yaml # ✅ Certificate Management
+  # - controllers/cloudnative-pg-app.yaml # ❌ DISABLED - No PostgreSQL needed
 ```
 
-### **Infrastructure Layer**
+### **🛠️ Platform Control** (`platform/kustomization.yaml`)
 ```yaml
-# infrastructure/kustomization.yaml
 resources:
-  - ../applicationsets/infrastructure-network.yaml
-  - ../applicationsets/infrastructure-storage.yaml
-  - ../applicationsets/infrastructure-monitoring.yaml
+  # 🗄️ DATA LAYER (Wave 12)
+  - data/influxdb-app.yaml            # ✅ Time-series database
+  # - mongodb-app.yaml                # ❌ DISABLED - Document DB not needed
+  - data/cloudbeaver-app.yaml         # ✅ DB management UI
+
+  # 📨 MESSAGING LAYER (Wave 12-13)
+  - messaging/kafka-app.yaml          # ✅ Message broker
+  - messaging/schema-registry-app.yaml # ✅ Schema management
+  # - messaging/kafdrop-app.yaml      # ❌ DISABLED - Use Redpanda Console
 ```
 
-### **Application Generation**
+### **📱 Applications Control** (`apps/kustomization.yaml`)
 ```yaml
-# apps/applications.yaml - Matrix Generator
-generators:
-  - matrix:
-      generators:
-        - git:
-            directories: ["kubernetes/apps/base/*"]
-        - list:
-            elements:
-              - env: dev
-              - env: prod
-# Result: audiobookshelf-dev, audiobookshelf-prod, n8n-dev, n8n-prod
+resources:
+  # 🎯 DEVELOPMENT LAYER (Wave 20)
+  - audiobookshelf-dev-app.yaml       # ✅ Media server (dev)
+  - n8n-dev-app.yaml                  # ✅ Workflow automation (dev)
+  - kafka-demo-dev-app.yaml           # ✅ Messaging demo (dev)
+
+  # 🏭 PRODUCTION LAYER (Wave 20)
+  - audiobookshelf-prod-app.yaml      # ✅ Media server (prod)
+  - n8n-prod-app.yaml                 # ✅ Workflow automation (prod)
+  # - kafka-demo-prod-app.yaml        # ❌ DISABLED - No prod demo needed
 ```
 
 ---
 
-## 📊 Storage Classes
+## 🚀 Technology Stack
 
-```bash
-$ kubectl get storageclass
-rook-ceph-block-enterprise (default)   # Primary storage
-rook-ceph-block-ssd                    # SSD storage
-rook-cephfs-enterprise                 # Shared filesystem
-proxmox-csi                            # VM storage
+### **Infrastructure (22 Applications)**
+| Component | Version | Description | Namespace |
+|-----------|---------|-------------|-----------|
+| **Cilium** | v1.16.4 | eBPF-based CNI with Gateway API | `cilium-system` |
+| **Istio** | v1.24.1 | Service mesh with Sail Operator | `istio-system` |
+| **Envoy Gateway** | v1.2.2 | Gateway API implementation | `envoy-gateway-system` |
+| **ArgoCD** | v8.2.5 | GitOps continuous delivery | `argocd` |
+| **Prometheus** | v65.1.1 | Metrics collection & alerting | `monitoring` |
+| **Alertmanager** | v0.27.0 | Alert routing & notifications | `monitoring` |
+| **Grafana** | v8.6.1 | Dashboards & visualization | `monitoring` |
+| **Rook Ceph** | v1.15.5 | Distributed storage cluster | `rook-ceph` |
+| **cert-manager** | v1.16.1 | Certificate lifecycle management | `cert-manager` |
+| **Sealed Secrets** | v0.27.2 | Secret encryption controller | `sealed-secrets` |
+
+### **Platform (6 Applications)**
+| Component | Version | Description | Namespace |
+|-----------|---------|-------------|-----------|
+| **Apache Kafka** | v0.47.0 | Event streaming platform | `kafka` |
+| **Schema Registry** | v26.0.5 | Kafka schema management | `kafka` |
+| **Redpanda Console** | latest | Modern Kafka UI | `kafka` |
+| **InfluxDB** | v2.7.10 | Time-series database | `influxdb` |
+| **CloudBeaver** | latest | Database management UI | `cloudbeaver` |
+| **N8N PostgreSQL** | v16.1 | Workflow automation database | `n8n-prod` |
+
+### **Applications (4 Applications)**
+| Component | Version | Description | Environments |
+|-----------|---------|-------------|--------------|
+| **Audiobookshelf** | v2.15.2 | Media server for audiobooks | `dev`, `prod` |
+| **N8N** | v1.78.0 | Workflow automation platform | `dev`, `prod` |
+| **Kafka Demo** | latest | Real-time messaging demo | `dev` |
+
+---
+
+## 🌊 Sync Wave Architecture
+
+```
+Wave 0:  Gateway API CRDs, Namespaces
+Wave 1:  CNI (Cilium), Storage (Rook Ceph), Envoy Gateway
+Wave 2:  Controllers (ArgoCD, cert-manager, Sealed Secrets)
+Wave 3:  Service Mesh (Istio), CloudNative PostgreSQL
+Wave 5:  Monitoring (Prometheus, Grafana, Alertmanager)
+Wave 6:  Observability (Vector, Elasticsearch, Kibana)
+Wave 12: Platform Data Services (InfluxDB, N8N PostgreSQL)
+Wave 13: Platform Messaging (Kafka, Schema Registry)
+Wave 20: End-User Applications (Audiobookshelf, N8N)
 ```
 
 ---
 
-## 🚦 Verification
+## 🔧 Management Commands
 
+### **Individual Layer Control**
 ```bash
-# Check ApplicationSets
-kubectl get applicationsets -n argocd
+# Deploy only infrastructure
+kubectl apply -k kubernetes/infrastructure/
 
-# Check applications (should show 60+)
-kubectl get applications -n argocd
+# Deploy only platform services
+kubectl apply -k kubernetes/platform/
 
-# Check infrastructure
-kubectl get pods -n rook-ceph
-kubectl get pods -n argocd
-
-# Check platform
-kubectl get pods -n kafka
-kubectl get pods -n backstage
-
-# Check apps
-kubectl get pods -n audiobookshelf-prod
-kubectl get pods -n n8n-dev
+# Deploy only applications
+kubectl apply -k kubernetes/apps/
 ```
+
+### **Component Toggle**
+```bash
+# Disable a component (e.g., Envoy Gateway)
+vim kubernetes/infrastructure/kustomization.yaml
+# Comment: # - network/envoy-gateway-app.yaml
+
+# Apply changes
+kubectl apply -k kubernetes/infrastructure/
+```
+
+### **Health Check**
+```bash
+# Check all application sync status
+kubectl get applications -n argocd -o custom-columns="NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status"
+
+# Check specific layer
+kubectl get applications -n argocd | grep -E "(infrastructure|platform|apps)"
+```
+
+### **Storage Verification**
+```bash
+# Check available storage classes
+kubectl get storageclass
+
+# Check Ceph cluster health
+kubectl -n rook-ceph exec deployment/rook-ceph-tools -- ceph status
+```
+
+---
+
+## 📊 Enterprise Metrics
+
+- **🎯 Applications Deployed**: 30 total
+- **⚡ Deployment Layers**: 3 (Infrastructure → Platform → Apps)
+- **🌊 Sync Waves**: 8 orchestrated deployment phases
+- **🔄 GitOps Coverage**: 100% (all components managed by ArgoCD)
+- **📈 Infrastructure Availability**: 99.9% target with Ceph HA
+- **🛡️ Security**: Sealed Secrets + cert-manager + Istio mTLS
 
 ---
 
 ## 🚨 Troubleshooting
 
-**Rook-Ceph stuck:**
+### **Common Issues**
 ```bash
-kubectl patch cephcluster rook-ceph -n rook-ceph --type json -p='[{"op": "remove", "path": "/metadata/finalizers"}]'
+# ArgoCD login
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+
+# Check pod status
+kubectl get pods --all-namespaces | grep -v Running
+
+# Force application sync
+kubectl patch application <app-name> -n argocd --type merge -p '{"operation":{"sync":{"prune":true}}}'
+
+# Check Ceph cluster
+kubectl -n rook-ceph get cephcluster
 ```
 
-**ApplicationSet not generating:**
+### **Performance Tuning**
 ```bash
-kubectl describe applicationset applications -n argocd
-```
+# Check resource usage
+kubectl top nodes
+kubectl top pods --all-namespaces
 
-**Velero issues:**
-```bash
-kubectl get crd | grep velero
+# Storage capacity
+kubectl get csistoragecapacities -A
 ```
 
 ---
 
-*Enterprise GitOps following Netflix/Google/Amazon patterns*
+## 🚧 Future Enhancements
+
+### **Architecture Refactoring**
+- [ ] **Refactor N8N Rollouts** - Move from apps/ to platform/
+  - [ ] Move resource quotas → platform/resource-management/
+  - [ ] Move AnalysisTemplates → platform/progressive-delivery/
+  - [ ] Move canary services → platform/progressive-delivery/
+  - [ ] Keep simple apps in apps/ layer
+
+### **Security & Compliance**
+- [ ] **kubernetes/security/** - Essential cluster security implementation
+  - [ ] **Pod Security Standards (PSS)** - Baseline, Restricted policies
+  - [ ] **Network Policies** - Zero-trust micro-segmentation
+  - [ ] **RBAC & ServiceAccounts** - Least-privilege access control
+  - [ ] **Secret Management** - Sealed Secrets + External Secrets Operator
+  - [ ] **Image Security** - Admission controllers, vulnerability scanning
+  - [ ] **Runtime Security** - Falco behavioral monitoring
+  - [ ] **Service Mesh Security** - Istio mTLS + AuthZ policies
+  - [ ] **Compliance Scanning** - CIS benchmarks, security baselines
+
+### **GitOps Pipeline**
+- [ ] **Staging Environment** - Dev → Staging → Prod pipeline
+- [ ] **Progressive Delivery** - Automated canary deployments
+- [ ] **Policy as Code** - OPA Gatekeeper for governance
+
+### **Observability & SRE**
+- [ ] **Service Level Objectives (SLOs)** - Error budgets & alerting
+- [ ] **Chaos Engineering** - Automated failure injection
+- [ ] **Cost Management** - Resource optimization & FinOps
+
+---
+
+*🏢 Enterprise-grade Kubernetes following Netflix/Google/Meta Tier-0 patterns*
