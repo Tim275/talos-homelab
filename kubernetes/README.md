@@ -5,6 +5,31 @@
 
 ---
 
+## 🏗️ **Enterprise Tier-0 Architecture Principles**
+
+### **🏗️ Infrastructure Layer** = **Cluster-Wide Foundation**
+- **CRDs & Operators** - Custom resources and controllers
+- **Networking** - CNI, Service Mesh, Gateways
+- **Storage** - CSI drivers, distributed storage
+- **Security** - RBAC controllers, certificate management
+- **Monitoring** - Metrics collection, alerting infrastructure
+- **GitOps** - ArgoCD controllers, Argo Rollouts controller
+
+### **🛠️ Platform Layer** = **Platform Engineering**
+- **Resource Management** - Quotas, limits, cost controls
+- **Progressive Delivery** - Canary templates, analysis patterns
+- **Data Services** - Databases, message brokers, caching
+- **Shared Services** - Logging, tracing, service discovery
+- **Developer Experience** - CI/CD templates, environment patterns
+
+### **📱 Applications Layer** = **Developer-Focused**
+- **Business Logic** - Application deployments and services
+- **Configuration** - App-specific configs and secrets
+- **Simple Patterns** - Standard deployments, no complex platform features
+- **Team Ownership** - Developer-managed, business-focused
+
+---
+
 ## 🎯 Quick Start
 
 ### **One Command Bootstrap**
@@ -88,18 +113,36 @@ kubernetes/
 │       ├── schema-registry-app.yaml #     ✅ Schema management
 │       └── redpanda-console-app.yaml#     ✅ Modern Kafka UI
 │
-└── apps/                             # 📱 APPLICATIONS LAYER (2 Apps x 2 Envs)
+└── apps/                             # 📱 APPLICATIONS LAYER (5 Apps)
     ├── kustomization.yaml            #     Main applications control
     │
     ├── base/                         # Service base configurations
     │   ├── audiobookshelf/          #     Media server templates
-    │   ├── n8n/                     #     Workflow automation templates
+    │   ├── n8n/                     #     Workflow automation with rollouts
+    │   │   └── environments/        #     Environment-specific configs
+    │   │       ├── dev/             #     Development environment
+    │   │       └── production/      #     Production with Argo Rollouts
+    │   │           ├── rollout.yaml #     ✅ Progressive delivery
+    │   │           ├── analysis-template.yaml # ✅ Automated rollback
+    │   │           └── resource-quota.yaml    # ✅ Enterprise quotas
     │   └── kafka-demo/              #     Kafka demo applications
+    │
+    ├── overlays/                     # 🎯 ENTERPRISE TIER-0 PATTERNS
+    │   ├── dev/                     #     Development overrides
+    │   │   └── patches/             #     Environment-specific patches
+    │   │       ├── resource-limits.yaml    # ✅ Conservative dev limits
+    │   │       ├── security-context.yaml   # ✅ Relaxed dev security
+    │   │       └── environment-vars.yaml   # ✅ Dev configurations
+    │   └── prod/                    #     Production overrides
+    │       └── patches/             #     Production-grade patches
+    │           ├── resource-limits.yaml    # ✅ High-performance limits
+    │           ├── security-context.yaml   # ✅ Strict prod security
+    │           └── environment-vars.yaml   # ✅ Prod configurations
     │
     ├── audiobookshelf-dev-app.yaml  # ✅ Media server (development)
     ├── audiobookshelf-prod-app.yaml # ✅ Media server (production)
     ├── n8n-dev-app.yaml             # ✅ Workflow automation (dev)
-    ├── n8n-prod-app.yaml            # ✅ Workflow automation (prod)
+    ├── n8n-prod-app.yaml            # ✅ Workflow automation (prod w/ rollouts)
     └── kafka-demo-dev-app.yaml      # ✅ Kafka demo (development)
 ```
 
@@ -285,6 +328,38 @@ kubectl top pods --all-namespaces
 # Storage capacity
 kubectl get csistoragecapacities -A
 ```
+
+---
+
+## 🚧 Future Enhancements
+
+### **Architecture Refactoring**
+- [ ] **Refactor N8N Rollouts** - Move from apps/ to platform/
+  - [ ] Move resource quotas → platform/resource-management/
+  - [ ] Move AnalysisTemplates → platform/progressive-delivery/
+  - [ ] Move canary services → platform/progressive-delivery/
+  - [ ] Keep simple apps in apps/ layer
+
+### **Security & Compliance**
+- [ ] **kubernetes/security/** - Essential cluster security implementation
+  - [ ] **Pod Security Standards (PSS)** - Baseline, Restricted policies
+  - [ ] **Network Policies** - Zero-trust micro-segmentation
+  - [ ] **RBAC & ServiceAccounts** - Least-privilege access control
+  - [ ] **Secret Management** - Sealed Secrets + External Secrets Operator
+  - [ ] **Image Security** - Admission controllers, vulnerability scanning
+  - [ ] **Runtime Security** - Falco behavioral monitoring
+  - [ ] **Service Mesh Security** - Istio mTLS + AuthZ policies
+  - [ ] **Compliance Scanning** - CIS benchmarks, security baselines
+
+### **GitOps Pipeline**
+- [ ] **Staging Environment** - Dev → Staging → Prod pipeline
+- [ ] **Progressive Delivery** - Automated canary deployments
+- [ ] **Policy as Code** - OPA Gatekeeper for governance
+
+### **Observability & SRE**
+- [ ] **Service Level Objectives (SLOs)** - Error budgets & alerting
+- [ ] **Chaos Engineering** - Automated failure injection
+- [ ] **Cost Management** - Resource optimization & FinOps
 
 ---
 
