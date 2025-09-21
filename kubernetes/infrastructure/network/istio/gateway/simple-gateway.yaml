@@ -1,0 +1,49 @@
+# Simple Istio Gateway Configuration
+# Uses Gateway API for modern ingress management
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: istio-gateway
+  namespace: istio-system
+spec:
+  gatewayClassName: istio
+  listeners:
+  - name: http
+    port: 80
+    protocol: HTTP
+    hostname: "*.local"
+    allowedRoutes:
+      namespaces:
+        from: All
+  - name: https
+    port: 443
+    protocol: HTTPS
+    hostname: "*.local"
+    tls:
+      mode: Terminate
+      certificateRefs:
+      - name: gateway-cert
+        kind: Secret
+    allowedRoutes:
+      namespaces:
+        from: All
+---
+# Service for Gateway
+apiVersion: v1
+kind: Service
+metadata:
+  name: istio-gateway
+  namespace: istio-system
+spec:
+  type: LoadBalancer
+  selector:
+    istio.io/gateway-name: istio-gateway
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    protocol: TCP
+  - name: https
+    port: 443
+    targetPort: 443
+    protocol: TCP
