@@ -1,5 +1,16 @@
 # Claude Notes
 
+## Enterprise GitOps Pattern
+```
+ApplicationSet → findet Apps
+     ↓
+Kustomize → baut dev/prod Varianten
+     ↓
+ArgoCD → deployed
+```
+
+**KUSTOMIZE IST DER KERN!** ApplicationSets nur für Discovery, Kustomize macht die Arbeit!
+
 ## Commit Style
 - NIEMALS diese Tags hinzufügen:
   - `🤖 Generated with [Claude Code]`
@@ -73,14 +84,67 @@
 - **N8N-prod**: PostgreSQL + App running ✅
 - **Metrics Server**: ApplicationSet deployed (wird ready)
 
+---
+
+## Session 2025-09-21 Part 2: GitOps Security Architecture Planning
+
+### 🔍 **Enterprise GitOps Research Results:**
+- **ArgoCD Best Practice**: Security policies direkt in App-Overlays (nicht separate ApplicationSets)
+- **Anti-Pattern**: Separate ApplicationSets für jede Policy-Kategorie
+- **Recommended**: "Security as Code" - Security deployed mit Application
+
+### 🏗️ **NEUE ARCHITEKTUR - GitOps Best Practice:**
+
+#### **Apps ApplicationSet (erweitert um Platform):**
+```yaml
+# kubernetes/apps/applications.yaml
+spec:
+  template:
+    spec:
+      sources:
+      - path: kubernetes/apps/overlays/{{values.environment}}/{{values.name}}
+      - path: kubernetes/platform/security-platform    # Platform Security
+      - path: kubernetes/platform/monitoring-platform  # Platform Monitoring
+```
+
+#### **🎯 VORTEILE:**
+✅ **Kein neues ApplicationSet** - alles in Apps integriert
+✅ **Platform Services sichtbar** in ArgoCD Apps
+✅ **Raw YAML deployment** - einfach und direkt
+✅ **Zentrale Platform Policies** - gelten für alle Apps
+
+#### **📁 GEPLANTE STRUKTUR:**
+```bash
+kubernetes/
+├── apps/overlays/prod/n8n/patches/
+│   ├── prod-resources.yaml        # App scaling
+│   ├── network-policy.yaml        # App-specific traffic rules
+│   ├── pod-disruption-budget.yaml # App availability
+│   └── hpa.yaml                   # App autoscaling
+├── platform/
+│   ├── security-platform/         # Raw YAML Platform Services
+│   │   ├── kyverno-policies.yaml  # Policy engine
+│   │   ├── resource-quotas.yaml   # Namespace limits
+│   │   └── falco-config.yaml      # Runtime security
+│   └── monitoring-platform/       # Raw YAML Monitoring
+└── security/
+    ├── COMPREHENSIVE_SECURITY.md  # Documentation only
+    └── policy-templates/           # Templates für Apps
+```
+
+### 🤔 **OFFENE FRAGE:**
+**Network Policies**: App-spezifisch (in Overlays) vs Platform-wide (in security-platform)?
+- **App-spezifisch**: Jede App definiert eigene Network Policy
+- **Platform-wide**: Zentrale Network Policies für alle Apps
+
 ### 🎯 **Nächste Session Priorities:**
-1. **kubernetes/security** implementieren
-2. **Network Policies** für N8N (dev→prod testing)
-3. **Pod Security Standards** cluster-wide
-4. **Enterprise Security Compliance** für alle 34 apps
+1. **kubernetes/platform/security-platform** aufbauen (Raw YAML)
+2. **Apps ApplicationSet** erweitern um Platform Sources
+3. **Network Policies** Strategie entscheiden (App vs Platform)
+4. **Resource Quotas** + **PodDisruptionBudgets** implementieren
 
 ### 💡 **Key Learnings:**
-- **Manual fixes don't scale** - Platform patterns essential
-- **Dev environment = Security testing ground**
-- **Enterprise compliance** requires systematic approach
-- **Layer separation critical** für maintainability
+- **GitOps Best Practice**: Security bei Apps, Platform Services zentral
+- **ArgoCD UI stays clean**: Keine separaten Security ApplicationSets
+- **Enterprise Pattern**: Apps + Platform in einem ApplicationSet
+- **Raw YAML Platform Services**: Einfacher als separate Applications
