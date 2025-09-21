@@ -10,6 +10,9 @@ However, **Prometheus Node Exporter requires privileged access** to collect host
 
 ## Why Node Exporter Needs Privileged Access
 
+**CRITICAL FOR TALOS LINUX VMs**: Talos Linux has an immutable, security-hardened OS design.
+Without privileged access, Node Exporter cannot export ANY metrics from Talos nodes!
+
 Node Exporter **must** access host resources to collect metrics:
 
 ```yaml
