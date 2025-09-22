@@ -2,6 +2,7 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended",
+    ":rebaseStalePrs",
     ":dependencyDashboard",
     ":semanticCommits",
     ":enablePreCommit",
@@ -10,15 +11,14 @@
   ],
   "dependencyDashboard": true,
   "dependencyDashboardTitle": "Renovate Dashboard 🤖",
-  "schedule": ["before 6am on Monday"],
+  "schedule": ["at any time"],
   "timezone": "Europe/Berlin",
   "prConcurrentLimit": 3,
   "prHourlyLimit": 2,
   "terraform": {
-    "fileMatch": [
-      "\\.tf$",
-      "\\.tofu$",
-      "\\.tfvars$"
+    "managerFilePatterns": [
+      "/\\.tf$/",
+      "/\\.tofu$/"
     ]
   },
   "kubernetes": {
@@ -28,11 +28,25 @@
     ]
   },
   "kustomize": {
-    "fileMatch": [
-      "(^|/)kustomization\\.ya?ml$"
+    "managerFilePatterns": [
+      "/(^|/)kustomization\\.ya?ml(\\.j2)?$/"
     ]
   },
   "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/\\.tf$/",
+        "/\\.tofu$/",
+        "/\\.tftpl$/",
+        "/\\.yaml$/",
+        "/\\.sh$/",
+        "/\\.tfvars/"
+      ],
+      "matchStrings": [
+        "(?<currentValue>[\\w+\\.\\-]*)['\",;]*\\s*#\\s?renovate: (?<datasource>\\S+)=(?<depName>\\S+)\\s?(registry=(?<registryUrl>\\S+))?\\s?(versioning=(?<versioning>\\S+))?"
+      ]
+    },
     {
       "customType": "regex",
       "description": "Update Talos versions in tfvars files",
@@ -86,13 +100,13 @@
       ]
     },
     {
-      "groupName": "Cilium Network",
+      "groupName": "Cilium",
       "matchPackageNames": [
-        "cilium/**"
+        "/cilium/"
       ]
     },
     {
-      "groupName": "Monitoring Stack", 
+      "groupName": "Monitoring Stack",
       "matchPackageNames": [
         "prometheus-community/**",
         "grafana/**"
@@ -101,15 +115,15 @@
     {
       "groupName": "Storage & Backup",
       "matchPackageNames": [
-        "**/longhorn**",
         "**/rook**",
         "**/velero**"
       ]
     },
     {
-      "groupName": "ArgoCD",
+      "groupName": "ArgoCD Ecosystem",
       "matchPackageNames": [
-        "argoproj/**"
+        "argoproj/**",
+        "**/argo-rollouts**"
       ]
     },
     {
@@ -120,10 +134,13 @@
       ]
     },
     {
-      "groupName": "Cert-Manager",
+      "groupName": "Security Tools",
       "matchPackageNames": [
         "jetstack/**",
-        "**/cert-manager**"
+        "**/cert-manager**",
+        "bitnami-labs/**",
+        "**/sealed-secrets**",
+        "**/kyverno**"
       ]
     },
     {
@@ -133,14 +150,31 @@
         "**/postgresql**",
         "**/cloudnative-pg**",
         "**/kafka**",
-        "**/strimzi**"
+        "**/strimzi**",
+        "**/n8n**"
       ]
+    },
+    {
+      "matchManagers": [
+        "terraform"
+      ],
+      "matchDepTypes": [
+        "provider",
+        "required_provider"
+      ]
+    },
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "GitHub Actions",
+      "groupSlug": "github-actions"
     },
     {
       "description": "Auto-merge minor updates for infrastructure",
       "matchUpdateTypes": ["minor", "patch"],
       "matchPackagePatterns": [
-        "cilium/**", 
+        "cilium/**",
         "prometheus-community/**",
         "grafana/**"
       ],
