@@ -1,0 +1,42 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: apps-environments
+  namespace: argocd
+  labels:
+    enterprise.tier: apps
+    enterprise.domain: environments
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "26"
+spec:
+  goTemplate: true
+  generators:
+    # 🌍 APPS ENVIRONMENTS: Environment-specific Application Deployments
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/apps/overlays/*"
+  template:
+    metadata:
+      name: 'env-{{.path.basenameNormalized}}'
+      labels:
+        managed-by: argocd
+        domain: environments
+        tier: apps
+        environment: '{{.path.basenameNormalized}}'
+    spec:
+      project: apps
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path.path}}'
+        kustomize: {}
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: 'apps-{{.path.basenameNormalized}}'
+      syncPolicy:
+        automated: {}
+        syncOptions:
+          - CreateNamespace=true
