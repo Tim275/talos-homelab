@@ -1,0 +1,41 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: apps-base
+  namespace: argocd
+  labels:
+    enterprise.tier: apps
+    enterprise.domain: base
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "25"
+spec:
+  goTemplate: true
+  generators:
+    # 📱 APPS BASE: Application Templates and Base Configurations
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/apps/base/*"
+  template:
+    metadata:
+      name: 'apps-{{.path.basenameNormalized}}'
+      labels:
+        managed-by: argocd
+        domain: base
+        tier: apps
+    spec:
+      project: apps
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path.path}}'
+        kustomize: {}
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.path.basenameNormalized}}'
+      syncPolicy:
+        automated: {}
+        syncOptions:
+          - CreateNamespace=true

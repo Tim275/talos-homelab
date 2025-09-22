@@ -7,11 +7,11 @@ Enterprise GitOps homelab powered by ArgoCD and Kustomize.
 ```bash
 export KUBECONFIG="../tofu/output/kube-config.yaml"
 
-# Deploy all layers
-kubectl apply -k security/
-kubectl apply -k infrastructure/
-kubectl apply -k platform/
-kubectl apply -k apps/
+# Deploy all layers with NEW Domain ApplicationSets
+kubectl apply -k security/      # 🛡️ 2 Domain ApplicationSets (foundation, governance)
+kubectl apply -k infrastructure/ # 🏗️ 5 Domain ApplicationSets (controllers, network, storage, monitoring, observability)
+kubectl apply -k platform/      # 🏢 4 Domain ApplicationSets (data, messaging, identity, developer)
+kubectl apply -k apps/          # 📱 2 Domain ApplicationSets (base, environments)
 ```
 
 ## One-Command Deploy Everything (App-of-Apps)
@@ -23,10 +23,10 @@ export KUBECONFIG="../tofu/output/kube-config.yaml"
 kubectl apply -k sets/
 
 # ArgoCD will automatically deploy in correct order:
-# 0. Security (sync-wave: 0)
-# 1. Infrastructure (sync-wave: 1)
-# 2. Platform (sync-wave: 15)
-# 3. Apps (sync-wave: 25)
+# 0. Security (2 Domain ApplicationSets - sync-wave: 0)
+# 1. Infrastructure (5 Domain ApplicationSets - sync-wave: 1-6)
+# 2. Platform (4 Domain ApplicationSets - sync-wave: 15-18)
+# 3. Apps (2 Domain ApplicationSets - sync-wave: 25-26)
 ```
 
 ## One-Command Deploy Everything (Direct)
