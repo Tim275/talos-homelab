@@ -1,47 +1,24 @@
 apiVersion: argoproj.io/v1alpha1
-kind: ApplicationSet
+kind: Application
 metadata:
   name: security
   namespace: argocd
-  labels:
-    dev.timourhomelab: security
-    team: timour
   annotations:
-    argocd.argoproj.io/sync-wave: "30"
+    argocd.argoproj.io/sync-wave: "0"
 spec:
-  goTemplate: true
-  generators:
-    - git:
-        repoURL: https://github.com/Tim275/talos-homelab
-        revision: HEAD
-        directories:
-          # 🛡️ Security Layer - Wave 30+: Enterprise Security & Compliance
-          # Identity & Access Management
-          - path: "kubernetes/security/identity"
-          # Compliance & Policy Management
-          - path: "kubernetes/security/compliance"
-          # Security Monitoring & SIEM
-          - path: "kubernetes/security/monitoring"
-  template:
-    metadata:
-      name: 'security-{{ .path.basename }}'
-      labels:
-        dev.timourhomelab: security
-        team: timour
-        app.kubernetes.io/managed-by: argocd
-        app.kubernetes.io/part-of: timour-homelab
-    spec:
-      project: security
-      source:
-        repoURL: https://github.com/Tim275/talos-homelab
-        targetRevision: HEAD
-        path: '{{ .path.path }}'
-      destination:
-        server: https://kubernetes.default.svc
-      syncPolicy:
-        automated:
-          selfHeal: true
-          prune: true
-        syncOptions:
-          - CreateNamespace=true
-          - ServerSideApply=true
+  project: timour-homelab
+  source:
+    path: kubernetes/security
+    repoURL: https://github.com/Tim275/talos-homelab
+    targetRevision: HEAD
+    # 🎯 GITILES PATTERN: Use Kustomize for direct component control
+    kustomize: {}
+  destination:
+    namespace: argocd
+    name: in-cluster
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    syncOptions:
+      - CreateNamespace=true

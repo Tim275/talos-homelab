@@ -1,0 +1,50 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: lldap-postgres
+  namespace: lldap
+  labels:
+    app.kubernetes.io/name: lldap-postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: lldap
+spec:
+  instances: 1  # Single instance für resource savings
+  # instances: 2  # OPTIONAL: HA setup
+
+  postgresql:
+    parameters:
+      max_connections: "20"          # Reduziert von 100
+      shared_buffers: "64MB"         # Reduziert von 256MB
+      effective_cache_size: "128MB"  # Reduziert von 512MB
+      work_mem: "2MB"                # Minimal work memory
+
+  bootstrap:
+    initdb:
+      database: lldap
+      owner: lldap
+      secret:
+        name: lldap-postgres-credentials
+
+  storage:
+    size: 1Gi  # Minimal storage für LLDAP
+    # storageClass: proxmox-zfs  # Optional: specify storage class
+
+  monitoring:
+    enabled: true
+    customQueriesConfigMap:
+      - name: lldap-metrics
+        key: queries
+
+  backup:
+    enabled: false  # Enable later with proper backup storage
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: lldap-postgres-credentials
+  namespace: lldap
+type: Opaque
+stringData:
+  username: lldap
+  password: "lldap-db-pass-2024"  # Change this!

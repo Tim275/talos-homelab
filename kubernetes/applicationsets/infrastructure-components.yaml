@@ -1,0 +1,37 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure-components
+  namespace: argocd
+  labels:
+    enterprise.tier: infrastructure
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  goTemplate: true
+  generators:
+    # 🎯 COMPONENT DISCOVERY: ApplicationSet discovers ALL components automatically
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/infrastructure/*/*"
+  template:
+    metadata:
+      name: '{{.path.basenameNormalized}}'
+      labels:
+        managed-by: argocd
+    spec:
+      project: timour-homelab
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path.path}}'
+        # 🎯 TRUE KUSTOMIZE CONTROL - ApplicationSet discovers, Kustomize controls!
+        kustomize: {}
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.path.basenameNormalized}}'
+      syncPolicy:
+        automated: {}

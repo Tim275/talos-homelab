@@ -1,10 +1,32 @@
-# 🚧 Talos Kubernetes Cluster Playground 🛠️
+# 🚀 Enterprise Kubernetes Homelab
 
-A fully automated, modular Kubernetes cluster project for homelab and testing, powered by [Talos Linux](https://www.talos.dev/) 🐧, [OpenTofu](https://opentofu.org/) 🌱, and [Proxmox VE](https://www.proxmox.com/) 🖥️.
+[![Talos](https://img.shields.io/badge/OS-Talos%20Linux-FF7300?style=for-the-badge&logo=linux&logoColor=white)](https://www.talos.dev/)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-v1.33.2-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)](https://kubernetes.io/)
+[![OpenTofu](https://img.shields.io/badge/IaC-OpenTofu-844FBA?style=for-the-badge&logo=opentofu&logoColor=white)](https://opentofu.org/)
+[![ArgoCD](https://img.shields.io/badge/GitOps-ArgoCD-00D4AA?style=for-the-badge&logo=argo&logoColor=white)](https://argo-cd.readthedocs.io/)
 
-------
+## 🏠 Welcome to my Homelab
 
-## Apps
+This repository contains the complete configuration and documentation of my enterprise-grade Kubernetes homelab.
+
+## 🗂️ Repository Structure
+```
+.
+├── 📂 kubernetes/          # All Kubernetes manifests
+│   ├── 📂 sets/           # App-of-Apps bootstrap
+│   ├── 📂 security/       # Zero-trust foundation & RBAC
+│   ├── 📂 infrastructure/ # Core cluster services & operators
+│   ├── 📂 platform/       # Databases & middleware services
+│   └── 📂 apps/          # End-user applications
+├── 📂 tofu/               # OpenTofu infrastructure
+│   ├── 📂 talos/         # Talos configuration
+│   └── 📂 bootstrap/     # Initial setup
+└── 📂 renovate.json      # Dependency automation
+```
+
+---
+
+## 📱 Applications
 End User Applications
 
 <table>
@@ -37,7 +59,7 @@ End User Applications
 
 
 
-## Infrastructure
+## ⚙️ Infrastructure
 
 Everything needed to run my cluster & deploy my applications:
 

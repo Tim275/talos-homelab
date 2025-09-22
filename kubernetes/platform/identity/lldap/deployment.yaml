@@ -1,0 +1,154 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lldap
+  namespace: lldap
+  labels:
+    app.kubernetes.io/name: lldap
+    app.kubernetes.io/version: "v0.5.0"
+spec:
+  replicas: 1  # Single instance for resource savings
+  # replicas: 2  # OPTIONAL: HA with PostgreSQL backend
+  strategy:
+    type: Recreate  # For SQLite (single instance)
+    # type: RollingUpdate  # OPTIONAL: For PostgreSQL HA
+    # rollingUpdate:
+    #   maxSurge: 1
+    #   maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: lldap
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: lldap
+        app.kubernetes.io/version: "v0.5.0"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: lldap
+          image: lldap/lldap:v0.5.0-alpine
+          imagePullPolicy: Always
+          ports:
+            - name: ldap
+              containerPort: 3890
+              protocol: TCP
+            - name: http
+              containerPort: 17170
+              protocol: TCP
+          env:
+            # Load configuration from ConfigMap
+            - name: LLDAP_LDAP_BASE_DN
+              valueFrom:
+                configMapKeyRef:
+                  name: lldap-config
+                  key: LLDAP_LDAP_BASE_DN
+            - name: LLDAP_LDAP_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: lldap-config
+                  key: LLDAP_LDAP_PORT
+            - name: LLDAP_HTTP_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: lldap-config
+                  key: LLDAP_HTTP_PORT
+            - name: LLDAP_HTTP_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: lldap-config
+                  key: LLDAP_HTTP_URL
+            - name: LLDAP_LDAP_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: lldap-config
+                  key: LLDAP_LDAP_HOST
+            - name: LLDAP_HTTP_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: lldap-config
+                  key: LLDAP_HTTP_HOST
+            # DEFAULT: SQLite for resource savings
+            - name: LLDAP_DATABASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: lldap-config
+                  key: LLDAP_DATABASE_URL
+            # OPTIONAL: PostgreSQL connection from CNPG (comment above, uncomment below)
+            # - name: LLDAP_DATABASE_URL
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: lldap-postgres-app
+            #       key: uri
+            - name: LLDAP_LDAP_USER_DN
+              valueFrom:
+                configMapKeyRef:
+                  name: lldap-config
+                  key: LLDAP_LDAP_USER_DN
+            - name: LLDAP_LDAP_USER_EMAIL
+              valueFrom:
+                configMapKeyRef:
+                  name: lldap-config
+                  key: LLDAP_LDAP_USER_EMAIL
+            - name: LLDAP_VERBOSE
+              valueFrom:
+                configMapKeyRef:
+                  name: lldap-config
+                  key: LLDAP_VERBOSE
+            # Load secrets from SealedSecrets
+            - name: LLDAP_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: lldap-secrets
+                  key: jwt-secret
+            - name: LLDAP_KEY_SEED
+              valueFrom:
+                secretKeyRef:
+                  name: lldap-secrets
+                  key: key-seed
+            - name: LLDAP_LDAP_USER_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: lldap-secrets
+                  key: admin-password
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 10m      # Ultra minimal für homelab
+              memory: 32Mi  # LLDAP ist sehr lightweight
+            limits:
+              cpu: 100m     # Reduziert von 200m
+              memory: 128Mi # Reduziert von 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: data
+          emptyDir: {}  # For now, can be changed to PVC later
