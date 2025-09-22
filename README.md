@@ -9,9 +9,24 @@
 
 This repository contains the complete configuration and documentation of my enterprise-grade Kubernetes homelab.
 
+## 🗂️ Repository Structure
+```
+.
+├── 📂 kubernetes/          # All Kubernetes manifests
+│   ├── 📂 sets/           # App-of-Apps bootstrap
+│   ├── 📂 security/       # Zero-trust foundation & RBAC
+│   ├── 📂 infrastructure/ # Core cluster services & operators
+│   ├── 📂 platform/       # Databases & middleware services
+│   └── 📂 apps/          # End-user applications
+├── 📂 tofu/               # OpenTofu infrastructure
+│   ├── 📂 talos/         # Talos configuration
+│   └── 📂 bootstrap/     # Initial setup
+└── 📂 renovate.json      # Dependency automation
+```
+
 ---
 
-## Apps
+## 📱 Applications
 End User Applications
 
 <table>
@@ -44,7 +59,7 @@ End User Applications
 
 
 
-## Infrastructure
+## ⚙️ Infrastructure
 
 Everything needed to run my cluster & deploy my applications:
 
@@ -170,19 +185,4 @@ Everything needed to run my cluster & deploy my applications:
         <td>Service mesh providing secure, observable and controlled microservice communication</td>
     </tr>
 </table>
-
-## 🗂️ Repository Structure
-```
-.
-├── 📂 kubernetes/          # All Kubernetes manifests
-│   ├── 📂 sets/           # App-of-Apps bootstrap
-│   ├── 📂 security/       # Zero-trust foundation & RBAC
-│   ├── 📂 infrastructure/ # Core cluster services & operators
-│   ├── 📂 platform/       # Databases & middleware services
-│   └── 📂 apps/          # End-user applications
-├── 📂 tofu/               # OpenTofu infrastructure
-│   ├── 📂 talos/         # Talos configuration
-│   └── 📂 bootstrap/     # Initial setup
-└── 📂 renovate.json      # Dependency automation
-```
 
