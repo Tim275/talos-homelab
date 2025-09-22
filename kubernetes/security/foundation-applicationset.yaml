@@ -1,0 +1,41 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: security-foundation
+  namespace: argocd
+  labels:
+    enterprise.tier: security
+    enterprise.domain: foundation
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  goTemplate: true
+  generators:
+    # 🛡️ SECURITY FOUNDATION: RBAC, Pod Security, Network Policies, Authorization
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/security/foundation/*"
+  template:
+    metadata:
+      name: 'security-{{.path.basenameNormalized}}'
+      labels:
+        managed-by: argocd
+        domain: foundation
+        tier: security
+    spec:
+      project: security
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path.path}}'
+        kustomize: {}
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.path.basenameNormalized}}'
+      syncPolicy:
+        automated: {}
+        syncOptions:
+          - CreateNamespace=true

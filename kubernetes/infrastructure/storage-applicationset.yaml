@@ -1,0 +1,41 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure-storage
+  namespace: argocd
+  labels:
+    enterprise.tier: infrastructure
+    enterprise.domain: storage
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  goTemplate: true
+  generators:
+    # 💾 STORAGE DOMAIN: Distributed Storage, CSI, Backup & Recovery
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/infrastructure/storage/*"
+  template:
+    metadata:
+      name: 'storage-{{.path.basenameNormalized}}'
+      labels:
+        managed-by: argocd
+        domain: storage
+        tier: infrastructure
+    spec:
+      project: infrastructure
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path.path}}'
+        kustomize: {}
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.path.basenameNormalized}}'
+      syncPolicy:
+        automated: {}
+        syncOptions:
+          - CreateNamespace=true

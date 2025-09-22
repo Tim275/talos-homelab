@@ -1,0 +1,41 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform-messaging
+  namespace: argocd
+  labels:
+    enterprise.tier: platform
+    enterprise.domain: messaging
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "16"
+spec:
+  goTemplate: true
+  generators:
+    # 📨 MESSAGING PLATFORM: Event Streaming, Message Queues, Schema Registry
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/platform/messaging/*"
+  template:
+    metadata:
+      name: 'messaging-{{.path.basenameNormalized}}'
+      labels:
+        managed-by: argocd
+        domain: messaging
+        tier: platform
+    spec:
+      project: platform
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path.path}}'
+        kustomize: {}
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.path.basenameNormalized}}'
+      syncPolicy:
+        automated: {}
+        syncOptions:
+          - CreateNamespace=true

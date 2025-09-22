@@ -1,0 +1,41 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: security-governance
+  namespace: argocd
+  labels:
+    enterprise.tier: security
+    enterprise.domain: governance
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  goTemplate: true
+  generators:
+    # 📋 SECURITY GOVERNANCE: Policy Engines, Compliance, Audit, Validation
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/security/governance/*"
+  template:
+    metadata:
+      name: 'governance-{{.path.basenameNormalized}}'
+      labels:
+        managed-by: argocd
+        domain: governance
+        tier: security
+    spec:
+      project: security
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path.path}}'
+        kustomize: {}
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.path.basenameNormalized}}'
+      syncPolicy:
+        automated: {}
+        syncOptions:
+          - CreateNamespace=true

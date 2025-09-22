@@ -1,0 +1,41 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure-monitoring
+  namespace: argocd
+  labels:
+    enterprise.tier: infrastructure
+    enterprise.domain: monitoring
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  goTemplate: true
+  generators:
+    # 📊 MONITORING DOMAIN: Metrics, Alerting, Dashboards, Tracing
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/infrastructure/monitoring/*"
+  template:
+    metadata:
+      name: 'monitoring-{{.path.basenameNormalized}}'
+      labels:
+        managed-by: argocd
+        domain: monitoring
+        tier: infrastructure
+    spec:
+      project: infrastructure
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path.path}}'
+        kustomize: {}
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.path.basenameNormalized}}'
+      syncPolicy:
+        automated: {}
+        syncOptions:
+          - CreateNamespace=true
