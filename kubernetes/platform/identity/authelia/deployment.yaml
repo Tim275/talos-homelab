@@ -1,0 +1,129 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authelia
+  namespace: authelia
+  labels:
+    app.kubernetes.io/name: authelia
+    app.kubernetes.io/component: oidc-provider
+spec:
+  replicas: 1  # Single instance for resource savings
+  strategy:
+    type: Recreate  # SQLite requires single instance
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: authelia
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: authelia
+        app.kubernetes.io/component: oidc-provider
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: authelia
+          image: authelia/authelia:4.38.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - authelia
+          args:
+            - --config=/config/configuration.yaml
+          ports:
+            - name: http
+              containerPort: 9091
+              protocol: TCP
+          env:
+            # LLDAP Integration
+            - name: AUTHELIA_AUTHENTICATION_BACKEND_LDAP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: authelia-secrets
+                  key: ldap-password
+
+            # Session Secret
+            - name: AUTHELIA_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: authelia-secrets
+                  key: session-secret
+
+            # Storage Encryption Key
+            - name: AUTHELIA_STORAGE_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: authelia-secrets
+                  key: storage-encryption-key
+
+            # OIDC Secrets
+            - name: AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: authelia-secrets
+                  key: oidc-hmac-secret
+
+            # JWT Secret
+            - name: AUTHELIA_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: authelia-secrets
+                  key: jwt-secret
+
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: data
+              mountPath: /data
+            - name: jwk
+              mountPath: /secrets/authelia-jwk
+              readOnly: true
+
+          resources:
+            requests:
+              cpu: 10m      # Ultra minimal for homelab
+              memory: 32Mi  # Authelia is lightweight
+            limits:
+              cpu: 100m
+              memory: 128Mi
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+      volumes:
+        - name: config
+          configMap:
+            name: authelia-config
+        - name: data
+          emptyDir: {}  # SQLite storage, can be PVC later
+        - name: jwk
+          secret:
+            secretName: authelia-jwk

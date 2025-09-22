@@ -38,27 +38,21 @@ export KUBECONFIG="../tofu/output/kube-config.yaml"
 kubectl apply -k security/ && kubectl apply -k infrastructure/ && kubectl apply -k platform/ && kubectl apply -k apps/
 ```
 
-## All-in-One Bootstrap
+## Core Components Bootstrap (Manual)
 
 ```bash
 export KUBECONFIG="../tofu/output/kube-config.yaml"
 
-# Foundation components with proper ordering
+# Essential components only - ArgoCD handles the rest via GitOps
 kubectl kustomize --enable-helm infrastructure/network/cilium | kubectl apply -f -
 kubectl kustomize --enable-helm infrastructure/controllers/sealed-secrets | kubectl apply -f -
-kubectl kustomize --enable-helm infrastructure/storage/proxmox-csi | kubectl apply -f -
+kubectl kustomize --enable-helm infrastructure/storage/rook-ceph | kubectl apply -f -
+
+# Deploy ArgoCD - it will manage everything else via GitOps
 kubectl kustomize --enable-helm infrastructure/controllers/argocd | kubectl apply -f -
 
-# Rook-Ceph (requires 2x deployment for CRDs)
-kubectl kustomize --enable-helm infrastructure/storage/rook-ceph | kubectl apply -f -
-sleep 10
-kubectl wait --for=condition=established crd/cephclusters.ceph.rook.io --timeout=60s
-kubectl kustomize --enable-helm infrastructure/storage/rook-ceph | kubectl apply -f -
-
-# Deploy everything else via Kustomize
-kubectl kustomize --enable-helm infrastructure/ | kubectl apply -f -
-kubectl kustomize --enable-helm platform/ | kubectl apply -f -
-kubectl kustomize --enable-helm apps/ | kubectl apply -f -
+# After ArgoCD is ready, deploy ApplicationSets
+kubectl apply -k sets/
 ```
 
 ## Wave-by-Wave Bootstrap (Production Ready)
