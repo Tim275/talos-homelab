@@ -4,179 +4,47 @@ Enterprise GitOps homelab powered by ArgoCD and Kustomize.
 
 ## Quick Start
 
-```bash
-export KUBECONFIG="../tofu/output/kube-config.yaml"
-
-# Deploy all layers with NEW Domain ApplicationSets
-kubectl apply -k security/      # 🛡️ 2 Domain ApplicationSets (foundation, governance)
-kubectl apply -k infrastructure/ # 🏗️ 5 Domain ApplicationSets (controllers, network, storage, monitoring, observability)
-kubectl apply -k platform/      # 🏢 4 Domain ApplicationSets (data, messaging, identity, developer)
-kubectl apply -k apps/          # 📱 2 Domain ApplicationSets (base, environments)
-```
-
-## One-Command Deploy Everything (App-of-Apps)
+### Option 1: Essential Bootstrap (Manual)
 
 ```bash
 export KUBECONFIG="../tofu/output/kube-config.yaml"
 
-# Deploy ALL layers with single command via ArgoCD App-of-Apps
-kubectl apply -k sets/
-
-# ArgoCD will automatically deploy in correct order:
-# 0. Security (2 Domain ApplicationSets - sync-wave: 0)
-# 1. Infrastructure (5 Domain ApplicationSets - sync-wave: 1-6)
-# 2. Platform (4 Domain ApplicationSets - sync-wave: 15-18)
-# 3. Apps (2 Domain ApplicationSets - sync-wave: 25-26)
-```
-
-## One-Command Deploy Everything (Direct)
-
-```bash
-export KUBECONFIG="../tofu/output/kube-config.yaml"
-
-# Deploy ALL layers with single command (direct)
-kubectl apply -k security/ && kubectl apply -k infrastructure/ && kubectl apply -k platform/ && kubectl apply -k apps/
-```
-
-## Standard Layer Bootstrap (Gitiles Pattern)
-
-```bash
-export KUBECONFIG="../tofu/output/kube-config.yaml"
-
-# Deploy each layer individually with Gitiles Pattern control
-kubectl apply -k security/        # Security foundation (wave 0)
-kubectl apply -k infrastructure/  # Core infrastructure (wave 1)
-kubectl apply -k platform/        # Platform services (wave 15)
-kubectl apply -k apps/            # Applications (wave 25)
-```
-
-## Core Components Bootstrap (Manual)
-
-```bash
-export KUBECONFIG="../tofu/output/kube-config.yaml"
-
-# === ESSENTIAL BOOTSTRAP (Manual Component Deployment) ===
-# Cilium CNI (MUST BE FIRST!)
-kubectl kustomize --enable-helm infrastructure/network/cilium | kubectl apply -f -
-
-# Sealed Secrets (Secret Management)
-kubectl kustomize --enable-helm infrastructure/controllers/sealed-secrets | kubectl apply -f -
-
-# Rook-Ceph Storage
-kubectl kustomize --enable-helm infrastructure/storage/rook-ceph | kubectl apply -f -
-
-# ArgoCD (GitOps Platform)
-kubectl kustomize --enable-helm infrastructure/controllers/argocd | kubectl apply -f -
-
-# === ADDITIONAL CORE COMPONENTS ===
-# Cert-Manager (Certificate Management)
-kubectl kustomize --enable-helm infrastructure/controllers/cert-manager | kubectl apply -f -
-
-# CloudNative-PG (PostgreSQL Operator)
-kubectl kustomize --enable-helm infrastructure/controllers/cloudnative-pg | kubectl apply -f -
-
-# Argo Rollouts (Progressive Delivery)
-kubectl kustomize --enable-helm infrastructure/controllers/argo-rollouts | kubectl apply -f -
-
-# Proxmox CSI (VM Storage)
-kubectl kustomize --enable-helm infrastructure/storage/proxmox-csi | kubectl apply -f -
-
-# Prometheus (Monitoring)
-kubectl kustomize --enable-helm infrastructure/monitoring/prometheus | kubectl apply -f -
-
-# Grafana (Dashboards)
-kubectl kustomize --enable-helm infrastructure/monitoring/grafana | kubectl apply -f -
-
-# Vector (Log Collection)
-kubectl kustomize --enable-helm infrastructure/observability/vector | kubectl apply -f -
-
-# Cloudflared (Tunnel)
-kubectl kustomize --enable-helm infrastructure/network/cloudflared | kubectl apply -f -
-
-# After core components are ready, deploy ApplicationSets for GitOps
-kubectl apply -k sets/
-```
-
-## Wave-by-Wave Bootstrap (Production Ready)
-
-```bash
-export KUBECONFIG="../tofu/output/kube-config.yaml"
-
-# === WAVE 0: CORE CONTROLLERS ===
-echo "🎮 Deploying Core Controllers..."
-kubectl apply -k infrastructure/controllers/argocd/
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=300s
-
-kubectl apply -k infrastructure/controllers/sealed-secrets/
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=sealed-secrets -n sealed-secrets --timeout=300s
-
-kubectl apply -k infrastructure/controllers/cert-manager/
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=cert-manager -n cert-manager --timeout=300s
-
-# === WAVE 1: NETWORK FOUNDATION ===
-echo "🌐 Deploying Cilium CNI..."
-kubectl apply -k infrastructure/network/cilium/
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=cilium-operator -n kube-system --timeout=300s
-
-# === WAVE 2: STORAGE FOUNDATION ===
-echo "🐙 Deploying Rook-Ceph Storage..."
-kubectl apply -k infrastructure/storage/rook-ceph/
-kubectl wait --for=condition=established crd/cephclusters.ceph.rook.io --timeout=60s
-# Second apply after CRDs are ready
-kubectl apply -k infrastructure/storage/rook-ceph/
-
-# === WAVE 3: SERVICE MESH ===
-echo "🌊 Deploying Istio Service Mesh..."
-kubectl apply -k infrastructure/network/istio-base/
-kubectl wait --for=condition=established crd/gateways.gateway.networking.k8s.io --timeout=300s
-
-kubectl apply -k infrastructure/network/istio-cni/
-kubectl wait --for=condition=ready pod -l app=istio-cni-node -n istio-system --timeout=300s
-
-kubectl apply -k infrastructure/network/istio-control-plane/
-kubectl wait --for=condition=ready pod -l app=istiod -n istio-system --timeout=300s
-
-kubectl apply -k infrastructure/network/istio-gateway/
-kubectl wait --for=condition=ready pod -l app=istio-gateway -n istio-gateway --timeout=300s
-
-# === WAVE 5: MONITORING ===
-echo "📊 Deploying Monitoring Stack..."
-kubectl apply -k infrastructure/monitoring/prometheus/
-kubectl apply -k infrastructure/monitoring/grafana/
-kubectl apply -k infrastructure/monitoring/alertmanager/
-
-# === WAVE 6: OBSERVABILITY ===
-echo "🔍 Deploying Observability Stack..."
-kubectl apply -k infrastructure/observability/vector/
-kubectl apply -k infrastructure/observability/elasticsearch/
-kubectl apply -k infrastructure/observability/kibana/
-
-echo "✅ Manual bootstrap complete! ArgoCD ApplicationSets now manage everything."
-```
-
-## Manual Bootstrap (Core Components)
-
-```bash
-export KUBECONFIG="../tofu/output/kube-config.yaml"
-
-# Essential components - tested & working bootstrap sequence
+# Core components only - minimum required
 kubectl kustomize --enable-helm infrastructure/network/cilium | kubectl apply -f -
 kubectl kustomize --enable-helm infrastructure/controllers/sealed-secrets | kubectl apply -f -
 kubectl kustomize --enable-helm infrastructure/storage/rook-ceph | kubectl apply -f -
 kubectl kustomize --enable-helm infrastructure/controllers/argocd | kubectl apply -f -
-kubectl kustomize --enable-helm infrastructure/storage/proxmox-csi | kubectl apply -f -
 
-# ArgoCD Access (after deployment)
+# Get ArgoCD password
+kubectl -n argocd get secret argocd-initial-admin-secret -ojson | jq -r '.data.password | @base64d'
+
+# ArgoCD UI Access
 kubectl port-forward svc/argocd-server -n argocd 8080:80
 # URL: http://localhost:8080
 # Username: admin
-# Password: HjGrNH2psKBqo5kJ
+```
 
-# Deploy remaining components via GitOps
+### Option 2: Layer Bootstrap (Recommended)
+
+```bash
+export KUBECONFIG="../tofu/output/kube-config.yaml"
+
+# Deploy all layers - ArgoCD will handle component ordering
+kubectl apply -k security/
 kubectl apply -k infrastructure/
 kubectl apply -k platform/
 kubectl apply -k apps/
 ```
+
+### Option 3: App-of-Apps (All-in-One)
+
+```bash
+export KUBECONFIG="../tofu/output/kube-config.yaml"
+
+# Single command - deploys everything
+kubectl apply -k sets/
+```
+
 
 ## Structure
 
