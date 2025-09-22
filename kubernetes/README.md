@@ -38,20 +38,62 @@ export KUBECONFIG="../tofu/output/kube-config.yaml"
 kubectl apply -k security/ && kubectl apply -k infrastructure/ && kubectl apply -k platform/ && kubectl apply -k apps/
 ```
 
+## Standard Layer Bootstrap (Gitiles Pattern)
+
+```bash
+export KUBECONFIG="../tofu/output/kube-config.yaml"
+
+# Deploy each layer individually with Gitiles Pattern control
+kubectl apply -k security/        # Security foundation (wave 0)
+kubectl apply -k infrastructure/  # Core infrastructure (wave 1)
+kubectl apply -k platform/        # Platform services (wave 15)
+kubectl apply -k apps/            # Applications (wave 25)
+```
+
 ## Core Components Bootstrap (Manual)
 
 ```bash
 export KUBECONFIG="../tofu/output/kube-config.yaml"
 
-# Essential components only - ArgoCD handles the rest via GitOps
+# === ESSENTIAL BOOTSTRAP (Manual Component Deployment) ===
+# Cilium CNI (MUST BE FIRST!)
 kubectl kustomize --enable-helm infrastructure/network/cilium | kubectl apply -f -
+
+# Sealed Secrets (Secret Management)
 kubectl kustomize --enable-helm infrastructure/controllers/sealed-secrets | kubectl apply -f -
+
+# Rook-Ceph Storage
 kubectl kustomize --enable-helm infrastructure/storage/rook-ceph | kubectl apply -f -
 
-# Deploy ArgoCD - it will manage everything else via GitOps
+# ArgoCD (GitOps Platform)
 kubectl kustomize --enable-helm infrastructure/controllers/argocd | kubectl apply -f -
 
-# After ArgoCD is ready, deploy ApplicationSets
+# === ADDITIONAL CORE COMPONENTS ===
+# Cert-Manager (Certificate Management)
+kubectl kustomize --enable-helm infrastructure/controllers/cert-manager | kubectl apply -f -
+
+# CloudNative-PG (PostgreSQL Operator)
+kubectl kustomize --enable-helm infrastructure/controllers/cloudnative-pg | kubectl apply -f -
+
+# Argo Rollouts (Progressive Delivery)
+kubectl kustomize --enable-helm infrastructure/controllers/argo-rollouts | kubectl apply -f -
+
+# Proxmox CSI (VM Storage)
+kubectl kustomize --enable-helm infrastructure/storage/proxmox-csi | kubectl apply -f -
+
+# Prometheus (Monitoring)
+kubectl kustomize --enable-helm infrastructure/monitoring/prometheus | kubectl apply -f -
+
+# Grafana (Dashboards)
+kubectl kustomize --enable-helm infrastructure/monitoring/grafana | kubectl apply -f -
+
+# Vector (Log Collection)
+kubectl kustomize --enable-helm infrastructure/observability/vector | kubectl apply -f -
+
+# Cloudflared (Tunnel)
+kubectl kustomize --enable-helm infrastructure/network/cloudflared | kubectl apply -f -
+
+# After core components are ready, deploy ApplicationSets for GitOps
 kubectl apply -k sets/
 ```
 
