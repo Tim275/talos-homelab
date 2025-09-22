@@ -3,13 +3,233 @@ kind: AppProject
 metadata:
   name: infrastructure
   namespace: argocd
+  labels:
+    enterprise.tier: infrastructure
+    security.level: high
+    team: timour
 spec:
+  description: "🏗️ Infrastructure Layer - Core Cluster Services & Operators"
+
+  # 🔒 SECURITY: Restrict source repositories (Enterprise Best Practice)
   sourceRepos:
+    - 'https://github.com/Tim275/talos-homelab'
     - 'https://github.com/Tim275/talos-homelab.git'
+
+  # 🎯 DESTINATIONS: Infrastructure namespaces only (Least Privilege)
   destinations:
-    # Infrastructure Layer - Allow ALL namespaces for ApplicationSet discovery
-    - namespace: '*'
+    # Core System Namespaces
+    - namespace: 'kube-system'
       server: 'https://kubernetes.default.svc'
+    - namespace: 'argocd'
+      server: 'https://kubernetes.default.svc'
+
+    # Controllers
+    - namespace: 'cert-manager'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'sealed-secrets'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'argo-rollouts'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'cloudnative-pg'
+      server: 'https://kubernetes.default.svc'
+
+    # Network Infrastructure
+    - namespace: 'cilium'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'istio-system'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'istio-base'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'istio-cni'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'istio-control-plane'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'istio-gateway'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'gateway'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'metallb'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'sail-operator'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'cloudflared'
+      server: 'https://kubernetes.default.svc'
+
+    # Storage Infrastructure
+    - namespace: 'rook-ceph'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'rook-ceph-rgw'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'proxmox-csi'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'csi-drivers'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'velero'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'longhorn'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'minio'
+      server: 'https://kubernetes.default.svc'
+
+    # Monitoring Infrastructure
+    - namespace: 'prometheus'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'grafana'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'alertmanager'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'jaeger'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'metrics-server'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'opencost'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'loki'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'hubble'
+      server: 'https://kubernetes.default.svc'
+
+    # Observability Infrastructure
+    - namespace: 'vector'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'elasticsearch'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'kibana'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'fluent-bit'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'fluentd'
+      server: 'https://kubernetes.default.svc'
+    - namespace: 'opentelemetry'
+      server: 'https://kubernetes.default.svc'
+
+  # 🛡️ CLUSTER RESOURCES: Infrastructure-specific (Security Best Practice)
   clusterResourceWhitelist:
-    - group: '*'
+    # Core Kubernetes Resources
+    - group: ''
       kind: '*'
+    - group: 'apps'
+      kind: '*'
+
+    # RBAC Resources
+    - group: 'rbac.authorization.k8s.io'
+      kind: '*'
+
+    # Network Resources
+    - group: 'networking.k8s.io'
+      kind: '*'
+    - group: 'cilium.io'
+      kind: '*'
+    - group: 'install.istio.io'
+      kind: '*'
+    - group: 'security.istio.io'
+      kind: '*'
+    - group: 'networking.istio.io'
+      kind: '*'
+    - group: 'gateway.networking.k8s.io'
+      kind: '*'
+
+    # Storage Resources
+    - group: 'storage.k8s.io'
+      kind: '*'
+    - group: 'ceph.rook.io'
+      kind: '*'
+    - group: 'rook.io'
+      kind: '*'
+    - group: 'objectbucket.io'
+      kind: '*'
+
+    # Monitoring Resources
+    - group: 'monitoring.coreos.com'
+      kind: '*'
+    - group: 'grafana.integreatly.org'
+      kind: '*'
+
+    # Certificate Resources
+    - group: 'cert-manager.io'
+      kind: '*'
+    - group: 'acme.cert-manager.io'
+      kind: '*'
+
+    # ArgoCD Resources
+    - group: 'argoproj.io'
+      kind: '*'
+
+    # Sealed Secrets
+    - group: 'bitnami.com'
+      kind: '*'
+
+    # PostgreSQL Operator
+    - group: 'postgresql.cnpg.io'
+      kind: '*'
+
+    # Custom Resource Definitions
+    - group: 'apiextensions.k8s.io'
+      kind: 'CustomResourceDefinition'
+
+    # Admission Control
+    - group: 'admissionregistration.k8s.io'
+      kind: '*'
+
+  # 🚫 NAMESPACE RESOURCES: Deny dangerous operations (Security Best Practice)
+  namespaceResourceBlacklist:
+    # Prevent creation of new namespaces (only infrastructure team)
+    - group: ''
+      kind: 'Namespace'
+    # Prevent resource quota manipulation
+    - group: ''
+      kind: 'ResourceQuota'
+    # Prevent limit range changes
+    - group: ''
+      kind: 'LimitRange'
+
+  # 🔐 PROJECT ROLES: Infrastructure Team Access Control
+  roles:
+    - name: infrastructure-admin
+      description: "Full infrastructure management access"
+      policies:
+        - p, proj:infrastructure:infrastructure-admin, applications, *, infrastructure/*, allow
+        - p, proj:infrastructure:infrastructure-admin, applicationsets, *, infrastructure/*, allow
+        - p, proj:infrastructure:infrastructure-admin, exec, *, infrastructure/*, allow
+        - p, proj:infrastructure:infrastructure-admin, logs, *, infrastructure/*, allow
+      groups:
+        - timour:infrastructure-admins
+        - timour:platform-engineers
+
+    - name: infrastructure-operator
+      description: "Infrastructure monitoring and troubleshooting"
+      policies:
+        - p, proj:infrastructure:infrastructure-operator, applications, get, infrastructure/*, allow
+        - p, proj:infrastructure:infrastructure-operator, applications, sync, infrastructure/*, allow
+        - p, proj:infrastructure:infrastructure-operator, logs, get, infrastructure/*, allow
+      groups:
+        - timour:infrastructure-operators
+        - timour:sre-team
+
+    - name: infrastructure-viewer
+      description: "Read-only infrastructure access"
+      policies:
+        - p, proj:infrastructure:infrastructure-viewer, applications, get, infrastructure/*, allow
+        - p, proj:infrastructure:infrastructure-viewer, logs, get, infrastructure/*, allow
+      groups:
+        - timour:developers
+        - timour:infrastructure-viewers
+
+  # 🚨 SYNC WINDOWS: Maintenance scheduling (Enterprise Best Practice)
+  syncWindows:
+    - kind: allow
+      schedule: '0 2 * * 1-5'  # Mon-Fri 2 AM UTC
+      duration: 2h
+      applications:
+        - '*'
+      manualSync: true
+    - kind: deny
+      schedule: '0 0 * * 6,0'  # Weekend block
+      duration: 48h
+      applications:
+        - '*'
+      manualSync: false
+
+  # 🔧 ORPHANED RESOURCES: Cleanup policy
+  orphanedResources:
+    warn: true
