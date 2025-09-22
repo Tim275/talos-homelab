@@ -112,24 +112,25 @@ kubectl apply -k infrastructure/observability/kibana/
 echo "✅ Manual bootstrap complete! ArgoCD ApplicationSets now manage everything."
 ```
 
-## Manual Bootstrap
+## Manual Bootstrap (Core Components)
 
 ```bash
 export KUBECONFIG="../tofu/output/kube-config.yaml"
 
-# 1. Cilium CNI
+# Essential components - tested & working bootstrap sequence
 kubectl kustomize --enable-helm infrastructure/network/cilium | kubectl apply -f -
+kubectl kustomize --enable-helm infrastructure/controllers/sealed-secrets | kubectl apply -f -
+kubectl kustomize --enable-helm infrastructure/storage/rook-ceph | kubectl apply -f -
+kubectl kustomize --enable-helm infrastructure/controllers/argocd | kubectl apply -f -
+kubectl kustomize --enable-helm infrastructure/storage/proxmox-csi | kubectl apply -f -
 
-# 2. Sealed Secrets
-kustomize build --enable-helm infrastructure/controllers/sealed-secrets | kubectl apply -f -
+# ArgoCD Access (after deployment)
+kubectl port-forward svc/argocd-server -n argocd 8080:80
+# URL: http://localhost:8080
+# Username: admin
+# Password: HjGrNH2psKBqo5kJ
 
-# 3. Proxmox CSI Plugin
-kustomize build --enable-helm infrastructure/storage/proxmox-csi | kubectl apply -f -
-
-# 4. ArgoCD
-kustomize build --enable-helm infrastructure/controllers/argocd | kubectl apply -f -
-
-# 5. Deploy everything else via GitOps
+# Deploy remaining components via GitOps
 kubectl apply -k infrastructure/
 kubectl apply -k platform/
 kubectl apply -k apps/
