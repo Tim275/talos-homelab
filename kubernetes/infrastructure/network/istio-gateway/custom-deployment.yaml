@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: istio-gateway
+  namespace: istio-ingress
+  labels:
+    app: istio-gateway
+    istio: gateway
+    app.kubernetes.io/name: istio-gateway
+    app.kubernetes.io/instance: istio-gateway
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: istio-gateway
+      istio: gateway
+  template:
+    metadata:
+      annotations:
+        inject.istio.io/templates: gateway
+        prometheus.io/path: /stats/prometheus
+        prometheus.io/port: "15020"
+        prometheus.io/scrape: "true"
+        sidecar.istio.io/inject: "true"
+      labels:
+        app: istio-gateway
+        istio: gateway
+        sidecar.istio.io/inject: "true"
+        istio.io/dataplane-mode: none
+    spec:
+      serviceAccountName: istio-gateway
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1337
+        runAsGroup: 1337
+        fsGroup: 1337
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: istio-proxy
+          image: gcr.io/istio-release/proxyv2:1.26.4-distroless
+          ports:
+            - containerPort: 15090
+              name: http-envoy-prom
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1337
+            runAsGroup: 1337
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - NET_BIND_SERVICE
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
