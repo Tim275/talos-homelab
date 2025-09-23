@@ -1,8 +1,8 @@
-# 🔍 OBSERVABILITY DOMAIN Application - ENTERPRISE 3-LEVEL PATTERN!
-# Level 1: Bootstrap → Level 2: Domain Application → Level 3: Kustomize Control
+# 🔍 OBSERVABILITY DOMAIN ApplicationSet - INDIVIDUAL APPLICATIONS!
+# Creates separate Applications: infrastructure-vector, infrastructure-elasticsearch, infrastructure-kibana, infrastructure-opentelemetry
 ---
 apiVersion: argoproj.io/v1alpha1
-kind: Application
+kind: ApplicationSet
 metadata:
   name: infrastructure-observability
   namespace: argocd
@@ -13,21 +13,50 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "6"
 spec:
-  project: infrastructure
-  source:
-    repoURL: https://github.com/Tim275/talos-homelab
-    targetRevision: HEAD
-    path: kubernetes/infrastructure/observability
-    kustomize: {}
-  destination:
-    server: https://kubernetes.default.svc
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-    - CreateNamespace=true
-    - PrunePropagationPolicy=foreground
-    - PruneLast=true
-    - RespectIgnoreDifferences=true
-    - ServerSideApply=true
+  generators:
+  - list:
+      elements:
+      # 🎯 ENABLED OBSERVABILITY - Individual Applications in ArgoCD UI
+      - name: vector
+        path: kubernetes/infrastructure/observability/vector
+      - name: elasticsearch
+        path: kubernetes/infrastructure/observability/elasticsearch
+      - name: kibana
+        path: kubernetes/infrastructure/observability/kibana
+      - name: opentelemetry
+        path: kubernetes/infrastructure/observability/opentelemetry
+
+      # ❌ DUPLICATE - LOKI IS IN MONITORING DOMAIN
+      # - name: loki                 # ❌ Duplicate - use monitoring/loki instead
+      #   path: kubernetes/infrastructure/observability/loki
+
+      # ❌ DISABLED PER USER REQUEST
+      # - name: fluentd            # ❌ User requested disabled
+      #   path: kubernetes/infrastructure/observability/fluentd
+      # - name: fluent-bit         # ❌ User requested disabled
+      #   path: kubernetes/infrastructure/observability/fluent-bit
+  template:
+    metadata:
+      name: 'infrastructure-{{name}}'
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        infrastructure.domain: '{{name}}'
+    spec:
+      project: infrastructure
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{path}}'
+        kustomize: {}
+      destination:
+        server: https://kubernetes.default.svc
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+        - PrunePropagationPolicy=foreground
+        - PruneLast=true
+        - RespectIgnoreDifferences=true
+        - ServerSideApply=true

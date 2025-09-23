@@ -1,48 +1,54 @@
+# 🎯 3-LEVEL CONTROL - MAXIMUM FLEXIBILITY!
+# ==========================================
+# Level 1: DOMAIN CONTROL (this file) - Nice-to-have for extreme scenarios
+# Level 2: SERVICE CONTROL (ApplicationSet lists) - Main day-to-day control
+# Level 3: COMPONENT CONTROL (service/kustomization.yaml) - Fine-grained control
+#
+# RESULT: Every service visible as individual Application in ArgoCD UI!
+
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# 🚀 2025 ENTERPRISE HYBRID - App-of-Apps + ApplicationSets + Kustomize
-# =====================================================================
-# LEVEL 1: Bootstrap deploys this (App-of-Apps pattern)
-# LEVEL 2: This deploys ApplicationSets (for component visibility)
-# LEVEL 3: Domain kustomization.yaml files (TRUE kustomize control)
-#
-# This follows 2025 enterprise best practices:
-# - Netflix: Multi-layered GitOps with component discovery
-# - Google: Platform engineering with self-service visibility
-# - Spotify: Golden Path with team autonomy
-# - Meta: Hybrid patterns for scale + control
-
-commonLabels:
-  app.kubernetes.io/managed-by: argocd
-  enterprise.tier: infrastructure
-  enterprise.pattern: hybrid-2025
-  team: timour
+labels:
+  - pairs:
+      app.kubernetes.io/managed-by: argocd
+      enterprise.tier: infrastructure
+      enterprise.pattern: triple-level-control-2025
+      team: timour
 
 # 🌊 Sync Wave 1: Infrastructure Foundation Layer
 commonAnnotations:
   argocd.argoproj.io/sync-wave: "1"
 
 resources:
-  # 🎯 INFRASTRUCTURE LAYER CONTROL - COMMENT/UNCOMMENT = ENABLE/DISABLE!
+  # 🏛️ INFRASTRUCTURE PROJECT
+  - project.yaml
+
+  # 🎛️ LEVEL 1: DOMAIN CONTROL - Comment/Uncomment for extreme scenarios
   # ====================================================================
 
-  # ✅ ENABLED INFRASTRUCTURE MANAGEMENT
-  - project.yaml           # Infrastructure project with proper security + RBAC
+  # ✅ ENABLED DOMAINS (nice-to-have control for testing/migration/debugging)
+  - controllers-app.yaml      # → infrastructure-argocd, infrastructure-sealed-secrets, infrastructure-cert-manager
+  - network-app.yaml          # → infrastructure-cilium, infrastructure-cloudflared, infrastructure-gateway
+  - storage-app.yaml          # → infrastructure-rook-ceph, infrastructure-rook-ceph-rgw
+  - monitoring-app.yaml       # → infrastructure-prometheus, infrastructure-grafana, infrastructure-jaeger
+  - observability-app.yaml    # → infrastructure-vector, infrastructure-elasticsearch, infrastructure-kibana
 
-  # 🎛️ DOMAIN APPLICATION SETS - COMMENT/UNCOMMENT TO CONTROL ENTIRE DOMAINS!
-  - controllers-app.yaml   # ✅ Controllers (ArgoCD, Cert-Manager, Sealed Secrets)
-  - network-app.yaml       # ✅ Network (Cilium, Gateway, CloudFlare)
-  - storage-app.yaml       # ✅ Storage (Rook-Ceph, Proxmox CSI)
-  - monitoring-app.yaml    # ✅ Monitoring (Prometheus, Grafana, AlertManager, Loki)
-  - observability-app.yaml # ✅ ENABLED - Observability (Vector, Elasticsearch, Kibana)
+  # ❌ DISABLED DOMAINS - Uncomment when needed
+  # - backup-app.yaml         # ❌ DISABLED - Backup domain not implemented yet
 
-  # 🎯 DUAL-LEVEL CONTROL:
-  # Level 1: Comment/uncomment domain ApplicationSets above (entire domains)
-  # Level 2: Comment/uncomment components in domain/kustomization.yaml files
-  #
-  # EXAMPLE: Disable Istio CNI but keep rest of network:
-  # 1. Keep network-app.yaml enabled above
-  # 2. Comment istio-cni in network/kustomization.yaml
-  #
-  # 💡 REAL kustomize control - no more fake excludes!
+# 🎯 3-LEVEL CONTROL EXAMPLES:
+#
+# 🔧 NORMAL DAY-TO-DAY USE (Level 2 - Service Control):
+# - Want to disable prometheus? → Comment it in monitoring-app.yaml
+# - Want to disable vector? → Comment it in observability-app.yaml
+# - Want to disable jaeger? → Comment it in monitoring-app.yaml
+#
+# 🛠️ FINE-GRAINED CONTROL (Level 3 - Component Control):
+# - Want to disable prometheus alerting? → Comment alerting-rules.yaml in prometheus/kustomization.yaml
+# - Want to disable grafana dashboards? → Comment dashboards/ in grafana/kustomization.yaml
+#
+# 🚨 EXTREME SCENARIOS (Level 1 - Domain Control):
+# - Testing: Comment monitoring-app.yaml → ALL monitoring services disabled
+# - Migration: Comment storage-app.yaml → ALL storage services disabled
+# - Debugging: Comment observability-app.yaml → ALL observability services disabled

@@ -1,8 +1,8 @@
-# 📊 MONITORING DOMAIN Application - ENTERPRISE 3-LEVEL PATTERN!
-# Level 1: Bootstrap → Level 2: Domain Application → Level 3: Kustomize Control
+# 📊 MONITORING DOMAIN ApplicationSet - INDIVIDUAL APPLICATIONS!
+# Creates separate Applications: infrastructure-prometheus, infrastructure-grafana, infrastructure-jaeger, infrastructure-alertmanager
 ---
 apiVersion: argoproj.io/v1alpha1
-kind: Application
+kind: ApplicationSet
 metadata:
   name: infrastructure-monitoring
   namespace: argocd
@@ -13,21 +13,52 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "5"
 spec:
-  project: infrastructure
-  source:
-    repoURL: https://github.com/Tim275/talos-homelab
-    targetRevision: HEAD
-    path: kubernetes/infrastructure/monitoring
-    kustomize: {}
-  destination:
-    server: https://kubernetes.default.svc
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-    - CreateNamespace=true
-    - PrunePropagationPolicy=foreground
-    - PruneLast=true
-    - RespectIgnoreDifferences=true
-    - ServerSideApply=true
+  generators:
+  - list:
+      elements:
+      # 🎯 ENABLED MONITORING - Individual Applications in ArgoCD UI
+      - name: metrics-server
+        path: kubernetes/infrastructure/monitoring/metrics-server
+      - name: prometheus
+        path: kubernetes/infrastructure/monitoring/prometheus
+      - name: grafana
+        path: kubernetes/infrastructure/monitoring/grafana
+      - name: jaeger
+        path: kubernetes/infrastructure/monitoring/jaeger
+      - name: alertmanager
+        path: kubernetes/infrastructure/monitoring/alertmanager
+      - name: loki
+        path: kubernetes/infrastructure/monitoring/loki
+      - name: opencost
+        path: kubernetes/infrastructure/monitoring/opencost
+      - name: hubble
+        path: kubernetes/infrastructure/monitoring/hubble
+
+      # ❌ DISABLED MONITORING - Comment/Uncomment to control (heavy services disabled for testing)
+      # - name: prometheus-server
+      #   path: kubernetes/infrastructure/monitoring/prometheus-server
+  template:
+    metadata:
+      name: 'infrastructure-{{name}}'
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        infrastructure.domain: '{{name}}'
+    spec:
+      project: infrastructure
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{path}}'
+        kustomize: {}
+      destination:
+        server: https://kubernetes.default.svc
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+        - PrunePropagationPolicy=foreground
+        - PruneLast=true
+        - RespectIgnoreDifferences=true
+        - ServerSideApply=true
