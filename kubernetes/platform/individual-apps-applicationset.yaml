@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform-individual-apps
+  namespace: argocd
+  labels:
+    enterprise.tier: platform
+    enterprise.domain: individual-apps
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "16"
+spec:
+  goTemplate: true
+  generators:
+    # 🎯 INDIVIDUAL APPS: Find *-app.yaml files for component visibility
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        files:
+          - path: "kubernetes/platform/*/*-app.yaml"
+  template:
+    metadata:
+      name: '{{.path.basenameNormalized}}'
+      labels:
+        managed-by: argocd
+        tier: platform
+        component: individual
+    spec:
+      project: platform
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path.path}}'
+      destination:
+        server: https://kubernetes.default.svc
+      syncPolicy:
+        automated: {}
+        syncOptions:
+          - CreateNamespace=true
