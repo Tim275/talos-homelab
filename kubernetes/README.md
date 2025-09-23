@@ -6,7 +6,7 @@
 
 ## 🎯 Quick Start
 
-### Single Command Deployment
+### Option 1: Single Command Bootstrap (Recommended)
 
 ```bash
 export KUBECONFIG="../tofu/output/kube-config.yaml"
@@ -16,6 +16,32 @@ kubectl apply -k bootstrap/
 
 # 🔍 Monitor deployment
 kubectl get applications -n argocd -w
+```
+
+### Option 2: Layer-by-Layer Bootstrap
+
+```bash
+export KUBECONFIG="../tofu/output/kube-config.yaml"
+
+# Deploy each layer manually - ArgoCD handles component ordering
+kubectl apply -k security/           # Wave 0: Zero Trust Foundation
+kubectl apply -k infrastructure/     # Wave 1-6: Core Infrastructure
+kubectl apply -k platform/          # Wave 15-18: Platform Services
+kubectl apply -k apps/              # Wave 25-26: Applications
+```
+
+### Option 3: Manual Core Bootstrap (Minimal)
+
+```bash
+export KUBECONFIG="../tofu/output/kube-config.yaml"
+
+# Core components only - minimum required for ArgoCD
+kubectl kustomize --enable-helm infrastructure/network/cilium | kubectl apply -f -
+kubectl kustomize --enable-helm infrastructure/controllers/sealed-secrets | kubectl apply -f -
+kubectl kustomize --enable-helm infrastructure/storage/rook-ceph | kubectl apply -f -
+kubectl kustomize --enable-helm infrastructure/controllers/argocd | kubectl apply -f -
+
+# Then deploy via ArgoCD UI
 ```
 
 ### ArgoCD Access
