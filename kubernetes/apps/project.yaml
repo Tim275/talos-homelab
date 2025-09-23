@@ -1,0 +1,162 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: apps
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/part-of: timour-homelab
+    app.kubernetes.io/layer: apps
+    team: timour
+spec:
+  description: "🚀 Enterprise Applications Layer - User-Facing Services"
+
+  # 🔒 SECURITY: Restrict source repositories (Enterprise Best Practice)
+  sourceRepos:
+    - 'https://github.com/Tim275/talos-homelab'
+    - 'https://github.com/Tim275/talos-homelab.git'
+
+  # 🎯 DESTINATIONS: Apps namespaces with environment separation
+  destinations:
+    # Environment-based namespace pattern
+    - namespace: '*-dev'
+      server: 'https://kubernetes.default.svc'
+    - namespace: '*-staging'
+      server: 'https://kubernetes.default.svc'
+    - namespace: '*-prod'
+      server: 'https://kubernetes.default.svc'
+    # Legacy direct namespaces
+    - namespace: '*'
+      server: 'https://kubernetes.default.svc'
+
+  # 🛡️ CLUSTER RESOURCES: Application-specific (Security Best Practice)
+  clusterResourceWhitelist:
+    # Core Kubernetes Resources
+    - group: ''
+      kind: '*'
+    - group: 'apps'
+      kind: '*'
+
+    # RBAC Resources (limited for apps)
+    - group: 'rbac.authorization.k8s.io'
+      kind: 'Role'
+    - group: 'rbac.authorization.k8s.io'
+      kind: 'RoleBinding'
+
+    # Network Resources
+    - group: 'networking.k8s.io'
+      kind: 'NetworkPolicy'
+    - group: 'networking.k8s.io'
+      kind: 'Ingress'
+
+    # Service Mesh Resources
+    - group: 'networking.istio.io'
+      kind: 'VirtualService'
+    - group: 'networking.istio.io'
+      kind: 'Gateway'
+    - group: 'networking.istio.io'
+      kind: 'DestinationRule'
+
+  # 🚫 NAMESPACE RESOURCES: Deny dangerous operations (Security Best Practice)
+  namespaceResourceBlacklist:
+    # Prevent cluster-wide resource creation from apps
+    - group: 'rbac.authorization.k8s.io'
+      kind: 'ClusterRole'
+    - group: 'rbac.authorization.k8s.io'
+      kind: 'ClusterRoleBinding'
+    - group: ''
+      kind: 'Namespace'
+    - group: ''
+      kind: 'ResourceQuota'
+    - group: ''
+      kind: 'LimitRange'
+
+  # 🔐 PROJECT ROLES: Apps Team Access Control
+  roles:
+    - name: apps-admin
+      description: "Full apps management access"
+      policies:
+        - p, proj:apps:apps-admin, applications, *, apps/*, allow
+        - p, proj:apps:apps-admin, applicationsets, *, apps/*, allow
+        - p, proj:apps:apps-admin, exec, *, apps/*, allow
+        - p, proj:apps:apps-admin, logs, *, apps/*, allow
+      groups:
+        - timour:apps-admins
+        - timour:developers
+
+    - name: apps-operator
+      description: "Apps monitoring and troubleshooting"
+      policies:
+        - p, proj:apps:apps-operator, applications, get, apps/*, allow
+        - p, proj:apps:apps-operator, applications, sync, apps/*, allow
+        - p, proj:apps:apps-operator, logs, get, apps/*, allow
+      groups:
+        - timour:apps-operators
+        - timour:sre-team
+
+    - name: apps-viewer
+      description: "Read-only apps access"
+      policies:
+        - p, proj:apps:apps-viewer, applications, get, apps/*, allow
+        - p, proj:apps:apps-viewer, logs, get, apps/*, allow
+      groups:
+        - timour:developers
+        - timour:apps-viewers
+
+  # 🚨 SYNC WINDOWS: Development-focused scheduling (Enterprise Best Practice)
+  syncWindows:
+    - kind: allow
+      schedule: '0 * * * *'  # Every hour for dev/staging
+      duration: 1h
+      applications:
+        - 'apps-dev-*'
+        - 'apps-staging-*'
+      manualSync: true
+    - kind: allow
+      schedule: '0 9-17 * * 1-5'  # Business hours for prod
+      duration: 8h
+      applications:
+        - 'apps-prod-*'
+      manualSync: true
+
+  # 🔧 ORPHANED RESOURCES: Enterprise cleanup policy (2025 Best Practice)
+  orphanedResources:
+    warn: false  # Disable warnings - resources managed via excludes
+    ignore:
+      # Helm chart resources that commonly appear as orphaned
+      - kind: Secret
+        name: sh.helm.release.v1.*
+      - kind: ConfigMap
+        name: sh.helm.release.v1.*
+      # Application secrets and configs
+      - kind: Secret
+        name: "*-app-*"
+      - kind: ConfigMap
+        name: "*-app-*"
+      # Database connection secrets
+      - kind: Secret
+        name: "*-db-*"
+      - kind: ConfigMap
+        name: "*-db-*"
+      # N8N workflow automation
+      - kind: Secret
+        name: "*-n8n-*"
+      - kind: ConfigMap
+        name: "*-n8n-*"
+      - kind: Pod
+        name: "*-n8n-*"
+      # Mealie recipe management
+      - kind: Secret
+        name: "*-mealie-*"
+      - kind: ConfigMap
+        name: "*-mealie-*"
+      # Application monitoring resources
+      - kind: Secret
+        name: "*-monitoring-*"
+      - kind: ConfigMap
+        name: "*-monitoring-*"
+      # Service mesh sidecar resources
+      - kind: Pod
+        name: "*-istio-proxy-*"
+      - kind: ConfigMap
+        name: "*-istio-*"
