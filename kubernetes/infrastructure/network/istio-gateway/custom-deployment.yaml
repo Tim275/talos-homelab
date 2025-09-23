@@ -122,6 +122,23 @@ spec:
             - containerPort: 15090
               name: http-envoy-prom
               protocol: TCP
+          volumeMounts:
+            - name: workload-socket
+              mountPath: /var/run/secrets/workload-spiffe-uds
+            - name: credential-socket
+              mountPath: /var/run/secrets/credential-uds
+            - name: workload-certs
+              mountPath: /var/run/secrets/workload-spiffe-credentials
+            - name: istio-envoy
+              mountPath: /etc/istio/proxy
+            - name: config-volume
+              mountPath: /etc/istio/config
+            - name: istiod-ca-cert
+              mountPath: /var/run/secrets/istio
+              readOnly: true
+            - name: istio-token
+              mountPath: /var/run/secrets/tokens
+              readOnly: true
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -142,3 +159,27 @@ spec:
             limits:
               cpu: 500m
               memory: 256Mi
+      volumes:
+        - emptyDir: {}
+          name: workload-socket
+        - emptyDir: {}
+          name: credential-socket
+        - emptyDir: {}
+          name: workload-certs
+        - emptyDir:
+            medium: Memory
+          name: istio-envoy
+        - name: config-volume
+          configMap:
+            name: istio
+            optional: true
+        - name: istiod-ca-cert
+          configMap:
+            name: istio-ca-root-cert
+        - name: istio-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: istio-token
+                  expirationSeconds: 43200
+                  audience: istio-ca
