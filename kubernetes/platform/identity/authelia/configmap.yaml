@@ -9,14 +9,12 @@ data:
     # Resource-optimized for homelab
 
     theme: light
-    default_redirection_url: https://auth.homelab.local
 
     server:
-      host: 0.0.0.0
-      port: 9091
-      path: ""
-      read_buffer_size: 4096
-      write_buffer_size: 4096
+      address: tcp://0.0.0.0:9091
+      buffers:
+        read: 4096
+        write: 4096
 
     log:
       level: info
@@ -30,33 +28,34 @@ data:
     # LLDAP Backend Configuration
     authentication_backend:
       ldap:
-        url: ldap://lldap-ldap.lldap.svc.cluster.local:389
+        address: ldap://lldap-ldap.lldap.svc.cluster.local:389
         timeout: 5s
         start_tls: false
         base_dn: dc=homelab,dc=local
-        username_attribute: uid
+        attributes:
+          username: uid
+          group_name: cn
+          mail: mail
+          display_name: displayName
         additional_users_dn: ou=people
         users_filter: (&({username_attribute}={input})(objectClass=person))
         additional_groups_dn: ou=groups
         groups_filter: (&(member={dn})(objectClass=groupOfNames))
-        group_name_attribute: cn
-        mail_attribute: mail
-        display_name_attribute: displayName
         user: uid=admin,ou=people,dc=homelab,dc=local
         # Password from secret
 
     # Session Configuration
     session:
       name: authelia_session
-      domain: homelab.local
       same_site: lax
       secret: # From secret
       expiration: 1h
       inactivity: 5m
-      remember_me_duration: 1M
+      remember_me: 1M
       cookies:
         - domain: homelab.local
           authelia_url: https://auth.homelab.local
+          default_redirection_url: https://homelab.local
 
     # Storage Configuration (SQLite for minimal resources)
     storage:
@@ -91,80 +90,4 @@ data:
       filesystem:
         filename: /data/notification.txt
 
-    # OIDC Configuration
-    identity_providers:
-      oidc:
-        # JWK Configuration (REQUIRED for JWT signing)
-        jwks:
-          - key_id: rsa-2048
-            algorithm: RS256
-            use: sig
-            key: { path: /secrets/authelia-jwk/rsa-private.pem }
-
-        # CORS Configuration
-        cors:
-          endpoints:
-            - authorization
-            - token
-            - revocation
-            - introspection
-            - userinfo
-          allowed_origins_from_client_redirect_uris: true
-
-        # Claims policies for legacy compatibility
-        claims_policies:
-          legacy:
-            id_token:
-              - email
-              - email_verified
-              - name
-              - preferred_username
-              - groups
-
-        clients:
-          # Kubernetes OIDC Client
-          - id: kubernetes
-            description: Kubernetes API Server
-            client_secret: $argon2id$v=19$m=65536,t=3,p=4$EXAMPLE_KUBERNETES_HASH  # Replace with actual hashed secret
-            public: false
-            authorization_policy: two_factor
-            consent_mode: implicit
-            claims_policy: legacy  # Include groups in ID token
-            require_pkce: true
-            scopes:
-              - openid
-              - profile
-              - groups
-              - email
-            grant_types:
-              - authorization_code
-              - refresh_token
-            response_types:
-              - code
-            redirect_uris:
-              - urn:ietf:wg:oauth:2.0:oob
-              - http://localhost:8000
-            userinfo_signing_algorithm: none
-
-          # ArgoCD OIDC Client (optional)
-          - id: argocd
-            description: ArgoCD GitOps Platform
-            client_secret: $argon2id$v=19$m=65536,t=3,p=4$EXAMPLE_ARGOCD_HASH  # Replace with actual hashed secret
-            public: false
-            authorization_policy: two_factor
-            consent_mode: implicit
-            claims_policy: legacy  # Include groups in ID token
-            require_pkce: true
-            scopes:
-              - openid
-              - profile
-              - groups
-              - email
-            grant_types:
-              - authorization_code
-              - refresh_token
-            response_types:
-              - code
-            redirect_uris:
-              - https://argocd.homelab.local/auth/callback
-            userinfo_signing_algorithm: none
+    # No identity providers for now - just basic web authentication
