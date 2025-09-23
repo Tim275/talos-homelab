@@ -1,0 +1,57 @@
+# 📨 MESSAGING DOMAIN ApplicationSet - INDIVIDUAL APPLICATIONS!
+# Creates separate Applications: platform-kafka, platform-redpanda-console, platform-schema-registry
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform-messaging
+  namespace: argocd
+  labels:
+    enterprise.tier: platform
+    platform.domain: messaging
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+spec:
+  generators:
+  - list:
+      elements:
+      # 🎯 ENABLED MESSAGING SERVICES - Individual Applications in ArgoCD UI
+      - name: kafka
+        path: kubernetes/platform/messaging/kafka
+      - name: redpanda-console
+        path: kubernetes/platform/messaging/redpanda-console
+      - name: schema-registry
+        path: kubernetes/platform/messaging/schema-registry
+
+      # ❌ DISABLED MESSAGING SERVICES - Comment/Uncomment to control
+      # - name: pulsar
+      #   path: kubernetes/platform/messaging/pulsar
+      # - name: rabbitmq
+      #   path: kubernetes/platform/messaging/rabbitmq
+  template:
+    metadata:
+      name: 'platform-{{name}}'
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        platform.domain: '{{name}}'
+    spec:
+      project: platform
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{path}}'
+        kustomize:
+          buildOptions: --enable-helm
+      destination:
+        server: https://kubernetes.default.svc
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+        - PrunePropagationPolicy=foreground
+        - PruneLast=true
+        - RespectIgnoreDifferences=true
+        - ServerSideApply=true

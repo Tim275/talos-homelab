@@ -1,0 +1,59 @@
+# 🗄️ DATA DOMAIN ApplicationSet - INDIVIDUAL APPLICATIONS!
+# Creates separate Applications: platform-mongodb, platform-influxdb, platform-cloudbeaver, platform-n8n-cnpg
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform-data
+  namespace: argocd
+  labels:
+    enterprise.tier: platform
+    platform.domain: data
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "16"
+spec:
+  generators:
+  - list:
+      elements:
+      # 🎯 ENABLED DATA SERVICES - Individual Applications in ArgoCD UI
+      - name: mongodb
+        path: kubernetes/platform/data/mongodb
+      - name: influxdb
+        path: kubernetes/platform/data/influxdb
+      - name: cloudbeaver
+        path: kubernetes/platform/data/cloudbeaver
+      - name: n8n-dev-cnpg
+        path: kubernetes/platform/data/n8n-dev-cnpg
+      - name: n8n-prod-cnpg
+        path: kubernetes/platform/data/n8n-prod-cnpg
+
+      # ❌ DISABLED DATA SERVICES - Comment/Uncomment to control
+      # - name: quantlab-postgres
+      #   path: kubernetes/platform/data/quantlab-postgres
+  template:
+    metadata:
+      name: 'platform-{{name}}'
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        platform.domain: '{{name}}'
+    spec:
+      project: platform
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{path}}'
+        kustomize:
+          buildOptions: --enable-helm
+      destination:
+        server: https://kubernetes.default.svc
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+        - PrunePropagationPolicy=foreground
+        - PruneLast=true
+        - RespectIgnoreDifferences=true
+        - ServerSideApply=true
