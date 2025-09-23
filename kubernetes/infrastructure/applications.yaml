@@ -1,7 +1,9 @@
-# 🎛️ TRUE KUSTOMIZE CONTROL - ApplicationSets deployen domains, Kustomize steuert components!
+# 🎯 HYBRID PATTERN - ApplicationSets discover components for visibility & debugging!
 # ==================================================================================
+# Each domain has its own ApplicationSet that discovers components
+# You still control what's deployed via domain kustomization.yaml files
 
-# 🎛️ CONTROLLERS DOMAIN Application
+# 🎛️ CONTROLLERS DOMAIN ApplicationSet - Discovers individual components
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
@@ -15,24 +17,28 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "2"
 spec:
+  goTemplate: true
   generators:
-  - list:
-      elements:
-      - name: controllers
-        path: kubernetes/infrastructure/controllers
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/infrastructure/controllers/*"
+          # Exclude files that aren't components
+          - path: "kubernetes/infrastructure/controllers/kustomization.yaml"
+            exclude: true
   template:
     metadata:
-      name: 'infrastructure-{{name}}'
+      name: 'infrastructure-controllers-{{.path.basenameNormalized}}'
       labels:
         app.kubernetes.io/managed-by: argocd
-        infrastructure.domain: '{{name}}'
+        infrastructure.domain: controllers
     spec:
       project: infrastructure
       source:
         repoURL: https://github.com/Tim275/talos-homelab
         targetRevision: HEAD
-        path: '{{path}}'
-        # 🎯 TRUE KUSTOMIZE CONTROL - domain kustomization.yaml steuert components
+        path: '{{.path.path}}'
         kustomize: {}
       destination:
         server: https://kubernetes.default.svc
@@ -43,91 +49,7 @@ spec:
         syncOptions:
         - CreateNamespace=true
 
-# 📊 MONITORING DOMAIN Application
----
-apiVersion: argoproj.io/v1alpha1
-kind: ApplicationSet
-metadata:
-  name: infrastructure-monitoring
-  namespace: argocd
-  labels:
-    enterprise.tier: infrastructure
-    infrastructure.domain: monitoring
-    team: timour
-  annotations:
-    argocd.argoproj.io/sync-wave: "3"
-spec:
-  generators:
-  - list:
-      elements:
-      - name: monitoring
-        path: kubernetes/infrastructure/monitoring
-  template:
-    metadata:
-      name: 'infrastructure-{{name}}'
-      labels:
-        app.kubernetes.io/managed-by: argocd
-        infrastructure.domain: '{{name}}'
-    spec:
-      project: infrastructure
-      source:
-        repoURL: https://github.com/Tim275/talos-homelab
-        targetRevision: HEAD
-        path: '{{path}}'
-        # 🎯 TRUE KUSTOMIZE CONTROL - domain kustomization.yaml steuert components
-        kustomize: {}
-      destination:
-        server: https://kubernetes.default.svc
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
-        syncOptions:
-        - CreateNamespace=true
-
-# 🔍 OBSERVABILITY DOMAIN Application
----
-apiVersion: argoproj.io/v1alpha1
-kind: ApplicationSet
-metadata:
-  name: infrastructure-observability
-  namespace: argocd
-  labels:
-    enterprise.tier: infrastructure
-    infrastructure.domain: observability
-    team: timour
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-spec:
-  generators:
-  - list:
-      elements:
-      - name: observability
-        path: kubernetes/infrastructure/observability
-  template:
-    metadata:
-      name: 'infrastructure-{{name}}'
-      labels:
-        app.kubernetes.io/managed-by: argocd
-        infrastructure.domain: '{{name}}'
-    spec:
-      project: infrastructure
-      source:
-        repoURL: https://github.com/Tim275/talos-homelab
-        targetRevision: HEAD
-        path: '{{path}}'
-        # 🎯 TRUE KUSTOMIZE CONTROL - domain kustomization.yaml steuert components
-        kustomize: {}
-      destination:
-        server: https://kubernetes.default.svc
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
-        syncOptions:
-        - CreateNamespace=true
-
-# 🌐 NETWORK DOMAIN Application
+# 🌐 NETWORK DOMAIN ApplicationSet - Discovers individual components
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
@@ -141,24 +63,28 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "1"
 spec:
+  goTemplate: true
   generators:
-  - list:
-      elements:
-      - name: network
-        path: kubernetes/infrastructure/network
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/infrastructure/network/*"
+          # Exclude files that aren't components
+          - path: "kubernetes/infrastructure/network/kustomization.yaml"
+            exclude: true
   template:
     metadata:
-      name: 'infrastructure-{{name}}'
+      name: 'infrastructure-network-{{.path.basenameNormalized}}'
       labels:
         app.kubernetes.io/managed-by: argocd
-        infrastructure.domain: '{{name}}'
+        infrastructure.domain: network
     spec:
       project: infrastructure
       source:
         repoURL: https://github.com/Tim275/talos-homelab
         targetRevision: HEAD
-        path: '{{path}}'
-        # 🎯 TRUE KUSTOMIZE CONTROL - domain kustomization.yaml steuert components
+        path: '{{.path.path}}'
         kustomize: {}
       destination:
         server: https://kubernetes.default.svc
@@ -169,91 +95,7 @@ spec:
         syncOptions:
         - CreateNamespace=true
 
-# 📊 MONITORING DOMAIN Application
----
-apiVersion: argoproj.io/v1alpha1
-kind: ApplicationSet
-metadata:
-  name: infrastructure-monitoring
-  namespace: argocd
-  labels:
-    enterprise.tier: infrastructure
-    infrastructure.domain: monitoring
-    team: timour
-  annotations:
-    argocd.argoproj.io/sync-wave: "3"
-spec:
-  generators:
-  - list:
-      elements:
-      - name: monitoring
-        path: kubernetes/infrastructure/monitoring
-  template:
-    metadata:
-      name: 'infrastructure-{{name}}'
-      labels:
-        app.kubernetes.io/managed-by: argocd
-        infrastructure.domain: '{{name}}'
-    spec:
-      project: infrastructure
-      source:
-        repoURL: https://github.com/Tim275/talos-homelab
-        targetRevision: HEAD
-        path: '{{path}}'
-        # 🎯 TRUE KUSTOMIZE CONTROL - domain kustomization.yaml steuert components
-        kustomize: {}
-      destination:
-        server: https://kubernetes.default.svc
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
-        syncOptions:
-        - CreateNamespace=true
-
-# 🔍 OBSERVABILITY DOMAIN Application
----
-apiVersion: argoproj.io/v1alpha1
-kind: ApplicationSet
-metadata:
-  name: infrastructure-observability
-  namespace: argocd
-  labels:
-    enterprise.tier: infrastructure
-    infrastructure.domain: observability
-    team: timour
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-spec:
-  generators:
-  - list:
-      elements:
-      - name: observability
-        path: kubernetes/infrastructure/observability
-  template:
-    metadata:
-      name: 'infrastructure-{{name}}'
-      labels:
-        app.kubernetes.io/managed-by: argocd
-        infrastructure.domain: '{{name}}'
-    spec:
-      project: infrastructure
-      source:
-        repoURL: https://github.com/Tim275/talos-homelab
-        targetRevision: HEAD
-        path: '{{path}}'
-        # 🎯 TRUE KUSTOMIZE CONTROL - domain kustomization.yaml steuert components
-        kustomize: {}
-      destination:
-        server: https://kubernetes.default.svc
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
-        syncOptions:
-        - CreateNamespace=true
-
-# 💾 STORAGE DOMAIN Application
+# 💾 STORAGE DOMAIN ApplicationSet - Discovers individual components
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
@@ -265,26 +107,51 @@ metadata:
     infrastructure.domain: storage
     team: timour
   annotations:
-    argocd.argoproj.io/sync-wave: "6"
+    argocd.argoproj.io/sync-wave: "3"
 spec:
+  goTemplate: true
   generators:
-  - list:
-      elements:
-      - name: storage
-        path: kubernetes/infrastructure/storage
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/infrastructure/storage/*"
+          # Exclude files and disabled components
+          - path: "kubernetes/infrastructure/storage/kustomization.yaml"
+            exclude: true
+          - path: "kubernetes/infrastructure/storage/application-set.yaml"
+            exclude: true
+          - path: "kubernetes/infrastructure/storage/project.yaml"
+            exclude: true
+          - path: "kubernetes/infrastructure/storage/cloudnative-pg.yaml"
+            exclude: true
+          - path: "kubernetes/infrastructure/storage/proxmox-csi-app.yaml"
+            exclude: true
+          - path: "kubernetes/infrastructure/storage/rook-ceph-app.yaml"
+            exclude: true
+          - path: "kubernetes/infrastructure/storage/rook-ceph-application.yaml"
+            exclude: true
+          - path: "kubernetes/infrastructure/storage/velero-app.yaml"
+            exclude: true
+          # Components disabled in kustomization.yaml
+          - path: "kubernetes/infrastructure/storage/minio"
+            exclude: true
+          - path: "kubernetes/infrastructure/storage/longhorn"
+            exclude: true
+          - path: "kubernetes/infrastructure/storage/velero"
+            exclude: true
   template:
     metadata:
-      name: 'infrastructure-{{name}}'
+      name: 'infrastructure-storage-{{.path.basenameNormalized}}'
       labels:
         app.kubernetes.io/managed-by: argocd
-        infrastructure.domain: '{{name}}'
+        infrastructure.domain: storage
     spec:
       project: infrastructure
       source:
         repoURL: https://github.com/Tim275/talos-homelab
         targetRevision: HEAD
-        path: '{{path}}'
-        # 🎯 TRUE KUSTOMIZE CONTROL - domain kustomization.yaml steuert components
+        path: '{{.path.path}}'
         kustomize: {}
       destination:
         server: https://kubernetes.default.svc
@@ -295,7 +162,7 @@ spec:
         syncOptions:
         - CreateNamespace=true
 
-# 📊 MONITORING DOMAIN Application
+# 📊 MONITORING DOMAIN ApplicationSet - Discovers individual components
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
@@ -307,26 +174,30 @@ metadata:
     infrastructure.domain: monitoring
     team: timour
   annotations:
-    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/sync-wave: "4"
 spec:
+  goTemplate: true
   generators:
-  - list:
-      elements:
-      - name: monitoring
-        path: kubernetes/infrastructure/monitoring
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/infrastructure/monitoring/*"
+          # Exclude files that aren't components
+          - path: "kubernetes/infrastructure/monitoring/kustomization.yaml"
+            exclude: true
   template:
     metadata:
-      name: 'infrastructure-{{name}}'
+      name: 'infrastructure-monitoring-{{.path.basenameNormalized}}'
       labels:
         app.kubernetes.io/managed-by: argocd
-        infrastructure.domain: '{{name}}'
+        infrastructure.domain: monitoring
     spec:
       project: infrastructure
       source:
         repoURL: https://github.com/Tim275/talos-homelab
         targetRevision: HEAD
-        path: '{{path}}'
-        # 🎯 TRUE KUSTOMIZE CONTROL - domain kustomization.yaml steuert components
+        path: '{{.path.path}}'
         kustomize: {}
       destination:
         server: https://kubernetes.default.svc
@@ -337,7 +208,7 @@ spec:
         syncOptions:
         - CreateNamespace=true
 
-# 🔍 OBSERVABILITY DOMAIN Application
+# 🔍 OBSERVABILITY DOMAIN ApplicationSet - Discovers individual components
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
@@ -349,26 +220,36 @@ metadata:
     infrastructure.domain: observability
     team: timour
   annotations:
-    argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/sync-wave: "5"
 spec:
+  goTemplate: true
   generators:
-  - list:
-      elements:
-      - name: observability
-        path: kubernetes/infrastructure/observability
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/infrastructure/observability/*"
+          # Exclude files that aren't components
+          - path: "kubernetes/infrastructure/observability/kustomization.yaml"
+            exclude: true
+          - path: "kubernetes/infrastructure/observability/ns.yaml"
+            exclude: true
+          - path: "kubernetes/infrastructure/observability/project.yaml"
+            exclude: true
+          - path: "kubernetes/infrastructure/observability/application-set.yaml"
+            exclude: true
   template:
     metadata:
-      name: 'infrastructure-{{name}}'
+      name: 'infrastructure-observability-{{.path.basenameNormalized}}'
       labels:
         app.kubernetes.io/managed-by: argocd
-        infrastructure.domain: '{{name}}'
+        infrastructure.domain: observability
     spec:
       project: infrastructure
       source:
         repoURL: https://github.com/Tim275/talos-homelab
         targetRevision: HEAD
-        path: '{{path}}'
-        # 🎯 TRUE KUSTOMIZE CONTROL - domain kustomization.yaml steuert components
+        path: '{{.path.path}}'
         kustomize: {}
       destination:
         server: https://kubernetes.default.svc
