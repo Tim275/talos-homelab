@@ -1,13 +1,17 @@
-# Authelia - OIDC Provider with LLDAP Backend
+# Authelia Enterprise Identity Provider 🏢
 
-Authelia is an open-source authentication and authorization server providing two-factor authentication and single sign-on (SSO) through OIDC.
+## 🚀 Production-Ready OIDC Authentication Service
 
-## 🎯 Purpose
+Authelia provides enterprise-grade authentication and authorization with OpenID Connect (OIDC) Single Sign-On capabilities for the entire homelab infrastructure.
 
-- **OIDC Provider**: OpenID Connect for Kubernetes authentication
-- **2FA/MFA**: Two-factor authentication support
-- **SSO Portal**: Single sign-on for all applications
-- **LLDAP Integration**: Uses LLDAP as user backend
+## 🎯 Current Enterprise Configuration
+
+### ✅ **Implemented Production Features**
+- **LLDAP Integration** - Lightweight LDAP backend for user directory
+- **Redis Session Storage** - High-availability persistent sessions
+- **OIDC Provider** - Enterprise SSO for applications (Grafana ready!)
+- **Self-Signed Certificates** - Secure JWT signing for .local domains
+- **Production Security** - Rootless containers, sealed secrets
 
 ## 📂 Architecture
 
@@ -28,25 +32,37 @@ platform/identity/authelia/
 
 ## 🔧 Configuration
 
-### LLDAP Integration
-- **LDAP URL**: `ldap://lldap-ldap.lldap.svc.cluster.local:389`
-- **Base DN**: `dc=homelab,dc=local`
-- **Admin Bind**: `uid=admin,ou=people,dc=homelab,dc=local`
+### 🏗️ **Enterprise Architecture**
+```
+User → Apps (Grafana, Nextcloud)
+     → Authelia OIDC Provider
+     → LLDAP User Directory
+     → Redis Session Storage
+```
 
-### OIDC Clients
-1. **Kubernetes**: kubectl authentication
-2. **ArgoCD**: GitOps platform SSO
+### 🔧 **Current Production Setup**
+- **Authentication Backend**: LLDAP (ldap://lldap-ldap.lldap.svc.cluster.local:389)
+- **Session Storage**: Redis (redis-authelia.redis-authelia.svc.cluster.local:6379) ✅
+- **Storage Backend**: SQLite (/data/db.sqlite3) - **See TODO below**
+- **Notification**: Filesystem-based (/data/notification.txt) - **See TODO below**
 
-### Security Features
-- **2FA**: TOTP support
-- **Brute-force protection**: 5 attempts, 12h ban
-- **Session management**: 1h expiration, 5m inactivity
-- **SQLite storage**: Encrypted with AES
+### 🚀 **OIDC Clients Configured**
 
-### Resources (Ultra-Minimal)
-- **CPU**: 10m request / 100m limit
-- **RAM**: 32Mi request / 128Mi limit
-- **Storage**: emptyDir (SQLite)
+#### Grafana Monitoring Dashboard
+```yaml
+Client ID: grafana
+Secret: Ta4mFsoBZ1Popbp0r0i6cNML39eB7kvtETl5OgIHWYc=
+Redirect URI: https://grafana.homelab.local/login/generic_oauth
+Authorization Policy: two_factor
+Scopes: openid, profile, groups, email
+```
+
+### 🔐 **Enterprise Security Features**
+- **Redis Sessions**: HA-ready persistent sessions
+- **OIDC Provider**: Industry-standard SSO
+- **2FA**: TOTP support with group policies
+- **Brute-force Protection**: 5 attempts, 12h ban
+- **Access Control**: Group-based (cluster-admins, developers)
 
 ## 🚀 Deployment
 
@@ -143,9 +159,87 @@ graph LR
 4. ⏳ Setup RBAC mappings
 5. ⏳ Test kubectl authentication
 
-## 🔧 Optional Features
+## 📋 **TODO: Production Upgrades**
 
-- **Redis Session Store**: For HA (not needed for homelab)
-- **PostgreSQL**: For persistent storage (SQLite is fine)
-- **SMTP**: Email notifications (file notifier for now)
-- **WebAuthn**: Hardware key support (future)
+### 🐘 **PostgreSQL Storage Backend** (High Priority)
+**Current**: SQLite (development-level)
+**Target**: PostgreSQL (production-level)
+
+```yaml
+# Future configuration
+storage:
+  postgres:
+    host: authelia-postgres.authelia-cnpg.svc.cluster.local
+    port: 5432
+    database: authelia
+    username: authelia
+    password: # From sealed secret
+    ssl_mode: require
+```
+
+**Benefits:**
+- ✅ High Availability (multi-replica support)
+- ✅ Better performance for concurrent sessions
+- ✅ Enterprise backup/restore capabilities
+- ✅ CloudNativePG operator integration
+
+**Implementation:**
+```bash
+# 1. Deploy CloudNativePG cluster for Authelia
+# 2. Migrate SQLite data to PostgreSQL
+# 3. Update Authelia configuration
+# 4. Test failover scenarios
+```
+
+### 📧 **SMTP Notifications** (Medium Priority)
+**Current**: Filesystem notifications (development-level)
+**Target**: SMTP email notifications (production-level)
+
+```yaml
+# Future configuration
+notifier:
+  smtp:
+    host: smtp.homelab.local
+    port: 587
+    username: authelia@homelab.local
+    password: # From sealed secret
+    sender: authelia@homelab.local
+    startup_check_address: admin@homelab.local
+```
+
+**Benefits:**
+- ✅ Real password reset emails
+- ✅ Account verification workflows
+- ✅ Security alert notifications
+- ✅ Professional user experience
+
+### 🔐 **Enhanced Security Features** (Future)
+- **Duo Push Notifications** for 2FA
+- **Hardware Security Keys** (WebAuthn)
+- **Risk-based Authentication**
+- **Session Recording & Auditing**
+
+## 🏗️ **Integration Examples**
+
+### Applications Ready for OIDC SSO:
+- **Grafana** ✅ Configured
+- **Nextcloud** 🔄 Ready to configure
+- **GitLab/Gitea** 🔄 Ready to configure
+- **Portainer** 🔄 Ready to configure
+- **Argo CD** 🔄 Ready to configure
+
+### Group-based Access Control:
+```yaml
+Access Rules:
+- cluster-admins → Full access to all services (2FA required)
+- developers → Read-only access to monitoring (1FA required)
+- guests → Basic access to file storage (1FA required)
+```
+
+## 🚀 **Enterprise Benefits Achieved**
+
+1. **Single Sign-On (SSO)** - One login for all homelab services
+2. **Centralized User Management** - LLDAP directory integration
+3. **High Availability Sessions** - Redis-backed persistence
+4. **Professional Security** - OIDC standards compliance
+5. **Scalable Architecture** - Ready for production workloads

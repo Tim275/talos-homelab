@@ -1,0 +1,63 @@
+# 📊 MONITORING DOMAIN ApplicationSet - INDIVIDUAL APPLICATIONS!
+# Creates separate Applications: infrastructure-prometheus, infrastructure-grafana, infrastructure-jaeger, infrastructure-alertmanager
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure-monitoring
+  namespace: argocd
+  labels:
+    enterprise.tier: infrastructure
+    infrastructure.domain: monitoring
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  generators:
+  - list:
+      elements:
+      # 🎯 ENABLED MONITORING - Individual Applications in ArgoCD UI
+      - name: metrics-server
+        path: kubernetes/infrastructure/monitoring/metrics-server
+      - name: prometheus
+        path: kubernetes/infrastructure/monitoring/prometheus
+      - name: grafana
+        path: kubernetes/infrastructure/monitoring/grafana
+      - name: jaeger
+        path: kubernetes/infrastructure/monitoring/jaeger
+      - name: alertmanager
+        path: kubernetes/infrastructure/monitoring/alertmanager
+      - name: loki
+        path: kubernetes/infrastructure/monitoring/loki
+      - name: opencost
+        path: kubernetes/infrastructure/monitoring/opencost
+      - name: hubble
+        path: kubernetes/infrastructure/monitoring/hubble
+
+      # ❌ DISABLED MONITORING - Comment/Uncomment to control (heavy services disabled for testing)
+      # - name: prometheus-server
+      #   path: kubernetes/infrastructure/monitoring/prometheus-server
+  template:
+    metadata:
+      name: 'infrastructure-{{name}}'
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        infrastructure.domain: '{{name}}'
+    spec:
+      project: infrastructure
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{path}}'
+      destination:
+        server: https://kubernetes.default.svc
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+        - PrunePropagationPolicy=foreground
+        - PruneLast=true
+        - RespectIgnoreDifferences=true
+        - ServerSideApply=true  # CRITICAL for large Prometheus CRDs!

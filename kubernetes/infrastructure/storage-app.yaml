@@ -1,0 +1,60 @@
+# 💾 STORAGE DOMAIN Application - TRUE KUSTOMIZE CONTROL!
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure-storage
+  namespace: argocd
+  labels:
+    enterprise.tier: infrastructure
+    infrastructure.domain: storage
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  generators:
+  - list:
+      elements:
+      # 🎯 ENABLED STORAGE - Individual Applications in ArgoCD UI
+      - name: rook-ceph
+        path: kubernetes/infrastructure/storage/rook-ceph
+      - name: rook-ceph-rgw
+        path: kubernetes/infrastructure/storage/rook-ceph-rgw
+
+      # ✅ MORE ENABLED STORAGE SERVICES
+      - name: velero
+        path: kubernetes/infrastructure/storage/velero
+
+      # ❌ USING CEPH INSTEAD
+      # - name: proxmox-csi          # ❌ Using Rook-Ceph for storage
+      #   path: kubernetes/infrastructure/storage/proxmox-csi
+
+      # ❌ DISABLED PER USER REQUEST
+      # - name: longhorn           # ❌ User requested disabled
+      #   path: kubernetes/infrastructure/storage/longhorn
+      # - name: minio              # ❌ User requested disabled
+      #   path: kubernetes/infrastructure/storage/minio
+  template:
+    metadata:
+      name: 'infrastructure-{{name}}'
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        infrastructure.domain: '{{name}}'
+    spec:
+      project: infrastructure
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{path}}'
+      destination:
+        server: https://kubernetes.default.svc
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+        - PrunePropagationPolicy=foreground
+        - PruneLast=true
+        - RespectIgnoreDifferences=true
+        - ServerSideApply=true

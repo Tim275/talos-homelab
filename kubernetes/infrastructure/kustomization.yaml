@@ -1,98 +1,55 @@
+# 🎯 3-LEVEL CONTROL - MAXIMUM FLEXIBILITY!
+# ==========================================
+# Level 1: DOMAIN CONTROL (this file) - Nice-to-have for extreme scenarios
+# Level 2: SERVICE CONTROL (ApplicationSet lists) - Main day-to-day control
+# Level 3: COMPONENT CONTROL (service/kustomization.yaml) - Fine-grained control
+#
+# RESULT: Every service visible as individual Application in ArgoCD UI!
+
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# 🏢 ENTERPRISE INFRASTRUCTURE - TRUE NETFLIX/GOOGLE/SPOTIFY PATTERN!
-# ====================================================================
-# This structure follows REAL enterprise patterns from:
-# - Netflix: Layered infrastructure with service ownership
-# - Google: Cloud-native platform engineering
-# - Spotify: Golden Path infrastructure templates
-# - Microsoft: Multi-cluster infrastructure as code
-
-# namespace: argocd  # Removed - causes namespace conflicts when used by ArgoCD
-
-# 🏢 Enterprise Infrastructure Labels
 labels:
   - pairs:
       app.kubernetes.io/managed-by: argocd
-      app.kubernetes.io/part-of: timour-homelab
-      app.kubernetes.io/layer: infrastructure
-      enterprise.pattern: applicationset
+      enterprise.tier: infrastructure
+      enterprise.pattern: triple-level-control-2025
       team: timour
 
-# 🚀 ENTERPRISE TIER-0 NON PLUS ULTRA PATTERN!
-# ===============================================
-# TRUE KUSTOMIZE CONTROL - Comment/Uncomment ANYTHING!
-# Netflix/Google/Meta/Amazon LEVEL - GRANULAR WIE FICK!
-#
-# 💡 CONTROL EVERYTHING:
-# - Comment line = Component DISABLED
-# - Uncomment line = Component ENABLED
-# - NO ApplicationSets needed anymore!
-# - PURE KUSTOMIZE POWER!
+# 🌊 Sync Wave 1: Infrastructure Foundation Layer
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "1"
 
 resources:
   # 🏛️ INFRASTRUCTURE PROJECT
   - project.yaml
 
-  # 🎯 INFRASTRUCTURE APPLICATIONSET (MOVED to standalone deployment)
-  # - applications.yaml
+  # 🎛️ LEVEL 1: DOMAIN CONTROL - Comment/Uncomment for extreme scenarios
+  # ====================================================================
 
-  # 🎛️ GITILES PATTERN - TRUE KUSTOMIZE CONTROL!
-  # ===============================================
-  # Comment/Uncomment lines below to enable/disable components
-  # Uncommented = ✅ DEPLOYED | Commented = ❌ DISABLED
+  # ✅ ENABLED DOMAINS (nice-to-have control for testing/migration/debugging)
+  - namespaces-app.yaml       # → namespace-monitoring (CRITICAL - MUST BE FIRST!)
+  - controllers-app.yaml      # → infrastructure-argocd, infrastructure-sealed-secrets, infrastructure-cert-manager
+  - network-app.yaml          # → infrastructure-cilium, infrastructure-cloudflared, infrastructure-gateway
+  - storage-app.yaml          # → infrastructure-rook-ceph, infrastructure-rook-ceph-rgw
+  - monitoring-app.yaml       # → infrastructure-prometheus, infrastructure-grafana, infrastructure-jaeger
+  - observability-app.yaml    # → infrastructure-vector, infrastructure-elasticsearch, infrastructure-kibana
 
-  # Controllers Layer (Wave 2-3)
-  - controllers/argocd/              # ✅ GitOps Platform
-  - controllers/cert-manager/        # ✅ Certificate Management
-  - controllers/sealed-secrets/      # ✅ Secret Management
-  - controllers/argo-rollouts/       # ✅ Progressive Delivery
-  - controllers/cloudnative-pg/      # ✅ PostgreSQL Operator
-  # - controllers/cluster-autoscaler/ # ❌ DISABLED - Not needed
+  # ❌ DISABLED DOMAINS - Uncomment when needed
+  # - backup-app.yaml         # ❌ DISABLED - Backup domain not implemented yet
 
-  # Network Layer (Wave 0-1)
-  - network/cilium/                  # ✅ CNI & Network Policies
-  # - network/istio-base/            # ❌ DISABLED - Use Sail Operator
-  # - network/istio-cni/             # ❌ DISABLED - Use Sail Operator
-  # - network/istio-control-plane/   # ❌ DISABLED - Use Sail Operator
-  # - network/istio-gateway/         # ❌ DISABLED - Use Sail Operator
-  - network/cloudflared/             # ✅ Tunnel
-  # - network/metallb/               # ❌ DISABLED - Use Cilium LB
-
-  # Storage Layer (Wave 1)
-  - storage/rook-ceph/               # ✅ Distributed Storage
-  - storage/proxmox-csi/             # ✅ VM Storage Integration
-  - storage/velero/                  # ✅ Backup & Disaster Recovery
-  # - storage/longhorn/              # ❌ DISABLED - Use Rook Ceph
-  # - storage/minio/                 # ❌ DISABLED - Use Rook RGW
-
-  # Monitoring Layer (Wave 5)
-  - monitoring/prometheus/           # ✅ Metrics Collection
-  - monitoring/grafana/              # ✅ Dashboards
-  - monitoring/alertmanager/         # ✅ Alert Routing
-  - monitoring/jaeger/               # ✅ Distributed Tracing
-  - monitoring/metrics-server/       # ✅ HPA Metrics
-  - monitoring/opencost/             # ✅ Cost Analysis
-  # - monitoring/loki/               # ❌ DISABLED - Use Vector+ES
-  # - monitoring/hubble/             # ❌ DISABLED - Built into Cilium
-
-  # Observability Layer (Wave 5-6)
-  - observability/vector/            # ✅ Log Collection & Processing
-  - observability/elasticsearch/     # ✅ Search & Analytics
-  - observability/kibana/            # ✅ Log Visualization
-  # - observability/fluent-bit/      # ❌ DISABLED - Use Vector
-  # - observability/fluentd/         # ❌ DISABLED - Use Vector
-  # - observability/opentelemetry/   # ❌ DISABLED - Use Jaeger directly
-
-# 🎯 GRANULAR COMPONENT CONTROL via Strategic Merge Patches
-# ==========================================================
-# This is a cleaner way but ApplicationSets don't support strategic merge well
-# So we need to use JSON patches or better: separate Application files!
-
-# 📊 Enterprise Annotations
-commonAnnotations:
-  argocd.argoproj.io/sync-wave: "0"
-  enterprise.architecture: "true"
-  gitops.pattern: "applicationset-layers"
-  infrastructure.scalability: "10000+"
+# 🎯 3-LEVEL CONTROL EXAMPLES:
+#
+# 🔧 NORMAL DAY-TO-DAY USE (Level 2 - Service Control):
+# - Want to disable prometheus? → Comment it in monitoring-app.yaml
+# - Want to disable vector? → Comment it in observability-app.yaml
+# - Want to disable jaeger? → Comment it in monitoring-app.yaml
+#
+# 🛠️ FINE-GRAINED CONTROL (Level 3 - Component Control):
+# - Want to disable prometheus alerting? → Comment alerting-rules.yaml in prometheus/kustomization.yaml
+# - Want to disable grafana dashboards? → Comment dashboards/ in grafana/kustomization.yaml
+#
+# 🚨 EXTREME SCENARIOS (Level 1 - Domain Control):
+# - Testing: Comment monitoring-app.yaml → ALL monitoring services disabled
+# - Migration: Comment storage-app.yaml → ALL storage services disabled
+# - Debugging: Comment observability-app.yaml → ALL observability services disabled

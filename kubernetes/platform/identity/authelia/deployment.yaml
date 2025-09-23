@@ -61,19 +61,42 @@ spec:
                   name: authelia-secrets
                   key: storage-encryption-key
 
-            # OIDC Secrets
+            # OIDC Provider Configuration
             - name: AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET
               valueFrom:
                 secretKeyRef:
                   name: authelia-secrets
                   key: oidc-hmac-secret
+            - name: AUTHELIA_IDENTITY_PROVIDERS_OIDC_ISSUER_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: authelia-jwk
+                  key: tls.key
 
             # JWT Secret
-            - name: AUTHELIA_JWT_SECRET
+            - name: AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: authelia-secrets
                   key: jwt-secret
+
+            # Redis Session Storage
+            - name: AUTHELIA_SESSION_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-authelia-secrets
+                  key: password
+
+            # Server configuration override - fix Kubernetes env var conflicts
+            - name: AUTHELIA_SERVER_ADDRESS
+              value: "tcp://0.0.0.0:9091"
+            # Explicitly override all problematic Kubernetes env vars
+            - name: AUTHELIA_PORT
+              value: ""
+            - name: AUTHELIA_SERVER_PORT
+              value: ""
+            - name: AUTHELIA_SERVER_HOST
+              value: ""
 
           volumeMounts:
             - name: config
@@ -81,9 +104,10 @@ spec:
               readOnly: true
             - name: data
               mountPath: /data
-            - name: jwk
-              mountPath: /secrets/authelia-jwk
-              readOnly: true
+            # JWK volume disabled for basic auth mode
+            # - name: jwk
+            #   mountPath: /secrets/authelia-jwk
+            #   readOnly: true
 
           resources:
             requests:
@@ -98,7 +122,7 @@ spec:
             capabilities:
               drop:
                 - ALL
-            readOnlyRootFilesystem: true
+            readOnlyRootFilesystem: false  # Temporarily disabled for healthcheck file
 
           livenessProbe:
             httpGet:
@@ -124,6 +148,7 @@ spec:
             name: authelia-config
         - name: data
           emptyDir: {}  # SQLite storage, can be PVC later
-        - name: jwk
-          secret:
-            secretName: authelia-jwk
+        # JWK volume disabled for basic auth mode
+        # - name: jwk
+        #   secret:
+        #     secretName: authelia-jwk
