@@ -1,55 +1,181 @@
+# 🚀 2025 ENTERPRISE HYBRID - Apps ApplicationSets for Component Visibility
+# ==========================================================================
+# LEVEL 2: ApplicationSets discover app components for ArgoCD UI visibility
+# LEVEL 3: Overlay kustomization.yaml files provide TRUE deployment control
+#
+# Benefits:
+# - Clean ArgoCD UI with meaningful application components
+# - Perfect for debugging individual applications across environments
+# - Teams can see exactly what apps are deployed in each environment
+# - Kustomize overlays maintain comment/uncomment control
+
+# 🚀 DEV ENVIRONMENT ApplicationSet - Discovers individual apps
+---
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: applications
+  name: apps-dev
   namespace: argocd
   labels:
-    enterprise.tier: applications
+    enterprise.tier: apps
+    apps.environment: dev
     team: timour
   annotations:
-    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/sync-wave: "25"
 spec:
   goTemplate: true
   generators:
-    # 🎯 DUMMY: ApplicationSet does nothing, Kustomize controls everything
-    - list:
-        elements: []
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/apps/overlays/dev/*"
+          # Exclude files that aren't components
+          - path: "kubernetes/apps/overlays/dev/kustomization.yaml"
+            exclude: true
   template:
     metadata:
-      name: '{{.path.basenameNormalized}}-{{index .path.segments 3}}'
+      name: 'apps-dev-{{.path.basenameNormalized}}'
       labels:
-        app.kubernetes.io/name: '{{.path.basenameNormalized}}'
-        app.kubernetes.io/environment: '{{index .path.segments 3}}'
         app.kubernetes.io/managed-by: argocd
-        # TIER 0 ENTERPRISE: Service Ownership Pattern
+        apps.environment: dev
+        app.kubernetes.io/name: '{{.path.basenameNormalized}}'
+        # Enterprise Service Ownership
+        team: timour
+        owner: timour
+        service.tier: "application"
+        service.lifecycle: "development"
+      annotations:
+        owner.email: "timour@stonegarden.dev"
+        service.environment: "dev"
+    spec:
+      project: apps
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path.path}}'
+        kustomize: {}
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.path.basenameNormalized}}-dev'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+
+# 🏭 PROD ENVIRONMENT ApplicationSet - Discovers individual apps
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: apps-prod
+  namespace: argocd
+  labels:
+    enterprise.tier: apps
+    apps.environment: prod
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "26"
+spec:
+  goTemplate: true
+  generators:
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/apps/overlays/prod/*"
+          # Exclude files that aren't components
+          - path: "kubernetes/apps/overlays/prod/kustomization.yaml"
+            exclude: true
+  template:
+    metadata:
+      name: 'apps-prod-{{.path.basenameNormalized}}'
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        apps.environment: prod
+        app.kubernetes.io/name: '{{.path.basenameNormalized}}'
+        # Enterprise Service Ownership
         team: timour
         owner: timour
         service.tier: "application"
         service.lifecycle: "production"
         service.support: "24x7"
-        cost.center: "engineering"
-        business.unit: "platform"
       annotations:
-        # Service Ownership Metadata
         owner.email: "timour@stonegarden.dev"
-        owner.slack: "#timour-team"
+        service.environment: "prod"
         service.runbook: "https://runbooks.stonegarden.dev/{{.path.basenameNormalized}}"
         service.dashboard: "https://grafana.stonegarden.dev/d/{{.path.basenameNormalized}}"
-        service.oncall: "https://pagerduty.com/{{.path.basenameNormalized}}"
     spec:
-      project: default
+      project: apps
       source:
         repoURL: https://github.com/Tim275/talos-homelab
         targetRevision: HEAD
         path: '{{.path.path}}'
-        # 🎯 TRUE KUSTOMIZE CONTROL - ApplicationSet discovers, Kustomize controls!
         kustomize: {}
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{.path.basenameNormalized}}-{{index .path.segments 3}}'
+        namespace: '{{.path.basenameNormalized}}-prod'
       syncPolicy:
         automated:
-          selfHeal: true
           prune: true
+          selfHeal: true
         syncOptions:
-          - CreateNamespace=true
+        - CreateNamespace=true
+
+# 🧪 STAGING ENVIRONMENT ApplicationSet - Discovers individual apps
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: apps-staging
+  namespace: argocd
+  labels:
+    enterprise.tier: apps
+    apps.environment: staging
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "25"
+spec:
+  goTemplate: true
+  generators:
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/apps/overlays/staging/*"
+          # Exclude files that aren't components
+          - path: "kubernetes/apps/overlays/staging/kustomization.yaml"
+            exclude: true
+  template:
+    metadata:
+      name: 'apps-staging-{{.path.basenameNormalized}}'
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        apps.environment: staging
+        app.kubernetes.io/name: '{{.path.basenameNormalized}}'
+        # Enterprise Service Ownership
+        team: timour
+        owner: timour
+        service.tier: "application"
+        service.lifecycle: "staging"
+      annotations:
+        owner.email: "timour@stonegarden.dev"
+        service.environment: "staging"
+    spec:
+      project: apps
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path.path}}'
+        kustomize: {}
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.path.basenameNormalized}}-staging'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
