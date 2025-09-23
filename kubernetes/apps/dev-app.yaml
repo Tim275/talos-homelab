@@ -1,0 +1,56 @@
+# 🔧 DEVELOPMENT ENVIRONMENT ApplicationSet - INDIVIDUAL APPLICATIONS!
+# Creates separate Applications: apps-dev-audiobookshelf, apps-dev-n8n, apps-dev-kafka-demo
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: apps-dev
+  namespace: argocd
+  labels:
+    enterprise.tier: apps
+    apps.environment: dev
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "26"
+spec:
+  generators:
+  - list:
+      elements:
+      # 🎯 ENABLED DEV APPS - Individual Applications in ArgoCD UI
+      - name: audiobookshelf
+        path: kubernetes/apps/overlays/dev/audiobookshelf
+      - name: n8n
+        path: kubernetes/apps/overlays/dev/n8n
+      - name: kafka-demo
+        path: kubernetes/apps/overlays/dev/kafka-demo
+
+      # ❌ DISABLED DEV APPS - Comment/Uncomment to control
+      # - name: quantlab
+      #   path: kubernetes/apps/overlays/dev/quantlab
+  template:
+    metadata:
+      name: 'apps-dev-{{name}}'
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        apps.environment: dev
+        apps.name: '{{name}}'
+    spec:
+      project: apps
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{path}}'
+        kustomize:
+          buildOptions: --enable-helm
+      destination:
+        server: https://kubernetes.default.svc
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+        - PrunePropagationPolicy=foreground
+        - PruneLast=true
+        - RespectIgnoreDifferences=true
+        - ServerSideApply=true
