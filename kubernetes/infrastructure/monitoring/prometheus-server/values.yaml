@@ -1,0 +1,76 @@
+# Prometheus Server Configuration (Standalone Microservice)
+# Clean separation from AlertManager and Grafana
+
+server:
+  persistentVolume:
+    enabled: true
+    size: 100Gi
+    storageClass: rook-ceph-block
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+  # Service configuration for other microservices to connect
+  service:
+    type: ClusterIP
+    port: 80
+
+# Disable components that are handled by separate microservices
+alertmanager:
+  enabled: false
+
+prometheus-pushgateway:
+  enabled: true
+
+prometheus-node-exporter:
+  enabled: true
+  # Required for Talos Linux node metrics
+  hostNetwork: true
+  hostPID: true
+
+kube-state-metrics:
+  enabled: true
+
+# Server-only configuration (no AlertManager)
+serverFiles:
+  prometheus.yml:
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    rule_files:
+      - "/etc/prometheus/rules/*.yml"
+
+    # AlertManager handled by separate microservice
+    alerting:
+      alertmanagers:
+      - static_configs:
+        - targets:
+          - alertmanager.monitoring.svc.cluster.local:9093
+
+    scrape_configs:
+    - job_name: 'prometheus'
+      static_configs:
+      - targets: ['localhost:9090']
+
+    - job_name: 'kubernetes-nodes'
+      kubernetes_sd_configs:
+      - role: node
+      relabel_configs:
+      - source_labels: [__address__]
+        regex: '(.*):10250'
+        target_label: __address__
+        replacement: '${1}:9100'
+
+    - job_name: 'kubernetes-pods'
+      kubernetes_sd_configs:
+      - role: pod
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
