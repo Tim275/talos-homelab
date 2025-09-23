@@ -1,4 +1,15 @@
-# 🗄️ DATA DOMAIN ApplicationSet
+# 🚀 2025 ENTERPRISE HYBRID - Platform ApplicationSets for Component Visibility
+# ===========================================================================
+# LEVEL 2: ApplicationSets discover platform components for ArgoCD UI visibility
+# LEVEL 3: Domain kustomization.yaml files provide TRUE deployment control
+#
+# Benefits:
+# - Clean ArgoCD UI with meaningful platform component applications
+# - Perfect for debugging individual platform services
+# - Teams can see exactly what's deployed in each platform domain
+# - Kustomize files maintain comment/uncomment control
+
+# 💾 DATA DOMAIN ApplicationSet - Discovers individual components
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
@@ -10,7 +21,7 @@ metadata:
     platform.domain: data
     team: timour
   annotations:
-    argocd.argoproj.io/sync-wave: "15"
+    argocd.argoproj.io/sync-wave: "16"
 spec:
   goTemplate: true
   generators:
@@ -19,6 +30,9 @@ spec:
         revision: HEAD
         directories:
           - path: "kubernetes/platform/data/*"
+          # Exclude files that aren't components
+          - path: "kubernetes/platform/data/kustomization.yaml"
+            exclude: true
   template:
     metadata:
       name: 'platform-data-{{.path.basenameNormalized}}'
@@ -41,7 +55,53 @@ spec:
         syncOptions:
         - CreateNamespace=true
 
-# 📨 MESSAGING DOMAIN ApplicationSet
+# 🔐 IDENTITY DOMAIN ApplicationSet - Discovers individual components
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform-identity
+  namespace: argocd
+  labels:
+    enterprise.tier: platform
+    platform.domain: identity
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+spec:
+  goTemplate: true
+  generators:
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: "kubernetes/platform/identity/*"
+          # Exclude files that aren't components
+          - path: "kubernetes/platform/identity/kustomization.yaml"
+            exclude: true
+  template:
+    metadata:
+      name: 'platform-identity-{{.path.basenameNormalized}}'
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        platform.domain: identity
+    spec:
+      project: platform
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path.path}}'
+        kustomize: {}
+      destination:
+        server: https://kubernetes.default.svc
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+
+# 📨 MESSAGING DOMAIN ApplicationSet - Discovers individual components
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
@@ -53,7 +113,7 @@ metadata:
     platform.domain: messaging
     team: timour
   annotations:
-    argocd.argoproj.io/sync-wave: "16"
+    argocd.argoproj.io/sync-wave: "18"
 spec:
   goTemplate: true
   generators:
@@ -62,6 +122,9 @@ spec:
         revision: HEAD
         directories:
           - path: "kubernetes/platform/messaging/*"
+          # Exclude files that aren't components
+          - path: "kubernetes/platform/messaging/kustomization.yaml"
+            exclude: true
   template:
     metadata:
       name: 'platform-messaging-{{.path.basenameNormalized}}'
@@ -84,7 +147,7 @@ spec:
         syncOptions:
         - CreateNamespace=true
 
-# 👨‍💻 DEVELOPER DOMAIN ApplicationSet
+# 👨‍💻 DEVELOPER DOMAIN ApplicationSet - Discovers individual components
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
@@ -105,6 +168,9 @@ spec:
         revision: HEAD
         directories:
           - path: "kubernetes/platform/developer/*"
+          # Exclude files that aren't components
+          - path: "kubernetes/platform/developer/kustomization.yaml"
+            exclude: true
   template:
     metadata:
       name: 'platform-developer-{{.path.basenameNormalized}}'
