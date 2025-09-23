@@ -8,8 +8,13 @@
 # - Perfect for debugging individual applications across environments
 # - Teams can see exactly what apps are deployed in each environment
 # - Kustomize overlays maintain comment/uncomment control
+#
+# 🏢 ENTERPRISE SYNC POLICIES:
+# - DEV: Auto-sync enabled (fast iteration, 5 retries)
+# - STAGING: Auto-sync enabled (pre-prod testing, 3 retries)
+# - PROD: Manual sync only (enterprise control, no auto-deployment)
 
-# 🚀 DEV ENVIRONMENT ApplicationSet - Discovers individual apps
+# 🚀 DEV ENVIRONMENT ApplicationSet - Fast iteration, auto-sync enabled
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
@@ -64,8 +69,14 @@ spec:
           selfHeal: true
         syncOptions:
         - CreateNamespace=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
 
-# 🏭 PROD ENVIRONMENT ApplicationSet - Discovers individual apps
+# 🏭 PROD ENVIRONMENT ApplicationSet - Manual sync only, enterprise control
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
@@ -118,13 +129,17 @@ spec:
         server: https://kubernetes.default.svc
         namespace: '{{.path.basenameNormalized}}-prod'
       syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
+        # 🏭 PROD: MANUAL SYNC ONLY - Enterprise Best Practice
         syncOptions:
         - CreateNamespace=true
+        retry:
+          limit: 3
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 5m
 
-# 🧪 STAGING ENVIRONMENT ApplicationSet - Discovers individual apps
+# 🧪 STAGING ENVIRONMENT ApplicationSet - Pre-prod testing, auto-sync enabled
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
@@ -179,3 +194,9 @@ spec:
           selfHeal: true
         syncOptions:
         - CreateNamespace=true
+        retry:
+          limit: 3
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
