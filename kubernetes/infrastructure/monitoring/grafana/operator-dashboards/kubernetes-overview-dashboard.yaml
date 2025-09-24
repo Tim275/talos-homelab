@@ -1,0 +1,263 @@
+---
+# 🎯 KUBERNETES CLUSTER OVERVIEW DASHBOARD - Grafana Operator CRD
+# Complete cluster health and resource monitoring
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: kubernetes-cluster-overview
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: grafana-dashboard-kubernetes-overview
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/part-of: grafana-operator
+    team: platform
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  folder: "Kubernetes"
+  datasources:
+    - inputName: "DS_PROMETHEUS"
+      datasourceName: "Prometheus"
+  json: |
+    {
+      "id": null,
+      "title": "Kubernetes Cluster Overview",
+      "tags": ["kubernetes", "cluster", "overview", "talos"],
+      "style": "dark",
+      "timezone": "browser",
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "title": "Cluster Info",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
+          "targets": [
+            {"expr": "kubernetes_build_info", "refId": "Version", "legendFormat": "K8s {{git_version}}"},
+            {"expr": "count(up{job=\"kubernetes-nodes\"} == 1)", "refId": "Nodes", "legendFormat": "{{count}} Nodes"},
+            {"expr": "count(kube_namespace_info)", "refId": "Namespaces", "legendFormat": "{{count}} Namespaces"},
+            {"expr": "count(kube_pod_info)", "refId": "Pods", "legendFormat": "{{count}} Pods"}
+          ]
+        },
+        {
+          "id": 2,
+          "title": "Node Status",
+          "type": "table",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "targets": [
+            {
+              "expr": "kube_node_info",
+              "refId": "A",
+              "format": "table",
+              "instant": true
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true},
+                "renameByName": {
+                  "node": "Node",
+                  "kernel_version": "Kernel",
+                  "os_image": "OS",
+                  "container_runtime_version": "Runtime"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "title": "Resource Usage",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "targets": [
+            {
+              "expr": "(1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))) * 100",
+              "refId": "CPU",
+              "legendFormat": "CPU Usage %"
+            },
+            {
+              "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+              "refId": "Memory",
+              "legendFormat": "Memory Usage %"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100,
+              "color": {"mode": "palette-classic"}
+            }
+          }
+        },
+        {
+          "id": 4,
+          "title": "Pod Status",
+          "type": "piechart",
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 12},
+          "targets": [
+            {
+              "expr": "count by (phase) (kube_pod_status_phase)",
+              "refId": "A",
+              "legendFormat": "{{phase}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "mappings": [
+                {"options": {"Running": {"color": "green"}}, "type": "value"},
+                {"options": {"Pending": {"color": "yellow"}}, "type": "value"},
+                {"options": {"Failed": {"color": "red"}}, "type": "value"},
+                {"options": {"Succeeded": {"color": "blue"}}, "type": "value"}
+              ]
+            }
+          }
+        },
+        {
+          "id": 5,
+          "title": "Namespace Resource Quotas",
+          "type": "table",
+          "gridPos": {"h": 8, "w": 16, "x": 8, "y": 12},
+          "targets": [
+            {
+              "expr": "kube_resourcequota{type=\"hard\"}",
+              "refId": "A",
+              "format": "table",
+              "instant": true
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true},
+                "renameByName": {
+                  "namespace": "Namespace",
+                  "resource": "Resource",
+                  "Value": "Quota"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "title": "Network I/O",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+          "targets": [
+            {
+              "expr": "rate(node_network_receive_bytes_total[5m]) * 8",
+              "refId": "RX",
+              "legendFormat": "{{device}} RX"
+            },
+            {
+              "expr": "rate(node_network_transmit_bytes_total[5m]) * 8",
+              "refId": "TX",
+              "legendFormat": "{{device}} TX"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bps",
+              "color": {"mode": "palette-classic"}
+            }
+          }
+        },
+        {
+          "id": 7,
+          "title": "Disk I/O",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+          "targets": [
+            {
+              "expr": "rate(node_disk_read_bytes_total[5m])",
+              "refId": "Read",
+              "legendFormat": "{{device}} Read"
+            },
+            {
+              "expr": "rate(node_disk_written_bytes_total[5m])",
+              "refId": "Write",
+              "legendFormat": "{{device}} Write"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "Bps",
+              "color": {"mode": "palette-classic"}
+            }
+          }
+        },
+        {
+          "id": 8,
+          "title": "Top CPU Consuming Pods",
+          "type": "table",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
+          "targets": [
+            {
+              "expr": "topk(10, rate(container_cpu_usage_seconds_total{container!=\"POD\",container!=\"\"}[5m]))",
+              "refId": "A",
+              "format": "table",
+              "instant": true
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true, "__name__": true, "job": true, "instance": true,
+                  "id": true, "image": true, "name": true
+                },
+                "renameByName": {
+                  "pod": "Pod",
+                  "namespace": "Namespace",
+                  "container": "Container",
+                  "Value": "CPU Usage"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "title": "Top Memory Consuming Pods",
+          "type": "table",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
+          "targets": [
+            {
+              "expr": "topk(10, container_memory_working_set_bytes{container!=\"POD\",container!=\"\"})",
+              "refId": "A",
+              "format": "table",
+              "instant": true
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true, "__name__": true, "job": true, "instance": true,
+                  "id": true, "image": true, "name": true
+                },
+                "renameByName": {
+                  "pod": "Pod",
+                  "namespace": "Namespace",
+                  "container": "Container",
+                  "Value": "Memory Usage"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
