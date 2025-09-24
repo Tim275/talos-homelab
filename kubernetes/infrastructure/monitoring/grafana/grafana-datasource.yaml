@@ -1,0 +1,45 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDataSource
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: datasource
+    app.kubernetes.io/part-of: monitoring-stack
+    team: platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "7"
+spec:
+  instanceSelector:
+    matchLabels:
+      app: grafana  # ⚠️ Must match our Grafana instance
+  valuesFrom:
+  - targetPath: "url"
+    valueFrom:
+      configMapKeyRef:
+        name: prometheus-datasource-config
+        key: url
+  datasource:
+    name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus-operated.monitoring.svc.cluster.local:9090
+    basicAuth: false
+    isDefault: true
+    version: 1
+    editable: false
+    jsonData:
+      httpMethod: POST
+      timeInterval: "30s"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-datasource-config
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus-datasource
+    team: platform
+data:
+  url: "http://prometheus-operated.monitoring.svc.cluster.local:9090"
