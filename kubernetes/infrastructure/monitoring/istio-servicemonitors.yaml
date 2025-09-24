@@ -1,0 +1,102 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: istiod
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: istiod
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: istio-service-mesh
+    team: platform
+spec:
+  namespaceSelector:
+    matchNames:
+    - istio-system
+  selector:
+    matchLabels:
+      app: istiod
+  endpoints:
+  - port: http-monitoring
+    path: /stats/prometheus
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: true
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: istio-proxies
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: istio-proxy
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: istio-service-mesh
+    team: platform
+spec:
+  namespaceSelector:
+    any: true
+  selector:
+    matchExpressions:
+    - key: service.istio.io/canonical-name
+      operator: Exists
+  endpoints:
+  - port: http-envoy-prom
+    path: /stats/prometheus
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: true
+    relabelings:
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      targetLabel: pod_name
+    - sourceLabels: [__meta_kubernetes_namespace]
+      targetLabel: namespace
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: istio-gateway
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: istio-gateway
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: istio-service-mesh
+    team: platform
+spec:
+  namespaceSelector:
+    matchNames:
+    - istio-ingress
+  selector:
+    matchLabels:
+      app: istio-gateway
+  endpoints:
+  - port: status-port
+    path: /stats/prometheus
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: true
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: sail-operator
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: sail-operator
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: istio-service-mesh
+    team: platform
+spec:
+  namespaceSelector:
+    matchNames:
+    - istio-system
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sail-operator
+  endpoints:
+  - port: https
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    scheme: https
+    tlsConfig:
+      insecureSkipVerify: true

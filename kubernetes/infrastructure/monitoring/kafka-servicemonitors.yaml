@@ -1,0 +1,98 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kafka-brokers
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: kafka-platform
+    team: platform
+spec:
+  namespaceSelector:
+    matchNames:
+    - kafka
+  selector:
+    matchLabels:
+      strimzi.io/cluster: my-cluster
+      strimzi.io/kind: Kafka
+      strimzi.io/name: my-cluster-kafka
+  endpoints:
+  - port: tcp-prometheus
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: true
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kafka-exporter
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: kafka-exporter
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: kafka-platform
+    team: platform
+spec:
+  namespaceSelector:
+    matchNames:
+    - kafka
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kafka-exporter
+  endpoints:
+  - port: tcp-prometheus
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: true
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: strimzi-cluster-operator
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: strimzi-cluster-operator
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: kafka-platform
+    team: platform
+spec:
+  namespaceSelector:
+    matchNames:
+    - kafka
+  selector:
+    matchLabels:
+      name: strimzi-cluster-operator
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: true
+---
+# For the Kafka Exporter pod (since there's no service, we'll use a PodMonitor)
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: kafka-exporter-pods
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: kafka-exporter
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: kafka-platform
+    team: platform
+spec:
+  namespaceSelector:
+    matchNames:
+    - kafka
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kafka-exporter
+  podMetricsEndpoints:
+  - port: tcp-prometheus
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: true

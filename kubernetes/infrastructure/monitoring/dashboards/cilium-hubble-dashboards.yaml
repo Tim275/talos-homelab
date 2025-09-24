@@ -1,0 +1,343 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cilium-hubble-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/component: monitoring-dashboards
+    app.kubernetes.io/part-of: monitoring-stack
+data:
+  cilium-hubble.json: |
+    {
+      "dashboard": {
+        "id": 16613,
+        "uid": "cilium-hubble",
+        "title": "Cilium v1.12 Hubble Metrics",
+        "tags": ["cilium", "hubble", "network", "security", "observability"],
+        "style": "dark",
+        "timezone": "browser",
+        "refresh": "30s",
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "timepicker": {},
+        "templating": {
+          "list": [
+            {
+              "name": "datasource",
+              "type": "datasource",
+              "query": "prometheus",
+              "current": {
+                "value": "Prometheus",
+                "text": "Prometheus"
+              }
+            },
+            {
+              "name": "namespace",
+              "type": "query",
+              "query": "label_values(hubble_flows_total, source_namespace)",
+              "current": {
+                "value": "All",
+                "text": "All"
+              },
+              "includeAll": true,
+              "allValue": ".*"
+            }
+          ]
+        },
+        "panels": [
+          {
+            "id": 1,
+            "title": "Network Flow Rate",
+            "type": "timeseries",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+            "targets": [
+              {
+                "expr": "sum(rate(hubble_flows_total[5m]))",
+                "legendFormat": "Total Flow Rate",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "ops"
+              }
+            }
+          },
+          {
+            "id": 2,
+            "title": "Dropped Flows",
+            "type": "timeseries",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+            "targets": [
+              {
+                "expr": "sum(rate(hubble_drop_total[5m]))",
+                "legendFormat": "Dropped Flows",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "ops",
+                "color": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            }
+          },
+          {
+            "id": 3,
+            "title": "Top Talkers by Source",
+            "type": "table",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+            "targets": [
+              {
+                "expr": "topk(10, sum by (source_pod, source_namespace) (rate(hubble_flows_total[5m])))",
+                "format": "table",
+                "instant": true,
+                "refId": "A"
+              }
+            ],
+            "transformations": [
+              {
+                "id": "organize",
+                "options": {
+                  "excludeByName": {
+                    "Time": true,
+                    "__name__": true
+                  },
+                  "renameByName": {
+                    "source_pod": "Pod",
+                    "source_namespace": "Namespace",
+                    "Value": "Flow Rate"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": 4,
+            "title": "Network Policy Verdicts",
+            "type": "piechart",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+            "targets": [
+              {
+                "expr": "sum by (verdict) (rate(hubble_flows_total[5m]))",
+                "legendFormat": "{{verdict}}",
+                "refId": "A"
+              }
+            ],
+            "options": {
+              "legend": {
+                "displayMode": "table",
+                "placement": "right",
+                "values": ["value", "percent"]
+              }
+            }
+          },
+          {
+            "id": 5,
+            "title": "HTTP Response Codes",
+            "type": "timeseries",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+            "targets": [
+              {
+                "expr": "sum by (status) (rate(hubble_http_requests_total[5m]))",
+                "legendFormat": "HTTP {{status}}",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "ops"
+              }
+            }
+          },
+          {
+            "id": 6,
+            "title": "TCP Connection State",
+            "type": "stat",
+            "gridPos": {"h": 4, "w": 6, "x": 12, "y": 16},
+            "targets": [
+              {
+                "expr": "sum(hubble_tcp_flags_total{flag=\"SYN\"})",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "displayName": "TCP SYN Connections"
+              }
+            }
+          },
+          {
+            "id": 7,
+            "title": "DNS Queries",
+            "type": "stat",
+            "gridPos": {"h": 4, "w": 6, "x": 18, "y": 16},
+            "targets": [
+              {
+                "expr": "sum(rate(hubble_dns_queries_total[5m]))",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "displayName": "DNS Query Rate",
+                "unit": "ops"
+              }
+            }
+          },
+          {
+            "id": 8,
+            "title": "Network Flows by Protocol",
+            "type": "timeseries",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+            "targets": [
+              {
+                "expr": "sum by (l4_protocol) (rate(hubble_flows_total[5m]))",
+                "legendFormat": "{{l4_protocol}}",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "ops"
+              }
+            }
+          },
+          {
+            "id": 9,
+            "title": "Cilium Agent Status",
+            "type": "stat",
+            "gridPos": {"h": 4, "w": 6, "x": 0, "y": 20},
+            "targets": [
+              {
+                "expr": "cilium_agent_api_process_time_seconds_total",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "displayName": "Agent Uptime",
+                "unit": "s"
+              }
+            }
+          },
+          {
+            "id": 10,
+            "title": "Endpoints Managed",
+            "type": "stat",
+            "gridPos": {"h": 4, "w": 6, "x": 6, "y": 20},
+            "targets": [
+              {
+                "expr": "cilium_endpoint_count",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "displayName": "Total Endpoints"
+              }
+            }
+          }
+        ],
+        "version": 1
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cilium-agent-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/component: monitoring-dashboards
+    app.kubernetes.io/part-of: monitoring-stack
+data:
+  cilium-agent.json: |
+    {
+      "dashboard": {
+        "id": 15513,
+        "uid": "cilium-agent",
+        "title": "Cilium Agent Metrics",
+        "tags": ["cilium", "agent", "cni", "networking"],
+        "style": "dark",
+        "timezone": "browser",
+        "refresh": "30s",
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "panels": [
+          {
+            "id": 1,
+            "title": "Cilium Agent Status",
+            "type": "stat",
+            "gridPos": {"h": 4, "w": 8, "x": 0, "y": 0},
+            "targets": [
+              {
+                "expr": "up{job=\"cilium-agent\"}",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "mappings": [
+                  {"options": {"0": {"text": "DOWN", "color": "red"}}, "type": "value"},
+                  {"options": {"1": {"text": "UP", "color": "green"}}, "type": "value"}
+                ]
+              }
+            },
+            "options": {
+              "colorMode": "background"
+            }
+          },
+          {
+            "id": 2,
+            "title": "BPF Map Operations",
+            "type": "timeseries",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+            "targets": [
+              {
+                "expr": "rate(cilium_bpf_map_ops_total[5m])",
+                "legendFormat": "{{map_name}} - {{operation}}",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "ops"
+              }
+            }
+          },
+          {
+            "id": 3,
+            "title": "Datapath Validation Errors",
+            "type": "timeseries",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+            "targets": [
+              {
+                "expr": "rate(cilium_datapath_validation_errors_total[5m])",
+                "legendFormat": "Validation Errors",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "ops",
+                "color": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            }
+          }
+        ],
+        "version": 1
+      }
+    }
