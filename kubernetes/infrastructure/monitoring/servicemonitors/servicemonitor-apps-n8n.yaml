@@ -1,0 +1,119 @@
+# 🚀 NASA-LEVEL N8N APPLICATION MONITORING
+# ==========================================
+# Comprehensive monitoring for N8N workflow automation applications
+# Enterprise business workflow observability: Production + Development environments
+#
+
+# 🔄 N8N PRODUCTION APPLICATION MONITORING
+# =======================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: n8n-prod-app
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: n8n-prod
+    app.kubernetes.io/component: workflow-engine
+    app.kubernetes.io/part-of: apps-automation
+    release: prometheus-operator  # NASA-level discovery
+spec:
+  namespaceSelector:
+    matchNames:
+      - n8n-prod
+  selector:
+    matchLabels:
+      app: n8n
+  endpoints:
+    - port: http
+      interval: 30s
+      path: /metrics
+      scheme: http
+      scrapeTimeout: 10s
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: 'n8n_.*|http_.*|nodejs_.*|process_.*'
+          action: keep
+        # Keep workflow execution metrics
+        - sourceLabels: [__name__]
+          regex: '.*(workflow|execution|node|trigger|webhook).*'
+          action: keep
+        # Keep business logic metrics
+        - sourceLabels: [__name__]
+          regex: '.*(queue|job|task|error|success).*'
+          action: keep
+
+---
+# 🔄 N8N DEVELOPMENT APPLICATION MONITORING
+# ========================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: n8n-dev-app
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: n8n-dev
+    app.kubernetes.io/component: workflow-engine
+    app.kubernetes.io/part-of: apps-automation
+    release: prometheus-operator
+spec:
+  namespaceSelector:
+    matchNames:
+      - n8n-dev
+  selector:
+    matchLabels:
+      app: n8n
+  endpoints:
+    - port: http
+      interval: 30s
+      path: /metrics
+      scheme: http
+      scrapeTimeout: 10s
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: 'n8n_.*|http_.*|nodejs_.*|process_.*'
+          action: keep
+        # Keep development workflow metrics
+        - sourceLabels: [__name__]
+          regex: '.*(workflow|execution|node|trigger|webhook).*'
+          action: keep
+        # Keep testing and development metrics
+        - sourceLabels: [__name__]
+          regex: '.*(queue|job|task|error|debug|test).*'
+          action: keep
+
+---
+# 📊 N8N GENERIC APPLICATION HEALTH MONITORING
+# ============================================
+# Fallback monitoring for HTTP health checks if /metrics not available
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: n8n-health-monitoring
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: n8n-health
+    app.kubernetes.io/component: health-check
+    app.kubernetes.io/part-of: apps-automation
+    release: prometheus-operator
+spec:
+  namespaceSelector:
+    matchNames:
+      - n8n-prod
+      - n8n-dev
+  selector:
+    matchLabels:
+      app: n8n
+  endpoints:
+    - port: http
+      interval: 30s
+      path: /health
+      scheme: http
+      scrapeTimeout: 10s
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: 'up|http_.*|response_.*'
+          action: keep
+        # Keep availability metrics
+        - sourceLabels: [__name__]
+          regex: '.*(health|status|alive|ready).*'
+          action: keep
