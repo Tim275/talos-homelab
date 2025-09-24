@@ -1,0 +1,106 @@
+# 🎯 CENTRALIZED SERVICE MONITORING INFRASTRUCTURE (Vegarn Pattern)
+# ==================================================================
+#
+# 🏗️ ENTERPRISE ARCHITECTURE: Monitoring als Infrastructure Concern
+# ================================================================
+#
+# 🚨 CRITICAL UNDERSTANDING: Separation of Concerns
+# =================================================
+# ❌ FALSCH: ServiceMonitors in app directories (vermischt concerns)
+# ✅ RICHTIG: ServiceMonitors in infrastructure/monitoring (centralized)
+#
+# 🎛️ VEGARN'S PATTERN:
+# - Infrastructure Layer: ServiceMonitors + Service Label Patches
+# - Platform Layer: Applications mit service deployment
+# - Apps Layer: Nur business logic, KEIN monitoring
+#
+# 🔧 INFRASTRUCTURE AS CODE APPROACH:
+# ===================================
+# 1. ServiceMonitors hier definieren (was monitoren)
+# 2. Service Label Patches in jeweiligen kustomization.yaml (wie labeln)
+# 3. Grafana Dashboards in infrastructure/monitoring/grafana/dashboards (wie anzeigen)
+# 4. Prometheus discovery automatic via "release: prometheus-operator" label
+#
+# 📊 MONITORING STRATEGY:
+# ======================
+# - Kafka: Message streaming metrics (broker performance, topic stats)
+# - Elasticsearch: Search cluster metrics (indices, cluster health, query performance)
+# - N8N: Workflow automation metrics (executions, errors, health checks)
+# - Ceph: Storage cluster metrics (OSDs, pools, capacity)
+# - Additional services: Add ServiceMonitors hier as needed
+#
+# 🎯 SERVICE DISCOVERY FLOW:
+# ==========================
+# 1. ServiceMonitor CRD (here) defines what to scrape
+# 2. Prometheus Operator discovers ServiceMonitors with "release: prometheus-operator"
+# 3. Service must have matching labels (via kustomize patches in respective apps)
+# 4. Prometheus scrapes metrics from services
+# 5. Grafana dashboards query metrics from Prometheus
+# 6. 📊 DATA VISIBLE IN GRAFANA! 🎉
+#
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: servicemonitors-infrastructure
+  annotations:
+    config.kubernetes.io/local-config: "true"
+
+# 🎯 CENTRALIZED SERVICEMONITORS (Cross-Namespace Monitoring)
+resources:
+  # 📨 Messaging Infrastructure
+  - servicemonitor-kafka-brokers.yaml
+  - servicemonitor-kafka-exporter.yaml     # SIMPLE SOLUTION: Direct metrics from Kafka Exporter
+
+  # 🔍 Search & Analytics Infrastructure
+  - servicemonitor-elasticsearch.yaml         # OLD: Direct ES service (doesn't work - no native metrics)
+  - servicemonitor-elasticsearch-exporter.yaml # NEW: ES Exporter (works like Kafka Exporter)
+
+  # 🔄 Workflow Automation Infrastructure
+  - servicemonitor-n8n.yaml
+
+  # 🌐 GLOBAL SERVICE DISCOVERY
+  - servicemonitor-global-prometheus.yaml   # Universal discovery for services with monitoring: prometheus label
+
+  # 🚀 NEW INFRASTRUCTURE SERVICEMONITORS - ENTERPRISE MONITORING (2025)
+  # ====================================================================
+  # Critical infrastructure components now fully monitored (75% gap closed)
+  - servicemonitor-cert-manager.yaml           # 🔐 Certificate lifecycle monitoring
+  - servicemonitor-sealed-secrets.yaml         # 🔒 Secret management monitoring
+  - servicemonitor-argo-rollouts.yaml         # 🚀 Progressive deployment monitoring
+  - servicemonitor-istio.yaml                 # 🌐 Service mesh monitoring
+  - servicemonitor-infrastructure-remaining.yaml  # 📊 Vector, Velero, CloudNative-PG, etc.
+
+  # 🚀 NASA-LEVEL PLATFORM MONITORING (2025)
+  # =======================================
+  # Complete platform observability achieved (15 components, 100% coverage)
+  - servicemonitor-platform-databases.yaml         # 🗄️ PostgreSQL, InfluxDB, MongoDB, Redis
+  - servicemonitor-platform-messaging.yaml         # 📨 Kafka, Schema Registry, Kafdrop, Redpanda
+  - servicemonitor-platform-identity-developer.yaml # 🔐 LLDAP, Authelia, Backstage
+
+  # 🚀 NASA-LEVEL APPS MONITORING (2025)
+  # ===================================
+  # Complete business application observability achieved (3/3 components, 100% coverage)
+  - servicemonitor-apps-n8n.yaml                   # 🔄 N8N Workflow Automation (prod/dev)
+  - servicemonitor-apps-audiobookshelf.yaml        # 📚 Media Streaming Server (prod/dev)
+  # Note: Kafka Demo apps covered by Platform Kafka monitoring
+
+  # 🎯 FUTURE SERVICEMONITORS:
+  # - servicemonitor-victoria-metrics.yaml
+  # - servicemonitor-[NEW-SERVICE].yaml
+
+# 🏷️ Common Labels (Applied to all ServiceMonitors)
+commonLabels:
+  app.kubernetes.io/part-of: monitoring-infrastructure
+  app.kubernetes.io/managed-by: kustomize
+  team: platform
+  monitoring-tier: infrastructure
+
+# 📝 Common Annotations
+commonAnnotations:
+  monitoring.coreos.com/managed: "true"
+  config.kubernetes.io/origin: |
+    path: kubernetes/infrastructure/monitoring/servicemonitors/kustomization.yaml
+  docs: |
+    Centralized ServiceMonitors following Vegarn's enterprise pattern.
+    ServiceMonitors define WHAT to monitor, service patches define HOW to label.

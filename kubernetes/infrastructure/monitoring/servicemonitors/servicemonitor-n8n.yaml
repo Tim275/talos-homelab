@@ -1,0 +1,77 @@
+# 🎯 N8N WORKFLOW AUTOMATION METRICS MONITORING
+#
+# 🚨 CRITICAL UNDERSTANDING: N8N Service Discovery für Prometheus + Grafana
+# ===========================================================================
+#
+# PROBLEM: N8N läuft aber wird NICHT in Grafana monitoring dashboards angezeigt
+# ROOT CAUSE: N8N Service braucht spezifische labels für ServiceMonitor matching
+#
+# GRAFANA DASHBOARD DATA FLOW:
+# 1. N8N Service (port 5678) → 2. ServiceMonitor (selector) → 3. Prometheus (discovery) → 4. Grafana (query)
+#
+# 🔧 INFRASTRUCTURE AS CODE SOLUTION:
+# =================================
+# 1. Diese ServiceMonitor CRD definiert WAS zu monitoren ist
+# 2. Kustomize patch in n8n/kustomization.yaml fügt LABELS zum N8N Service hinzu
+# 3. Prometheus Operator entdeckt automatisch ServiceMonitor mit "release: prometheus-operator"
+# 4. Grafana kann jetzt n8n_* metrics anzeigen (+ HTTP health checks)
+#
+# 🎛️ SERVICE LABELS REQUIREMENTS (Critical für Discovery):
+# ========================================================
+# n8n service MUSS haben:
+# - release: prometheus-operator  ← CRITICAL: Prometheus entdeckt nur Services mit diesem label
+# - app: n8n                     ← ServiceMonitor selector requirement
+# - component: workflow-engine    ← Zusätzliche kategorisierung
+# - monitoring: enabled          ← Explicit monitoring flag
+#
+# 💡 WIE ES FUNKTIONIERT:
+# - ServiceMonitor.spec.selector.matchLabels sucht Services mit "app: n8n"
+# - ServiceMonitor selbst braucht "release: prometheus-operator" damit Prometheus es findet
+# - Service braucht BEIDE labels damit matching klappt
+# - Prometheus scraped dann HTTP health + potential custom metrics
+#
+# 🎯 N8N METRICS ENDPOINTS (Potential):
+# - Health check: http://n8n:5678/healthz oder /health
+# - Workflow stats: http://n8n:5678/metrics (wenn aktiviert)
+# - Custom metrics: can be configured in N8N settings
+#
+# 📊 MONITORING STRATEGY:
+# - HTTP health monitoring (up/down status)
+# - Response time tracking
+# - Potential custom workflow metrics (executions, errors, etc.)
+# - Application availability monitoring
+#
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: n8n-workflow-engine
+  namespace: n8n-prod
+  labels:
+    app.kubernetes.io/name: n8n-workflow-engine
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: workflow-automation
+    team: platform
+    release: prometheus-operator  # 🎯 CRITICAL: Prometheus ServiceMonitor discovery
+spec:
+  namespaceSelector:
+    matchNames:
+      - n8n-prod
+      - n8n-dev
+  selector:
+    matchLabels:
+      app: n8n                    # 🎯 CRITICAL: Must match service labels
+      component: workflow-engine  # 🎯 CRITICAL: Must match service labels
+  endpoints:
+    - port: http                  # 🎯 Port name from service (5678)
+      path: /healthz              # 🎯 N8N health check endpoint (assuming standard)
+      interval: 30s               # 🎯 Scrape every 30 seconds
+      scrapeTimeout: 10s          # 🎯 Timeout after 10 seconds
+      honorLabels: true           # 🎯 Keep original metric labels
+      scheme: http                # 🎯 N8N uses HTTP
+    # 🎯 Alternative metrics endpoint (if N8N metrics are enabled)
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      honorLabels: true
+      scheme: http

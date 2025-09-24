@@ -22,6 +22,43 @@ resources:
   # Kafka Custom Resources - now enabled after operator deployment
   - kafka-cluster.yaml
   - kafka-topic.yaml
+  # 🎯 MONITORING: ServiceMonitors moved to infrastructure/monitoring/servicemonitors/ (Vegarn pattern)
+  - kafka-exporter-service.yaml  # Service for Kafka Exporter metrics
+
+# 🚨 CRITICAL INFRASTRUCTURE AS CODE: Service Labeling für Grafana Dashboard Discovery
+# ===================================================================================
+#
+# 🎯 PROBLEM: Kafka Services haben NICHT die Labels die ServiceMonitor braucht!
+# 🎯 LÖSUNG: Kustomize patches fügen automatisch die CRITICAL labels hinzu!
+#
+# 🔧 WAS PASSIERT:
+# 1. Strimzi Kafka Operator erstellt "my-cluster-kafka-brokers" service
+# 2. Service hat NUR: app.kubernetes.io/name=kafka, strimzi.io/cluster=my-cluster
+# 3. ServiceMonitor sucht: app=kafka, component=kafka-broker, release=prometheus-operator
+# 4. MISMATCH = keine metrics in Grafana! 😭
+# 5. Diese patches fügen fehlende labels AUTOMATISCH hinzu! 🎉
+#
+# 🎛️ RULE: JEDER Service der in Grafana sichtbar sein soll MUSS haben:
+# - release: prometheus-operator  ← Prometheus entdeckt nur Services mit diesem label
+# - app: [SERVICE-NAME]          ← ServiceMonitor selector requirement
+# - component: [SERVICE-TYPE]    ← Zusätzliche kategorisierung
+#
+patches:
+  # 🎯 KAFKA BROKERS SERVICE LABELING (CRITICAL für Dashboard Data!)
+  - target:
+      kind: Service
+      name: my-cluster-kafka-brokers
+    patch: |-
+      - op: add
+        path: /metadata/labels/app
+        value: kafka
+      - op: add
+        path: /metadata/labels/component
+        value: kafka-broker
+      - op: add
+        path: /metadata/labels/release
+        value: prometheus-operator
+
 
 helmCharts:
   - name: strimzi-kafka-operator

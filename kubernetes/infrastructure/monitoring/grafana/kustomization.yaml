@@ -1,19 +1,36 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# 🌊 Sync Wave 5: Grafana Dashboards (After Storage)
+# 🌊 Sync Wave 6: Grafana CRD Resources (After Grafana Operator Wave 4)
 commonAnnotations:
-  argocd.argoproj.io/sync-wave: "5"
+  argocd.argoproj.io/sync-wave: "6"
 
+# 🎯 GRAFANA OPERATOR PATTERN - Only CRD resources, no Helm chart!
+# Grafana Operator (deployed separately) manages the Grafana instance
 resources:
+  - grafana-admin-secret.yaml     # ✅ CRITICAL - Fixed admin credentials (admin/2206)
+  - grafana-instance.yaml         # ✅ REQUIRED - GrafanaDatasource needs matching Grafana instance
+  - grafana-datasource.yaml       # ✅ CRITICAL - connects Grafana to Prometheus!
+  - prometheus-datasource-config.yaml  # ConfigMap for Prometheus URL
+  - loki-datasource.yaml          # ✅ CRITICAL - connects Grafana to Loki!
+  # 📊 ConfigMap Dashboards - keep your preferred dashboard pattern
+  # (These work with both Helm Grafana and Grafana Operator)
   - datasources.yaml              # Prometheus connection configuration
-  - dashboards-configmap.yaml     # Complete dashboard JSON files as Infrastructure as Code  
+  - dashboards-configmap.yaml     # Complete dashboard JSON files as Infrastructure as Code
   - dashboards/                   # Folder with specialized dashboard collections
 
-helmCharts:
-  - name: grafana
-    repo: https://grafana.github.io/helm-charts
-    version: "10.0.0" # renovate: helm=grafana/grafana
-    releaseName: grafana
-    namespace: monitoring
-    valuesFile: values.yaml
+  # 🎯 NATIVE GRAFANA OPERATOR DASHBOARDS - ConfigMap References
+  # Links traditional ConfigMaps to GrafanaDashboard CRDs (Vegarn pattern)
+  - configmap-dashboards/         # GrafanaDashboard CRDs with ConfigMap references
+
+  # 🎯 GRAFANA OPERATOR DASHBOARDS - Native GrafanaDashboard CRDs
+  # Enterprise-grade monitoring dashboards using Grafana Operator - Direct URL-based from Grafana.com
+  - dashboards/k8s-comprehensive.yaml     # Latest 2025 Kubernetes overview
+  - dashboards/prometheus-overview.yaml   # Prometheus self-monitoring
+  - dashboards/elasticsearch-detailed.yaml # Elasticsearch cluster monitoring
+  - dashboards/kafka-monitoring.yaml      # Kafka cluster monitoring
+
+# ❌ REMOVED: Helm chart - replaced by Grafana Operator CRD
+# helmCharts:
+#   - name: grafana
+#     repo: https://grafana.github.io/helm-charts
