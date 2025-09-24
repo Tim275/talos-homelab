@@ -66,15 +66,15 @@ crds:
 
 controller:
   # 🚀 ENTERPRISE SCALING CONFIGURATION
-  replicas: 2  # Scale horizontally for HA and performance
+  replicas: 1  # Homelab scale - single controller for bootstrap
 
   resources:
     requests:
-      cpu: 500m      # Increased for better baseline performance
-      memory: 2Gi    # 300MB per cluster rule + buffer
+      cpu: 100m      # Homelab scale - reduced for bootstrap
+      memory: 512Mi  # Homelab scale - reduced memory
     limits:
-      cpu: 2000m     # Increased for handling 1000+ apps
-      memory: 4Gi    # Enterprise-grade memory allocation
+      cpu: 1000m     # Homelab scale - reduced CPU limit
+      memory: 2Gi    # Homelab scale - reduced memory limit
 
   # 🚀 ADVANCED PERFORMANCE METRICS
   metrics:
@@ -182,11 +182,11 @@ redis:
 
 server:
   # 🚀 HIGH AVAILABILITY SERVER CONFIGURATION
-  replicas: 3  # HA configuration for enterprise deployment
+  replicas: 1  # Homelab scale - single server for bootstrap
 
   service:
-    type: LoadBalancer
-    loadBalancerIP: "192.168.68.160"  # Static IP for ArgoCD (free IP)
+    type: ClusterIP  # No LoadBalancer - use Ingress instead
+    # loadBalancerIP: "192.168.68.160"  # Disabled - no LoadBalancer
     servicePortHttpsAppProtocol: kubernetes.io/h2c
 
   # 🚀 ENHANCED METRICS AND MONITORING
@@ -213,11 +213,11 @@ server:
 
   resources:
     requests:
-      cpu: 200m      # Increased for HA setup
-      memory: 256Mi  # Increased baseline
+      cpu: 100m      # Homelab scale - reduced for bootstrap
+      memory: 128Mi  # Homelab scale - reduced memory
     limits:
-      cpu: 1000m     # Increased for high load
-      memory: 2Gi    # Enterprise memory allocation
+      cpu: 500m      # Homelab scale - reduced CPU limit
+      memory: 1Gi    # Homelab scale - reduced memory limit
 
   # 🚀 SERVER PERFORMANCE TUNING
   extraEnv:
@@ -237,7 +237,7 @@ server:
 
 repoServer:
   # 🚀 ENTERPRISE REPO SERVER - ULTRA PERFORMANCE CONFIG
-  replicas: 3  # Scale out for performance and HA
+  replicas: 1  # Homelab scale - single replica for bootstrap
 
   containerSecurityContext:
     readOnlyRootFilesystem: true
@@ -250,10 +250,10 @@ repoServer:
     - name: cmp-tmp
       emptyDir:
         sizeLimit: 2Gi  # Limit tmp space
-    # 🚀 PERSISTENT CACHE VOLUME - PREVENTS DISK SPACE ISSUES
+    # 🚀 EMPTYDIR CACHE FOR BOOTSTRAP (no PVC dependency)
     - name: repo-cache
-      persistentVolumeClaim:
-        claimName: argocd-repo-cache
+      emptyDir:
+        sizeLimit: 5Gi
     # 🚀 ADDITIONAL TMP SPACE FOR LARGE REPOSITORIES
     - name: repo-tmp
       emptyDir:
@@ -280,11 +280,11 @@ repoServer:
   # 🚀 ENTERPRISE RESOURCE ALLOCATION
   resources:
     requests:
-      cpu: 500m      # Increased for parallel processing
-      memory: 1Gi    # Higher baseline for caching
+      cpu: 100m      # Homelab scale - reduced for bootstrap
+      memory: 256Mi  # Homelab scale - reduced memory
     limits:
-      cpu: 2000m     # Allow burst processing
-      memory: 4Gi    # Enterprise memory for large repos
+      cpu: 500m      # Homelab scale - reduced CPU limit
+      memory: 1Gi    # Homelab scale - reduced memory limit
 
   # 🚀 REPO SERVER PERFORMANCE ENVIRONMENT VARIABLES
   extraEnv:
@@ -312,11 +312,11 @@ repoServer:
     - name: ARGOCD_REPO_CACHE_EXPIRATION
       value: "1h"                          # Faster cache invalidation
 
-  # 🚀 PERSISTENT VOLUME CLAIM FOR REPO CACHE
+  # 🚀 DISABLED PERSISTENT CACHE FOR BOOTSTRAP (can enable later)
   persistence:
-    enabled: true
+    enabled: false  # Disable for bootstrap - use emptyDir
     size: 20Gi
-    storageClassName: rook-ceph-block  # Use fast SSD storage
+    storageClassName: rook-cephblock-enterprise
     accessModes:
       - ReadWriteOnce
   extraContainers:
