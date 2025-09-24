@@ -1,0 +1,73 @@
+# 🚀 ARGO ROLLOUTS SERVICEMONITOR - PROGRESSIVE DEPLOYMENT MONITORING
+# ==================================================================
+# Monitors Argo Rollouts controller for canary/blue-green deployment metrics
+# Critical for deployment monitoring - tracks rollout success/failure rates
+#
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: argo-rollouts-controller
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: argo-rollouts
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/part-of: argo-rollouts
+    release: prometheus-operator  # Critical for Prometheus discovery
+spec:
+  namespaceSelector:
+    matchNames:
+      - argo-rollouts
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argo-rollouts
+      app.kubernetes.io/component: rollouts-controller
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
+      scheme: http
+      scrapeTimeout: 10s
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: 'rollout_.*|argo_rollouts_.*'
+          action: keep
+        # Keep rollout-specific metrics
+        - sourceLabels: [__name__]
+          regex: '.*(rollout|canary|bluegreen|analysis|experiment).*'
+          action: keep
+        # Keep controller health metrics
+        - sourceLabels: [__name__]
+          regex: '.*(workqueue|reconcile|leader|controller_runtime).*'
+          action: keep
+
+---
+# 🚀 ARGO ROLLOUTS METRICS SERVICE MONITOR
+# =======================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: argo-rollouts-metrics
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: argo-rollouts
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: argo-rollouts
+    release: prometheus-operator
+spec:
+  namespaceSelector:
+    matchNames:
+      - argo-rollouts
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argo-rollouts-metrics
+      app.kubernetes.io/component: server
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
+      scheme: http
+      scrapeTimeout: 10s
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: 'rollout_.*|argo_rollouts_.*|http_.*'
+          action: keep
