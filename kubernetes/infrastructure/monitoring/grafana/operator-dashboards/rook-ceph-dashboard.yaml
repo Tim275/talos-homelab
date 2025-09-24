@@ -1,0 +1,267 @@
+---
+# 🎯 ROOK-CEPH DASHBOARD - Grafana Operator CRD
+# Migrated from ConfigMap to native GrafanaDashboard resource
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: rook-ceph-cluster
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: grafana-dashboard-rook-ceph
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/part-of: grafana-operator
+    team: platform
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  folder: "Storage"  # Folder organization in Grafana UI
+  datasources:
+    - inputName: "DS_PROMETHEUS"
+      datasourceName: "Prometheus"
+  json: |
+    {
+      "id": null,
+      "title": "Ceph Cluster",
+      "tags": [
+        "ceph",
+        "rook",
+        "storage",
+        "cluster"
+      ],
+      "style": "dark",
+      "timezone": "browser",
+      "editable": true,
+      "graphTooltip": 0,
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "timepicker": {
+        "refresh_intervals": [
+          "30s",
+          "1m",
+          "5m",
+          "15m",
+          "30m",
+          "1h"
+        ]
+      },
+      "refresh": "30s",
+      "schemaVersion": 30,
+      "version": 1,
+      "panels": [
+        {
+          "id": 1,
+          "title": "Ceph Cluster Status",
+          "type": "stat",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 0
+          },
+          "targets": [
+            {
+              "expr": "ceph_health_status",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                {
+                  "options": {
+                    "0": {
+                      "color": "green",
+                      "text": "HEALTH_OK"
+                    },
+                    "1": {
+                      "color": "yellow",
+                      "text": "HEALTH_WARN"
+                    },
+                    "2": {
+                      "color": "red",
+                      "text": "HEALTH_ERR"
+                    }
+                  },
+                  "type": "value"
+                }
+              ],
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 2
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 2,
+          "title": "Cluster Capacity",
+          "type": "piechart",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 0
+          },
+          "targets": [
+            {
+              "expr": "ceph_cluster_total_bytes",
+              "refId": "Total",
+              "legendFormat": "Total"
+            },
+            {
+              "expr": "ceph_cluster_total_used_raw_bytes",
+              "refId": "Used",
+              "legendFormat": "Used"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "title": "OSD Status",
+          "type": "table",
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 8
+          },
+          "targets": [
+            {
+              "expr": "ceph_osd_up",
+              "refId": "A",
+              "format": "table",
+              "instant": true
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "__name__": true,
+                  "job": true
+                },
+                "indexByName": {},
+                "renameByName": {
+                  "instance": "Instance",
+                  "ceph_daemon": "OSD",
+                  "Value": "Status"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "title": "Pool Usage",
+          "type": "table",
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 16
+          },
+          "targets": [
+            {
+              "expr": "ceph_pool_stored",
+              "refId": "A",
+              "format": "table",
+              "instant": true
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "__name__": true,
+                  "job": true,
+                  "instance": true
+                },
+                "renameByName": {
+                  "pool_id": "Pool ID",
+                  "name": "Pool Name",
+                  "Value": "Stored (Bytes)"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "title": "IOPS",
+          "type": "timeseries",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 24
+          },
+          "targets": [
+            {
+              "expr": "rate(ceph_osd_op_r[5m])",
+              "refId": "Read",
+              "legendFormat": "Read OPS"
+            },
+            {
+              "expr": "rate(ceph_osd_op_w[5m])",
+              "refId": "Write",
+              "legendFormat": "Write OPS"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops"
+            }
+          }
+        },
+        {
+          "id": 6,
+          "title": "Latency",
+          "type": "timeseries",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 24
+          },
+          "targets": [
+            {
+              "expr": "ceph_osd_apply_latency_ms",
+              "refId": "Apply",
+              "legendFormat": "Apply Latency"
+            },
+            {
+              "expr": "ceph_osd_commit_latency_ms",
+              "refId": "Commit",
+              "legendFormat": "Commit Latency"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms"
+            }
+          }
+        }
+      ]
+    }
