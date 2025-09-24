@@ -201,7 +201,7 @@ server:
       scrapeTimeout: 10s
 
   certificate:
-    enabled: true
+    enabled: false  # Disabled until cert-manager is deployed
     domain: argo.timourhomelab.org
     issuer:
       group: cert-manager.io
@@ -264,7 +264,7 @@ repoServer:
     - name: repo-cache
       mountPath: /repo-cache      # Custom cache directory
     - name: repo-tmp
-      mountPath: /tmp             # Override default /tmp
+      mountPath: /repo-tmp        # Fix: use unique mount path
 
   # 🚀 ADVANCED METRICS AND MONITORING
   metrics:
@@ -290,7 +290,7 @@ repoServer:
   extraEnv:
     # Cache and Performance
     - name: TMPDIR
-      value: "/tmp"                        # Use persistent tmp space
+      value: "/repo-tmp"                   # Fix: match updated mount path
     - name: ARGOCD_EXEC_TIMEOUT
       value: "600"                         # Extended execution timeout
     - name: ARGOCD_GIT_ATTEMPTS_COUNT
@@ -324,7 +324,8 @@ repoServer:
       command:
         - argocd-cmp-server
       image: >-
-        {{ default .Values.global.image.repository .Values.repoServer.image.repository }}:{{ default (include "argo-cd.defaultTag" .) .Values.repoServer.image.tag }}
+        {{ default .Values.global.image.repository .Values.repoServer.image.repository }}:{{
+        default (include "argo-cd.defaultTag" .) .Values.repoServer.image.tag }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 999
