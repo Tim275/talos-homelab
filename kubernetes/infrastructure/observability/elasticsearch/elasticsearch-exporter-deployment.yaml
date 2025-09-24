@@ -1,0 +1,62 @@
+# 🎯 ELASTICSEARCH EXPORTER DEPLOYMENT - SAME PATTERN AS KAFKA EXPORTER!
+# ======================================================================
+# Elasticsearch doesn't have native Prometheus metrics like Ceph
+# We need a separate exporter (just like Kafka needs Kafka Exporter)
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elasticsearch-exporter
+  namespace: elastic-system
+  labels:
+    app: elasticsearch-exporter
+    component: metrics-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elasticsearch-exporter
+  template:
+    metadata:
+      labels:
+        app: elasticsearch-exporter
+        component: metrics-exporter
+    spec:
+      containers:
+        - name: elasticsearch-exporter
+          image: quay.io/prometheuscommunity/elasticsearch-exporter:v1.7.0
+          args:
+            - '--es.uri=https://production-cluster-es-http:9200'
+            - '--es.username=elastic'
+            - '--es.password=$(ELASTIC_PASSWORD)'
+            - '--es.ssl-skip-verify'
+            - '--web.listen-address=:9114'
+          env:
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: production-cluster-es-elastic-user
+                  key: elastic
+          ports:
+            - name: metrics
+              containerPort: 9114
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9114
+            initialDelaySeconds: 30
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9114
+            initialDelaySeconds: 10
+            timeoutSeconds: 10
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
