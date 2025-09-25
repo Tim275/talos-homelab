@@ -1,0 +1,40 @@
+# 🏗️ ROOK-CEPH MGR VMSERVICESCRAPE - VictoriaMetrics Native
+# Collects Ceph cluster metrics from Rook-Ceph manager
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: rook-ceph-mgr
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"  # After VMAgent
+  labels:
+    app.kubernetes.io/name: rook-ceph-vmservicescrape
+    app.kubernetes.io/part-of: victoriametrics
+spec:
+  # 🎯 TARGET SELECTION - Rook-Ceph Manager Service
+  selector:
+    matchLabels:
+      app: rook-ceph-mgr
+      ceph_daemon_type: mgr
+  namespaceSelector:
+    matchNames:
+      - rook-ceph  # Rook-Ceph is in rook-ceph namespace
+
+  # 🔧 SCRAPE CONFIGURATION
+  endpoints:
+    - port: "http-metrics"  # Port 9283 - Ceph manager metrics
+      path: "/metrics"
+      interval: "30s"
+      scrapeTimeout: "10s"
+      honorLabels: true  # Preserve original labels from Ceph
+      # 🏷️ METRIC RELABELING
+      metricRelabelConfigs:
+        - sourceLabels: [__name__]
+          regex: "ceph_.*"
+          action: keep
+        # Add cluster label
+        - targetLabel: cluster
+          replacement: "homelab"
+        # Add service label
+        - targetLabel: service
+          replacement: "rook-ceph"
