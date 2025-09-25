@@ -1,0 +1,36 @@
+---
+# 🏗️ ROOK-CEPH SERVICEMONITOR - Prometheus Native
+# Ensures Prometheus also collects Ceph metrics for dual datasource setup
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: rook-ceph-mgr
+  namespace: rook-ceph
+  labels:
+    app: rook-ceph-mgr
+    team: platform
+spec:
+  # 🎯 TARGET SELECTION - Rook-Ceph Manager Service
+  selector:
+    matchLabels:
+      app: rook-ceph-mgr
+      rook_cluster: rook-ceph
+  namespaceSelector:
+    matchNames:
+      - rook-ceph
+
+  # 🔧 SCRAPE CONFIGURATION
+  endpoints:
+    - port: http-metrics  # Port 9283
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      honorLabels: true
+      # 🏷️ METRIC RELABELING
+      metricRelabelConfigs:
+        - sourceLabels: [__name__]
+          regex: "ceph_.*"
+          action: keep
+        # Add cluster label
+        - targetLabel: cluster
+          replacement: "homelab"
