@@ -1,0 +1,120 @@
+# 🚀 kube-prometheus-stack - Enterprise Pattern (Optimized for Homelab)
+# Enterprise monitoring stack with resource optimization and clean ServiceMonitor discovery
+
+# 🎯 PROMETHEUS OPTIMIZATION - Homelab Scale
+prometheus:
+  prometheusSpec:
+    # 📊 RESOURCE LIMITS - No more 2GB RAM hunger!
+    resources:
+      requests:
+        memory: 512Mi   # Reduced from 2Gi default
+        cpu: 200m       # Conservative CPU
+      limits:
+        memory: 1Gi     # Hard limit to prevent OOM
+        cpu: 1000m      # Max CPU burst
+
+    # 🗄️ STORAGE OPTIMIZATION
+    retention: 7d         # 7 days instead of 15d (homelab sufficient)
+    retentionSize: 10GiB  # Storage limit
+
+    # 🔍 SERVICE DISCOVERY - Native Kubernetes (no VMServiceScrape bullshit)
+    serviceMonitorSelectorNilUsesHelmValues: false  # Discover all ServiceMonitors
+    serviceMonitorSelector: {}  # No selector = find all namespaces
+    podMonitorSelector: {}      # Find all PodMonitors
+
+    # 📈 SCRAPE OPTIMIZATION
+    evaluationInterval: 30s  # Default 30s is fine
+    scrapeInterval: 30s      # Match endpoints
+    scrapeTimeout: 10s       # Conservative timeout
+
+    # 🏷️ EXTERNAL LABELS
+    externalLabels:
+      cluster: homelab
+      environment: production
+
+# 🎨 GRAFANA OPTIMIZATION
+grafana:
+  enabled: true
+
+  # 📊 RESOURCE LIMITS - Grafana can be memory hungry too
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi  # Conservative limit
+      cpu: 500m
+
+  # 🔧 GRAFANA CONFIG
+  grafana.ini:
+    server:
+      root_url: "https://grafana.homelab.local"
+    auth:
+      disable_login_form: false
+    security:
+      admin_user: admin
+      admin_password: admin  # Change in production!
+
+  # 📊 DATASOURCE AUTO-CONFIGURATION
+  sidecar:
+    datasources:
+      enabled: true
+      defaultDatasourceEnabled: true
+    dashboards:
+      enabled: true
+      searchNamespace: ALL  # Find dashboards in all namespaces
+
+  # 🌐 INGRESS (optional)
+  ingress:
+    enabled: false  # Enable if you have ingress controller
+
+# 📊 ALERTMANAGER OPTIMIZATION
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    resources:
+      requests:
+        memory: 64Mi
+        cpu: 50m
+      limits:
+        memory: 256Mi
+        cpu: 200m
+    retention: 72h  # 3 days alert retention
+
+# 🔍 NODE EXPORTER - System metrics
+nodeExporter:
+  enabled: true
+
+# 📊 KUBE-STATE-METRICS - Kubernetes object metrics
+kubeStateMetrics:
+  enabled: true
+
+# 🏷️ COMMON LABELS
+commonLabels:
+  app.kubernetes.io/part-of: kube-prometheus-stack
+  monitoring.coreos.com/enabled: "true"
+
+# 🎯 ENTERPRISE PATTERN - ServiceMonitor Namespace Strategy
+# ServiceMonitors deployed in same namespace as services for zero cross-namespace issues
+
+# 📊 DISABLE CONFLICTING COMPONENTS (if you have separate ones)
+kubeApiServer:
+  enabled: true
+kubeControllerManager:
+  enabled: true
+kubeScheduler:
+  enabled: true
+kubeProxy:
+  enabled: true
+kubelet:
+  enabled: true
+
+# 🔧 COMPONENT RESOURCE OPTIMIZATION
+prometheusOperator:
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 50m
+    limits:
+      memory: 256Mi
+      cpu: 200m
