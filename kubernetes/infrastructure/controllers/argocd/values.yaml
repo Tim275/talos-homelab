@@ -151,6 +151,29 @@ redis:
       cpu: 500m      # Allow burst for cache operations
       memory: 1Gi    # Enterprise cache size
 
+  # 🚀 REDIS EXPORTER SIDECAR (Industry Standard Pattern)
+  exporter:
+    enabled: true
+    image:
+      repository: ghcr.io/oliver006/redis_exporter
+      tag: v1.65.0  # Latest stable version
+    containerSecurityContext:
+      runAsNonRoot: true
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      seccompProfile:
+        type: RuntimeDefault
+      capabilities:
+        drop:
+          - ALL
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
   # 🚀 REDIS PERFORMANCE TUNING
   extraArgs:
     - --maxmemory-policy
@@ -160,7 +183,7 @@ redis:
     - --appendonly
     - "no"           # Disable AOF for cache performance
 
-  # 🚀 REDIS METRICS
+  # 🚀 REDIS METRICS (Works with sidecar exporter)
   metrics:
     enabled: true
     serviceMonitor:
@@ -168,6 +191,9 @@ redis:
       namespace: argocd
       additionalLabels:
         release: prometheus-operator
+      interval: 30s
+      scrapeTimeout: 10s
+
 
   # 🚀 REDIS HA CONFIGURATION (when needed)
   haproxy:
