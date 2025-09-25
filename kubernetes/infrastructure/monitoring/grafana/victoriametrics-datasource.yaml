@@ -1,12 +1,14 @@
-# 🚀 VICTORIAMETRICS DATASOURCE - High-Performance Prometheus Alternative
+# 🚀 VICTORIAMETRICS DATASOURCE - Enterprise Multi-Alias Configuration
+# Solves DS_PROMETHEUS mapping without complex RBAC jobs
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDatasource
 metadata:
-  name: victoriametrics-datasource
+  name: victoriametrics-primary
   namespace: monitoring
   labels:
     app.kubernetes.io/name: victoriametrics-datasource
     app.kubernetes.io/part-of: grafana
+    grafana-datasource-aliases: "prometheus-compatible"
 spec:
   instanceSelector:
     matchLabels:
@@ -16,10 +18,38 @@ spec:
     type: prometheus  # VM is Prometheus-compatible
     access: proxy
     url: http://vmselect-vmcluster.monitoring.svc.cluster.local:8481/select/0/prometheus
-    isDefault: true  # Make VictoriaMetrics the default
+    isDefault: true  # Primary datasource
     editable: true
     jsonData:
       timeInterval: "30s"
       queryTimeout: "60s"
       httpMethod: "POST"
-      customQueryParameters: "nocache=1"  # VM specific - bypass cache for real-time data
+      customQueryParameters: "nocache=1"  # VM specific optimization
+
+---
+# 🎯 DS_PROMETHEUS ALIAS - Solves hardcoded dashboard references
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: victoriametrics-prometheus-alias
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus-alias-datasource
+    app.kubernetes.io/part-of: grafana
+    grafana-datasource-type: "alias"
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  datasource:
+    name: DS_PROMETHEUS  # Exact match for hardcoded dashboard references
+    type: prometheus
+    access: proxy
+    url: http://vmselect-vmcluster.monitoring.svc.cluster.local:8481/select/0/prometheus
+    isDefault: false
+    editable: false  # Prevent accidental changes
+    jsonData:
+      timeInterval: "30s"
+      queryTimeout: "60s"
+      httpMethod: "POST"
+      customQueryParameters: "nocache=1"
