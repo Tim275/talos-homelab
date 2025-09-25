@@ -1,0 +1,33 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: argocd-server-metrics
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"  # After VMAgent
+  labels:
+    app.kubernetes.io/name: argocd-vmservicescrape
+    app.kubernetes.io/part-of: victoriametrics
+spec:
+  # 🎯 TARGET SELECTION - ArgoCD Server Metrics Service
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-server-metrics
+  namespaceSelector:
+    matchNames:
+      - argocd  # ArgoCD is deployed in argocd namespace
+
+  # 🔧 SCRAPE CONFIGURATION
+  endpoints:
+    - port: "8083"  # ArgoCD server metrics port
+      path: "/metrics"
+      interval: "30s"
+      scrapeTimeout: "10s"
+      # 🏷️ METRIC RELABELING
+      metricRelabelConfigs:
+        - sourceLabels: [__name__]
+          regex: "argocd_.*"
+          action: keep
+        # Add cluster label
+        - targetLabel: cluster
+          replacement: "homelab"
