@@ -1,0 +1,291 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: elasticsearch-cluster-monitoring
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: elasticsearch-dashboard
+    app.kubernetes.io/part-of: grafana-operator
+    app.kubernetes.io/component: dashboards
+    team: platform
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  folder: "Platform/Observability"
+  datasources:
+    - inputName: "DS_PROMETHEUS"
+      datasourceUid: "prometheus"
+  json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "Elasticsearch - Cluster Monitoring",
+        "tags": ["elasticsearch", "platform", "observability", "search"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Cluster Health",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "elasticsearch_cluster_health_status",
+                "legendFormat": "{{cluster}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "mappings": [
+                  {"options": {"0": {"text": "Red", "color": "red"}}, "type": "value"},
+                  {"options": {"1": {"text": "Yellow", "color": "yellow"}}, "type": "value"},
+                  {"options": {"2": {"text": "Green", "color": "green"}}, "type": "value"}
+                ]
+              }
+            },
+            "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Active Nodes",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "elasticsearch_cluster_health_number_of_nodes",
+                "legendFormat": "Total Nodes"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "palette-classic"},
+                "unit": "short"
+              }
+            },
+            "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Active Shards",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "elasticsearch_cluster_health_active_shards",
+                "legendFormat": "Active Shards"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "palette-classic"},
+                "unit": "short"
+              }
+            },
+            "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}
+          },
+          {
+            "id": 4,
+            "title": "Unassigned Shards",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "elasticsearch_cluster_health_unassigned_shards",
+                "legendFormat": "Unassigned"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "thresholds"},
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": null},
+                    {"color": "red", "value": 1}
+                  ]
+                }
+              }
+            },
+            "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}
+          },
+          {
+            "id": 5,
+            "title": "Documents Count",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "elasticsearch_indices_docs",
+                "legendFormat": "Total Documents"
+              }
+            ],
+            "yAxes": [
+              {"label": "Documents", "min": 0},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+          },
+          {
+            "id": 6,
+            "title": "Index Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(elasticsearch_indices_indexing_index_total[5m])",
+                "legendFormat": "Index Rate"
+              }
+            ],
+            "yAxes": [
+              {"label": "Documents/sec", "min": 0},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+          },
+          {
+            "id": 7,
+            "title": "Search Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(elasticsearch_indices_search_query_total[5m])",
+                "legendFormat": "Query Rate"
+              },
+              {
+                "expr": "rate(elasticsearch_indices_search_fetch_total[5m])",
+                "legendFormat": "Fetch Rate"
+              }
+            ],
+            "yAxes": [
+              {"label": "Queries/sec", "min": 0},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12}
+          },
+          {
+            "id": 8,
+            "title": "Query Latency",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "elasticsearch_indices_search_query_time_seconds / elasticsearch_indices_search_query_total",
+                "legendFormat": "Avg Query Time"
+              }
+            ],
+            "yAxes": [
+              {"label": "Seconds", "min": 0},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12}
+          },
+          {
+            "id": 9,
+            "title": "JVM Memory Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "elasticsearch_jvm_memory_used_bytes{area=\"heap\"} by (instance)",
+                "legendFormat": "{{instance}} - Heap Used"
+              },
+              {
+                "expr": "elasticsearch_jvm_memory_max_bytes{area=\"heap\"} by (instance)",
+                "legendFormat": "{{instance}} - Heap Max"
+              }
+            ],
+            "yAxes": [
+              {"label": "Bytes", "min": 0},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20}
+          },
+          {
+            "id": 10,
+            "title": "GC Collection Time",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(elasticsearch_jvm_gc_collection_seconds_total[5m]) by (instance, gc)",
+                "legendFormat": "{{instance}} - {{gc}}"
+              }
+            ],
+            "yAxes": [
+              {"label": "Seconds/sec", "min": 0},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20}
+          },
+          {
+            "id": 11,
+            "title": "Disk Usage by Node",
+            "type": "table",
+            "targets": [
+              {
+                "expr": "elasticsearch_filesystem_data_available_bytes by (instance)",
+                "format": "table",
+                "instant": true
+              }
+            ],
+            "transformations": [
+              {
+                "id": "organize",
+                "options": {
+                  "columns": [
+                    {"displayName": "Node", "filterable": true},
+                    {"displayName": "Available Disk", "filterable": false}
+                  ]
+                }
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28}
+          },
+          {
+            "id": 12,
+            "title": "Thread Pool Queued",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "elasticsearch_thread_pool_queued by (instance, name)",
+                "legendFormat": "{{instance}} - {{name}}"
+              }
+            ],
+            "alert": {
+              "conditions": [
+                {
+                  "evaluator": {"params": [100], "type": "gt"},
+                  "operator": {"type": "and"},
+                  "query": {"params": ["A", "5m", "now"]},
+                  "reducer": {"params": [], "type": "avg"},
+                  "type": "query"
+                }
+              ],
+              "executionErrorState": "alerting",
+              "for": "5m",
+              "frequency": "10s",
+              "handler": 1,
+              "name": "Elasticsearch Thread Pool Queue Alert",
+              "noDataState": "no_data",
+              "notifications": []
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28}
+          }
+        ],
+        "time": {"from": "now-1h", "to": "now"},
+        "refresh": "30s",
+        "schemaVersion": 27,
+        "version": 1,
+        "templating": {
+          "list": [
+            {
+              "name": "cluster",
+              "type": "query",
+              "query": "label_values(elasticsearch_cluster_health_status, cluster)",
+              "refresh": 1,
+              "includeAll": false
+            },
+            {
+              "name": "node",
+              "type": "query",
+              "query": "label_values(elasticsearch_node_stats_up, instance)",
+              "refresh": 1,
+              "includeAll": true,
+              "allValue": ".*"
+            }
+          ]
+        }
+      }
+    }

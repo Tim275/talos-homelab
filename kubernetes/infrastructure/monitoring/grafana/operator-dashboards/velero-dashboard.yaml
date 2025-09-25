@@ -1,0 +1,274 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: velero-backup-monitoring
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: velero-dashboard
+    app.kubernetes.io/part-of: grafana-operator
+    app.kubernetes.io/component: dashboards
+    team: platform
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  folder: "Infrastructure/Backup"
+  datasources:
+    - inputName: "DS_PROMETHEUS"
+      datasourceUid: "prometheus"
+  json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "Velero - Backup & Recovery Monitoring",
+        "tags": ["velero", "backup", "disaster-recovery", "infrastructure"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Velero Server Status",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "up{job=\"velero\"}",
+                "legendFormat": "Velero Server"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "mappings": [
+                  {"options": {"0": {"text": "Down", "color": "red"}}, "type": "value"},
+                  {"options": {"1": {"text": "Up", "color": "green"}}, "type": "value"}
+                ]
+              }
+            },
+            "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Successful Backups (24h)",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "sum(increase(velero_backup_success_total[24h]))",
+                "legendFormat": "Successful"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "thresholds"},
+                "thresholds": {
+                  "steps": [
+                    {"color": "red", "value": null},
+                    {"color": "green", "value": 1}
+                  ]
+                }
+              }
+            },
+            "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Failed Backups (24h)",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "sum(increase(velero_backup_failure_total[24h]))",
+                "legendFormat": "Failed"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "thresholds"},
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": null},
+                    {"color": "red", "value": 1}
+                  ]
+                }
+              }
+            },
+            "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}
+          },
+          {
+            "id": 4,
+            "title": "Last Backup Age",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "(time() - velero_backup_last_successful_timestamp) / 3600",
+                "legendFormat": "Hours Ago"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "thresholds"},
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": null},
+                    {"color": "yellow", "value": 24},
+                    {"color": "red", "value": 48}
+                  ]
+                },
+                "unit": "h"
+              }
+            },
+            "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}
+          },
+          {
+            "id": 5,
+            "title": "Backup Success Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(velero_backup_success_total[1h])",
+                "legendFormat": "Success Rate"
+              },
+              {
+                "expr": "rate(velero_backup_failure_total[1h])",
+                "legendFormat": "Failure Rate"
+              }
+            ],
+            "yAxes": [
+              {"label": "Backups/hour", "min": 0},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+          },
+          {
+            "id": 6,
+            "title": "Backup Duration",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, sum(rate(velero_backup_duration_seconds_bucket[5m])) by (le))",
+                "legendFormat": "95th percentile"
+              },
+              {
+                "expr": "histogram_quantile(0.50, sum(rate(velero_backup_duration_seconds_bucket[5m])) by (le))",
+                "legendFormat": "50th percentile"
+              }
+            ],
+            "yAxes": [
+              {"label": "Duration (seconds)", "min": 0},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+          },
+          {
+            "id": 7,
+            "title": "Backup Schedule Status",
+            "type": "table",
+            "targets": [
+              {
+                "expr": "velero_backup_schedule_timestamp",
+                "format": "table",
+                "instant": true
+              }
+            ],
+            "transformations": [
+              {
+                "id": "organize",
+                "options": {
+                  "columns": [
+                    {"displayName": "Schedule Name", "filterable": true},
+                    {"displayName": "Last Run", "filterable": false},
+                    {"displayName": "Status", "filterable": true}
+                  ]
+                }
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12}
+          },
+          {
+            "id": 8,
+            "title": "Restore Operations",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(velero_restore_success_total[1h])",
+                "legendFormat": "Successful Restores"
+              },
+              {
+                "expr": "rate(velero_restore_failed_total[1h])",
+                "legendFormat": "Failed Restores"
+              }
+            ],
+            "yAxes": [
+              {"label": "Restores/hour", "min": 0},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12}
+          },
+          {
+            "id": 9,
+            "title": "Storage Usage by Location",
+            "type": "piechart",
+            "targets": [
+              {
+                "expr": "sum by (location) (velero_backup_storage_location_size_bytes)",
+                "legendFormat": "{{location}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "palette-classic"},
+                "unit": "bytes"
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20}
+          },
+          {
+            "id": 10,
+            "title": "Volume Snapshot Success Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(velero_volume_snapshot_success_total[1h])",
+                "legendFormat": "Successful Snapshots"
+              },
+              {
+                "expr": "rate(velero_volume_snapshot_failure_total[1h])",
+                "legendFormat": "Failed Snapshots"
+              }
+            ],
+            "alert": {
+              "conditions": [
+                {
+                  "evaluator": {"params": [1], "type": "gt"},
+                  "operator": {"type": "and"},
+                  "query": {"params": ["B", "5m", "now"]},
+                  "reducer": {"params": [], "type": "avg"},
+                  "type": "query"
+                }
+              ],
+              "executionErrorState": "alerting",
+              "for": "10m",
+              "frequency": "10s",
+              "handler": 1,
+              "name": "Velero Snapshot Failures Alert",
+              "noDataState": "no_data",
+              "notifications": []
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20}
+          }
+        ],
+        "time": {"from": "now-24h", "to": "now"},
+        "refresh": "1m",
+        "schemaVersion": 27,
+        "version": 1,
+        "templating": {
+          "list": [
+            {
+              "name": "schedule",
+              "type": "query",
+              "query": "label_values(velero_backup_schedule_timestamp, schedule)",
+              "refresh": 1,
+              "includeAll": true,
+              "allValue": ".*"
+            }
+          ]
+        }
+      }
+    }
