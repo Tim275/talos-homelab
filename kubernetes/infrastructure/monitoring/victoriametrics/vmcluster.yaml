@@ -1,0 +1,63 @@
+---
+# 🎯 VICTORIAMETRICS CLUSTER - High-performance TSDB
+# Drop-in replacement for Prometheus with better resource usage
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMCluster
+metadata:
+  name: vm-cluster
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"  # After VM operator (wave 3)
+spec:
+  # 🏗️ RETENTION & STORAGE
+  retentionPeriod: "90d"  # 3 months retention (better than Prometheus default)
+
+  # 🗄️ VM STORAGE - Time Series Database
+  vmstorage:
+    replicaCount: 1  # Single node for homelab
+    resources:
+      limits:
+        cpu: "2"
+        memory: "4Gi"
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: "rook-ceph-block"  # Using your Rook-Ceph storage
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 100Gi  # 100GB for metrics storage
+    extraArgs:
+      dedup.minScrapeInterval: "30s"  # Deduplication for efficient storage
+
+  # 🔍 VM SELECT - Query Engine
+  vmselect:
+    replicaCount: 1  # Single node for homelab
+    resources:
+      limits:
+        cpu: "1"
+        memory: "2Gi"
+      requests:
+        cpu: "200m"
+        memory: "512Mi"
+    extraArgs:
+      search.maxConcurrentRequests: "16"  # Parallel query processing
+      search.maxMemoryPerQuery: "1GB"    # Memory per query limit
+
+  # 📊 VM INSERT - Data Ingestion
+  vminsert:
+    replicaCount: 1  # Single node for homelab
+    resources:
+      limits:
+        cpu: "1"
+        memory: "2Gi"
+      requests:
+        cpu: "200m"
+        memory: "512Mi"
+    extraArgs:
+      maxLabelsPerTimeseries: "50"       # Label limit per series
+      maxConcurrentInserts: "16"         # Parallel insert processing

@@ -1,0 +1,73 @@
+---
+# 🤖 VMAGENT - ServiceMonitor Scraper for VictoriaMetrics
+# Replaces Prometheus as scraper, uses existing ServiceMonitors
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAgent
+metadata:
+  name: vmagent
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"  # After VM cluster (wave 4)
+spec:
+  # 🎯 SCRAPING CONFIGURATION
+  replicaCount: 1  # Single agent for homelab
+
+  # 📊 REMOTE WRITE to VictoriaMetrics
+  remoteWrite:
+    - url: "http://vminsert-vm-cluster:8480/insert/0/prometheus/"  # VM cluster endpoint
+
+  # 🔧 RESOURCES
+  resources:
+    limits:
+      cpu: "1"
+      memory: "2Gi"
+    requests:
+      cpu: "200m"
+      memory: "512Mi"
+
+  # 🎛️ SCRAPE CONFIGURATION
+  scrapeInterval: "30s"      # Default scrape interval
+  scrapeTimeout: "10s"       # Scrape timeout
+  externalLabels:
+    cluster: "homelab"       # Cluster label for multi-cluster setups
+    replica: "{{ .ReplicaIndex }}"
+
+  # 📋 SERVICE MONITOR SELECTORS
+  # This is the magic - VMAgent uses existing ServiceMonitors!
+  serviceMonitorSelector:
+    matchLabels:
+      release: prometheus-operator  # Match your existing ServiceMonitors
+
+  # 🎯 ADDITIONAL SELECTORS
+  podMonitorSelector:
+    matchLabels:
+      release: prometheus-operator
+
+  probeSelector:
+    matchLabels:
+      release: prometheus-operator
+
+  # 🔍 NAMESPACE SELECTORS
+  serviceMonitorNamespaceSelector: {}  # All namespaces
+  podMonitorNamespaceSelector: {}      # All namespaces
+  probeNamespaceSelector: {}           # All namespaces
+
+  # ⚙️ ADDITIONAL SCRAPE CONFIGS
+  additionalScrapeConfigs:
+    # 🎯 NODE EXPORTER (if not covered by ServiceMonitor)
+    - job_name: 'node-exporter'
+      kubernetes_sd_configs:
+        - role: node
+      relabel_configs:
+        - source_labels: [__address__]
+          regex: '(.*):10250'
+          target_label: __address__
+          replacement: '${1}:9100'
+        - source_labels: [__meta_kubernetes_node_name]
+          target_label: instance
+
+  # 🔧 ADDITIONAL ARGS
+  extraArgs:
+    promscrape.maxScrapeSize: "100MB"           # Max scrape response size
+    memory.allowedPercent: "80"                  # Memory usage limit
+    remoteWrite.queues: "4"                      # Parallel write queues
