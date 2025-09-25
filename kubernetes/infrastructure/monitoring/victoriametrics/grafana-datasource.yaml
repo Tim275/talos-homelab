@@ -1,0 +1,37 @@
+---
+# 🎯 VICTORIAMETRICS GRAFANA DATASOURCE
+# Replaces Prometheus datasource with VictoriaMetrics (drop-in compatible)
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: victoriametrics
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"  # After VMAgent (wave 5)
+  labels:
+    app.kubernetes.io/name: victoriametrics-datasource
+    app.kubernetes.io/part-of: grafana-operator
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"  # Match your Grafana instance
+
+  datasource:
+    name: "VictoriaMetrics"
+    type: "prometheus"  # 🎯 Still use prometheus type - it's compatible!
+    access: "proxy"
+    url: "http://vmselect-vm-cluster:8481/select/0/prometheus/"  # VM query endpoint
+    isDefault: true     # 🚀 Make this the default datasource
+
+    # 🔧 PROMETHEUS-COMPATIBLE SETTINGS
+    jsonData:
+      timeInterval: "30s"
+      queryTimeout: "60s"
+      httpMethod: "POST"
+
+      # 🎯 VICTORIAMETRICS SPECIFIC OPTIMIZATIONS
+      customQueryParameters: |
+        step_mul_max_lookback=1000
+
+    # 🔍 HEALTH CHECK
+    editable: false
