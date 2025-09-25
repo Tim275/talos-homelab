@@ -1,0 +1,38 @@
+# 🔍 ARGOCD REDIS VMSERVICESCRAPE - VictoriaMetrics Native
+# Collects Redis metrics from ArgoCD Redis exporter
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: argocd-redis
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"  # After VMAgent
+  labels:
+    app.kubernetes.io/name: argocd-redis-vmservicescrape
+    app.kubernetes.io/part-of: victoriametrics
+spec:
+  # 🎯 TARGET SELECTION - ArgoCD Redis Exporter Service
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-redis-exporter
+  namespaceSelector:
+    matchNames:
+      - argocd  # ArgoCD Redis exporter is in argocd namespace
+
+  # 🔧 SCRAPE CONFIGURATION
+  endpoints:
+    - port: "metrics"  # Port 9121 - Redis exporter metrics
+      path: "/metrics"
+      interval: "30s"
+      scrapeTimeout: "10s"
+      # 🏷️ METRIC RELABELING
+      metricRelabelConfigs:
+        - sourceLabels: [__name__]
+          regex: "redis_.*"
+          action: keep
+        # Add cluster label
+        - targetLabel: cluster
+          replacement: "homelab"
+        # Add service label
+        - targetLabel: service
+          replacement: "argocd-redis"
