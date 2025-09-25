@@ -1,0 +1,130 @@
+# 🚀 Grafana Alloy - OpenTelemetry Collection Application
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grafana-alloy
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"  # After VMCluster
+  labels:
+    app.kubernetes.io/name: grafana-alloy
+    app.kubernetes.io/part-of: monitoring
+spec:
+  project: infrastructure
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: alloy
+    targetRevision: "1.2.1"  # Latest stable
+    helm:
+      values: |
+        # 🚀 Grafana Alloy - OpenTelemetry Collection for VictoriaMetrics
+        # Replaces VMAgent with enterprise-grade OpenTelemetry collection
+
+        # 🎯 ALLOY CONFIGURATION
+        alloy:
+          configMap:
+            create: true
+            content: |
+              // 🔍 PROMETHEUS SERVICE DISCOVERY
+              discovery.kubernetes "services" {
+                role = "service"
+              }
+
+              discovery.kubernetes "endpoints" {
+                role = "endpoints"
+              }
+
+              // 🎯 SERVICE MONITOR DISCOVERY
+              discovery.kubernetes "servicemonitors" {
+                role = "servicemonitor"
+                namespaces {
+                  names = ["monitoring", "rook-ceph", "kafka", "kube-system", "argocd"]
+                }
+              }
+
+              // 📊 PROMETHEUS SCRAPING
+              prometheus.scrape "kubernetes_services" {
+                targets = discovery.kubernetes.servicemonitors.targets
+                scrape_interval = "30s"
+                scrape_timeout = "10s"
+                honor_labels = true
+
+                // 🏷️ RELABELING
+                relabel_configs {
+                  source_labels = ["__name__"]
+                  regex = "up|ceph_.*|kafka_.*|cilium_.*|argocd_.*"
+                  action = "keep"
+                }
+              }
+
+              // 📤 VICTORIAMETRICS REMOTE WRITE
+              prometheus.remote_write "victoriametrics" {
+                endpoint {
+                  url = "http://vminsert-vm-cluster.monitoring.svc.cluster.local:8480/insert/0/prometheus/"
+                  send_exemplars = false
+                }
+              }
+
+              // 📊 CONNECT PIPELINE
+              prometheus.scrape.kubernetes_services.forward_to = [prometheus.remote_write.victoriametrics.receiver]
+
+        # 🎛️ DEPLOYMENT CONFIGURATION
+        controller:
+          type: "deployment"  # Single deployment, not DaemonSet
+          replicas: 2         # HA deployment
+
+        # 📊 RBAC for ServiceMonitor discovery
+        rbac:
+          create: true
+          rules:
+            - apiGroups: ["monitoring.coreos.com"]
+              resources: ["servicemonitors", "podmonitors"]
+              verbs: ["get", "list", "watch"]
+            - apiGroups: [""]
+              resources: ["services", "endpoints", "pods"]
+              verbs: ["get", "list", "watch"]
+            - apiGroups: ["extensions", "networking.k8s.io"]
+              resources: ["ingresses"]
+              verbs: ["get", "list", "watch"]
+
+        # 🏷️ ENTERPRISE LABELS
+        commonLabels:
+          app.kubernetes.io/name: grafana-alloy
+          app.kubernetes.io/part-of: monitoring
+          tier: monitoring
+
+        # 📊 RESOURCE LIMITS
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+
+        # 🔧 SERVICE CONFIGURATION
+        service:
+          enabled: true
+          type: ClusterIP
+          ports:
+            - name: http
+              port: 12345
+              targetPort: 12345
+
+        # 📊 MONITORING
+        serviceMonitor:
+          enabled: true
+          interval: "30s"
+          path: "/metrics"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 3
