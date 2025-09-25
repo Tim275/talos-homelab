@@ -1,0 +1,73 @@
+---
+# 🏢 VICTORIAMETRICS CLUSTER - High Performance Time Series DB
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMCluster
+metadata:
+  name: vm-cluster
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"  # After VM Operator
+  labels:
+    app.kubernetes.io/name: victoriametrics-cluster
+    app.kubernetes.io/part-of: victoriametrics
+spec:
+  # 📈 RETENTION POLICY (90 days for homelab)
+  retentionPeriod: "90d"
+
+  # 💾 VMSTORAGE - Long-term metrics storage
+  vmstorage:
+    replicaCount: 1  # Single node for homelab
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+    # 🗄️ PERSISTENT STORAGE (Rook-Ceph)
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: rook-ceph-block
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 20Gi  # 20GB for homelab metrics
+
+  # 🔍 VMSELECT - Query interface (Prometheus-compatible)
+  vmselect:
+    replicaCount: 1  # Single node for homelab
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 300m
+        memory: 512Mi
+
+    port: "8481"
+
+    # 🧠 CACHING (improve query performance)
+    extraArgs:
+      search.maxConcurrentRequests: "4"  # Limit concurrent queries
+      search.maxMemoryPerQuery: "100MB"  # Memory limit per query
+
+  # 📝 VMINSERT - Metrics ingestion endpoint
+  vminsert:
+    replicaCount: 1  # Single node for homelab
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 300m
+        memory: 512Mi
+
+    port: "8480"
+
+    # 🚀 INGESTION OPTIMIZATION
+    extraArgs:
+      maxLabelsPerTimeseries: "50"  # Prevent label abuse
+      maxInsertRequestSize: "32MB"  # Max batch size

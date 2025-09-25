@@ -66,15 +66,15 @@ crds:
 
 controller:
   # 🚀 ENTERPRISE SCALING CONFIGURATION
-  replicas: 2  # Scale horizontally for HA and performance
+  replicas: 1  # Homelab scale - single controller for bootstrap
 
   resources:
     requests:
-      cpu: 500m      # Increased for better baseline performance
-      memory: 2Gi    # 300MB per cluster rule + buffer
+      cpu: 100m      # Homelab scale - reduced for bootstrap
+      memory: 512Mi  # Homelab scale - reduced memory
     limits:
-      cpu: 2000m     # Increased for handling 1000+ apps
-      memory: 4Gi    # Enterprise-grade memory allocation
+      cpu: 1000m     # Homelab scale - reduced CPU limit
+      memory: 2Gi    # Homelab scale - reduced memory limit
 
   # 🚀 ADVANCED PERFORMANCE METRICS
   metrics:
@@ -151,6 +151,29 @@ redis:
       cpu: 500m      # Allow burst for cache operations
       memory: 1Gi    # Enterprise cache size
 
+  # 🚀 REDIS EXPORTER SIDECAR (Industry Standard Pattern)
+  exporter:
+    enabled: true
+    image:
+      repository: ghcr.io/oliver006/redis_exporter
+      tag: v1.65.0  # Latest stable version
+    containerSecurityContext:
+      runAsNonRoot: true
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      seccompProfile:
+        type: RuntimeDefault
+      capabilities:
+        drop:
+          - ALL
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
   # 🚀 REDIS PERFORMANCE TUNING
   extraArgs:
     - --maxmemory-policy
@@ -160,7 +183,7 @@ redis:
     - --appendonly
     - "no"           # Disable AOF for cache performance
 
-  # 🚀 REDIS METRICS
+  # 🚀 REDIS METRICS (Works with sidecar exporter)
   metrics:
     enabled: true
     serviceMonitor:
@@ -168,6 +191,9 @@ redis:
       namespace: argocd
       additionalLabels:
         release: prometheus-operator
+      interval: 30s
+      scrapeTimeout: 10s
+
 
   # 🚀 REDIS HA CONFIGURATION (when needed)
   haproxy:
@@ -182,11 +208,11 @@ redis:
 
 server:
   # 🚀 HIGH AVAILABILITY SERVER CONFIGURATION
-  replicas: 3  # HA configuration for enterprise deployment
+  replicas: 1  # Homelab scale - single server for bootstrap
 
   service:
-    type: LoadBalancer
-    loadBalancerIP: "192.168.68.160"  # Static IP for ArgoCD (free IP)
+    type: ClusterIP  # No LoadBalancer - use Ingress instead
+    # loadBalancerIP: "192.168.68.160"  # Disabled - no LoadBalancer
     servicePortHttpsAppProtocol: kubernetes.io/h2c
 
   # 🚀 ENHANCED METRICS AND MONITORING
@@ -201,7 +227,7 @@ server:
       scrapeTimeout: 10s
 
   certificate:
-    enabled: true
+    enabled: false  # Disabled until cert-manager is deployed
     domain: argo.timourhomelab.org
     issuer:
       group: cert-manager.io
@@ -213,11 +239,11 @@ server:
 
   resources:
     requests:
-      cpu: 200m      # Increased for HA setup
-      memory: 256Mi  # Increased baseline
+      cpu: 100m      # Homelab scale - reduced for bootstrap
+      memory: 128Mi  # Homelab scale - reduced memory
     limits:
-      cpu: 1000m     # Increased for high load
-      memory: 2Gi    # Enterprise memory allocation
+      cpu: 500m      # Homelab scale - reduced CPU limit
+      memory: 1Gi    # Homelab scale - reduced memory limit
 
   # 🚀 SERVER PERFORMANCE TUNING
   extraEnv:
@@ -226,18 +252,13 @@ server:
     - name: ARGOCD_SERVER_INSECURE
       value: "true"    # Already configured via params
 
-  # 🚀 ENHANCED INGRESS CONFIGURATION FOR PERFORMANCE
+  # 🚀 INGRESS DISABLED - Using kubectl port-forward instead
   ingress:
-    enabled: true
-    annotations:
-      nginx.ingress.kubernetes.io/proxy-read-timeout: "600"      # Extended timeout
-      nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"     # Connection timeout
-      nginx.ingress.kubernetes.io/proxy-send-timeout: "600"       # Send timeout
-      nginx.ingress.kubernetes.io/client-max-body-size: "10m"     # Large manifest support
+    enabled: false  # Disabled per user request - use kubectl port-forward
 
 repoServer:
   # 🚀 ENTERPRISE REPO SERVER - ULTRA PERFORMANCE CONFIG
-  replicas: 3  # Scale out for performance and HA
+  replicas: 1  # Homelab scale - single replica for bootstrap
 
   containerSecurityContext:
     readOnlyRootFilesystem: true
@@ -250,10 +271,10 @@ repoServer:
     - name: cmp-tmp
       emptyDir:
         sizeLimit: 2Gi  # Limit tmp space
-    # 🚀 PERSISTENT CACHE VOLUME - PREVENTS DISK SPACE ISSUES
+    # 🚀 EMPTYDIR CACHE FOR BOOTSTRAP (no PVC dependency)
     - name: repo-cache
-      persistentVolumeClaim:
-        claimName: argocd-repo-cache
+      emptyDir:
+        sizeLimit: 5Gi
     # 🚀 ADDITIONAL TMP SPACE FOR LARGE REPOSITORIES
     - name: repo-tmp
       emptyDir:
@@ -264,7 +285,7 @@ repoServer:
     - name: repo-cache
       mountPath: /repo-cache      # Custom cache directory
     - name: repo-tmp
-      mountPath: /tmp             # Override default /tmp
+      mountPath: /repo-tmp        # Fix: use unique mount path
 
   # 🚀 ADVANCED METRICS AND MONITORING
   metrics:
@@ -280,17 +301,17 @@ repoServer:
   # 🚀 ENTERPRISE RESOURCE ALLOCATION
   resources:
     requests:
-      cpu: 500m      # Increased for parallel processing
-      memory: 1Gi    # Higher baseline for caching
+      cpu: 100m      # Homelab scale - reduced for bootstrap
+      memory: 256Mi  # Homelab scale - reduced memory
     limits:
-      cpu: 2000m     # Allow burst processing
-      memory: 4Gi    # Enterprise memory for large repos
+      cpu: 500m      # Homelab scale - reduced CPU limit
+      memory: 1Gi    # Homelab scale - reduced memory limit
 
   # 🚀 REPO SERVER PERFORMANCE ENVIRONMENT VARIABLES
   extraEnv:
     # Cache and Performance
     - name: TMPDIR
-      value: "/tmp"                        # Use persistent tmp space
+      value: "/repo-tmp"                   # Fix: match updated mount path
     - name: ARGOCD_EXEC_TIMEOUT
       value: "600"                         # Extended execution timeout
     - name: ARGOCD_GIT_ATTEMPTS_COUNT
@@ -312,11 +333,11 @@ repoServer:
     - name: ARGOCD_REPO_CACHE_EXPIRATION
       value: "1h"                          # Faster cache invalidation
 
-  # 🚀 PERSISTENT VOLUME CLAIM FOR REPO CACHE
+  # 🚀 DISABLED PERSISTENT CACHE FOR BOOTSTRAP (can enable later)
   persistence:
-    enabled: true
+    enabled: false  # Disable for bootstrap - use emptyDir
     size: 20Gi
-    storageClassName: rook-ceph-block  # Use fast SSD storage
+    storageClassName: rook-cephblock-enterprise
     accessModes:
       - ReadWriteOnce
   extraContainers:
@@ -324,7 +345,8 @@ repoServer:
       command:
         - argocd-cmp-server
       image: >-
-        {{ default .Values.global.image.repository .Values.repoServer.image.repository }}:{{ default (include "argo-cd.defaultTag" .) .Values.repoServer.image.tag }}
+        {{ default .Values.global.image.repository .Values.repoServer.image.repository }}:{{
+        default (include "argo-cd.defaultTag" .) .Values.repoServer.image.tag }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 999
@@ -377,8 +399,7 @@ applicationSet:
         release: prometheus-operator
 
   extraEnv:
-    - name: ARGOCD_APPLICATIONSET_CONTROLLER_REPO_SERVER_TIMEOUT_SECONDS
-      value: "600"     # Match repo server timeout
+    # Removed duplicate REPO_SERVER_TIMEOUT - already in configs.params
     - name: ARGOCD_APPLICATIONSET_CONTROLLER_PARALLELISM_LIMIT
       value: "10"      # Process multiple ApplicationSets in parallel
 

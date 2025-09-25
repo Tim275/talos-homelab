@@ -1,19 +1,32 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# 🚀 VictoriaMetrics - Better Prometheus Alternative
-# - 10x less RAM usage
-# - 7x less storage space
-# - Full Prometheus compatibility
-# - Perfect for homelab!
+# 🚀 VictoriaMetrics - Drop-in Prometheus Replacement
+# Better performance, less resource usage, same PromQL compatibility
 
-namespace: monitoring
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "3"  # After prometheus-operator-crds
 
-helmCharts:
-  - name: victoria-metrics-k8s-stack
-    repo: https://victoriametrics.github.io/helm-charts/
-    version: "0.25.16"  # Latest stable
-    releaseName: victoriametrics
-    namespace: monitoring
-    valuesFile: values.yaml
-    includeCRDs: true
+resources:
+  # 🎯 OPERATOR DEPLOYMENT (Helm Chart via Application - processed by ArgoCD directly)
+  - application.yaml          # ✅ VictoriaMetrics Operator Helm chart
+
+  # 🏗️ CLUSTER COMPONENTS (Raw YAML - processed by Kustomize)
+  - vmcluster.yaml            # VM Cluster (storage + select + insert)
+  - vmagent.yaml              # VM Agent (scrapes ServiceMonitors)
+
+  # 🔍 SCRAPE TARGETS (VMServiceScrapes for VictoriaMetrics)
+  - elasticsearch-vmservicescrape.yaml    # Elasticsearch metrics scraping
+  - argocd-server-vmservicescrape.yaml    # ArgoCD Server metrics scraping
+  - argocd-controller-vmservicescrape.yaml # ArgoCD Controller metrics scraping
+  - argocd-redis-vmservicescrape.yaml     # ArgoCD Redis metrics scraping
+  - rook-ceph-vmservicescrape.yaml        # Rook-Ceph manager metrics scraping
+  - kafka-exporter-vmservicescrape.yaml   # Kafka Exporter metrics scraping
+
+  # 📊 GRAFANA INTEGRATION (Raw YAML - processed by Kustomize)
+  - grafana-datasource.yaml   # ✅ ENABLED: VictoriaMetrics as primary datasource
+
+# 🎛️ COMMON LABELS
+commonLabels:
+  app.kubernetes.io/part-of: victoriametrics
+  app.kubernetes.io/managed-by: argocd

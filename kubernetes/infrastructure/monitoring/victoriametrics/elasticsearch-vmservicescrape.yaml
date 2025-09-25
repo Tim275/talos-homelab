@@ -1,0 +1,35 @@
+# 🔍 ELASTICSEARCH VMSERVICESCRAPE - VictoriaMetrics Native
+# Converts Prometheus ServiceMonitor to VictoriaMetrics VMServiceScrape
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: elasticsearch-cluster
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"  # After VMAgent
+  labels:
+    app.kubernetes.io/name: elasticsearch-vmservicescrape
+    app.kubernetes.io/part-of: victoriametrics
+spec:
+  # 🎯 TARGET SELECTION - Elasticsearch Exporter Service
+  selector:
+    matchLabels:
+      app: elasticsearch-exporter  # Targets elasticsearch-exporter service
+  namespaceSelector:
+    matchNames:
+      - elastic-system  # Elasticsearch exporter is in elastic-system namespace
+
+  # 🔧 SCRAPE CONFIGURATION
+  endpoints:
+    - port: "9114"  # Elasticsearch exporter metrics port
+      path: "/metrics"
+      interval: "30s"
+      scrapeTimeout: "10s"
+      # 🏷️ METRIC RELABELING
+      metricRelabelConfigs:
+        - sourceLabels: [__name__]
+          regex: "elasticsearch_.*"
+          action: keep
+        # Add cluster label
+        - targetLabel: cluster
+          replacement: "production-cluster"

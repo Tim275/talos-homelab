@@ -1,0 +1,52 @@
+---
+# 🔄 VMAGENT - Metrics Collection (replaces Prometheus scraping)
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAgent
+metadata:
+  name: vm-agent
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"  # After VM Operator
+  labels:
+    app.kubernetes.io/name: vm-agent
+    app.kubernetes.io/part-of: victoriametrics
+spec:
+  # 🎯 RESOURCE ALLOCATION
+  resources:
+    requests:
+      cpu: 200m
+      memory: 300Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # 📡 REMOTE WRITE CONFIGURATION (to VMCluster)
+  remoteWrite:
+    - url: "http://vminsert-vm-cluster.monitoring.svc.cluster.local:8480/insert/0/prometheus/"
+
+  # 🔧 AGENT CONFIGURATION
+  scrapeInterval: "30s"  # Default scrape interval
+  scrapeTimeout: "10s"   # Scrape timeout
+
+  # 🏷️ EXTERNAL LABELS
+  externalLabels:
+    cluster: "homelab"
+    replica: "vm-agent"
+
+  # ⚡ PERFORMANCE TUNING
+  extraArgs:
+    promscrape.maxScrapeSize: "16MB"    # Max response size
+    remoteWrite.maxBlockSize: "8MB"     # Max block size for remote write
+    memory.allowedPercent: "60"         # Memory usage limit
+
+  # 🔍 KUBERNETES API DISCOVERY
+  # Enable discovery of ALL ServiceMonitors, PodMonitors, and Scrape configs
+  selectAllByDefault: true
+
+  # 🌐 CROSS-NAMESPACE DISCOVERY - VMServiceScrapes and VMPodScrapes
+  serviceScrapeNamespaceSelector: {}   # Empty selector = all namespaces
+  podScrapeNamespaceSelector: {}       # Empty selector = all namespaces
+
+  # 🎯 PROMETHEUS OPERATOR COMPATIBILITY
+  # VMAgent can directly scrape Prometheus ServiceMonitors and PodMonitors
+  # These are auto-converted internally by VictoriaMetrics operator
