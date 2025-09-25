@@ -1,73 +1,52 @@
 ---
-# 🤖 VMAGENT - ServiceMonitor Scraper for VictoriaMetrics
-# Replaces Prometheus as scraper, uses existing ServiceMonitors
+# 🔄 VMAGENT - Metrics Collection (replaces Prometheus scraping)
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMAgent
 metadata:
-  name: vmagent
+  name: vm-agent
   namespace: monitoring
   annotations:
-    argocd.argoproj.io/sync-wave: "5"  # After VM cluster (wave 4)
+    argocd.argoproj.io/sync-wave: "4"  # After VM Operator
+  labels:
+    app.kubernetes.io/name: vm-agent
+    app.kubernetes.io/part-of: victoriametrics
 spec:
-  # 🎯 SCRAPING CONFIGURATION
-  replicaCount: 1  # Single agent for homelab
-
-  # 📊 REMOTE WRITE to VictoriaMetrics
-  remoteWrite:
-    - url: "http://vminsert-vm-cluster:8480/insert/0/prometheus/"  # VM cluster endpoint
-
-  # 🔧 RESOURCES
+  # 🎯 RESOURCE ALLOCATION
   resources:
-    limits:
-      cpu: "1"
-      memory: "2Gi"
     requests:
-      cpu: "200m"
-      memory: "512Mi"
+      cpu: 200m
+      memory: 300Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
 
-  # 🎛️ SCRAPE CONFIGURATION
-  scrapeInterval: "30s"      # Default scrape interval
-  scrapeTimeout: "10s"       # Scrape timeout
+  # 📡 REMOTE WRITE CONFIGURATION (to VMCluster)
+  remoteWrite:
+    - url: "http://vminsert-vm-cluster.monitoring.svc.cluster.local:8480/insert/0/prometheus/"
+
+  # 🔧 AGENT CONFIGURATION
+  scrapeInterval: "30s"  # Default scrape interval
+  scrapeTimeout: "10s"   # Scrape timeout
+
+  # 🏷️ EXTERNAL LABELS
   externalLabels:
-    cluster: "homelab"       # Cluster label for multi-cluster setups
-    replica: "{{ .ReplicaIndex }}"
+    cluster: "homelab"
+    replica: "vm-agent"
 
-  # 📋 SERVICE MONITOR SELECTORS
-  # This is the magic - VMAgent uses existing ServiceMonitors!
-  serviceMonitorSelector:
-    matchLabels:
-      release: prometheus-operator  # Match your existing ServiceMonitors
-
-  # 🎯 ADDITIONAL SELECTORS
-  podMonitorSelector:
-    matchLabels:
-      release: prometheus-operator
-
-  probeSelector:
-    matchLabels:
-      release: prometheus-operator
-
-  # 🔍 NAMESPACE SELECTORS
-  serviceMonitorNamespaceSelector: {}  # All namespaces
-  podMonitorNamespaceSelector: {}      # All namespaces
-  probeNamespaceSelector: {}           # All namespaces
-
-  # ⚙️ ADDITIONAL SCRAPE CONFIGS
-  additionalScrapeConfigs:
-    # 🎯 NODE EXPORTER (if not covered by ServiceMonitor)
-    - job_name: 'node-exporter'
-      kubernetes_sd_configs:
-        - role: node
-      relabel_configs:
-        - source_labels: [__address__]
-          regex: '(.*):10250'
-          target_label: __address__
-          replacement: '${1}:9100'
-        - source_labels: [__meta_kubernetes_node_name]
-          target_label: instance
-
-  # 🔧 ADDITIONAL ARGS
+  # ⚡ PERFORMANCE TUNING
   extraArgs:
-    promscrape.maxScrapeSize: "100MB"           # Max scrape response size
-    memory.allowedPercent: "80"                  # Memory usage limit
-    remoteWrite.queues: "4"                      # Parallel write queues
+    promscrape.maxScrapeSize: "16MB"    # Max response size
+    remoteWrite.maxBlockSize: "8MB"     # Max block size for remote write
+    memory.allowedPercent: "60"         # Memory usage limit
+
+  # 🔍 KUBERNETES API DISCOVERY
+  # Enable discovery of ALL ServiceMonitors, PodMonitors, and Scrape configs
+  selectAllByDefault: true
+
+  # 🌐 CROSS-NAMESPACE DISCOVERY - VMServiceScrapes and VMPodScrapes
+  serviceScrapeNamespaceSelector: {}   # Empty selector = all namespaces
+  podScrapeNamespaceSelector: {}       # Empty selector = all namespaces
+
+  # 🎯 PROMETHEUS OPERATOR COMPATIBILITY
+  # VMAgent can directly scrape Prometheus ServiceMonitors and PodMonitors
+  # These are auto-converted internally by VictoriaMetrics operator
