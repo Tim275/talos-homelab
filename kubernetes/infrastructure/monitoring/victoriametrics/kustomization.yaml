@@ -1,19 +1,24 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# 🚀 VictoriaMetrics - Better Prometheus Alternative
-# - 10x less RAM usage
-# - 7x less storage space
-# - Full Prometheus compatibility
-# - Perfect for homelab!
+# 🚀 VictoriaMetrics - Drop-in Prometheus Replacement
+# Better performance, less resource usage, same PromQL compatibility
 
-namespace: monitoring
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "3"  # After prometheus-operator-crds
 
-helmCharts:
-  - name: victoria-metrics-k8s-stack
-    repo: https://victoriametrics.github.io/helm-charts/
-    version: "0.25.16"  # Latest stable
-    releaseName: victoriametrics
-    namespace: monitoring
-    valuesFile: values.yaml
-    includeCRDs: true
+resources:
+  # 🎯 OPERATOR DEPLOYMENT
+  - application.yaml          # VictoriaMetrics Operator Helm chart
+
+  # 🏗️ CLUSTER COMPONENTS
+  - vmcluster.yaml            # VM Cluster (storage + select + insert)
+  - vmagent.yaml              # VM Agent (scrapes ServiceMonitors)
+
+  # 📊 GRAFANA INTEGRATION
+  - grafana-datasource.yaml   # VictoriaMetrics as default datasource
+
+# 🎛️ COMMON LABELS
+commonLabels:
+  app.kubernetes.io/part-of: victoriametrics
+  app.kubernetes.io/managed-by: argocd
