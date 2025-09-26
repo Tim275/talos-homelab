@@ -1,23 +1,29 @@
-# 🎯 KAFKA EXPORTER SERVICE - EXPOSE METRICS!
-# ============================================
-# Strimzi creates the Kafka Exporter pod but no service
-# We need to create a service so Prometheus can scrape it
-#
+# 🔧 Kafka Exporter Service Override - Fix selector conflicts
+# =======================================================
+# Problem: Strimzi-generated service has wrong selector from ApplicationSet commonLabels
+# Solution: Override with correct selector that matches actual pods
+
 apiVersion: v1
 kind: Service
 metadata:
   name: kafka-exporter-metrics
   namespace: kafka
   labels:
-    app: kafka-exporter
-    monitoring: prometheus  # For global ServiceMonitor discovery
+    app.kubernetes.io/name: kafka-exporter
     strimzi.io/kind: KafkaExporter
+  annotations:
+    # 🎯 PROMETHEUS/VICTORIAMETRICS AUTO-DISCOVERY
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9404"
+    prometheus.io/path: "/metrics"
 spec:
+  type: ClusterIP
+  ports:
+  - name: metrics
+    port: 9404
+    protocol: TCP
+    targetPort: 9404
   selector:
+    # ✅ ONLY use labels that exist on Strimzi-generated pods
     strimzi.io/cluster: my-cluster
     strimzi.io/name: my-cluster-kafka-exporter
-  ports:
-    - name: metrics
-      port: 9404
-      targetPort: 9404
-      protocol: TCP
