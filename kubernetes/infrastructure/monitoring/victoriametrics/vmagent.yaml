@@ -32,159 +32,36 @@ spec:
     cluster: "homelab"
     replica: "vm-agent"
 
-  # ⚡ PERFORMANCE TUNING
+  # ⚡ PERFORMANCE TUNING & PROMETHEUS DISCOVERY CONTROL
   extraArgs:
     promscrape.maxScrapeSize: "16MB"    # Max response size
     remoteWrite.maxBlockSize: "8MB"     # Max block size for remote write
     memory.allowedPercent: "60"         # Memory usage limit
+    promscrape.kubernetesSDDisableByDefault: "true"  # Disable auto kubernetes discovery
+    promscrape.discovery.disableCompression: "true"  # Reduce discovery overhead
+    promscrape.kubernetes.disableEndpoints: "true"   # CRITICAL: Disable kubernetes-service-endpoints
+    promscrape.kubernetes.disablePods: "true"        # CRITICAL: Disable kubernetes-pods auto-discovery
 
-  # 🔍 AUTOMATIC PROMETHEUS-STYLE SERVICE DISCOVERY
-  # ENABLED: Automatically discover services with prometheus.io/scrape=true
-  selectAllByDefault: true
+  # 🚫 DISABLE AUTOMATIC SERVICE DISCOVERY - STRICT WHITELIST ONLY
+  # DISABLED: No automatic discovery, only inlineScrapeConfig controls
+  selectAllByDefault: false
 
   # 🎯 AUTOMATIC KUBERNETES SERVICE DISCOVERY
   # VMAgent automatically discovers services with annotation prometheus.io/scrape=true
   # Works exactly like Prometheus - no manual VMServiceScrape needed!
 
-  # 🌐 SCRAPE ALL NAMESPACES - Full cluster observability
-  serviceScrapeNamespaceSelector: {}  # Empty selector = ALL namespaces
-  podScrapeNamespaceSelector: {}      # Empty selector = ALL namespaces
+  # 🎯 STRICT NAMESPACE FILTERING - ONLY monitoring namespace
+  serviceScrapeNamespaceSelector:
+    matchLabels:
+      name: monitoring  # Only monitoring namespace
+  podScrapeNamespaceSelector:
+    matchLabels:
+      name: monitoring  # Only monitoring namespace
 
   # 🎯 PROMETHEUS OPERATOR COMPATIBILITY
   # VMAgent can directly scrape Prometheus ServiceMonitors and PodMonitors
   # These are auto-converted internally by VictoriaMetrics operator
 
-  # 🌍 COMPREHENSIVE KUBERNETES SERVICE DISCOVERY
-  inlineScrapeConfig: |
-    # 🎯 KUBERNETES SERVICES (prometheus.io/scrape=true)
-    - job_name: 'kubernetes-service-endpoints'
-      kubernetes_sd_configs:
-      - role: endpoints
-      relabel_configs:
-      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
-        action: keep
-        regex: true
-      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scheme]
-        action: replace
-        target_label: __scheme__
-        regex: (https?)
-        replacement: ${1}
-      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
-        action: replace
-        target_label: __metrics_path__
-        regex: (.+)
-        replacement: ${1}
-      # 🔍 DEFAULT METRICS PATH - Only if no annotation present
-      - source_labels: [__metrics_path__]
-        action: replace
-        target_label: __metrics_path__
-        regex: ^$
-        replacement: /metrics
-      - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
-        action: replace
-        regex: ([^:]+)(?::\d+)?;(\d+)
-        replacement: $1:$2
-        target_label: __address__
-      # 🚫 SKIP NON-METRICS PORTS - Avoid UI/Web ports that serve HTML
-      - source_labels: [__meta_kubernetes_endpoint_port_name]
-        action: drop
-        regex: (ui|web|http|admin-http|console|query)
-      # 🚫 SKIP SERVICES WITHOUT EXPLICIT METRICS INTENT
-      - source_labels: [__meta_kubernetes_service_name]
-        action: drop
-        regex: (jaeger-query|redpanda-console|.*-ui|.*-web)
-      - action: labelmap
-        regex: __meta_kubernetes_service_label_(.+)
-      - source_labels: [__meta_kubernetes_namespace]
-        action: replace
-        target_label: kubernetes_namespace
-      - source_labels: [__meta_kubernetes_service_name]
-        action: replace
-        target_label: kubernetes_name
-      - source_labels: [__meta_kubernetes_endpoint_port_name]
-        action: replace
-        target_label: kubernetes_port_name
-
-    # 🚀 KUBERNETES PODS (prometheus.io/scrape=true)
-    - job_name: 'kubernetes-pods'
-      kubernetes_sd_configs:
-      - role: pod
-      relabel_configs:
-      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
-        action: keep
-        regex: true
-      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scheme]
-        action: replace
-        target_label: __scheme__
-        regex: (https?)
-      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
-        action: replace
-        target_label: __metrics_path__
-        regex: (.+)
-      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
-        action: replace
-        regex: ([^:]+)(?::\d+)?;(\d+)
-        replacement: $1:$2
-        target_label: __address__
-      - action: labelmap
-        regex: __meta_kubernetes_pod_label_(.+)
-      - source_labels: [__meta_kubernetes_namespace]
-        action: replace
-        target_label: kubernetes_namespace
-      - source_labels: [__meta_kubernetes_pod_name]
-        action: replace
-        target_label: kubernetes_pod_name
-
-    # ⚙️ KUBERNETES API SERVER
-    - job_name: 'kubernetes-apiservers'
-      kubernetes_sd_configs:
-      - role: endpoints
-      scheme: https
-      tls_config:
-        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-        insecure_skip_verify: false
-      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-      relabel_configs:
-      - source_labels:
-          - __meta_kubernetes_namespace
-          - __meta_kubernetes_service_name
-          - __meta_kubernetes_endpoint_port_name
-        action: keep
-        regex: default;kubernetes;https
-
-    # 🔍 KUBERNETES NODES (kubelet metrics)
-    - job_name: 'kubernetes-nodes'
-      kubernetes_sd_configs:
-      - role: node
-      scheme: https
-      tls_config:
-        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-        insecure_skip_verify: true  # Skip TLS verification for homelab
-      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-      relabel_configs:
-      - action: labelmap
-        regex: __meta_kubernetes_node_label_(.+)
-      - source_labels: [__address__]
-        action: replace
-        target_label: __address__
-        regex: ([^:]+):(.+)
-        replacement: $1:10250  # Kubelet metrics port
-
-    # 📊 KUBERNETES CADVISOR (container metrics)
-    - job_name: 'kubernetes-cadvisor'
-      kubernetes_sd_configs:
-      - role: node
-      scheme: https
-      metrics_path: /metrics/cadvisor
-      tls_config:
-        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-        insecure_skip_verify: true  # Skip TLS verification for homelab
-      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-      relabel_configs:
-      - action: labelmap
-        regex: __meta_kubernetes_node_label_(.+)
-      - source_labels: [__address__]
-        action: replace
-        target_label: __address__
-        regex: ([^:]+):(.+)
-        replacement: $1:10250  # Kubelet metrics port for cAdvisor
+  # 🚫 DISABLE INLINE SCRAPE CONFIG - USE ONLY VMServiceScrapes
+  # All service discovery now happens through VMServiceScrapes
+  # This prevents the unfiltered scraping of all services
