@@ -1,165 +1,95 @@
-# 🔄 VMAGENT - Metrics Collection (replaces Prometheus scraping)
+# 🎯 MINIMAL TALOS VMAGENT - Zero Complexity, Maximum Reliability
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMAgent
 metadata:
   name: vm-agent
   namespace: monitoring
   annotations:
-    argocd.argoproj.io/sync-wave: "4"  # After VM Operator
+    argocd.argoproj.io/sync-wave: "4"
   labels:
     app.kubernetes.io/name: vm-agent
     app.kubernetes.io/part-of: victoriametrics
 spec:
-  # 🎯 RESOURCE ALLOCATION
+  # 🎯 MINIMAL RESOURCES
   resources:
     requests:
-      cpu: 200m
-      memory: 300Mi
+      cpu: 100m
+      memory: 128Mi
     limits:
-      cpu: 500m
-      memory: 512Mi
+      cpu: 200m
+      memory: 256Mi
 
-  # 📡 REMOTE WRITE CONFIGURATION (to VMCluster)
+  # 📡 REMOTE WRITE to VMCluster
   remoteWrite:
     - url: "http://vminsert-vm-cluster.monitoring.svc.cluster.local:8480/insert/0/prometheus/"
 
-  # 🔧 AGENT CONFIGURATION
-  scrapeInterval: "30s"  # Default scrape interval
-  scrapeTimeout: "10s"   # Scrape timeout
+  # 🔧 BASIC AGENT CONFIG
+  scrapeInterval: "30s"
+  scrapeTimeout: "10s"
 
-  # 🏷️ EXTERNAL LABELS
+  # 🏷️ CLUSTER LABELS
   externalLabels:
-    cluster: "homelab"
-    replica: "vm-agent"
+    cluster: "talos-homelab"
 
-  # ⚡ PERFORMANCE TUNING + DISCOVERY CONTROL
+  # 🚨 DISABLE ALL AUTO-DISCOVERY - TALOS SAFE MODE
   extraArgs:
-    promscrape.maxScrapeSize: "16MB"    # Max response size
-    remoteWrite.maxBlockSize: "8MB"     # Max block size for remote write
-    memory.allowedPercent: "60"         # Memory usage limit
-    # 🚨 DISABLE AGGRESSIVE AUTO-DISCOVERY
-    promscrape.kubernetes.disableEndpoints: "true"  # Stop kubernetes-service-endpoints spam
-    promscrape.kubernetes.disablePods: "true"       # Stop kubernetes-pods spam
+    promscrape.kubernetes.disableEndpoints: "true"
+    promscrape.kubernetes.disablePods: "true"
+    promscrape.kubernetes.disableServices: "true"
+    promscrape.kubernetes.disableIngresses: "true"
+    promscrape.maxScrapeSize: "16MB"
+    memory.allowedPercent: "60"
 
-  # 🎯 CONTROLLED DISCOVERY - Use inlineScrapeConfig for precise control
-  # This approach gives us full control over what gets scraped without
-  # relying on automatic discovery that can pick up unwanted endpoints
+  # 🎯 ZERO AUTO-DISCOVERY - MANUAL CONTROL ONLY
+  selectAllByDefault: false
+  serviceScrapeNamespaceSelector:
+    matchExpressions:
+      - key: name
+        operator: DoesNotExist  # Never match any namespace
+  podScrapeNamespaceSelector:
+    matchExpressions:
+      - key: name
+        operator: DoesNotExist  # Never match any namespace
 
-  # 🎯 CENTRALIZED WHITELIST - Only scrape what we explicitly define
+  # 🎯 TALOS-SPECIFIC MINIMAL MONITORING
   inlineScrapeConfig: |
     global:
       scrape_interval: 30s
-      scrape_timeout: 10s
+      evaluation_interval: 30s
 
     scrape_configs:
-      # Node Exporter
-      - job_name: 'node-exporter'
-        kubernetes_sd_configs:
-          - role: endpoints
-            namespaces:
-              names: ['monitoring']
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_service_name]
-            action: keep
-            regex: 'node-exporter'
-          - source_labels: [__meta_kubernetes_endpoint_port_name]
-            action: keep
-            regex: 'metrics'
+      # ================================================================================
+      # TIER 1: TALOS NODE MONITORING ONLY
+      # ================================================================================
 
-      # VictoriaMetrics Components
-      - job_name: 'victoriametrics'
-        kubernetes_sd_configs:
-          - role: endpoints
-            namespaces:
-              names: ['monitoring']
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_service_name]
-            action: keep
-            regex: '(vmselect|vminsert|vmstorage)-.*'
+      # Node Exporter (System Metrics) - TALOS CRITICAL
+      - job_name: 'node-exporter-talos'
+        static_configs:
+          - targets: ['node-exporter.monitoring.svc.cluster.local:9100']
+        metrics_path: '/metrics'
+        scrape_interval: 30s
+        scrape_timeout: 10s
 
-      # Kubernetes API Server
-      - job_name: 'kubernetes-apiservers'
-        kubernetes_sd_configs:
-          - role: endpoints
+      # VictoriaMetrics Self-Monitoring - ESSENTIAL
+      - job_name: 'victoriametrics-self'
+        static_configs:
+          - targets:
+            - 'vmselect-vm-cluster.monitoring.svc.cluster.local:8481'
+            - 'vminsert-vm-cluster.monitoring.svc.cluster.local:8480'
+            - 'vmstorage-vm-cluster.monitoring.svc.cluster.local:8482'
+        metrics_path: '/metrics'
+        scrape_interval: 30s
+        scrape_timeout: 10s
+
+      # Kubernetes API Server - TALOS CORE
+      - job_name: 'kubernetes-apiserver-talos'
         scheme: https
         tls_config:
           ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
           insecure_skip_verify: true
         bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name,
-                                 __meta_kubernetes_endpoint_port_name]
-            action: keep
-            regex: default;kubernetes;https
-
-      # Kubelet Metrics
-      - job_name: 'kubernetes-nodes'
-        scheme: https
-        tls_config:
-          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-          insecure_skip_verify: true
-        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-        kubernetes_sd_configs:
-          - role: node
-        relabel_configs:
-          - action: labelmap
-            regex: __meta_kubernetes_node_label_(.+)
-          - target_label: __address__
-            replacement: kubernetes.default.svc:443
-          - source_labels: [__meta_kubernetes_node_name]
-            regex: (.+)
-            target_label: __metrics_path__
-            replacement: /api/v1/nodes/${1}/proxy/metrics
-
-      # cAdvisor
-      - job_name: 'kubernetes-nodes-cadvisor'
-        scheme: https
-        tls_config:
-          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-          insecure_skip_verify: true
-        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-        kubernetes_sd_configs:
-          - role: node
-        relabel_configs:
-          - action: labelmap
-            regex: __meta_kubernetes_node_label_(.+)
-          - target_label: __address__
-            replacement: kubernetes.default.svc:443
-          - source_labels: [__meta_kubernetes_node_name]
-            regex: (.+)
-            target_label: __metrics_path__
-            replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
-
-      # ONLY selected services with proper metrics
-      - job_name: 'kubernetes-service-endpoints-whitelist'
-        kubernetes_sd_configs:
-          - role: endpoints
-        relabel_configs:
-          # Only scrape services with explicit prometheus.io/scrape=true
-          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
-            action: keep
-            regex: true
-          # Use prometheus.io/path if specified
-          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
-            action: replace
-            target_label: __metrics_path__
-            regex: (.+)
-          # Use prometheus.io/port if specified
-          - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
-            action: replace
-            regex: ([^:]+)(?::\d+)?;(\d+)
-            replacement: $1:$2
-            target_label: __address__
-          # Use prometheus.io/scheme if specified
-          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scheme]
-            action: replace
-            target_label: __scheme__
-            regex: (https?)
-          - action: labelmap
-            regex: __meta_kubernetes_service_label_(.+)
-          - source_labels: [__meta_kubernetes_namespace]
-            action: replace
-            target_label: kubernetes_namespace
-          - source_labels: [__meta_kubernetes_service_name]
-            action: replace
-            target_label: kubernetes_name
+        static_configs:
+          - targets: ['kubernetes.default.svc.cluster.local:443']
+        metrics_path: '/metrics'
+        scrape_interval: 60s
+        scrape_timeout: 10s
