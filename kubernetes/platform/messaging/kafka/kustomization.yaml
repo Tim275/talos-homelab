@@ -4,17 +4,15 @@ kind: Kustomization
 # 🌊 Sync Wave 12: Enterprise Messaging Platform (Kafka with Strimzi)
 commonAnnotations:
   argocd.argoproj.io/sync-wave: "12"
+  # 🏢 Enterprise Service Ownership (moved to annotations to prevent service selector pollution)
+  enterprise.app.kubernetes.io/managed-by: argocd
+  enterprise.app.kubernetes.io/part-of: timour-homelab
+  enterprise.app.kubernetes.io/component: messaging-platform
+  enterprise.team: timour
+  enterprise.service-owner: timour
+  enterprise.service-tier: platform
 
 namespace: kafka
-
-# 🏢 Enterprise Service Ownership
-commonLabels:
-  app.kubernetes.io/managed-by: argocd
-  app.kubernetes.io/part-of: timour-homelab
-  app.kubernetes.io/component: messaging-platform
-  team: timour
-  service-owner: timour
-  service-tier: platform
 
 resources:
   - namespace.yaml
@@ -23,7 +21,8 @@ resources:
   - kafka-cluster.yaml
   - kafka-topic.yaml
   # 🎯 MONITORING: ServiceMonitors moved to infrastructure/monitoring/servicemonitors/ (Vegarn pattern)
-  - kafka-exporter-service.yaml  # Service for Kafka Exporter metrics
+  - kafka-exporter-service.yaml  # ✅ CORRECTED Service with proper selector for Kafka Exporter metrics
+  - kafka-exporter-vmservicescrape.yaml  # VictoriaMetrics scraping config
 
 # 🚨 CRITICAL INFRASTRUCTURE AS CODE: Service Labeling für Grafana Dashboard Discovery
 # ===================================================================================
@@ -58,6 +57,21 @@ patches:
       - op: add
         path: /metadata/labels/release
         value: prometheus-operator
+
+  # 🔧 KAFKA EXPORTER SERVICE SELECTOR FIX - Override commonLabels selector pollution
+  - target:
+      kind: Service
+      name: kafka-exporter-metrics
+    patch: |-
+      - op: replace
+        path: /spec/selector
+        value:
+          strimzi.io/cluster: my-cluster
+          strimzi.io/name: my-cluster-kafka-exporter
+
+patchesStrategicMerge:
+  # 🔧 Fix service selectors for Strimzi-generated pods (Enterprise vs Operator conflict)
+  - kafka-service-selector-fix.yaml
 
 
 helmCharts:
