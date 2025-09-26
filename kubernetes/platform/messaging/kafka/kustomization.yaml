@@ -23,7 +23,7 @@ resources:
   - kafka-cluster.yaml
   - kafka-topic.yaml
   # 🎯 MONITORING: ServiceMonitors moved to infrastructure/monitoring/servicemonitors/ (Vegarn pattern)
-  - kafka-exporter-service.yaml  # Service for Kafka Exporter metrics
+  - kafka-exporter-service.yaml  # ✅ CORRECTED Service with proper selector for Kafka Exporter metrics
   - kafka-exporter-vmservicescrape.yaml  # VictoriaMetrics scraping config
 
 # 🚨 CRITICAL INFRASTRUCTURE AS CODE: Service Labeling für Grafana Dashboard Discovery
@@ -59,6 +59,17 @@ patches:
       - op: add
         path: /metadata/labels/release
         value: prometheus-operator
+
+  # 🔧 KAFKA EXPORTER SERVICE SELECTOR FIX - Override commonLabels selector pollution
+  - target:
+      kind: Service
+      name: kafka-exporter-metrics
+    patch: |-
+      - op: replace
+        path: /spec/selector
+        value:
+          strimzi.io/cluster: my-cluster
+          strimzi.io/name: my-cluster-kafka-exporter
 
 patchesStrategicMerge:
   # 🔧 Fix service selectors for Strimzi-generated pods (Enterprise vs Operator conflict)
