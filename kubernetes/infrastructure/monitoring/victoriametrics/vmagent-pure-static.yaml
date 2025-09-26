@@ -1,0 +1,105 @@
+# 🎯 PURE STATIC VMAGENT - Zero Kubernetes Discovery
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAgent
+metadata:
+  name: vm-agent
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+  labels:
+    app.kubernetes.io/name: vm-agent
+    app.kubernetes.io/part-of: victoriametrics
+spec:
+  # 🎯 MINIMAL RESOURCES
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  # 📡 REMOTE WRITE to VMCluster
+  remoteWrite:
+    - url: "http://vminsert-vm-cluster.monitoring.svc.cluster.local:8480/insert/0/prometheus/"
+
+  # 🔧 BASIC AGENT CONFIG
+  scrapeInterval: "30s"
+  scrapeTimeout: "10s"
+
+  # 🏷️ CLUSTER LABELS
+  externalLabels:
+    cluster: "talos-homelab"
+
+  # 🚨 PERFORMANCE TUNING
+  extraArgs:
+    promscrape.maxScrapeSize: "16MB"
+    memory.allowedPercent: "60"
+
+  # 🎯 COMPLETELY DISABLE ALL SELECTOR DISCOVERY
+  selectAllByDefault: false
+
+  # STRICT EMPTY SELECTORS - NO AUTO-DISCOVERY AT ALL
+  serviceScrapeSelector:
+    matchLabels:
+      never-match: "true"  # Never match any VMServiceScrape
+  podScrapeSelector:
+    matchLabels:
+      never-match: "true"  # Never match any VMPodScrape
+  nodeScrapeSelector:
+    matchLabels:
+      never-match: "true"  # Never match any VMNodeScrape
+  staticScrapeSelector:
+    matchLabels:
+      never-match: "true"  # Never match any VMStaticScrape
+
+  # EMPTY NAMESPACE SELECTORS
+  serviceScrapeNamespaceSelector:
+    matchLabels:
+      never-match: "true"
+  podScrapeNamespaceSelector:
+    matchLabels:
+      never-match: "true"
+
+  # 🎯 PURE STATIC CONFIGURATION - NO KUBERNETES DISCOVERY WHATSOEVER
+  inlineScrapeConfig: |
+    global:
+      scrape_interval: 30s
+      evaluation_interval: 30s
+
+    scrape_configs:
+      # ================================================================================
+      # PURE STATIC TARGETS - NO KUBERNETES SD CONFIGS
+      # ================================================================================
+
+      # Node Exporter (System Metrics) - TALOS CRITICAL
+      - job_name: 'node-exporter-static'
+        static_configs:
+          - targets: ['node-exporter.monitoring.svc.cluster.local:9100']
+        metrics_path: '/metrics'
+        scrape_interval: 30s
+        scrape_timeout: 10s
+
+      # VictoriaMetrics Self-Monitoring - ESSENTIAL
+      - job_name: 'victoriametrics-static'
+        static_configs:
+          - targets:
+            - 'vmselect-vm-cluster.monitoring.svc.cluster.local:8481'
+            - 'vminsert-vm-cluster.monitoring.svc.cluster.local:8480'
+            - 'vmstorage-vm-cluster.monitoring.svc.cluster.local:8482'
+        metrics_path: '/metrics'
+        scrape_interval: 30s
+        scrape_timeout: 10s
+
+      # Kubernetes API Server - TALOS CORE (STATIC TARGET)
+      - job_name: 'kubernetes-apiserver-static'
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        static_configs:
+          - targets: ['kubernetes.default.svc.cluster.local:443']
+        metrics_path: '/metrics'
+        scrape_interval: 60s
+        scrape_timeout: 10s
