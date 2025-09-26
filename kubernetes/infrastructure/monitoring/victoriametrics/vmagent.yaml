@@ -68,15 +68,31 @@ spec:
         action: replace
         target_label: __scheme__
         regex: (https?)
+        replacement: ${1}
       - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
         action: replace
         target_label: __metrics_path__
         regex: (.+)
+        replacement: ${1}
+      # 🔍 DEFAULT METRICS PATH - Only if no annotation present
+      - source_labels: [__metrics_path__]
+        action: replace
+        target_label: __metrics_path__
+        regex: ^$
+        replacement: /metrics
       - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
         action: replace
         regex: ([^:]+)(?::\d+)?;(\d+)
         replacement: $1:$2
         target_label: __address__
+      # 🚫 SKIP NON-METRICS PORTS - Avoid UI/Web ports that serve HTML
+      - source_labels: [__meta_kubernetes_endpoint_port_name]
+        action: drop
+        regex: (ui|web|http|admin-http|console|query)
+      # 🚫 SKIP SERVICES WITHOUT EXPLICIT METRICS INTENT
+      - source_labels: [__meta_kubernetes_service_name]
+        action: drop
+        regex: (jaeger-query|redpanda-console|.*-ui|.*-web)
       - action: labelmap
         regex: __meta_kubernetes_service_label_(.+)
       - source_labels: [__meta_kubernetes_namespace]
@@ -148,6 +164,11 @@ spec:
       relabel_configs:
       - action: labelmap
         regex: __meta_kubernetes_node_label_(.+)
+      - source_labels: [__address__]
+        action: replace
+        target_label: __address__
+        regex: ([^:]+):(.+)
+        replacement: $1:10250  # Kubelet metrics port
 
     # 📊 KUBERNETES CADVISOR (container metrics)
     - job_name: 'kubernetes-cadvisor'
@@ -162,3 +183,8 @@ spec:
       relabel_configs:
       - action: labelmap
         regex: __meta_kubernetes_node_label_(.+)
+      - source_labels: [__address__]
+        action: replace
+        target_label: __address__
+        regex: ([^:]+):(.+)
+        replacement: $1:10250  # Kubelet metrics port for cAdvisor
