@@ -32,36 +32,130 @@ spec:
     cluster: "homelab"
     replica: "vm-agent"
 
-  # ⚡ PERFORMANCE TUNING & PROMETHEUS DISCOVERY CONTROL
+  # ⚡ PERFORMANCE TUNING
   extraArgs:
     promscrape.maxScrapeSize: "16MB"    # Max response size
     remoteWrite.maxBlockSize: "8MB"     # Max block size for remote write
     memory.allowedPercent: "60"         # Memory usage limit
-    promscrape.kubernetesSDDisableByDefault: "true"  # Disable auto kubernetes discovery
-    promscrape.discovery.disableCompression: "true"  # Reduce discovery overhead
-    promscrape.kubernetes.disableEndpoints: "true"   # CRITICAL: Disable kubernetes-service-endpoints
-    promscrape.kubernetes.disablePods: "true"        # CRITICAL: Disable kubernetes-pods auto-discovery
 
-  # 🚫 DISABLE AUTOMATIC SERVICE DISCOVERY - STRICT WHITELIST ONLY
-  # DISABLED: No automatic discovery, only inlineScrapeConfig controls
-  selectAllByDefault: false
+  # 🎯 CONTROLLED DISCOVERY - Use inlineScrapeConfig for precise control
+  # This approach gives us full control over what gets scraped without
+  # relying on automatic discovery that can pick up unwanted endpoints
 
-  # 🎯 AUTOMATIC KUBERNETES SERVICE DISCOVERY
-  # VMAgent automatically discovers services with annotation prometheus.io/scrape=true
-  # Works exactly like Prometheus - no manual VMServiceScrape needed!
+  # 🎯 CENTRALIZED WHITELIST - Only scrape what we explicitly define
+  inlineScrapeConfig: |
+    global:
+      scrape_interval: 30s
+      scrape_timeout: 10s
 
-  # 🎯 STRICT NAMESPACE FILTERING - ONLY monitoring namespace
-  serviceScrapeNamespaceSelector:
-    matchLabels:
-      name: monitoring  # Only monitoring namespace
-  podScrapeNamespaceSelector:
-    matchLabels:
-      name: monitoring  # Only monitoring namespace
+    scrape_configs:
+      # Node Exporter
+      - job_name: 'node-exporter'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names: ['monitoring']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: 'node-exporter'
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: 'metrics'
 
-  # 🎯 PROMETHEUS OPERATOR COMPATIBILITY
-  # VMAgent can directly scrape Prometheus ServiceMonitors and PodMonitors
-  # These are auto-converted internally by VictoriaMetrics operator
+      # VictoriaMetrics Components
+      - job_name: 'victoriametrics'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names: ['monitoring']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: '(vmselect|vminsert|vmstorage)-.*'
 
-  # 🚫 DISABLE INLINE SCRAPE CONFIG - USE ONLY VMServiceScrapes
-  # All service discovery now happens through VMServiceScrapes
-  # This prevents the unfiltered scraping of all services
+      # Kubernetes API Server
+      - job_name: 'kubernetes-apiservers'
+        kubernetes_sd_configs:
+          - role: endpoints
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: default;kubernetes;https
+
+      # Kubelet Metrics
+      - job_name: 'kubernetes-nodes'
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/${1}/proxy/metrics
+
+      # cAdvisor
+      - job_name: 'kubernetes-nodes-cadvisor'
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+
+      # ONLY selected services with proper metrics
+      - job_name: 'kubernetes-service-endpoints-whitelist'
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          # Only scrape services with explicit prometheus.io/scrape=true
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          # Use prometheus.io/path if specified
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          # Use prometheus.io/port if specified
+          - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          # Use prometheus.io/scheme if specified
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scheme]
+            action: replace
+            target_label: __scheme__
+            regex: (https?)
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            action: replace
+            target_label: kubernetes_name
