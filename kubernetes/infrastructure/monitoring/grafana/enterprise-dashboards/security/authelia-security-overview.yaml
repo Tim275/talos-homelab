@@ -1,0 +1,345 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: authelia-security-overview
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: grafana-enterprise
+    app.kubernetes.io/part-of: enterprise-monitoring
+    enterprise.tier: security
+    enterprise.category: authentication
+spec:
+  instanceSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana-enterprise
+  json: |
+    {
+      "id": null,
+      "title": "🛡️ Authelia Security - Authentication & Authorization (Security Tier)",
+      "tags": ["enterprise", "security", "authelia", "authentication", "oidc", "sso"],
+      "style": "dark",
+      "timezone": "UTC",
+      "editable": true,
+      "hideControls": false,
+      "graphTooltip": 1,
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "timepicker": {
+        "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"],
+        "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d", "30d"]
+      },
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "title": "🎯 Authelia Service Health",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "up{job=\"authelia\"}",
+              "legendFormat": "Authelia Status",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 4, "w": 8, "x": 0, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"displayMode": "basic"},
+              "mappings": [
+                {"options": {"0": {"text": "DOWN", "color": "red"}}, "type": "value"},
+                {"options": {"1": {"text": "UP", "color": "green"}}, "type": "value"}
+              ],
+              "thresholds": {
+                "steps": [
+                  {"color": "red", "value": 0},
+                  {"color": "green", "value": 1}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 2,
+          "title": "🔐 Authentication Success Rate",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "rate(authelia_authentication_total{success=\"true\"}[5m]) / rate(authelia_authentication_total[5m]) * 100",
+              "legendFormat": "Success Rate %",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 4, "w": 8, "x": 8, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"displayMode": "basic"},
+              "unit": "percent",
+              "thresholds": {
+                "steps": [
+                  {"color": "red", "value": 0},
+                  {"color": "yellow", "value": 95},
+                  {"color": "green", "value": 99}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 3,
+          "title": "👥 Active Sessions",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "authelia_active_sessions",
+              "legendFormat": "Active Sessions",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 4, "w": 8, "x": 16, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"displayMode": "basic"},
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "id": 4,
+          "title": "🔑 Authentication Attempts",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(authelia_authentication_total{success=\"true\"}[5m])",
+              "legendFormat": "Successful Auth",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(authelia_authentication_total{success=\"false\"}[5m])",
+              "legendFormat": "Failed Auth",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "aps"
+            }
+          }
+        },
+        {
+          "id": 5,
+          "title": "🌐 OIDC Token Operations",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(authelia_oidc_tokens_issued_total[5m])",
+              "legendFormat": "Tokens Issued",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(authelia_oidc_tokens_validated_total[5m])",
+              "legendFormat": "Tokens Validated",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "tps"
+            }
+          }
+        },
+        {
+          "id": 6,
+          "title": "🚨 Security Events",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(authelia_authentication_total{success=\"false\"}[5m])",
+              "legendFormat": "Failed Logins",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(authelia_brute_force_attempts_total[5m])",
+              "legendFormat": "Brute Force Attempts",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "events"
+            }
+          }
+        },
+        {
+          "id": 7,
+          "title": "⏱️ Response Time Distribution",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, rate(authelia_http_request_duration_seconds_bucket[5m]))",
+              "legendFormat": "P50 Response Time",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.95, rate(authelia_http_request_duration_seconds_bucket[5m]))",
+              "legendFormat": "P95 Response Time",
+              "refId": "B"
+            },
+            {
+              "expr": "histogram_quantile(0.99, rate(authelia_http_request_duration_seconds_bucket[5m]))",
+              "legendFormat": "P99 Response Time",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "s"
+            }
+          }
+        },
+        {
+          "id": 8,
+          "title": "🔄 2FA Operations",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(authelia_totp_verifications_total{success=\"true\"}[5m])",
+              "legendFormat": "TOTP Success",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(authelia_totp_verifications_total{success=\"false\"}[5m])",
+              "legendFormat": "TOTP Failures",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "ops"
+            }
+          }
+        },
+        {
+          "id": 9,
+          "title": "📧 Notification Services",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(authelia_notifications_sent_total[5m])",
+              "legendFormat": "Notifications {{type}}",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "notifications"
+            }
+          }
+        },
+        {
+          "id": 10,
+          "title": "🌍 Geographic Authentication",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(authelia_authentication_total[5m])",
+              "legendFormat": "Auth from {{country}}",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 6, "w": 12, "x": 0, "y": 28},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "aps"
+            }
+          }
+        },
+        {
+          "id": 11,
+          "title": "🔐 Session Management",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(authelia_sessions_created_total[5m])",
+              "legendFormat": "Sessions Created",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(authelia_sessions_destroyed_total[5m])",
+              "legendFormat": "Sessions Destroyed",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 6, "w": 12, "x": 12, "y": 28},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "sessions"
+            }
+          }
+        },
+        {
+          "id": 12,
+          "title": "🛡️ Security Policy Enforcement",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(authelia_authorization_denied_total[5m])",
+              "legendFormat": "Access Denied {{policy}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(authelia_authorization_granted_total[5m])",
+              "legendFormat": "Access Granted {{policy}}",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 6, "w": 24, "x": 0, "y": 34},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "decisions"
+            }
+          }
+        }
+      ],
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": "-- Grafana --",
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      }
+    }
