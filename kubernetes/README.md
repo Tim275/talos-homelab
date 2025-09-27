@@ -6,24 +6,24 @@
 
 ## 🎯 Quick Start
 
-### Option 1: Single Command Bootstrap (Recommended)
+### Option 1: Bootstrap Applications (Recommended)
 
 ```bash
 export KUBECONFIG="../tofu/output/kube-config.yaml"
 
-# 🚀 Deploy complete enterprise stack
-kubectl apply -k bootstrap/
+# 🚀 Deploy complete enterprise stack via ArgoCD App-of-Apps
+kubectl apply -f bootstrap/
 
 # 🔍 Monitor deployment
 kubectl get applications -n argocd -w
 ```
 
-### Option 2: Layer-by-Layer Bootstrap
+### Option 2: Direct Kustomize Deployment
 
 ```bash
 export KUBECONFIG="../tofu/output/kube-config.yaml"
 
-# Deploy each layer manually - ArgoCD handles component ordering
+# Deploy each layer manually via Kustomize
 kubectl apply -k security/           # Wave 0: Zero Trust Foundation
 kubectl apply -k infrastructure/     # Wave 1-6: Core Infrastructure
 kubectl apply -k platform/          # Wave 15-18: Platform Services
