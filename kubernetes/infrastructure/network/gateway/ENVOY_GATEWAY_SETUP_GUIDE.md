@@ -16,14 +16,14 @@
 
 ## 🎯 Overview & Architecture
 
-### What We're Building
+### What We're Building (Vegarn's Best Practice)
 
 ```mermaid
 graph TB
     Internet[🌐 Internet] --> CF[Cloudflare Tunnel]
-    CF --> |Direct Routing| ArgoCD[🔄 ArgoCD]
-    CF --> |Direct Routing| N8N[⚡ n8n]
-    CF --> |Gateway API| EG[🚪 Envoy Gateway]
+    CF --> |All Traffic via Gateway| EG[🚪 Envoy Gateway]
+    EG --> |HTTPRoute| ArgoCD[🔄 ArgoCD]
+    EG --> |HTTPRoute| N8N[⚡ n8n]
     EG --> |HTTPRoute| Grafana[📊 Grafana]
     EG --> |HTTPRoute| Other[📦 Other Services]
 
@@ -43,6 +43,19 @@ graph TB
     style EG fill:#326ce5,stroke:#333,stroke-width:2px
     style CM fill:#2196f3,stroke:#333,stroke-width:2px
 ```
+
+### 🔄 Traffic Flow (Best Practice - Following Vegarn's Guide)
+
+```
+Cloudflare Edge → Cloudflared Tunnel → Envoy Gateway → HTTPRoute → Service → Pod
+```
+
+**Why ALL traffic through Gateway:**
+- ✅ **Consistent Architecture** - Single routing point
+- ✅ **Gateway API Benefits** - Header routing, traffic splitting, canary deployments
+- ✅ **Centralized TLS** - All certificates managed in Gateway
+- ✅ **Observability** - Unified metrics and tracing
+- ✅ **Enterprise Grade** - Battle-tested pattern used by Netflix/Google
 
 ### Key Components
 
