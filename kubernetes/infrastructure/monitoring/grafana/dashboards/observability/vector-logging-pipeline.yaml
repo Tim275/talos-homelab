@@ -1,0 +1,257 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: vector-logging-pipeline
+  namespace: grafana
+  labels:
+    app.kubernetes.io/part-of: monitoring-stack
+    tier: observability
+spec:
+  allowCrossNamespaceImport: true
+  json: |
+    {
+      "id": null,
+      "title": "🦀 Vector Logging Pipeline",
+      "tags": ["vector", "logging", "rust", "observability"],
+      "timezone": "browser",
+      "panels": [
+        {
+          "id": 1,
+          "title": "Vector Agent Status",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "count(up{job=\"vector-agent\"})",
+              "legendFormat": "Total Agents"
+            },
+            {
+              "expr": "count(up{job=\"vector-agent\"} == 1)",
+              "legendFormat": "Healthy Agents"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "steps": [
+                  {"color": "red", "value": 0},
+                  {"color": "green", "value": 1}
+                ]
+              }
+            }
+          },
+          "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0}
+        },
+        {
+          "id": 2,
+          "title": "Vector Aggregator Status",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "count(up{job=\"vector-aggregator\"})",
+              "legendFormat": "Total Aggregators"
+            },
+            {
+              "expr": "count(up{job=\"vector-aggregator\"} == 1)",
+              "legendFormat": "Healthy Aggregators"
+            }
+          ],
+          "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0}
+        },
+        {
+          "id": 3,
+          "title": "Events Processed",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "sum(rate(vector_events_processed_total[5m]))",
+              "legendFormat": "Events/sec"
+            }
+          ],
+          "gridPos": {"h": 6, "w": 6, "x": 12, "y": 0}
+        },
+        {
+          "id": 4,
+          "title": "Memory Usage",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "sum(container_memory_usage_bytes{pod=~\"vector.*\"})",
+              "legendFormat": "Total Memory"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes"
+            }
+          },
+          "gridPos": {"h": 6, "w": 6, "x": 18, "y": 0}
+        },
+        {
+          "id": 5,
+          "title": "Vector Agent Events Flow",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "rate(vector_events_processed_total{job=\"vector-agent\"}[5m])",
+              "legendFormat": "{{pod}} {{component_name}}"
+            }
+          ],
+          "yAxes": [
+            {"label": "Events/sec", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6}
+        },
+        {
+          "id": 6,
+          "title": "Vector Aggregator Events Flow",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "rate(vector_events_processed_total{job=\"vector-aggregator\"}[5m])",
+              "legendFormat": "{{pod}} {{component_name}}"
+            }
+          ],
+          "yAxes": [
+            {"label": "Events/sec", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6}
+        },
+        {
+          "id": 7,
+          "title": "Vector Component Performance",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "rate(vector_events_processed_total[5m])",
+              "legendFormat": "{{component_name}} {{component_type}}"
+            }
+          ],
+          "yAxes": [
+            {"label": "Events/sec", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14}
+        },
+        {
+          "id": 8,
+          "title": "Vector Error Rates",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "rate(vector_component_errors_total[5m])",
+              "legendFormat": "{{component_name}} Errors"
+            },
+            {
+              "expr": "rate(vector_events_dropped_total[5m])",
+              "legendFormat": "{{component_name}} Dropped"
+            }
+          ],
+          "yAxes": [
+            {"label": "Errors/sec", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14}
+        },
+        {
+          "id": 9,
+          "title": "Buffer Utilization",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "vector_buffer_events",
+              "legendFormat": "{{component_name}} Buffer Events"
+            },
+            {
+              "expr": "vector_buffer_byte_size",
+              "legendFormat": "{{component_name}} Buffer Bytes"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22}
+        },
+        {
+          "id": 10,
+          "title": "Vector Memory Usage by Component",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "container_memory_usage_bytes{pod=~\"vector.*\"}",
+              "legendFormat": "{{pod}}"
+            }
+          ],
+          "yAxes": [
+            {"label": "Bytes", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22}
+        },
+        {
+          "id": 11,
+          "title": "Vector CPU Usage",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "rate(container_cpu_usage_seconds_total{pod=~\"vector.*\"}[5m]) * 100",
+              "legendFormat": "{{pod}} CPU %"
+            }
+          ],
+          "yAxes": [
+            {"label": "CPU Percent", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 30}
+        },
+        {
+          "id": 12,
+          "title": "Vector Network I/O",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "rate(container_network_receive_bytes_total{pod=~\"vector.*\"}[5m])",
+              "legendFormat": "{{pod}} RX"
+            },
+            {
+              "expr": "rate(container_network_transmit_bytes_total{pod=~\"vector.*\"}[5m])",
+              "legendFormat": "{{pod}} TX"
+            }
+          ],
+          "yAxes": [
+            {"label": "Bytes/sec", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 30}
+        },
+        {
+          "id": 13,
+          "title": "Log Sources Activity",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "sum by (component_name, component_type) (rate(vector_events_processed_total{component_type=\"source\"}[5m]))",
+              "legendFormat": "{{component_name}} ({{component_type}}) events/sec"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 38}
+        },
+        {
+          "id": 14,
+          "title": "Log Destinations Health",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "sum by (component_name, component_type) (rate(vector_events_processed_total{component_type=\"sink\"}[5m]))",
+              "legendFormat": "{{component_name}} ({{component_type}}) events/sec"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 38}
+        }
+      ],
+      "time": {"from": "now-1h", "to": "now"},
+      "refresh": "30s"
+    }
+  folder: Vector
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  resyncPeriod: 10m

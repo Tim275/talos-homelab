@@ -1,0 +1,252 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: quantlab-trading-platform
+  namespace: grafana
+  labels:
+    app.kubernetes.io/part-of: monitoring-stack
+    tier: applications
+spec:
+  allowCrossNamespaceImport: true
+  json: |
+    {
+      "id": null,
+      "title": "📈 QuantLab Trading Platform",
+      "tags": ["quantlab", "trading", "analytics", "finance"],
+      "timezone": "browser",
+      "panels": [
+        {
+          "id": 1,
+          "title": "QuantLab Trading & Analytics Platform",
+          "type": "text",
+          "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
+          "options": {
+            "content": "<div style=\"text-align: center; font-size: 24px; padding: 20px; background: linear-gradient(90deg, #10b981, #059669);\">\\n<strong style=\"color: white;\">📈 QuantLab Trading Platform</strong>\\n<p style=\"font-size: 16px; color: #d1fae5; margin-top: 10px;\">Quantitative Trading • Risk Management • Analytics</p>\\n</div>"
+          }
+        },
+        {
+          "id": 2,
+          "title": "Platform Health",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "count(up{job=\"kubernetes-pods\", namespace=\"quantlab\"})",
+              "legendFormat": "Total Services"
+            },
+            {
+              "expr": "count(up{job=\"kubernetes-pods\", namespace=\"quantlab\"} == 1)",
+              "legendFormat": "Healthy Services"
+            },
+            {
+              "expr": "count(kube_pod_status_phase{namespace=\"quantlab\", phase=\"Running\"})",
+              "legendFormat": "Running Pods"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "steps": [
+                  {"color": "red", "value": 0},
+                  {"color": "green", "value": 1}
+                ]
+              }
+            }
+          },
+          "gridPos": {"h": 6, "w": 8, "x": 0, "y": 4}
+        },
+        {
+          "id": 3,
+          "title": "Database Connections",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "count(up{job=\"kubernetes-pods\", namespace=\"quantlab\", pod=~\".*postgres.*\"})",
+              "legendFormat": "PostgreSQL Instances"
+            },
+            {
+              "expr": "sum(pg_stat_database_numbackends{datname!~\"template.*|postgres\"})",
+              "legendFormat": "Active DB Connections"
+            }
+          ],
+          "gridPos": {"h": 6, "w": 8, "x": 8, "y": 4}
+        },
+        {
+          "id": 4,
+          "title": "System Load",
+          "type": "gauge",
+          "targets": [
+            {
+              "expr": "(sum(container_memory_usage_bytes{namespace=\"quantlab\", container!=\"POD\"}) / sum(container_spec_memory_limit_bytes{namespace=\"quantlab\", container!=\"POD\"})) * 100",
+              "legendFormat": "Memory Usage %"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": 0},
+                  {"color": "yellow", "value": 70},
+                  {"color": "red", "value": 90}
+                ]
+              },
+              "min": 0,
+              "max": 100,
+              "unit": "percent"
+            }
+          },
+          "gridPos": {"h": 6, "w": 8, "x": 16, "y": 4}
+        },
+        {
+          "id": 5,
+          "title": "Trading Application Performance",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "rate(container_cpu_usage_seconds_total{namespace=\"quantlab\", container!=\"POD\", container!~\".*postgres.*\"}[5m]) * 100",
+              "legendFormat": "{{pod}} CPU %"
+            }
+          ],
+          "yAxes": [
+            {"label": "CPU Percent", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 10}
+        },
+        {
+          "id": 6,
+          "title": "Database Performance",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "rate(container_cpu_usage_seconds_total{namespace=\"quantlab\", container=~\".*postgres.*\"}[5m]) * 100",
+              "legendFormat": "{{pod}} DB CPU %"
+            }
+          ],
+          "yAxes": [
+            {"label": "CPU Percent", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 10}
+        },
+        {
+          "id": 7,
+          "title": "Memory Usage by Component",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "container_memory_usage_bytes{namespace=\"quantlab\", container!=\"POD\"}",
+              "legendFormat": "{{pod}} Memory"
+            },
+            {
+              "expr": "container_spec_memory_limit_bytes{namespace=\"quantlab\", container!=\"POD\"}",
+              "legendFormat": "{{pod}} Limit"
+            }
+          ],
+          "yAxes": [
+            {"label": "Bytes", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 18}
+        },
+        {
+          "id": 8,
+          "title": "Database Transaction Rate",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "rate(pg_stat_database_xact_commit{datname=\"quantlab\"}[5m])",
+              "legendFormat": "{{instance}} commits/sec"
+            },
+            {
+              "expr": "rate(pg_stat_database_xact_rollback{datname=\"quantlab\"}[5m])",
+              "legendFormat": "{{instance}} rollbacks/sec"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 18}
+        },
+        {
+          "id": 9,
+          "title": "Trading System Latency",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, rate(quantlab_order_processing_duration_seconds_bucket[5m]))",
+              "legendFormat": "Order Processing P95"
+            },
+            {
+              "expr": "histogram_quantile(0.50, rate(quantlab_order_processing_duration_seconds_bucket[5m]))",
+              "legendFormat": "Order Processing P50"
+            }
+          ],
+          "yAxes": [
+            {"label": "Seconds", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 26}
+        },
+        {
+          "id": 10,
+          "title": "Market Data Feed",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "rate(quantlab_market_data_messages_total[5m])",
+              "legendFormat": "Market Data Messages/sec"
+            },
+            {
+              "expr": "quantlab_active_subscriptions",
+              "legendFormat": "Active Subscriptions"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 26}
+        },
+        {
+          "id": 11,
+          "title": "Storage Usage",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "kubelet_volume_stats_used_bytes{namespace=\"quantlab\"}",
+              "legendFormat": "{{persistentvolumeclaim}} used"
+            },
+            {
+              "expr": "kubelet_volume_stats_capacity_bytes{namespace=\"quantlab\"}",
+              "legendFormat": "{{persistentvolumeclaim}} capacity"
+            }
+          ],
+          "yAxes": [
+            {"label": "Bytes", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 34}
+        },
+        {
+          "id": 12,
+          "title": "System Uptime & Reliability",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "(time() - kube_pod_start_time{namespace=\"quantlab\", pod=~\"quantlab.*\"}) / 86400",
+              "legendFormat": "Platform Uptime (days)"
+            },
+            {
+              "expr": "kube_pod_container_status_restarts_total{namespace=\"quantlab\"}",
+              "legendFormat": "Total Restarts"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "days"
+            }
+          },
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 34}
+        }
+      ],
+      "time": {"from": "now-1h", "to": "now"},
+      "refresh": "30s"
+    }
+  folder: QuantLab
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  resyncPeriod: 10m
