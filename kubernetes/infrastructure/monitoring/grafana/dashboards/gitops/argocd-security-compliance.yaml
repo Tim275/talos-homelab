@@ -1,0 +1,193 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: argocd-security-compliance
+  namespace: grafana
+  labels:
+    app.kubernetes.io/part-of: monitoring-stack
+    tier: gitops
+spec:
+  allowCrossNamespaceImport: true
+  json: |
+    {
+      "id": null,
+      "title": "🔐 ArgoCD Security & Compliance",
+      "tags": ["argocd", "security", "compliance", "rbac"],
+      "timezone": "browser",
+      "panels": [
+        {
+          "id": 1,
+          "title": "Security Compliance Dashboard",
+          "type": "text",
+          "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
+          "options": {
+            "content": "<div style=\"text-align: center; font-size: 20px; padding: 15px; background: linear-gradient(90deg, #1f77b4, #2ca02c);\">\n<img src=\"https://raw.githubusercontent.com/argoproj/argo-cd/master/docs/assets/logo.png\" alt=\"ArgoCD\" style=\"height: 50px; vertical-align: middle; margin-right: 15px;\">\n<strong style=\"color: white;\">🔐 ArgoCD Security & Compliance Monitor</strong>\n</div>"
+          }
+        },
+        {
+          "id": 2,
+          "title": "Authentication Events",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "rate(argocd_login_events_total[5m])",
+              "legendFormat": "{{method}} logins"
+            },
+            {
+              "expr": "rate(argocd_failed_login_events_total[5m])",
+              "legendFormat": "Failed logins"
+            }
+          ],
+          "yAxes": [
+            {"label": "Events/sec", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+        },
+        {
+          "id": 3,
+          "title": "RBAC Policy Violations",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "rate(argocd_rbac_policy_decisions_total{decision=\"deny\"}[5m])",
+              "legendFormat": "{{policy}} denials"
+            }
+          ],
+          "yAxes": [
+            {"label": "Denials/sec", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+        },
+        {
+          "id": 4,
+          "title": "Certificate Expiry Monitoring",
+          "type": "gauge",
+          "targets": [
+            {
+              "expr": "min((argocd_tls_cert_expiry_timestamp - time()) / 86400)",
+              "legendFormat": "Days until TLS expiry"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "steps": [
+                  {"color": "red", "value": 0},
+                  {"color": "yellow", "value": 30},
+                  {"color": "green", "value": 60}
+                ]
+              },
+              "min": 0,
+              "max": 365,
+              "unit": "days"
+            }
+          },
+          "gridPos": {"h": 8, "w": 6, "x": 0, "y": 12}
+        },
+        {
+          "id": 5,
+          "title": "Webhook Security Events",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "sum(rate(argocd_webhook_events_total[5m]))",
+              "legendFormat": "Webhook Events/sec"
+            },
+            {
+              "expr": "sum(rate(argocd_webhook_events_total{status!~\"2..\"}[5m]))",
+              "legendFormat": "Failed Webhooks/sec"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 6, "x": 6, "y": 12}
+        },
+        {
+          "id": 6,
+          "title": "Repository Access Audit",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "sum by (repo, user) (rate(argocd_git_request_total[1h]))",
+              "legendFormat": "{{user}} → {{repo}}"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12}
+        },
+        {
+          "id": 7,
+          "title": "Privilege Escalation Attempts",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "rate(argocd_app_k8s_request_total{verb=\"create\",resource=\"clusterroles\"}[5m])",
+              "legendFormat": "ClusterRole creations"
+            },
+            {
+              "expr": "rate(argocd_app_k8s_request_total{verb=\"create\",resource=\"clusterrolebindings\"}[5m])",
+              "legendFormat": "ClusterRoleBinding creations"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20}
+        },
+        {
+          "id": 8,
+          "title": "Sensitive Resource Modifications",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "rate(argocd_app_k8s_request_total{resource=\"secrets\"}[5m])",
+              "legendFormat": "Secret operations"
+            },
+            {
+              "expr": "rate(argocd_app_k8s_request_total{resource=\"configmaps\"}[5m])",
+              "legendFormat": "ConfigMap operations"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20}
+        },
+        {
+          "id": 9,
+          "title": "Drift Detection & Compliance",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "count(argocd_app_sync_status{sync_status=\"OutOfSync\"})",
+              "legendFormat": "Out of Sync Apps"
+            },
+            {
+              "expr": "rate(argocd_app_reconcile_count[5m])",
+              "legendFormat": "Drift Detection Rate"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28}
+        },
+        {
+          "id": 10,
+          "title": "API Security Metrics",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "rate(argocd_server_api_requests_total{code!~\"2..\"}[5m])",
+              "legendFormat": "API errors {{code}}"
+            },
+            {
+              "expr": "rate(argocd_server_api_requests_total{code=\"401\"}[5m])",
+              "legendFormat": "Unauthorized attempts"
+            },
+            {
+              "expr": "rate(argocd_server_api_requests_total{code=\"403\"}[5m])",
+              "legendFormat": "Forbidden attempts"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28}
+        }
+      ],
+      "time": {"from": "now-6h", "to": "now"},
+      "refresh": "30s"
+    }
+  folder: ArgoCD
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  resyncPeriod: 10m

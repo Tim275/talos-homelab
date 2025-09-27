@@ -1,0 +1,210 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: ceph-osd-details
+  namespace: grafana
+  labels:
+    app.kubernetes.io/part-of: monitoring-stack
+    tier: storage
+spec:
+  allowCrossNamespaceImport: true
+  json: |
+    {
+      "id": null,
+      "title": "💽 Ceph OSD Deep Dive",
+      "tags": ["ceph", "osd", "storage", "performance"],
+      "timezone": "browser",
+      "panels": [
+        {
+          "id": 1,
+          "title": "OSD Performance Heatmap",
+          "type": "heatmap",
+          "targets": [
+            {
+              "expr": "rate(ceph_osd_op_r[5m])",
+              "legendFormat": "{{ceph_daemon}}"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0}
+        },
+        {
+          "id": 2,
+          "title": "OSD Latency Distribution",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, rate(ceph_osd_op_r_latency_bucket[5m]))",
+              "legendFormat": "Read 95th percentile"
+            },
+            {
+              "expr": "histogram_quantile(0.95, rate(ceph_osd_op_w_latency_bucket[5m]))",
+              "legendFormat": "Write 95th percentile"
+            },
+            {
+              "expr": "histogram_quantile(0.50, rate(ceph_osd_op_r_latency_bucket[5m]))",
+              "legendFormat": "Read 50th percentile"
+            },
+            {
+              "expr": "histogram_quantile(0.50, rate(ceph_osd_op_w_latency_bucket[5m]))",
+              "legendFormat": "Write 50th percentile"
+            }
+          ],
+          "yAxes": [
+            {"label": "Latency (ms)", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+        },
+        {
+          "id": 3,
+          "title": "OSD Capacity by Node",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "ceph_osd_stat_bytes",
+              "legendFormat": "Total {{ceph_daemon}}"
+            },
+            {
+              "expr": "ceph_osd_stat_bytes_used",
+              "legendFormat": "Used {{ceph_daemon}}"
+            }
+          ],
+          "yAxes": [
+            {"label": "Bytes", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+        },
+        {
+          "id": 4,
+          "title": "OSD Apply vs Commit Latency",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "ceph_osd_apply_latency_ms",
+              "legendFormat": "Apply {{ceph_daemon}}"
+            },
+            {
+              "expr": "ceph_osd_commit_latency_ms",
+              "legendFormat": "Commit {{ceph_daemon}}"
+            }
+          ],
+          "yAxes": [
+            {"label": "Milliseconds", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+        },
+        {
+          "id": 5,
+          "title": "OSD Queue Utilization",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "ceph_osd_op_queue_ops",
+              "legendFormat": "Queue Ops {{ceph_daemon}}"
+            },
+            {
+              "expr": "ceph_osd_op_queue_bytes",
+              "legendFormat": "Queue Bytes {{ceph_daemon}}"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+        },
+        {
+          "id": 6,
+          "title": "Per-OSD IOPS",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "rate(ceph_osd_op_r[5m])",
+              "legendFormat": "Read {{ceph_daemon}}"
+            },
+            {
+              "expr": "rate(ceph_osd_op_w[5m])",
+              "legendFormat": "Write {{ceph_daemon}}"
+            }
+          ],
+          "yAxes": [
+            {"label": "IOPS", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24}
+        },
+        {
+          "id": 7,
+          "title": "Per-OSD Throughput",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "rate(ceph_osd_op_r_out_bytes[5m])",
+              "legendFormat": "Read {{ceph_daemon}}"
+            },
+            {
+              "expr": "rate(ceph_osd_op_w_in_bytes[5m])",
+              "legendFormat": "Write {{ceph_daemon}}"
+            }
+          ],
+          "yAxes": [
+            {"label": "Bytes/sec", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24}
+        },
+        {
+          "id": 8,
+          "title": "OSD Physical Device Stats",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "ceph_disk_occupation_human",
+              "legendFormat": "{{ceph_daemon}} - {{device}} - {{human_readable_size}}"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32}
+        },
+        {
+          "id": 9,
+          "title": "OSD Memory Usage (Container)",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "container_memory_usage_bytes{pod=~\"rook-ceph-osd.*\"}",
+              "legendFormat": "{{pod}}"
+            }
+          ],
+          "yAxes": [
+            {"label": "Bytes", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32}
+        },
+        {
+          "id": 10,
+          "title": "OSD Network I/O",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "rate(ceph_osd_nework_bytes_in[5m])",
+              "legendFormat": "Network In {{ceph_daemon}}"
+            },
+            {
+              "expr": "rate(ceph_osd_nework_bytes_out[5m])",
+              "legendFormat": "Network Out {{ceph_daemon}}"
+            }
+          ],
+          "yAxes": [
+            {"label": "Bytes/sec", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 40}
+        }
+      ],
+      "time": {"from": "now-1h", "to": "now"},
+      "refresh": "30s"
+    }
+  folder: Ceph
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  resyncPeriod: 10m

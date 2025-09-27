@@ -1,0 +1,220 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: argocd-developer-experience
+  namespace: grafana
+  labels:
+    app.kubernetes.io/part-of: monitoring-stack
+    tier: gitops
+spec:
+  allowCrossNamespaceImport: true
+  json: |
+    {
+      "id": null,
+      "title": "👨‍💻 ArgoCD Developer Experience",
+      "tags": ["argocd", "developer", "experience", "velocity"],
+      "timezone": "browser",
+      "panels": [
+        {
+          "id": 1,
+          "title": "Developer Productivity Hub",
+          "type": "text",
+          "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
+          "options": {
+            "content": "<div style=\"text-align: center; font-size: 20px; padding: 15px; background: linear-gradient(90deg, #ff7f0e, #d62728);\">\n<img src=\"https://raw.githubusercontent.com/argoproj/argo-cd/master/docs/assets/logo.png\" alt=\"ArgoCD\" style=\"height: 50px; vertical-align: middle; margin-right: 15px;\">\n<strong style=\"color: white;\">👨‍💻 Developer Experience Dashboard</strong>\n</div>"
+          }
+        },
+        {
+          "id": 2,
+          "title": "Deployment Lead Time",
+          "type": "gauge",
+          "targets": [
+            {
+              "expr": "avg(argocd_app_reconcile_bucket)",
+              "legendFormat": "Avg Lead Time"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": 0},
+                  {"color": "yellow", "value": 60},
+                  {"color": "red", "value": 300}
+                ]
+              },
+              "min": 0,
+              "max": 600,
+              "unit": "s"
+            }
+          },
+          "gridPos": {"h": 8, "w": 6, "x": 0, "y": 4}
+        },
+        {
+          "id": 3,
+          "title": "Deployment Frequency",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "sum(rate(argocd_app_sync_total[1h])) * 24",
+              "legendFormat": "Deployments/Day"
+            },
+            {
+              "expr": "sum(rate(argocd_app_sync_total[1h]))",
+              "legendFormat": "Deployments/Hour"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 6, "x": 6, "y": 4}
+        },
+        {
+          "id": 4,
+          "title": "Change Failure Rate",
+          "type": "gauge",
+          "targets": [
+            {
+              "expr": "(sum(rate(argocd_app_sync_total{phase=\"Failed\"}[24h])) / sum(rate(argocd_app_sync_total[24h]))) * 100",
+              "legendFormat": "Failure Rate %"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": 0},
+                  {"color": "yellow", "value": 5},
+                  {"color": "red", "value": 15}
+                ]
+              },
+              "min": 0,
+              "max": 50,
+              "unit": "percent"
+            }
+          },
+          "gridPos": {"h": 8, "w": 6, "x": 12, "y": 4}
+        },
+        {
+          "id": 5,
+          "title": "Mean Time to Recovery",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "avg(time() - argocd_app_sync_status_timestamp{sync_status=\"OutOfSync\"})",
+              "legendFormat": "MTTR"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            }
+          },
+          "gridPos": {"h": 8, "w": 6, "x": 18, "y": 4}
+        },
+        {
+          "id": 6,
+          "title": "Developer Velocity Trend",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "sum(rate(argocd_app_sync_total[1h])) by (dest_name)",
+              "legendFormat": "{{dest_name}} velocity"
+            }
+          ],
+          "yAxes": [
+            {"label": "Deployments/hour", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12}
+        },
+        {
+          "id": 7,
+          "title": "Application Health Trend",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "count by (health_status) (argocd_app_health_status)",
+              "legendFormat": "{{health_status}} apps"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12}
+        },
+        {
+          "id": 8,
+          "title": "Git Commit to Deploy Time",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, rate(argocd_app_reconcile_bucket[5m]))",
+              "legendFormat": "95th percentile"
+            },
+            {
+              "expr": "histogram_quantile(0.50, rate(argocd_app_reconcile_bucket[5m]))",
+              "legendFormat": "50th percentile"
+            }
+          ],
+          "yAxes": [
+            {"label": "Seconds", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20}
+        },
+        {
+          "id": 9,
+          "title": "Repository Activity",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "rate(argocd_git_request_total[5m])",
+              "legendFormat": "{{repo}} activity"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20}
+        },
+        {
+          "id": 10,
+          "title": "Top Active Applications",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "topk(10, sum by (name) (rate(argocd_app_sync_total[1h])))",
+              "legendFormat": "{{name}} - syncs/hour"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28}
+        },
+        {
+          "id": 11,
+          "title": "Deployment Success Rate by App",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "(sum by (name) (rate(argocd_app_sync_total{phase=\"Succeeded\"}[24h])) / sum by (name) (rate(argocd_app_sync_total[24h]))) * 100",
+              "legendFormat": "{{name}} - success rate %"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28}
+        },
+        {
+          "id": 12,
+          "title": "Developer Workflow Efficiency",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "sum(rate(argocd_app_k8s_request_total[5m])) / sum(rate(argocd_app_sync_total[5m]))",
+              "legendFormat": "K8s operations per sync"
+            },
+            {
+              "expr": "rate(argocd_git_request_total[5m])",
+              "legendFormat": "Git requests/sec"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 36}
+        }
+      ],
+      "time": {"from": "now-24h", "to": "now"},
+      "refresh": "1m"
+    }
+  folder: ArgoCD
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  resyncPeriod: 10m
