@@ -1,0 +1,296 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: envoy-gateway-dashboard
+  namespace: grafana
+  labels:
+    app.kubernetes.io/part-of: monitoring-stack
+    tier: infrastructure
+data:
+  dashboard.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "🌐 Envoy Gateway Infrastructure",
+        "tags": ["envoy", "gateway", "proxy", "ingress"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Gateway Status",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "envoy_server_state",
+                "legendFormat": "Server State {{instance}}"
+              },
+              {
+                "expr": "envoy_server_live",
+                "legendFormat": "Live Servers"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "mappings": [
+                  {"options": {"0": {"text": "Pre-initializing", "color": "yellow"}}, "type": "value"},
+                  {"options": {"1": {"text": "Initializing", "color": "orange"}}, "type": "value"},
+                  {"options": {"2": {"text": "Live", "color": "green"}}, "type": "value"},
+                  {"options": {"3": {"text": "Draining", "color": "red"}}, "type": "value"}
+                ]
+              }
+            },
+            "gridPos": {"h": 6, "w": 8, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Active Connections",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "envoy_http_downstream_cx_active",
+                "legendFormat": "HTTP Connections {{instance}}"
+              },
+              {
+                "expr": "envoy_cluster_upstream_cx_active",
+                "legendFormat": "Upstream Connections {{cluster_name}}"
+              }
+            ],
+            "gridPos": {"h": 6, "w": 8, "x": 8, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Request Rate",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "sum(rate(envoy_http_downstream_rq_total[5m]))",
+                "legendFormat": "Total RPS"
+              },
+              {
+                "expr": "sum(rate(envoy_http_downstream_rq_xx{envoy_response_code_class=\"2\"}[5m]))",
+                "legendFormat": "2xx RPS"
+              }
+            ],
+            "gridPos": {"h": 6, "w": 8, "x": 16, "y": 0}
+          },
+          {
+            "id": 4,
+            "title": "HTTP Request Rate by Service",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "sum(rate(envoy_cluster_upstream_rq_total[5m])) by (cluster_name)",
+                "legendFormat": "{{cluster_name}}"
+              }
+            ],
+            "yAxes": [
+              {"label": "Requests/sec", "show": true},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6}
+          },
+          {
+            "id": 5,
+            "title": "HTTP Response Codes",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "sum(rate(envoy_http_downstream_rq_xx[5m])) by (envoy_response_code_class)",
+                "legendFormat": "{{envoy_response_code_class}}xx"
+              }
+            ],
+            "yAxes": [
+              {"label": "Responses/sec", "show": true},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6}
+          },
+          {
+            "id": 6,
+            "title": "Request Duration",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, sum(rate(envoy_http_downstream_rq_time_bucket[5m])) by (le))",
+                "legendFormat": "95th percentile"
+              },
+              {
+                "expr": "histogram_quantile(0.50, sum(rate(envoy_http_downstream_rq_time_bucket[5m])) by (le))",
+                "legendFormat": "50th percentile"
+              },
+              {
+                "expr": "histogram_quantile(0.99, sum(rate(envoy_http_downstream_rq_time_bucket[5m])) by (le))",
+                "legendFormat": "99th percentile"
+              }
+            ],
+            "yAxes": [
+              {"label": "Milliseconds", "show": true},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14}
+          },
+          {
+            "id": 7,
+            "title": "Upstream Response Time",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, sum(rate(envoy_cluster_upstream_rq_time_bucket[5m])) by (cluster_name, le))",
+                "legendFormat": "95th {{cluster_name}}"
+              },
+              {
+                "expr": "histogram_quantile(0.50, sum(rate(envoy_cluster_upstream_rq_time_bucket[5m])) by (cluster_name, le))",
+                "legendFormat": "50th {{cluster_name}}"
+              }
+            ],
+            "yAxes": [
+              {"label": "Milliseconds", "show": true},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14}
+          },
+          {
+            "id": 8,
+            "title": "Connection Pool",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "envoy_cluster_upstream_cx_active",
+                "legendFormat": "Active {{cluster_name}}"
+              },
+              {
+                "expr": "envoy_cluster_upstream_cx_pool_overflow",
+                "legendFormat": "Pool Overflow {{cluster_name}}"
+              }
+            ],
+            "yAxes": [
+              {"label": "Connections", "show": true},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22}
+          },
+          {
+            "id": 9,
+            "title": "Health Check Status",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "envoy_cluster_health_check_healthy",
+                "legendFormat": "Healthy {{cluster_name}}"
+              },
+              {
+                "expr": "rate(envoy_cluster_health_check_attempt[5m])",
+                "legendFormat": "Check Rate {{cluster_name}}"
+              }
+            ],
+            "yAxes": [
+              {"label": "Count", "show": true},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22}
+          },
+          {
+            "id": 10,
+            "title": "Circuit Breaker Status",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "envoy_cluster_circuit_breakers_remaining",
+                "legendFormat": "Remaining {{cluster_name}} {{priority}}"
+              },
+              {
+                "expr": "rate(envoy_cluster_upstream_rq_circuit_breaker_open[5m])",
+                "legendFormat": "Circuit Open {{cluster_name}}"
+              }
+            ],
+            "yAxes": [
+              {"label": "Count", "show": true},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 30}
+          },
+          {
+            "id": 11,
+            "title": "Memory Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "envoy_server_memory_allocated",
+                "legendFormat": "Allocated {{instance}}"
+              },
+              {
+                "expr": "envoy_server_memory_heap_size",
+                "legendFormat": "Heap Size {{instance}}"
+              }
+            ],
+            "yAxes": [
+              {"label": "Bytes", "show": true},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 30}
+          },
+          {
+            "id": 12,
+            "title": "TLS Certificate Status",
+            "type": "table",
+            "targets": [
+              {
+                "expr": "envoy_server_days_until_first_cert_expiring",
+                "legendFormat": "Days until expiry"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 38}
+          },
+          {
+            "id": 13,
+            "title": "Worker Threads",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "envoy_server_concurrency",
+                "legendFormat": "Worker Threads {{instance}}"
+              }
+            ],
+            "yAxes": [
+              {"label": "Count", "show": true},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 38}
+          },
+          {
+            "id": 14,
+            "title": "Top Error Routes",
+            "type": "table",
+            "targets": [
+              {
+                "expr": "topk(10, sum(rate(envoy_http_downstream_rq_xx{envoy_response_code_class!=\"2\"}[5m])) by (envoy_http_conn_manager_prefix, envoy_virtual_host_name))",
+                "legendFormat": "{{envoy_virtual_host_name}} errors/sec"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 46}
+          },
+          {
+            "id": 15,
+            "title": "Rate Limiting",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(envoy_http_local_rate_limit_enabled[5m])",
+                "legendFormat": "Rate Limited {{instance}}"
+              },
+              {
+                "expr": "rate(envoy_http_local_rate_limit_enforced[5m])",
+                "legendFormat": "Rate Enforced {{instance}}"
+              }
+            ],
+            "yAxes": [
+              {"label": "Requests/sec", "show": true},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 46}
+          }
+        ],
+        "time": {"from": "now-1h", "to": "now"},
+        "refresh": "30s"
+      }
+    }
