@@ -1,52 +1,113 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# 🌊 Sync Wave 6: Grafana CRD Resources (After Grafana Operator Wave 4)
-commonAnnotations:
-  argocd.argoproj.io/sync-wave: "6"
-
-# 🎯 GRAFANA OPERATOR PATTERN - Only CRD resources, no Helm chart!
-# Grafana Operator (deployed separately) manages the Grafana instance
-# 📊 ConfigMap Dashboards - keep your preferred dashboard pattern
-# (These work with both Helm Grafana and Grafana Operator)
-
-# 🎯 NATIVE GRAFANA OPERATOR DASHBOARDS - ConfigMap References
-# Links traditional ConfigMaps to GrafanaDashboard CRDs (Vegarn pattern)
-
-# 🎯 GRAFANA OPERATOR DASHBOARDS - Native GrafanaDashboard CRDs
-# Enterprise-grade monitoring dashboards using Grafana Operator - Direct URL-based from Grafana.com
 resources:
-  - grafana-admin-secret.yaml
-  - grafana-instance.yaml
+  - ns.yaml
+  - grafana.yaml
+  - grafana-operator-dashboard.yaml
+  - http-route.yaml
+  - http-route-http.yaml
+  # - admin-credentials.yaml          # ❌ DISABLED: SealedSecret decryption failing
+  # - oidc-credentials.yaml           # ❌ DISABLED: SealedSecret decryption failing
+  - datasources/alertmanager-operated.yaml
+  - datasources/prometheus-operated.yaml
+  - datasources/loki.yaml
 
-  # 🎯 2025 DASHBOARD COLLECTION - Clean & Organized
-  - dashboards-2025/
+  # 🏢 ENTERPRISE DASHBOARD HIERARCHY - Google/Netflix/Meta Pattern
+  # Executive Level - C-Suite Overview
+  - dashboards/executive/homelab-overview.yaml
+  - dashboards/executive/resource-costs.yaml
 
-  # 🎯 DATASOURCE STRATEGY - VictoriaMetrics Way
-  # - prometheus-datasource.yaml       # ❌ DISABLED: Using VictoriaMetrics instead
-  # - victoriametrics-datasource.yaml  # ❌ REMOVED: Now handled by victoriametrics/
-  # - datasource-aliases.yaml          # ❌ REMOVED: Caused datasource conflicts
-  - dashboard-datasource-mappings.yaml # Enhanced dashboards with explicit mapping (optional)
-  - loki-datasource.yaml
+  # Infrastructure Level - Core Platform
+  - dashboards/infrastructure/argocd-gitops.yaml
+  - dashboards/infrastructure/cert-manager-ssl.yaml
+  - dashboards/infrastructure/cilium-network.yaml
+  - dashboards/infrastructure/istio-service-mesh.yaml
+  - dashboards/infrastructure/envoy-gateway.yaml
 
-  # ✅ CLEAN DASHBOARD RESOURCES - 2025 Enterprise Collection
-  # Keeping only essential ConfigMaps and organized dashboard structure
-  - dashboards-configmap.yaml
+  # Networking Level - eBPF Observability
+  - dashboards/networking/cilium-hubble.yaml
 
-  # 🎯 VEGARN CONFIGMAP PATTERN - Real Dashboards mit Content
-  # - ceph-cluster-dashboard-configmap.yaml  # ❌ MOVED to infrastructure-dashboards (prevents SharedResourceWarning)
-  - kafka-strimzi-dashboard-configmap.yaml
+  # GitOps Level - ArgoCD Performance
+  - dashboards/gitops/argocd-application-performance.yaml
+  - dashboards/gitops/argocd-repository-health.yaml
+  - dashboards/gitops/argocd-executive-overview.yaml
+  - dashboards/gitops/argocd-security-compliance.yaml
+  - dashboards/gitops/argocd-developer-experience.yaml
 
-  # 🎯 SPECIALIZED DASHBOARDS - VictoriaMetrics Compatible
-  - strimzi-kafka-dashboard.yaml      # Official Strimzi Kafka metrics dashboard
-  - istio-service-mesh-dashboard.yaml # Istio service mesh overview dashboard (label fixed)
+  # Infrastructure Level - System Dashboards
+  - dashboards/infrastructure/kubernetes-cluster-overview.yaml
+  - dashboards/infrastructure/talos-system-overview.yaml
+  - dashboards/infrastructure/pod-level-performance.yaml
 
-# 🧹 OLD DASHBOARD STRUCTURE CLEANED UP (2025-09-25)
-# Removed 39+ individual dashboard files and replaced with organized folder structure
-# All dashboards now use proper Grafana Operator CRD pattern with grafanaCom imports
+  # Networking Level - Service Mesh & Traffic
+  - dashboards/networking/istio-mesh-overview.yaml
+  - dashboards/networking/istio-security-policies.yaml
+  - dashboards/networking/hubble-flow-analytics.yaml
+  - dashboards/networking/unifi-network-insights.yaml
+  - dashboards/networking/unifi-wireless-insights.yaml
 
-# 🧹 BROKEN DASHBOARDS REMOVED (2025-09-25) - Files deleted to clean up Infrastructure folder
-# Scripts and documentation:
-# - import-batch.sh                     # ✅ Successful API import script
-# - import-massive-dashboards.py        # ✅ Python API import script
-# - DASHBOARD_IMPORT_SUCCESS.md         # 📋 Complete success report
+  # Storage Level - Data Layer
+  - dashboards/storage/rook-ceph-cluster.yaml
+  - dashboards/storage/ceph-pools.yaml
+  - dashboards/storage/ceph-osd-performance.yaml
+  - dashboards/storage/ceph-cluster-overview.yaml
+  - dashboards/storage/ceph-osd-details.yaml
+  - dashboards/storage/ceph-pools-detailed.yaml
+  - dashboards/storage/cnpg-postgresql.yaml
+  - dashboards/storage/velero-backup.yaml
+
+  # Observability Level - Logging & Monitoring
+  - dashboards/observability/vector-logging-pipeline.yaml
+
+  # Platform Level - Services & Databases
+  - dashboards/platform/elasticsearch-cluster-health.yaml
+  - dashboards/platform/kafka-demo-applications.yaml
+
+  # Security Level - Zero Trust
+  - dashboards/security/authelia-identity.yaml
+  - dashboards/security/authelia-authentication.yaml
+  - dashboards/security/cert-manager-certificate-management.yaml
+  - dashboards/security/lldap-directory.yaml
+  - dashboards/security/sealed-secrets.yaml
+
+  # Platform Level - Middleware
+  - dashboards/platform/kafka-streaming.yaml
+  - dashboards/platform/kafka-consumer-lag.yaml
+  - dashboards/platform/schema-registry.yaml
+  - dashboards/platform/influxdb-timeseries.yaml
+
+  # Observability Level - O11y Stack
+  - dashboards/observability/loki-logs.yaml
+  - dashboards/observability/jaeger-tracing.yaml
+  - dashboards/observability/opentelemetry-collector.yaml
+
+  # Applications Level - User Services
+  - dashboards/applications/n8n-automation.yaml
+  - dashboards/applications/n8n-application-performance.yaml
+  - dashboards/applications/audiobookshelf-media.yaml
+  - dashboards/applications/audiobookshelf-media-server.yaml
+  - dashboards/applications/cloudbeaver-database.yaml
+  - dashboards/applications/cloudbeaver-database-management.yaml
+  - dashboards/applications/quantlab-trading-platform.yaml
+
+  # 📊 DASHBOARD CONFIGMAPS - Legacy (keeping existing ones)
+  - dashboards/storage/rook-ceph-configmap.yaml
+  - dashboards/infrastructure/argocd-gitops-configmap.yaml
+  - dashboards/infrastructure/cert-manager-ssl-configmap.yaml
+  - dashboards/infrastructure/cilium-network-configmap.yaml
+  - dashboards/infrastructure/envoy-gateway-configmap.yaml
+  - dashboards/infrastructure/talos-kubernetes-configmap.yaml
+  - dashboards/platform/elasticsearch-configmap.yaml
+  - dashboards/platform/kafka-streaming-configmap.yaml
+  - dashboards/platform/cnpg-postgresql-configmap.yaml
+
+helmCharts:
+  - name: grafana-operator
+    repo: oci://ghcr.io/grafana/helm-charts
+    includeCRDs: true
+    namespace: grafana
+    version: v5.19.1 # renovate: github-releases=grafana/grafana-operator
+    releaseName: grafana-operator
+    valuesFile: ./values.yaml
+# Force ArgoCD cache refresh

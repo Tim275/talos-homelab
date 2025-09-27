@@ -1,0 +1,61 @@
+# 🎯 DIRECT VMAGENT DEPLOYMENT - Bypass VMAgent Operator Completely
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vmagent-direct
+  namespace: monitoring
+  labels:
+    app: vmagent-direct
+    app.kubernetes.io/name: vmagent-direct
+    app.kubernetes.io/part-of: victoriametrics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vmagent-direct
+  template:
+    metadata:
+      labels:
+        app: vmagent-direct
+    spec:
+      serviceAccountName: vmagent-direct
+      containers:
+        - name: vmagent
+          image: victoriametrics/vmagent:v1.125.0
+          args:
+            - "--remoteWrite.url=http://vminsert-vm-cluster.monitoring.svc.cluster.local:8480/insert/0/prometheus/"
+            - "--promscrape.config=/etc/vmagent/config.yaml"
+            - "--httpListenAddr=0.0.0.0:8429"
+            - "--promscrape.maxScrapeSize=16MB"
+            - "--memory.allowedPercent=60"
+          ports:
+            - containerPort: 8429
+              name: http
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/vmagent
+            - name: serviceaccount-token
+              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: vmagent-direct-config
+        - name: serviceaccount-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3607
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
