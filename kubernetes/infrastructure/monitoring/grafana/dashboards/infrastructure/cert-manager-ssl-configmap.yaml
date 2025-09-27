@@ -1,0 +1,269 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cert-manager-ssl-dashboard
+  namespace: grafana
+  labels:
+    app.kubernetes.io/part-of: monitoring-stack
+    tier: infrastructure
+data:
+  dashboard.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "🔐 Cert-Manager SSL Infrastructure",
+        "tags": ["cert-manager", "ssl", "certificates", "acme"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Certificate Status",
+            "type": "piechart",
+            "targets": [
+              {
+                "expr": "count by(condition) (certmanager_certificate_ready_status)",
+                "legendFormat": "{{condition}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "mappings": [
+                  {"options": {"True": {"text": "Ready", "color": "green"}}, "type": "value"},
+                  {"options": {"False": {"text": "Not Ready", "color": "red"}}, "type": "value"},
+                  {"options": {"Unknown": {"text": "Unknown", "color": "yellow"}}, "type": "value"}
+                ]
+              }
+            },
+            "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Certificate Count",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "count(certmanager_certificate_ready_status)",
+                "legendFormat": "Total Certificates"
+              },
+              {
+                "expr": "count(certmanager_certificate_ready_status{condition=\"True\"})",
+                "legendFormat": "Ready"
+              },
+              {
+                "expr": "count(certmanager_certificate_ready_status{condition=\"False\"})",
+                "legendFormat": "Failed"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Certificate Expiry",
+            "type": "gauge",
+            "targets": [
+              {
+                "expr": "min(certmanager_certificate_expiration_timestamp_seconds - time()) / 86400",
+                "legendFormat": "Days until first expiry"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "thresholds": {
+                  "steps": [
+                    {"color": "red", "value": 0},
+                    {"color": "yellow", "value": 7},
+                    {"color": "green", "value": 30}
+                  ]
+                },
+                "min": 0,
+                "max": 90,
+                "unit": "days"
+              }
+            },
+            "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0}
+          },
+          {
+            "id": 4,
+            "title": "Certificate Expiry Timeline",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "(certmanager_certificate_expiration_timestamp_seconds - time()) / 86400",
+                "legendFormat": "{{name}} - {{namespace}}"
+              }
+            ],
+            "yAxes": [
+              {"label": "Days", "show": true},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+          },
+          {
+            "id": 5,
+            "title": "ACME Order Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(certmanager_acme_orders_total[5m])",
+                "legendFormat": "Orders {{state}}"
+              }
+            ],
+            "yAxes": [
+              {"label": "Orders/sec", "show": true},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+          },
+          {
+            "id": 6,
+            "title": "HTTP01 Challenge Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(certmanager_acme_http_challenges_total[5m])",
+                "legendFormat": "HTTP01 {{state}}"
+              }
+            ],
+            "yAxes": [
+              {"label": "Challenges/sec", "show": true},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+          },
+          {
+            "id": 7,
+            "title": "DNS01 Challenge Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(certmanager_acme_dns_challenges_total[5m])",
+                "legendFormat": "DNS01 {{state}}"
+              }
+            ],
+            "yAxes": [
+              {"label": "Challenges/sec", "show": true},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24}
+          },
+          {
+            "id": 8,
+            "title": "Controller Sync Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(certmanager_controller_sync_call_count[5m])",
+                "legendFormat": "Sync {{controller}}"
+              }
+            ],
+            "yAxes": [
+              {"label": "Syncs/sec", "show": true},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24}
+          },
+          {
+            "id": 9,
+            "title": "ClusterIssuer Status",
+            "type": "table",
+            "targets": [
+              {
+                "expr": "certmanager_clusterissuer_ready_status",
+                "legendFormat": "{{name}} - {{condition}}"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32}
+          },
+          {
+            "id": 10,
+            "title": "Issuer Status",
+            "type": "table",
+            "targets": [
+              {
+                "expr": "certmanager_issuer_ready_status",
+                "legendFormat": "{{name}} - {{namespace}} - {{condition}}"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32}
+          },
+          {
+            "id": 11,
+            "title": "Certificate Request Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(certmanager_certificaterequests_total[5m])",
+                "legendFormat": "Requests {{state}}"
+              }
+            ],
+            "yAxes": [
+              {"label": "Requests/sec", "show": true},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 40}
+          },
+          {
+            "id": 12,
+            "title": "Certificate Renewal Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(certmanager_certificate_renewal_timestamp_seconds[5m])",
+                "legendFormat": "Renewals {{name}} - {{namespace}}"
+              }
+            ],
+            "yAxes": [
+              {"label": "Renewals/sec", "show": true},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 40}
+          },
+          {
+            "id": 13,
+            "title": "Webhook Latency",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, sum(rate(certmanager_webhook_request_duration_seconds_bucket[5m])) by (le))",
+                "legendFormat": "95th percentile"
+              },
+              {
+                "expr": "histogram_quantile(0.50, sum(rate(certmanager_webhook_request_duration_seconds_bucket[5m])) by (le))",
+                "legendFormat": "50th percentile"
+              }
+            ],
+            "yAxes": [
+              {"label": "Seconds", "show": true},
+              {"show": false}
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 48}
+          },
+          {
+            "id": 14,
+            "title": "Certificate Details",
+            "type": "table",
+            "targets": [
+              {
+                "expr": "certmanager_certificate_ready_status",
+                "legendFormat": "{{name}} | {{namespace}} | {{condition}} | {{issuer_name}} | {{issuer_kind}}"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 48}
+          },
+          {
+            "id": 15,
+            "title": "ACME Account Status",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "certmanager_acme_accounts",
+                "legendFormat": "ACME Accounts {{uri}}"
+              }
+            ],
+            "gridPos": {"h": 6, "w": 24, "x": 0, "y": 56}
+          }
+        ],
+        "time": {"from": "now-1h", "to": "now"},
+        "refresh": "30s"
+      }
+    }
