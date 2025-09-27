@@ -1,0 +1,221 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: hubble-flow-analytics
+  namespace: grafana
+  labels:
+    app.kubernetes.io/part-of: monitoring-stack
+    tier: networking
+spec:
+  allowCrossNamespaceImport: true
+  json: |
+    {
+      "id": null,
+      "title": "🌐 Hubble Network Flow Analytics",
+      "tags": ["hubble", "cilium", "ebpf", "flows", "networking"],
+      "timezone": "browser",
+      "panels": [
+        {
+          "id": 1,
+          "title": "Hubble Network Flow Analytics Platform",
+          "type": "text",
+          "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
+          "options": {
+            "content": "<div style=\"text-align: center; font-size: 24px; padding: 20px; background: linear-gradient(90deg, #f59e0b, #ef4444);\">\\n<img src=\"https://raw.githubusercontent.com/cilium/cilium/main/Documentation/images/logo-solo.svg\" alt=\"Cilium\" style=\"height: 60px; vertical-align: middle; margin-right: 20px; filter: invert(1);\">\\n<strong style=\"color: white;\">🌐 Hubble Network Flow Analytics</strong>\\n<p style=\"font-size: 16px; color: #fef3c7; margin-top: 10px;\">eBPF • Network Flows • Security Analytics • Service Map</p>\\n</div>"
+          }
+        },
+        {
+          "id": 2,
+          "title": "Flow Volume",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "sum(rate(hubble_flows_total[5m]))",
+              "legendFormat": "Total Flows/sec"
+            },
+            {
+              "expr": "sum(rate(hubble_flows_total{verdict=\"ALLOWED\"}[5m]))",
+              "legendFormat": "Allowed Flows/sec"
+            },
+            {
+              "expr": "sum(rate(hubble_flows_total{verdict=\"DENIED\"}[5m]))",
+              "legendFormat": "Denied Flows/sec"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": 0},
+                  {"color": "yellow", "value": 1000},
+                  {"color": "red", "value": 5000}
+                ]
+              }
+            }
+          },
+          "gridPos": {"h": 6, "w": 8, "x": 0, "y": 4}
+        },
+        {
+          "id": 3,
+          "title": "Security Verdicts",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "sum(rate(hubble_flows_total{verdict=\"DROPPED\"}[5m]))",
+              "legendFormat": "Dropped/sec"
+            },
+            {
+              "expr": "sum(rate(hubble_flows_total{verdict=\"ERROR\"}[5m]))",
+              "legendFormat": "Errors/sec"
+            },
+            {
+              "expr": "sum(rate(hubble_flows_total{verdict=\"AUDIT\"}[5m]))",
+              "legendFormat": "Audited/sec"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": 0},
+                  {"color": "yellow", "value": 10},
+                  {"color": "red", "value": 100}
+                ]
+              }
+            }
+          },
+          "gridPos": {"h": 6, "w": 8, "x": 8, "y": 4}
+        },
+        {
+          "id": 4,
+          "title": "Protocol Distribution",
+          "type": "piechart",
+          "targets": [
+            {
+              "expr": "sum by (protocol) (rate(hubble_flows_total[5m]))",
+              "legendFormat": "{{protocol}}"
+            }
+          ],
+          "gridPos": {"h": 6, "w": 8, "x": 16, "y": 4}
+        },
+        {
+          "id": 5,
+          "title": "Network Flows by Source Namespace",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "sum by (source_namespace) (rate(hubble_flows_total[5m]))",
+              "legendFormat": "{{source_namespace}}"
+            }
+          ],
+          "yAxes": [
+            {"label": "Flows/sec", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 10}
+        },
+        {
+          "id": 6,
+          "title": "Network Flows by Destination Namespace",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "sum by (destination_namespace) (rate(hubble_flows_total[5m]))",
+              "legendFormat": "{{destination_namespace}}"
+            }
+          ],
+          "yAxes": [
+            {"label": "Flows/sec", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 10}
+        },
+        {
+          "id": 7,
+          "title": "DNS Query Analytics",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "sum(rate(hubble_dns_queries_total[5m]))",
+              "legendFormat": "DNS Queries/sec"
+            },
+            {
+              "expr": "sum(rate(hubble_dns_responses_total[5m]))",
+              "legendFormat": "DNS Responses/sec"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 18}
+        },
+        {
+          "id": 8,
+          "title": "HTTP Request Analytics",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "sum by (method) (rate(hubble_http_requests_total[5m]))",
+              "legendFormat": "{{method}} Requests/sec"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 18}
+        },
+        {
+          "id": 9,
+          "title": "Network Policy Violations",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "sum by (source_namespace, destination_namespace) (rate(hubble_flows_total{verdict=\"DENIED\"}[5m]))",
+              "legendFormat": "{{source_namespace}} → {{destination_namespace}}"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 26}
+        },
+        {
+          "id": 10,
+          "title": "Port Distribution",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "topk(10, sum by (destination_port) (rate(hubble_flows_total[5m])))",
+              "legendFormat": "Port {{destination_port}}"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 26}
+        },
+        {
+          "id": 11,
+          "title": "Service-to-Service Communication",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "sum by (source_workload, destination_workload) (rate(hubble_flows_total{verdict=\"ALLOWED\"}[5m]))",
+              "legendFormat": "{{source_workload}} → {{destination_workload}}"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 34}
+        },
+        {
+          "id": 12,
+          "title": "Flow Processing Performance",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "rate(hubble_flows_processed_total[5m])",
+              "legendFormat": "Flows Processed/sec"
+            },
+            {
+              "expr": "rate(hubble_flows_lost_total[5m])",
+              "legendFormat": "Flows Lost/sec"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 34}
+        }
+      ],
+      "time": {"from": "now-1h", "to": "now"},
+      "refresh": "30s"
+    }
+  folder: Cilium
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  resyncPeriod: 10m
