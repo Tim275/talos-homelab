@@ -1,0 +1,282 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: cnpg-replication
+  namespace: grafana
+  labels:
+    app.kubernetes.io/name: cnpg
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/part-of: monitoring
+spec:
+  resyncPeriod: 30s
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "CloudNativePG - Replication",
+        "tags": ["postgresql", "cnpg", "replication"],
+        "style": "dark",
+        "timezone": "browser",
+        "refresh": "30s",
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "panels": [
+          {
+            "id": 1,
+            "title": "Replication Lag",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "pg_stat_replication_sent_lsn - pg_stat_replication_flush_lsn",
+                "legendFormat": "Flush Lag - {{cluster}} {{client_addr}}"
+              },
+              {
+                "expr": "pg_stat_replication_sent_lsn - pg_stat_replication_write_lsn",
+                "legendFormat": "Write Lag - {{cluster}} {{client_addr}}"
+              },
+              {
+                "expr": "pg_stat_replication_sent_lsn - pg_stat_replication_replay_lsn",
+                "legendFormat": "Replay Lag - {{cluster}} {{client_addr}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Bytes",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Replication Status",
+            "type": "table",
+            "targets": [
+              {
+                "expr": "pg_stat_replication_state",
+                "legendFormat": "{{cluster}} - {{client_addr}}",
+                "format": "table"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "custom": {
+                  "displayMode": "basic"
+                },
+                "mappings": [
+                  {"options": {"1": {"text": "Streaming"}}, "type": "value"},
+                  {"options": {"0": {"text": "Disconnected"}}, "type": "value"}
+                ]
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "WAL Streaming Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(pg_stat_replication_sent_lsn[5m])",
+                "legendFormat": "Sent Rate - {{cluster}} {{client_addr}}"
+              },
+              {
+                "expr": "rate(pg_stat_replication_write_lsn[5m])",
+                "legendFormat": "Write Rate - {{cluster}} {{client_addr}}"
+              },
+              {
+                "expr": "rate(pg_stat_replication_flush_lsn[5m])",
+                "legendFormat": "Flush Rate - {{cluster}} {{client_addr}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Bytes/sec",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          },
+          {
+            "id": 4,
+            "title": "Replica Connection Count",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "count(pg_stat_replication_state == 1)",
+                "legendFormat": "Active Replicas"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "steps": [
+                    {"color": "red", "value": 0},
+                    {"color": "yellow", "value": 1},
+                    {"color": "green", "value": 2}
+                  ]
+                },
+                "unit": "short"
+              }
+            },
+            "gridPos": {"h": 8, "w": 6, "x": 12, "y": 8}
+          },
+          {
+            "id": 5,
+            "title": "Synchronous Replication",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "pg_stat_replication_sync_state",
+                "legendFormat": "{{cluster}} - {{client_addr}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "steps": [
+                    {"color": "yellow", "value": 0},
+                    {"color": "green", "value": 1}
+                  ]
+                },
+                "mappings": [
+                  {"options": {"0": {"text": "Async"}}, "type": "value"},
+                  {"options": {"1": {"text": "Sync"}}, "type": "value"}
+                ]
+              }
+            },
+            "gridPos": {"h": 8, "w": 6, "x": 18, "y": 8}
+          },
+          {
+            "id": 6,
+            "title": "WAL Receiver Status",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "pg_stat_wal_receiver_received_lsn",
+                "legendFormat": "Received LSN - {{cluster}}"
+              },
+              {
+                "expr": "pg_stat_wal_receiver_flushed_lsn",
+                "legendFormat": "Flushed LSN - {{cluster}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "LSN Position",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+          },
+          {
+            "id": 7,
+            "title": "Replication Slot Status",
+            "type": "table",
+            "targets": [
+              {
+                "expr": "pg_replication_slots_active",
+                "legendFormat": "{{cluster}} - {{slot_name}}",
+                "format": "table"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "custom": {
+                  "displayMode": "basic"
+                },
+                "mappings": [
+                  {"options": {"1": {"text": "Active"}}, "type": "value"},
+                  {"options": {"0": {"text": "Inactive"}}, "type": "value"}
+                ]
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+          },
+          {
+            "id": 8,
+            "title": "Standby Database Status",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "pg_is_in_recovery",
+                "legendFormat": "Recovery Mode - {{cluster}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Recovery Status",
+                "min": 0,
+                "max": 1
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24}
+          },
+          {
+            "id": 9,
+            "title": "Hot Standby Conflicts",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(pg_stat_database_conflicts[5m])",
+                "legendFormat": "Conflicts - {{cluster}} {{datname}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Conflicts/sec",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24}
+          },
+          {
+            "id": 10,
+            "title": "Replication Timeline",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "pg_control_timeline",
+                "legendFormat": "Timeline - {{cluster}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Timeline ID",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 24, "x": 0, "y": 32}
+          }
+        ]
+      }
+    }

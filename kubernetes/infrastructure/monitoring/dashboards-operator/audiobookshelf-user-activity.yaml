@@ -1,0 +1,245 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: audiobookshelf-user-activity
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: grafana-enterprise
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/part-of: monitoring
+    enterprise.tier: applications
+    enterprise.category: media
+spec:
+  resyncPeriod: 30s
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "Audiobookshelf - User Activity",
+        "tags": ["audiobookshelf", "users", "activity"],
+        "style": "dark",
+        "timezone": "browser",
+        "refresh": "30s",
+        "time": {
+          "from": "now-24h",
+          "to": "now"
+        },
+        "panels": [
+          {
+            "id": 1,
+            "title": "Active Users",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "audiobookshelf_active_users{namespace=~\"audiobookshelf-dev|audiobookshelf-prod\"}",
+                "legendFormat": "{{namespace}} - Currently Active"
+              },
+              {
+                "expr": "audiobookshelf_total_users{namespace=~\"audiobookshelf-dev|audiobookshelf-prod\"}",
+                "legendFormat": "{{namespace}} - Total Users"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "palette-classic"},
+                "unit": "short"
+              }
+            },
+            "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "User Sessions Today",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "increase(audiobookshelf_user_sessions_total{namespace=~\"audiobookshelf-dev|audiobookshelf-prod\"}[24h])",
+                "legendFormat": "{{namespace}} - Sessions"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "palette-classic"},
+                "unit": "short"
+              }
+            },
+            "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Listening Time Today",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "increase(audiobookshelf_listening_time_seconds_total{namespace=~\"audiobookshelf-dev|audiobookshelf-prod\"}[24h]) / 3600",
+                "legendFormat": "{{namespace}} - Hours"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "palette-classic"},
+                "unit": "h"
+              }
+            },
+            "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0}
+          },
+          {
+            "id": 4,
+            "title": "User Login Activity",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "increase(audiobookshelf_user_login_total{namespace=~\"audiobookshelf-dev|audiobookshelf-prod\"}[1h])",
+                "legendFormat": "{{namespace}} - Successful Logins"
+              },
+              {
+                "expr": "increase(audiobookshelf_user_login_failed_total{namespace=~\"audiobookshelf-dev|audiobookshelf-prod\"}[1h])",
+                "legendFormat": "{{namespace}} - Failed Logins"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Logins",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          },
+          {
+            "id": 5,
+            "title": "Playback Sessions",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "increase(audiobookshelf_playback_started_total[1h])",
+                "legendFormat": "Sessions Started"
+              },
+              {
+                "expr": "increase(audiobookshelf_playback_finished_total[1h])",
+                "legendFormat": "Sessions Completed"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Sessions",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+          },
+          {
+            "id": 6,
+            "title": "Download Activity",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "increase(audiobookshelf_downloads_started_total[1h])",
+                "legendFormat": "Downloads Started"
+              },
+              {
+                "expr": "increase(audiobookshelf_downloads_completed_total[1h])",
+                "legendFormat": "Downloads Completed"
+              },
+              {
+                "expr": "rate(audiobookshelf_download_bytes_total[5m])",
+                "legendFormat": "Download Bandwidth (bytes/s)"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Count",
+                "min": 0
+              },
+              {
+                "label": "Bytes/s",
+                "min": 0
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+          },
+          {
+            "id": 7,
+            "title": "User Progress Statistics",
+            "type": "table",
+            "targets": [
+              {
+                "expr": "topk(10, audiobookshelf_user_listening_time_hours)",
+                "legendFormat": "{{user}}",
+                "format": "table"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "custom": {
+                  "displayMode": "basic"
+                },
+                "unit": "h"
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+          },
+          {
+            "id": 8,
+            "title": "Most Popular Books",
+            "type": "table",
+            "targets": [
+              {
+                "expr": "topk(10, audiobookshelf_book_play_count)",
+                "legendFormat": "{{title}}",
+                "format": "table"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "custom": {
+                  "displayMode": "basic"
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24}
+          },
+          {
+            "id": 9,
+            "title": "Average Session Duration",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "audiobookshelf_avg_session_duration_minutes",
+                "legendFormat": "Average Duration"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Minutes",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24}
+          },
+          {
+            "id": 10,
+            "title": "User Device Types",
+            "type": "piechart",
+            "targets": [
+              {
+                "expr": "audiobookshelf_sessions_by_device_type",
+                "legendFormat": "{{device_type}}"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 24, "x": 0, "y": 32}
+          }
+        ]
+      }
+    }

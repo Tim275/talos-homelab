@@ -1,0 +1,284 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: lldap-authentication
+  namespace: grafana
+  labels:
+    app.kubernetes.io/name: lldap
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/part-of: monitoring
+spec:
+  resyncPeriod: 30s
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "LLDAP - Authentication",
+        "tags": ["lldap", "authentication", "ldap"],
+        "style": "dark",
+        "timezone": "browser",
+        "refresh": "30s",
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "panels": [
+          {
+            "id": 1,
+            "title": "Authentication Success Rate",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "rate(lldap_auth_success_total[5m]) / rate(lldap_auth_attempts_total[5m]) * 100",
+                "legendFormat": "Success Rate"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "steps": [
+                    {"color": "red", "value": 0},
+                    {"color": "yellow", "value": 85},
+                    {"color": "green", "value": 95}
+                  ]
+                },
+                "unit": "percent"
+              }
+            },
+            "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Total Authentication Attempts",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "increase(lldap_auth_attempts_total[1h])",
+                "legendFormat": "Attempts"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "palette-classic"},
+                "unit": "short"
+              }
+            },
+            "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Failed Authentication Attempts",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "increase(lldap_auth_failures_total[1h])",
+                "legendFormat": "Failures"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": 0},
+                    {"color": "yellow", "value": 10},
+                    {"color": "red", "value": 50}
+                  ]
+                },
+                "unit": "short"
+              }
+            },
+            "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0}
+          },
+          {
+            "id": 4,
+            "title": "Authentication Timeline",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(lldap_auth_success_total[5m])",
+                "legendFormat": "Successful Auths/sec"
+              },
+              {
+                "expr": "rate(lldap_auth_failures_total[5m])",
+                "legendFormat": "Failed Auths/sec"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Authentications/sec",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          },
+          {
+            "id": 5,
+            "title": "LDAP Bind Operations",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(lldap_ldap_bind_success_total[5m])",
+                "legendFormat": "Successful Binds"
+              },
+              {
+                "expr": "rate(lldap_ldap_bind_failures_total[5m])",
+                "legendFormat": "Failed Binds"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Binds/sec",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+          },
+          {
+            "id": 6,
+            "title": "Search Operations",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(lldap_ldap_search_total[5m])",
+                "legendFormat": "Search Requests"
+              },
+              {
+                "expr": "rate(lldap_ldap_search_errors_total[5m])",
+                "legendFormat": "Search Errors"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Searches/sec",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+          },
+          {
+            "id": 7,
+            "title": "User Login Activity",
+            "type": "table",
+            "targets": [
+              {
+                "expr": "topk(10, increase(lldap_user_login_total[1h]) by (username))",
+                "legendFormat": "{{username}}",
+                "format": "table"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "custom": {
+                  "displayMode": "basic"
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+          },
+          {
+            "id": 8,
+            "title": "Authentication by Client IP",
+            "type": "table",
+            "targets": [
+              {
+                "expr": "topk(10, increase(lldap_auth_attempts_total[1h]) by (client_ip))",
+                "legendFormat": "{{client_ip}}",
+                "format": "table"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "custom": {
+                  "displayMode": "basic"
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24}
+          },
+          {
+            "id": 9,
+            "title": "Failed Login Sources",
+            "type": "table",
+            "targets": [
+              {
+                "expr": "topk(10, increase(lldap_auth_failures_total[1h]) by (client_ip))",
+                "legendFormat": "{{client_ip}}",
+                "format": "table"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "custom": {
+                  "displayMode": "basic"
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24}
+          },
+          {
+            "id": 10,
+            "title": "Session Duration",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, rate(lldap_session_duration_seconds_bucket[5m]))",
+                "legendFormat": "95th percentile"
+              },
+              {
+                "expr": "histogram_quantile(0.50, rate(lldap_session_duration_seconds_bucket[5m]))",
+                "legendFormat": "50th percentile"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Seconds",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32}
+          },
+          {
+            "id": 11,
+            "title": "Password Change Activity",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "increase(lldap_password_changes_total[1h])",
+                "legendFormat": "Password Changes"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Changes",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32}
+          }
+        ]
+      }
+    }
