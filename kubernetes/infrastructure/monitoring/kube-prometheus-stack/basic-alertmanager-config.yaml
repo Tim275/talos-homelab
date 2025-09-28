@@ -1,0 +1,123 @@
+# 📧 BASIC ALERTMANAGER CONFIG - Phase 1 (Simple Email Only)
+# Start with simple email notifications, then add Slack later
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-basic-config
+  namespace: monitoring
+  labels:
+    phase: "1"
+    tier: "basic"
+data:
+  alertmanager.yml: |
+    # Basic AlertManager configuration for Phase 1
+    global:
+      # SMTP Configuration (your existing working setup)
+      smtp_smarthost: 'smtp-mail.outlook.com:587'
+      smtp_from: 'alerts@homelab.io'
+      smtp_auth_username: 'timour@hotmail.de'
+      smtp_auth_password: 'kqzqrxxvcxzyjjrv'  # We'll secure this in Phase 2
+      smtp_require_tls: true
+
+      # Timing
+      resolve_timeout: 5m
+
+    # Simple routing - everything goes to email for now
+    route:
+      receiver: 'homelab-email'
+      group_by: ['alertname', 'severity']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 1h
+
+      # Basic routing by severity
+      routes:
+      - matchers:
+        - severity="critical"
+        receiver: 'critical-email'
+        group_wait: 10s        # Faster for critical
+        repeat_interval: 30m   # More frequent for critical
+
+      - matchers:
+        - severity="warning"
+        receiver: 'warning-email'
+        repeat_interval: 2h
+
+      - matchers:
+        - severity="info"
+        receiver: 'info-email'
+        repeat_interval: 12h
+
+    # Simple email receivers
+    receivers:
+    - name: 'homelab-email'
+      email_configs:
+      - to: 'timour@hotmail.de'
+        subject: 'Homelab Alert: {{ .GroupLabels.alertname }}'
+        body: |
+          Alert Details:
+          Alert: {{ .GroupLabels.alertname }}
+          Severity: {{ .CommonLabels.severity }}
+          Instance: {{ .CommonLabels.instance }}
+          Summary: {{ .CommonAnnotations.summary }}
+          Description: {{ .CommonAnnotations.description }}
+          Time: {{ range .Alerts }}{{ .StartsAt }}{{ end }}
+
+    - name: 'critical-email'
+      email_configs:
+      - to: 'timour@hotmail.de'
+        subject: '🚨 CRITICAL: {{ .GroupLabels.alertname }}'
+        headers:
+          Priority: 'high'
+          X-Priority: '1'
+        body: |
+          ⚠️ CRITICAL ALERT - IMMEDIATE ACTION REQUIRED ⚠️
+
+          Alert: {{ .GroupLabels.alertname }}
+          Component: {{ .CommonLabels.component }}
+          Instance: {{ .CommonLabels.instance }}
+
+          Problem: {{ .CommonAnnotations.summary }}
+          Details: {{ .CommonAnnotations.description }}
+
+          {{ if .CommonAnnotations.runbook_url }}
+          Runbook: {{ .CommonAnnotations.runbook_url }}
+          {{ end }}
+
+          {{ if .CommonAnnotations.dashboard_url }}
+          Dashboard: {{ .CommonAnnotations.dashboard_url }}
+          {{ end }}
+
+          Time: {{ range .Alerts }}{{ .StartsAt }}{{ end }}
+
+          This requires immediate attention!
+
+    - name: 'warning-email'
+      email_configs:
+      - to: 'timour@hotmail.de'
+        subject: '⚠️ Warning: {{ .GroupLabels.alertname }}'
+        body: |
+          Warning Alert:
+          Alert: {{ .GroupLabels.alertname }}
+          Severity: {{ .CommonLabels.severity }}
+          Issue: {{ .CommonAnnotations.summary }}
+          Time: {{ range .Alerts }}{{ .StartsAt }}{{ end }}
+
+    - name: 'info-email'
+      email_configs:
+      - to: 'timour@hotmail.de'
+        subject: 'ℹ️ Info: {{ .GroupLabels.alertname }}'
+        body: |
+          Information Alert:
+          Alert: {{ .GroupLabels.alertname }}
+          Summary: {{ .CommonAnnotations.summary }}
+          Time: {{ range .Alerts }}{{ .StartsAt }}{{ end }}
+
+    # Basic inhibit rules
+    inhibit_rules:
+    - source_matchers:
+      - severity="critical"
+      target_matchers:
+      - severity="warning"
+      equal: ['alertname', 'instance']
