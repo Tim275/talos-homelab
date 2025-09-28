@@ -12,7 +12,7 @@
 export KUBECONFIG="../tofu/output/kube-config.yaml"
 
 # 🚀 Deploy complete enterprise stack via ArgoCD App-of-Apps
-kubectl apply -f bootstrap/
+kubectl apply -k bootstrap/
 
 # 🔍 Monitor deployment
 kubectl get applications -n argocd -w
