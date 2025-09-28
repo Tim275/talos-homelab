@@ -1,0 +1,230 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: audiobookshelf-overview
+  namespace: grafana
+  labels:
+    app.kubernetes.io/name: grafana-enterprise
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/part-of: monitoring
+    enterprise.tier: applications
+    enterprise.category: media
+spec:
+  resyncPeriod: 30s
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "Audiobookshelf - Service Overview",
+        "tags": ["audiobookshelf", "media", "overview"],
+        "style": "dark",
+        "timezone": "browser",
+        "refresh": "30s",
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "panels": [
+          {
+            "id": 1,
+            "title": "Service Health Status",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "up{job=\"audiobookshelf\", namespace=~\"audiobookshelf-dev|audiobookshelf-prod\"}",
+                "legendFormat": "{{namespace}} - {{instance}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "steps": [
+                    {"color": "red", "value": 0},
+                    {"color": "green", "value": 1}
+                  ]
+                },
+                "mappings": [
+                  {"options": {"0": {"text": "Down"}}, "type": "value"},
+                  {"options": {"1": {"text": "Up"}}, "type": "value"}
+                ]
+              }
+            },
+            "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Active User Sessions",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "audiobookshelf_active_sessions_total",
+                "legendFormat": "Active Sessions"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "palette-classic"},
+                "unit": "short"
+              }
+            },
+            "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Total Libraries",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "audiobookshelf_libraries_total",
+                "legendFormat": "Libraries"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "palette-classic"},
+                "unit": "short"
+              }
+            },
+            "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0}
+          },
+          {
+            "id": 4,
+            "title": "Total Books",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "audiobookshelf_books_total",
+                "legendFormat": "Books"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {"mode": "palette-classic"},
+                "unit": "short"
+              }
+            },
+            "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0}
+          },
+          {
+            "id": 5,
+            "title": "HTTP Request Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(http_requests_total{job=\"audiobookshelf\", namespace=~\"audiobookshelf-dev|audiobookshelf-prod\"}[5m])",
+                "legendFormat": "{{namespace}} - {{method}} {{route}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Requests/sec",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          },
+          {
+            "id": 6,
+            "title": "Response Time",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=\"audiobookshelf\", namespace=~\"audiobookshelf-dev|audiobookshelf-prod\"}[5m]))",
+                "legendFormat": "{{namespace}} - 95th percentile"
+              },
+              {
+                "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{job=\"audiobookshelf\", namespace=~\"audiobookshelf-dev|audiobookshelf-prod\"}[5m]))",
+                "legendFormat": "{{namespace}} - 50th percentile"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Seconds",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+          },
+          {
+            "id": 7,
+            "title": "Memory Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "process_resident_memory_bytes{job=\"audiobookshelf\", namespace=~\"audiobookshelf-dev|audiobookshelf-prod\"}",
+                "legendFormat": "{{namespace}} - {{instance}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Bytes",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+          },
+          {
+            "id": 8,
+            "title": "CPU Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(process_cpu_seconds_total{job=\"audiobookshelf\", namespace=~\"audiobookshelf-dev|audiobookshelf-prod\"}[5m]) * 100",
+                "legendFormat": "{{namespace}} - {{instance}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Percent",
+                "min": 0,
+                "max": 100
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+          },
+          {
+            "id": 9,
+            "title": "User Activity Timeline",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "increase(audiobookshelf_user_login_total[1h])",
+                "legendFormat": "Logins"
+              },
+              {
+                "expr": "increase(audiobookshelf_playback_started_total[1h])",
+                "legendFormat": "Playbacks Started"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Count",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24}
+          }
+        ]
+      }
+    }
