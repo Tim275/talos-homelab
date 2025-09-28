@@ -1,0 +1,527 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: ceph-pool-performance
+  namespace: grafana
+  labels:
+    app.kubernetes.io/name: grafana-enterprise
+    app.kubernetes.io/part-of: enterprise-monitoring
+    enterprise.tier: infrastructure
+    enterprise.category: storage-performance
+spec:
+  instanceSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana-enterprise
+  json: |
+    {
+      "id": null,
+      "title": "💾 Ceph Pool Performance - Placement Groups & Pool Analytics (Infrastructure Tier)",
+      "tags": ["enterprise", "infrastructure", "ceph", "pools", "placement-groups", "performance"],
+      "style": "dark",
+      "timezone": "UTC",
+      "editable": true,
+      "hideControls": false,
+      "graphTooltip": 1,
+      "time": {
+        "from": "now-2h",
+        "to": "now"
+      },
+      "timepicker": {
+        "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"],
+        "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d", "30d"]
+      },
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "title": "📊 Pool Performance Overview",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "count(count by (pool)(ceph_pool_stored_bytes))",
+              "legendFormat": "Total Pools",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(ceph_pool_stored_bytes) / 1024 / 1024 / 1024",
+              "legendFormat": "Total Stored GB",
+              "refId": "B"
+            },
+            {
+              "expr": "sum(ceph_pool_objects)",
+              "legendFormat": "Total Objects",
+              "refId": "C"
+            },
+            {
+              "expr": "sum(ceph_pool_pg_num)",
+              "legendFormat": "Total PGs",
+              "refId": "D"
+            }
+          ],
+          "gridPos": {"h": 6, "w": 24, "x": 0, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"displayMode": "list", "orientation": "horizontal"},
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "id": 2,
+          "title": "💾 Pool Storage Utilization",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "ceph_pool_stored_bytes by (pool) / 1024 / 1024 / 1024",
+              "legendFormat": "Stored GB - {{pool}}",
+              "refId": "A"
+            },
+            {
+              "expr": "ceph_pool_max_avail_bytes by (pool) / 1024 / 1024 / 1024",
+              "legendFormat": "Available GB - {{pool}}",
+              "refId": "B"
+            },
+            {
+              "expr": "(ceph_pool_stored_bytes / (ceph_pool_stored_bytes + ceph_pool_max_avail_bytes)) * 100 by (pool)",
+              "legendFormat": "Utilization % - {{pool}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "gigabytes"
+            }
+          }
+        },
+        {
+          "id": 3,
+          "title": "🔄 Pool I/O Performance",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(ceph_pool_rd_bytes[5m]) by (pool) / 1024 / 1024",
+              "legendFormat": "Read MB/s - {{pool}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(ceph_pool_wr_bytes[5m]) by (pool) / 1024 / 1024",
+              "legendFormat": "Write MB/s - {{pool}}",
+              "refId": "B"
+            },
+            {
+              "expr": "rate(ceph_pool_rd[5m]) by (pool)",
+              "legendFormat": "Read Ops/s - {{pool}}",
+              "refId": "C"
+            },
+            {
+              "expr": "rate(ceph_pool_wr[5m]) by (pool)",
+              "legendFormat": "Write Ops/s - {{pool}}",
+              "refId": "D"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "MBps"
+            }
+          }
+        },
+        {
+          "id": 4,
+          "title": "📋 Placement Groups per Pool",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "ceph_pool_pg_num by (pool)",
+              "legendFormat": "Total PGs - {{pool}}",
+              "refId": "A"
+            },
+            {
+              "expr": "ceph_pool_pgp_num by (pool)",
+              "legendFormat": "Placement PGs - {{pool}}",
+              "refId": "B"
+            },
+            {
+              "expr": "ceph_pool_pg_active_clean by (pool)",
+              "legendFormat": "Active+Clean PGs - {{pool}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "id": 5,
+          "title": "⚠️ PG State Distribution",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "ceph_pool_pg_degraded by (pool)",
+              "legendFormat": "Degraded PGs - {{pool}}",
+              "refId": "A"
+            },
+            {
+              "expr": "ceph_pool_pg_undersized by (pool)",
+              "legendFormat": "Undersized PGs - {{pool}}",
+              "refId": "B"
+            },
+            {
+              "expr": "ceph_pool_pg_inconsistent by (pool)",
+              "legendFormat": "Inconsistent PGs - {{pool}}",
+              "refId": "C"
+            },
+            {
+              "expr": "ceph_pool_pg_recovering by (pool)",
+              "legendFormat": "Recovering PGs - {{pool}}",
+              "refId": "D"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "id": 6,
+          "title": "📈 Object Count Growth",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "ceph_pool_objects by (pool)",
+              "legendFormat": "Objects - {{pool}}",
+              "refId": "A"
+            },
+            {
+              "expr": "increase(ceph_pool_objects[1h]) by (pool)",
+              "legendFormat": "Hourly Object Growth - {{pool}}",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "id": 7,
+          "title": "💿 Replication & Erasure Coding",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "ceph_pool_size by (pool)",
+              "legendFormat": "Pool Size (Replicas/EC) - {{pool}}",
+              "refId": "A"
+            },
+            {
+              "expr": "ceph_pool_min_size by (pool)",
+              "legendFormat": "Min Size - {{pool}}",
+              "refId": "B"
+            },
+            {
+              "expr": "ceph_pool_quota_max_objects by (pool)",
+              "legendFormat": "Object Quota - {{pool}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "id": 8,
+          "title": "🎯 Pool Cache Performance",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "ceph_pool_cache_hit_ratio by (pool) * 100",
+              "legendFormat": "Cache Hit % - {{pool}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(ceph_pool_cache_flush[5m]) by (pool)",
+              "legendFormat": "Cache Flushes/s - {{pool}}",
+              "refId": "B"
+            },
+            {
+              "expr": "rate(ceph_pool_cache_evict[5m]) by (pool)",
+              "legendFormat": "Cache Evictions/s - {{pool}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 30},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "percent"
+            }
+          }
+        },
+        {
+          "id": 9,
+          "title": "⏱️ Pool Latency Metrics",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(ceph_pool_rd_latency_sum[5m]) / rate(ceph_pool_rd_latency_count[5m]) by (pool)",
+              "legendFormat": "Avg Read Latency - {{pool}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(ceph_pool_wr_latency_sum[5m]) / rate(ceph_pool_wr_latency_count[5m]) by (pool)",
+              "legendFormat": "Avg Write Latency - {{pool}}",
+              "refId": "B"
+            },
+            {
+              "expr": "histogram_quantile(0.95, rate(ceph_pool_rd_latency_bucket[5m])) by (pool)",
+              "legendFormat": "P95 Read Latency - {{pool}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 30},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "s"
+            }
+          }
+        },
+        {
+          "id": 10,
+          "title": "🔄 Recovery Operations by Pool",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "ceph_pool_recovery_rate by (pool)",
+              "legendFormat": "Recovery Rate MB/s - {{pool}}",
+              "refId": "A"
+            },
+            {
+              "expr": "ceph_pool_backfill_rate by (pool)",
+              "legendFormat": "Backfill Rate MB/s - {{pool}}",
+              "refId": "B"
+            },
+            {
+              "expr": "ceph_pool_scrub_errors by (pool)",
+              "legendFormat": "Scrub Errors - {{pool}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 38},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "MBps"
+            }
+          }
+        },
+        {
+          "id": 11,
+          "title": "📊 Pool Compression & Deduplication",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "ceph_pool_compress_ratio by (pool)",
+              "legendFormat": "Compression Ratio - {{pool}}",
+              "refId": "A"
+            },
+            {
+              "expr": "ceph_pool_compress_under_bytes by (pool) / 1024 / 1024",
+              "legendFormat": "Compressed Data MB - {{pool}}",
+              "refId": "B"
+            },
+            {
+              "expr": "ceph_pool_compress_bytes_used by (pool) / 1024 / 1024",
+              "legendFormat": "Compression Savings MB - {{pool}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 38},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "megabytes"
+            }
+          }
+        },
+        {
+          "id": 12,
+          "title": "🏆 Top Pools by Storage Usage",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "topk(15, ceph_pool_stored_bytes / 1024 / 1024 / 1024)",
+              "legendFormat": "",
+              "refId": "A",
+              "format": "table"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 46},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"displayMode": "table", "align": "left"},
+              "unit": "gigabytes",
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": 0},
+                  {"color": "yellow", "value": 100},
+                  {"color": "red", "value": 1000}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 13,
+          "title": "⚡ Most Active Pools (I/O)",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "topk(15, rate(ceph_pool_rd_bytes[5m]) + rate(ceph_pool_wr_bytes[5m]))",
+              "legendFormat": "",
+              "refId": "A",
+              "format": "table"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 46},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"displayMode": "table", "align": "left"},
+              "unit": "Bps",
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": 0},
+                  {"color": "yellow", "value": 10000000},
+                  {"color": "red", "value": 100000000}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 14,
+          "title": "🚨 Pools with Unhealthy PGs",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "(ceph_pool_pg_num - ceph_pool_pg_active_clean) > 0",
+              "legendFormat": "",
+              "refId": "A",
+              "format": "table"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 46},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"displayMode": "table", "align": "left"},
+              "unit": "short",
+              "thresholds": {
+                "steps": [
+                  {"color": "yellow", "value": 1},
+                  {"color": "red", "value": 10}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 15,
+          "title": "📈 Pool Growth Rate Trends",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(ceph_pool_stored_bytes[1h]) by (pool) * 3600 / 1024 / 1024",
+              "legendFormat": "Storage Growth MB/h - {{pool}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(ceph_pool_objects[1h]) by (pool) * 3600",
+              "legendFormat": "Object Growth/h - {{pool}}",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 54},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "megabytes"
+            }
+          }
+        },
+        {
+          "id": 16,
+          "title": "🎯 Pool Efficiency Metrics",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "ceph_pool_objects by (pool) / ceph_pool_pg_num by (pool)",
+              "legendFormat": "Objects per PG - {{pool}}",
+              "refId": "A"
+            },
+            {
+              "expr": "(ceph_pool_stored_bytes by (pool) / 1024 / 1024) / ceph_pool_objects by (pool)",
+              "legendFormat": "Avg Object Size MB - {{pool}}",
+              "refId": "B"
+            },
+            {
+              "expr": "ceph_pool_pg_num by (pool) / count(ceph_osd_up)",
+              "legendFormat": "PGs per OSD - {{pool}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 54},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "short"
+            }
+          }
+        }
+      ],
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": "-- Grafana --",
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      }
+    }

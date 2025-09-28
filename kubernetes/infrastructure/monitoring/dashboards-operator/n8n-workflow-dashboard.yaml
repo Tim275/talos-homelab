@@ -1,0 +1,342 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: n8n-workflow-automation
+  namespace: grafana
+  labels:
+    app.kubernetes.io/name: grafana-enterprise
+    app.kubernetes.io/part-of: enterprise-monitoring
+    enterprise.tier: applications
+    enterprise.category: automation
+spec:
+  instanceSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana-enterprise
+  json: |
+    {
+      "id": null,
+      "title": "📱 N8N Workflow Automation - Business Logic (Application Tier)",
+      "tags": ["enterprise", "applications", "n8n", "workflows", "automation"],
+      "style": "dark",
+      "timezone": "UTC",
+      "editable": true,
+      "hideControls": false,
+      "graphTooltip": 1,
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "timepicker": {
+        "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"],
+        "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d", "30d"]
+      },
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "title": "🎯 N8N Service Status",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "up{job=\"n8n-dev\"}",
+              "legendFormat": "N8N Dev",
+              "refId": "A"
+            },
+            {
+              "expr": "up{job=\"n8n-prod\"}",
+              "legendFormat": "N8N Prod",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 4, "w": 12, "x": 0, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"displayMode": "list", "orientation": "horizontal"},
+              "mappings": [
+                {"options": {"0": {"text": "DOWN", "color": "red"}}, "type": "value"},
+                {"options": {"1": {"text": "UP", "color": "green"}}, "type": "value"}
+              ],
+              "thresholds": {
+                "steps": [
+                  {"color": "red", "value": 0},
+                  {"color": "green", "value": 1}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 2,
+          "title": "🔄 Workflow Executions/min",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "rate(n8n_workflow_executions_total[1m]) * 60",
+              "legendFormat": "Executions/min",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 4, "w": 12, "x": 12, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"displayMode": "basic"},
+              "unit": "execpm"
+            }
+          }
+        },
+        {
+          "id": 3,
+          "title": "📊 Workflow Execution Rate",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(n8n_workflow_executions_total{status=\"success\"}[5m])",
+              "legendFormat": "Successful {{instance}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(n8n_workflow_executions_total{status=\"error\"}[5m])",
+              "legendFormat": "Failed {{instance}}",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "execps"
+            }
+          }
+        },
+        {
+          "id": 4,
+          "title": "⏱️ Workflow Execution Duration",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, rate(n8n_workflow_execution_duration_seconds_bucket[5m]))",
+              "legendFormat": "P50 Duration",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.95, rate(n8n_workflow_execution_duration_seconds_bucket[5m]))",
+              "legendFormat": "P95 Duration",
+              "refId": "B"
+            },
+            {
+              "expr": "histogram_quantile(0.99, rate(n8n_workflow_execution_duration_seconds_bucket[5m]))",
+              "legendFormat": "P99 Duration",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "s"
+            }
+          }
+        },
+        {
+          "id": 5,
+          "title": "📈 Success Rate (%)",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(n8n_workflow_executions_total{status=\"success\"}[5m]) / rate(n8n_workflow_executions_total[5m]) * 100",
+              "legendFormat": "Success Rate {{instance}}",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "percent",
+              "min": 0,
+              "max": 100,
+              "thresholds": {
+                "steps": [
+                  {"color": "red", "value": 0},
+                  {"color": "yellow", "value": 90},
+                  {"color": "green", "value": 99}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 6,
+          "title": "🔌 Active Workflows",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "n8n_active_workflows",
+              "legendFormat": "Active Workflows {{instance}}",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "id": 7,
+          "title": "🧠 Node.js Memory Usage",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "nodejs_heap_space_size_used_bytes{job=~\"n8n.*\"}",
+              "legendFormat": "Memory Used {{space}} ({{instance}})",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "bytes"
+            }
+          }
+        },
+        {
+          "id": 8,
+          "title": "⚡ Event Loop Lag",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "nodejs_eventloop_lag_seconds{job=~\"n8n.*\"}",
+              "legendFormat": "Event Loop Lag {{instance}}",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "s"
+            }
+          }
+        },
+        {
+          "id": 9,
+          "title": "🌐 HTTP Request Rate",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(n8n_http_requests_total[5m])",
+              "legendFormat": "HTTP {{method}} {{status}} ({{instance}})",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 6, "w": 12, "x": 0, "y": 28},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "reqps"
+            }
+          }
+        },
+        {
+          "id": 10,
+          "title": "🚨 Error Rate by Workflow",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(n8n_workflow_executions_total{status=\"error\"}[5m])",
+              "legendFormat": "Errors {{workflow_name}} ({{instance}})",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 6, "w": 12, "x": 12, "y": 28},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "eps"
+            }
+          }
+        },
+        {
+          "id": 11,
+          "title": "🗄️ Database Connection Pool",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "n8n_database_connections_active",
+              "legendFormat": "Active DB Connections {{instance}}",
+              "refId": "A"
+            },
+            {
+              "expr": "n8n_database_connections_idle",
+              "legendFormat": "Idle DB Connections {{instance}}",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 6, "w": 12, "x": 0, "y": 34},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "id": 12,
+          "title": "🔄 Queue Metrics",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "n8n_queue_waiting",
+              "legendFormat": "Queue Waiting {{instance}}",
+              "refId": "A"
+            },
+            {
+              "expr": "n8n_queue_active",
+              "legendFormat": "Queue Active {{instance}}",
+              "refId": "B"
+            },
+            {
+              "expr": "n8n_queue_completed",
+              "legendFormat": "Queue Completed {{instance}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 6, "w": 12, "x": 12, "y": 34},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "short"
+            }
+          }
+        }
+      ],
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": "-- Grafana --",
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      }
+    }
