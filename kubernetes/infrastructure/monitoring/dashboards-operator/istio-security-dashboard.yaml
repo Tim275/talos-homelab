@@ -1,0 +1,412 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: istio-security-dashboard
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: grafana-enterprise
+    app.kubernetes.io/part-of: enterprise-monitoring
+    enterprise.tier: infrastructure
+    enterprise.category: service-mesh
+spec:
+  instanceSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana-enterprise
+  json: |
+    {
+      "id": null,
+      "title": "🛡️ Istio Security - mTLS & Certificate Management (Enterprise Tier)",
+      "tags": ["enterprise", "infrastructure", "istio", "security", "mtls", "certificates"],
+      "style": "dark",
+      "timezone": "UTC",
+      "editable": true,
+      "hideControls": false,
+      "graphTooltip": 1,
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "timepicker": {
+        "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"],
+        "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d", "30d"]
+      },
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "title": "🛡️ mTLS Policy Enforcement",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "(sum(rate(istio_requests_total{security_policy=\"mutual_tls\"}[5m])) / sum(rate(istio_requests_total[5m]))) * 100",
+              "legendFormat": "mTLS Coverage",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"displayMode": "basic"},
+              "unit": "percent",
+              "thresholds": {
+                "steps": [
+                  {"color": "red", "value": 0},
+                  {"color": "yellow", "value": 80},
+                  {"color": "green", "value": 95}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 2,
+          "title": "🔐 Certificate Issuance Rate",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "rate(citadel_server_csr_count[5m])",
+              "legendFormat": "CSR Rate",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"displayMode": "basic"},
+              "unit": "ops"
+            }
+          }
+        },
+        {
+          "id": 3,
+          "title": "📋 Active Certificates",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "citadel_server_id_extraction_err_count",
+              "legendFormat": "Active Certs",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"displayMode": "basic"},
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "id": 4,
+          "title": "⚠️ Security Policy Violations",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "sum(rate(istio_requests_total{security_policy=\"none\"}[5m]))",
+              "legendFormat": "Unsecured Requests",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"displayMode": "basic"},
+              "unit": "reqps",
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": 0},
+                  {"color": "yellow", "value": 1},
+                  {"color": "red", "value": 10}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 5,
+          "title": "🔒 mTLS Traffic vs Plain Text",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "sum(rate(istio_requests_total{security_policy=\"mutual_tls\"}[5m]))",
+              "legendFormat": "mTLS Secured",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(rate(istio_requests_total{security_policy=\"none\"}[5m]))",
+              "legendFormat": "Plain Text",
+              "refId": "B"
+            },
+            {
+              "expr": "sum(rate(istio_requests_total{security_policy=\"unknown\"}[5m]))",
+              "legendFormat": "Unknown Policy",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "reqps"
+            }
+          }
+        },
+        {
+          "id": 6,
+          "title": "📜 Certificate Rotation Events",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(citadel_server_csr_count[5m])",
+              "legendFormat": "CSR Requests",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(citadel_server_success_cert_issuance_count[5m])",
+              "legendFormat": "Successful Issuance",
+              "refId": "B"
+            },
+            {
+              "expr": "rate(citadel_server_csr_err_count[5m])",
+              "legendFormat": "CSR Errors",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "ops"
+            }
+          }
+        },
+        {
+          "id": 7,
+          "title": "🔐 TLS Handshake Performance",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, rate(envoy_http_downstream_cx_ssl_handshake_time_bucket[5m]))",
+              "legendFormat": "P50 Handshake Time",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.95, rate(envoy_http_downstream_cx_ssl_handshake_time_bucket[5m]))",
+              "legendFormat": "P95 Handshake Time",
+              "refId": "B"
+            },
+            {
+              "expr": "histogram_quantile(0.99, rate(envoy_http_downstream_cx_ssl_handshake_time_bucket[5m]))",
+              "legendFormat": "P99 Handshake Time",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "ms"
+            }
+          }
+        },
+        {
+          "id": 8,
+          "title": "🛡️ Authentication Failures",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(envoy_http_downstream_cx_ssl_handshake_errors[5m])",
+              "legendFormat": "TLS Handshake Errors",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(rate(istio_requests_total{response_code=\"401\"}[5m])) by (destination_service_name)",
+              "legendFormat": "401 Unauthorized {{destination_service_name}}",
+              "refId": "B"
+            },
+            {
+              "expr": "sum(rate(istio_requests_total{response_code=\"403\"}[5m])) by (destination_service_name)",
+              "legendFormat": "403 Forbidden {{destination_service_name}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "ops"
+            }
+          }
+        },
+        {
+          "id": 9,
+          "title": "🔑 JWT Token Validation",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(envoy_http_jwt_authn_success[5m])",
+              "legendFormat": "JWT Success {{cluster_name}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(envoy_http_jwt_authn_failure[5m])",
+              "legendFormat": "JWT Failure {{cluster_name}}",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "ops"
+            }
+          }
+        },
+        {
+          "id": 10,
+          "title": "🚫 Authorization Policy Denials",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "sum(rate(envoy_http_rbac_denied[5m])) by (cluster_name)",
+              "legendFormat": "RBAC Denials {{cluster_name}}",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(rate(envoy_http_rbac_allowed[5m])) by (cluster_name)",
+              "legendFormat": "RBAC Allowed {{cluster_name}}",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "ops"
+            }
+          }
+        },
+        {
+          "id": 11,
+          "title": "📊 Certificate Expiry Monitoring",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "(cert_manager_certificate_expiration_timestamp_seconds - time()) / 86400",
+              "legendFormat": "Days to Expiry {{name}}",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "d",
+              "thresholds": {
+                "steps": [
+                  {"color": "red", "value": 0},
+                  {"color": "yellow", "value": 7},
+                  {"color": "green", "value": 30}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 12,
+          "title": "🔍 Security Audit Log Events",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(pilot_k8s_cfg_events{event=\"add\",type=\"AuthorizationPolicy\"}[5m])",
+              "legendFormat": "AuthZ Policy Added",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(pilot_k8s_cfg_events{event=\"add\",type=\"PeerAuthentication\"}[5m])",
+              "legendFormat": "PeerAuth Added",
+              "refId": "B"
+            },
+            {
+              "expr": "rate(pilot_k8s_cfg_events{event=\"add\",type=\"RequestAuthentication\"}[5m])",
+              "legendFormat": "RequestAuth Added",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "ops"
+            }
+          }
+        },
+        {
+          "id": 13,
+          "title": "🛡️ Security Policy Compliance by Service",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "(sum(rate(istio_requests_total{security_policy=\"mutual_tls\"}[5m])) by (destination_service_name) / sum(rate(istio_requests_total[5m])) by (destination_service_name)) * 100",
+              "legendFormat": "{{destination_service_name}}",
+              "refId": "A",
+              "format": "table",
+              "instant": true
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 36},
+          "fieldConfig": {
+            "defaults": {
+              "custom": {"displayMode": "table"},
+              "unit": "percent"
+            }
+          }
+        },
+        {
+          "id": 14,
+          "title": "🔐 Top Services by Authentication Failures",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "topk(10, sum(rate(istio_requests_total{response_code=~\"40[13]\"}[5m])) by (destination_service_name))",
+              "legendFormat": "{{destination_service_name}}",
+              "refId": "A",
+              "format": "table",
+              "instant": true
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 36},
+          "fieldConfig": {
+            "defaults": {
+              "custom": {"displayMode": "table"},
+              "unit": "reqps"
+            }
+          }
+        }
+      ],
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": "-- Grafana --",
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      }
+    }
