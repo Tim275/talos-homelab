@@ -1,0 +1,342 @@
+# 🚨 ENTERPRISE TIER-0 ALERTMANAGER CONFIGURATION
+# Based on Google SRE, Netflix CORE, Uber Ring0, AWS CloudWatch patterns
+# Infrastructure as Code - 2025 Enterprise Standards
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-enterprise-config
+  namespace: monitoring
+  labels:
+    tier: "tier-0"
+    criticality: "critical"
+    team: "platform-sre"
+data:
+  alertmanager.yml: |
+    # ================================================
+    # GLOBAL CONFIGURATION - TIER-0 CRITICAL SETTINGS
+    # ================================================
+    global:
+      # 🔔 SMTP Configuration (will be replaced with SealedSecret)
+      smtp_smarthost: 'smtp-mail.outlook.com:587'
+      smtp_from: 'alerts@homelab.io'
+      smtp_auth_username: '{{ SMTP_USERNAME }}'  # From SealedSecret
+      smtp_auth_password: '{{ SMTP_PASSWORD }}'  # From SealedSecret
+      smtp_require_tls: true
+      smtp_hello: 'homelab.io'
+
+      # 🌍 HTTP Configuration
+      http_config:
+        follow_redirects: true
+        enable_http2: true
+
+      # ⏱️ Timing Configuration (Google SRE Standards)
+      resolve_timeout: 5m  # Time after which alert is considered resolved
+
+      # 🏢 Slack Global Settings
+      slack_api_url_file: '/etc/alertmanager/secrets/slack-api-url'  # From SealedSecret
+
+      # 🔑 PagerDuty Global Settings (Optional for future)
+      # pagerduty_url: 'https://events.pagerduty.com/v2/enqueue'
+
+      # 🔔 OpsGenie Global Settings (Migrating before 2027 shutdown)
+      # opsgenie_api_key_file: '/etc/alertmanager/secrets/opsgenie-api-key'
+
+    # ================================================
+    # TEMPLATES - CONSISTENT MESSAGING ACROSS CHANNELS
+    # ================================================
+    templates:
+    - '/etc/alertmanager/templates/*.tmpl'
+    - '/etc/alertmanager/config/*.tmpl'
+
+    # ================================================
+    # ROUTE - INTELLIGENT ALERT ROUTING (Netflix CORE Pattern)
+    # ================================================
+    route:
+      # 🎯 Default Receiver - Catches all unmatched alerts
+      receiver: 'tier-3-default'
+
+      # 📊 Grouping Strategy (Uber uMonitor Pattern)
+      group_by: ['cluster', 'alertname', 'namespace', 'service', 'severity']
+
+      # ⏰ Timing Configuration (Google SRE Recommendations)
+      group_wait: 30s        # Wait before sending initial notification
+      group_interval: 5m     # Wait before sending batch of new alerts for group
+      repeat_interval: 4h    # Wait before re-sending notification
+
+      # 🚨 TIER-0 CRITICAL ROUTING (Google SRE Pattern)
+      routes:
+      # ====== TIER-0: CRITICAL - PAGE IMMEDIATELY ======
+      # Response SLA: 5 minutes (Google Standard)
+      - matchers:
+        - severity="critical"
+        - tier="0"
+        receiver: 'tier-0-critical-pager'
+        group_wait: 10s        # Immediate notification
+        group_interval: 1m     # Rapid updates
+        repeat_interval: 15m   # Aggressive re-notification
+        continue: true         # Also send to other channels
+        routes:
+        # Sub-route for Control Plane failures
+        - matchers:
+          - component="control-plane"
+          receiver: 'tier-0-control-plane-emergency'
+          group_wait: 0s       # INSTANT notification
+          repeat_interval: 5m  # Very aggressive
+
+      # ====== TIER-1: HIGH PRIORITY - SLACK + EMAIL ======
+      # Response SLA: 30 minutes (AWS CloudWatch Pattern)
+      - matchers:
+        - severity="critical"
+        receiver: 'tier-1-critical-multi'
+        group_wait: 30s
+        group_interval: 3m
+        repeat_interval: 1h
+        continue: true
+
+      # ====== TIER-2: WARNING - EMAIL + SLACK ======
+      # Response SLA: 2 hours (Standard SRE)
+      - matchers:
+        - severity="warning"
+        receiver: 'tier-2-warning'
+        group_wait: 2m
+        group_interval: 10m
+        repeat_interval: 4h
+        continue: true
+
+      # ====== TIER-3: INFO - SLACK ONLY ======
+      # No SLA - Dashboard visibility
+      - matchers:
+        - severity="info"
+        receiver: 'tier-3-info'
+        group_wait: 5m
+        group_interval: 30m
+        repeat_interval: 12h
+
+      # ====== SPECIAL ROUTES (Enterprise Patterns) ======
+      # Netflix Pattern: Separate Security Alerts
+      - matchers:
+        - alertname=~"Security.*|CVE.*|Intrusion.*"
+        receiver: 'security-team'
+        group_wait: 10s
+        repeat_interval: 30m
+
+      # Google Pattern: SLO Burn Rate Alerts
+      - matchers:
+        - alertname=~".*BurnRate.*|.*ErrorBudget.*"
+        receiver: 'slo-alerts'
+        group_interval: 5m
+
+      # Uber Pattern: Deployment/Config Change Alerts
+      - matchers:
+        - alertname=~".*Deployment.*|.*ConfigChange.*"
+        receiver: 'deployment-alerts'
+        group_wait: 1m
+
+      # AWS Pattern: Cost/Budget Alerts
+      - matchers:
+        - alertname=~".*Cost.*|.*Budget.*|.*Quota.*"
+        receiver: 'finops-alerts'
+        group_interval: 1h
+        repeat_interval: 24h
+
+      # Watchdog Alert (Prometheus Health Check)
+      - matchers:
+        - alertname="Watchdog"
+        receiver: 'watchdog'
+        repeat_interval: 5m
+
+    # ================================================
+    # RECEIVERS - MULTI-CHANNEL NOTIFICATION ENDPOINTS
+    # ================================================
+    receivers:
+    # ====== TIER-0: CRITICAL PAGING (Google SRE Standard) ======
+    - name: 'tier-0-critical-pager'
+      # PagerDuty for real paging (future)
+      # pagerduty_configs:
+      # - routing_key: '{{ PAGERDUTY_ROUTING_KEY }}'
+      #   severity: 'critical'
+      #   client: 'Homelab Tier-0'
+      #   client_url: 'https://grafana.homelab.io'
+
+      # Immediate Slack notification to multiple channels
+      slack_configs:
+      - channel: '#alerts-critical'
+        title: '🚨 TIER-0 CRITICAL ALERT 🚨'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+        color: 'danger'
+        send_resolved: true
+      - channel: '#oncall'
+        title: '📟 PAGE: IMMEDIATE ACTION REQUIRED'
+        color: 'danger'
+      - channel: '#leadership'
+        title: '⚠️ Executive Notice: Critical System Alert'
+
+      # Email to all stakeholders
+      email_configs:
+      - to: 'oncall@homelab.io,team-lead@homelab.io,cto@homelab.io'
+        headers:
+          Priority: 'Urgent'
+          X-Priority: '1'
+          Importance: 'high'
+        html: |
+          <h1 style="color:red">🚨 TIER-0 CRITICAL INCIDENT</h1>
+          <p><b>Severity:</b> CRITICAL - Immediate action required</p>
+          <p><b>SLA:</b> 5 minute response time</p>
+          {{ range .Alerts }}
+          <hr>
+          <p><b>Alert:</b> {{ .Labels.alertname }}</p>
+          <p><b>Instance:</b> {{ .Labels.instance }}</p>
+          <p><b>Summary:</b> {{ .Annotations.summary }}</p>
+          <p><b>Description:</b> {{ .Annotations.description }}</p>
+          <p><b>Runbook:</b> <a href="{{ .Annotations.runbook_url }}">Click here</a></p>
+          {{ end }}
+
+      # Webhook for custom integrations (Teams, Discord, etc)
+      webhook_configs:
+      - url: 'http://incident-bot.homelab.io/webhook'
+        send_resolved: true
+
+    # ====== TIER-0: CONTROL PLANE EMERGENCY (Netflix CORE Pattern) ======
+    - name: 'tier-0-control-plane-emergency'
+      slack_configs:
+      - channel: '#emergency'
+        title: '🔴 CONTROL PLANE FAILURE - ALL HANDS 🔴'
+        text: 'KUBERNETES CONTROL PLANE IS DOWN!'
+        color: 'danger'
+
+    # ====== TIER-1: CRITICAL MULTI-CHANNEL ======
+    - name: 'tier-1-critical-multi'
+      slack_configs:
+      - channel: '#alerts-critical'
+        title: '🔴 Critical Alert: {{ .GroupLabels.alertname }}'
+        text: '{{ .CommonAnnotations.summary }}'
+        color: 'danger'
+        send_resolved: true
+        actions:
+        - type: 'button'
+          text: 'View in Grafana'
+          url: '{{ .CommonAnnotations.dashboard_url }}'
+        - type: 'button'
+          text: 'Runbook'
+          url: '{{ .CommonAnnotations.runbook_url }}'
+
+      email_configs:
+      - to: 'devops@homelab.io'
+        send_resolved: true
+        headers:
+          X-Priority: '2'
+
+    # ====== TIER-2: WARNING ======
+    - name: 'tier-2-warning'
+      slack_configs:
+      - channel: '#alerts-warning'
+        title: '⚠️ Warning: {{ .GroupLabels.alertname }}'
+        text: '{{ .CommonAnnotations.summary }}'
+        color: 'warning'
+        send_resolved: true
+
+      email_configs:
+      - to: 'team@homelab.io'
+        send_resolved: false
+
+    # ====== TIER-3: INFO ======
+    - name: 'tier-3-info'
+      slack_configs:
+      - channel: '#alerts-info'
+        title: 'ℹ️ Info: {{ .GroupLabels.alertname }}'
+        text: '{{ .CommonAnnotations.summary }}'
+        color: 'good'
+        send_resolved: false
+
+    # ====== TIER-3: DEFAULT CATCH-ALL ======
+    - name: 'tier-3-default'
+      slack_configs:
+      - channel: '#alerts-general'
+        title: 'Alert: {{ .GroupLabels.alertname }}'
+
+    # ====== SPECIALIZED RECEIVERS (Enterprise Patterns) ======
+    - name: 'security-team'
+      slack_configs:
+      - channel: '#security-alerts'
+        title: '🔐 Security Alert'
+      email_configs:
+      - to: 'security@homelab.io'
+
+    - name: 'slo-alerts'
+      slack_configs:
+      - channel: '#sre-slo-alerts'
+        title: '📊 SLO Burn Rate Alert'
+
+    - name: 'deployment-alerts'
+      slack_configs:
+      - channel: '#deployments'
+        title: '🚀 Deployment Alert'
+
+    - name: 'finops-alerts'
+      slack_configs:
+      - channel: '#finops'
+        title: '💰 Cost/Budget Alert'
+      email_configs:
+      - to: 'finance@homelab.io'
+
+    - name: 'watchdog'
+      slack_configs:
+      - channel: '#monitoring-health'
+        send_resolved: false
+
+    # ================================================
+    # INHIBIT RULES - ALERT SUPPRESSION (Google SRE Pattern)
+    # ================================================
+    inhibit_rules:
+    # Critical alerts suppress warnings for same target
+    - source_matchers:
+      - severity="critical"
+      target_matchers:
+      - severity="warning"
+      equal: ['cluster', 'namespace', 'alertname', 'instance']
+
+    # Control plane failures suppress everything else
+    - source_matchers:
+      - component="control-plane"
+      - severity="critical"
+      target_matchers:
+      - severity=~"warning|info"
+      equal: ['cluster']
+
+    # Node down suppresses pod alerts on that node
+    - source_matchers:
+      - alertname="NodeDown"
+      target_matchers:
+      - alertname=~"Pod.*|Container.*"
+      equal: ['node']
+
+    # Cluster-wide issues suppress namespace-specific alerts
+    - source_matchers:
+      - scope="cluster"
+      - severity="critical"
+      target_matchers:
+      - scope="namespace"
+      equal: ['cluster']
+
+    # InfoInhibitor pattern (silence info during incidents)
+    - source_matchers:
+      - alertname="InfoInhibitor"
+      target_matchers:
+      - severity="info"
+
+    # ================================================
+    # MUTE TIME INTERVALS - SCHEDULED SILENCE (Optional)
+    # ================================================
+    # mute_time_intervals:
+    # - name: 'weekends'
+    #   time_intervals:
+    #   - weekdays: ['saturday', 'sunday']
+    # - name: 'off-hours'
+    #   time_intervals:
+    #   - weekdays: ['monday:friday']
+    #     times:
+    #     - start_time: '00:00'
+    #       end_time: '09:00'
+    #     - start_time: '18:00'
+    #       end_time: '24:00'
