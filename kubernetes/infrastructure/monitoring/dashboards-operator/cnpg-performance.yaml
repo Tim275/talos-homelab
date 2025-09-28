@@ -1,0 +1,272 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: cnpg-performance
+  namespace: grafana
+  labels:
+    app.kubernetes.io/name: cnpg
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/part-of: monitoring
+spec:
+  resyncPeriod: 30s
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "CloudNativePG - Performance",
+        "tags": ["postgresql", "cnpg", "performance"],
+        "style": "dark",
+        "timezone": "browser",
+        "refresh": "30s",
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "panels": [
+          {
+            "id": 1,
+            "title": "Query Performance",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(pg_stat_statements_calls[5m])",
+                "legendFormat": "Queries/sec - {{cluster}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Queries/sec",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Average Query Duration",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "pg_stat_statements_mean_exec_time",
+                "legendFormat": "Avg Duration - {{cluster}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Milliseconds",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Cache Hit Ratio",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "pg_stat_database_blks_hit / (pg_stat_database_blks_hit + pg_stat_database_blks_read) * 100",
+                "legendFormat": "{{cluster}} - {{datname}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "steps": [
+                    {"color": "red", "value": 0},
+                    {"color": "yellow", "value": 90},
+                    {"color": "green", "value": 95}
+                  ]
+                },
+                "unit": "percent"
+              }
+            },
+            "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8}
+          },
+          {
+            "id": 4,
+            "title": "Buffer Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "pg_stat_bgwriter_buffers_alloc",
+                "legendFormat": "Allocated - {{cluster}}"
+              },
+              {
+                "expr": "pg_stat_bgwriter_buffers_backend",
+                "legendFormat": "Backend - {{cluster}}"
+              },
+              {
+                "expr": "pg_stat_bgwriter_buffers_clean",
+                "legendFormat": "Clean - {{cluster}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Buffers",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8}
+          },
+          {
+            "id": 5,
+            "title": "Lock Waits",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "pg_locks_count{mode=\"AccessExclusiveLock\"}",
+                "legendFormat": "Exclusive Locks - {{cluster}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": 0},
+                    {"color": "yellow", "value": 5},
+                    {"color": "red", "value": 20}
+                  ]
+                },
+                "unit": "short"
+              }
+            },
+            "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8}
+          },
+          {
+            "id": 6,
+            "title": "Database I/O",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(pg_stat_database_blks_read[5m])",
+                "legendFormat": "Disk Reads - {{cluster}} {{datname}}"
+              },
+              {
+                "expr": "rate(pg_stat_database_blks_hit[5m])",
+                "legendFormat": "Cache Hits - {{cluster}} {{datname}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Blocks/sec",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+          },
+          {
+            "id": 7,
+            "title": "Vacuum & Analyze Activity",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "pg_stat_user_tables_n_tup_ins",
+                "legendFormat": "Inserts - {{cluster}} {{relname}}"
+              },
+              {
+                "expr": "pg_stat_user_tables_n_tup_upd",
+                "legendFormat": "Updates - {{cluster}} {{relname}}"
+              },
+              {
+                "expr": "pg_stat_user_tables_n_tup_del",
+                "legendFormat": "Deletes - {{cluster}} {{relname}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Operations",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+          },
+          {
+            "id": 8,
+            "title": "Slow Queries",
+            "type": "table",
+            "targets": [
+              {
+                "expr": "topk(10, pg_stat_statements_mean_exec_time > 1000)",
+                "legendFormat": "{{cluster}} - {{query}}",
+                "format": "table"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "custom": {
+                  "displayMode": "basic"
+                },
+                "unit": "ms"
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24}
+          },
+          {
+            "id": 9,
+            "title": "Connection State",
+            "type": "piechart",
+            "targets": [
+              {
+                "expr": "pg_stat_activity_count{state=\"active\"}",
+                "legendFormat": "Active"
+              },
+              {
+                "expr": "pg_stat_activity_count{state=\"idle\"}",
+                "legendFormat": "Idle"
+              },
+              {
+                "expr": "pg_stat_activity_count{state=\"idle in transaction\"}",
+                "legendFormat": "Idle in Transaction"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24}
+          },
+          {
+            "id": 10,
+            "title": "Deadlock Detection",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(pg_stat_database_deadlocks[5m])",
+                "legendFormat": "Deadlocks/sec - {{cluster}} {{datname}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Deadlocks/sec",
+                "min": 0
+              },
+              {
+                "show": false
+              }
+            ],
+            "gridPos": {"h": 8, "w": 24, "x": 0, "y": 32}
+          }
+        ]
+      }
+    }

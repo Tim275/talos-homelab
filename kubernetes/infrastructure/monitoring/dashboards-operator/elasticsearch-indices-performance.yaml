@@ -1,0 +1,443 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: elasticsearch-indices-performance
+  namespace: grafana
+  labels:
+    app.kubernetes.io/name: grafana-enterprise
+    app.kubernetes.io/part-of: enterprise-monitoring
+    enterprise.tier: platform
+    enterprise.category: search-performance
+spec:
+  instanceSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana-enterprise
+  json: |
+    {
+      "id": null,
+      "title": "📊 Elasticsearch Indices Performance - Index-Level Analytics (Platform Tier)",
+      "tags": ["enterprise", "platform", "elasticsearch", "indices", "performance", "analytics"],
+      "style": "dark",
+      "timezone": "UTC",
+      "editable": true,
+      "hideControls": false,
+      "graphTooltip": 1,
+      "time": {
+        "from": "now-2h",
+        "to": "now"
+      },
+      "timepicker": {
+        "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"],
+        "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d", "30d"]
+      },
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "title": "📈 Index Operations Overview",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "sum(rate(elasticsearch_indices_search_query_total[5m]))",
+              "legendFormat": "Search Queries/s",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(rate(elasticsearch_indices_indexing_index_total[5m]))",
+              "legendFormat": "Indexing Ops/s",
+              "refId": "B"
+            },
+            {
+              "expr": "sum(elasticsearch_indices_docs)",
+              "legendFormat": "Total Documents",
+              "refId": "C"
+            },
+            {
+              "expr": "sum(elasticsearch_indices_store_size_bytes) / 1024 / 1024 / 1024",
+              "legendFormat": "Total Size GB",
+              "refId": "D"
+            }
+          ],
+          "gridPos": {"h": 6, "w": 24, "x": 0, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"displayMode": "list", "orientation": "horizontal"},
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "id": 2,
+          "title": "🔍 Search Performance by Index",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(elasticsearch_indices_search_query_total[5m]) by (index)",
+              "legendFormat": "Queries/s - {{index}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(elasticsearch_indices_search_query_time_seconds[5m]) / rate(elasticsearch_indices_search_query_total[5m]) by (index)",
+              "legendFormat": "Avg Query Time - {{index}}",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "ops"
+            }
+          }
+        },
+        {
+          "id": 3,
+          "title": "📝 Indexing Performance by Index",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(elasticsearch_indices_indexing_index_total[5m]) by (index)",
+              "legendFormat": "Index Ops/s - {{index}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(elasticsearch_indices_indexing_index_time_seconds[5m]) / rate(elasticsearch_indices_indexing_index_total[5m]) by (index)",
+              "legendFormat": "Avg Index Time - {{index}}",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "ops"
+            }
+          }
+        },
+        {
+          "id": 4,
+          "title": "💾 Index Storage Growth",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "elasticsearch_indices_store_size_bytes by (index) / 1024 / 1024",
+              "legendFormat": "Storage MB - {{index}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(elasticsearch_indices_store_size_bytes[1h]) by (index) * 3600 / 1024 / 1024",
+              "legendFormat": "Growth Rate MB/h - {{index}}",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "megabytes"
+            }
+          }
+        },
+        {
+          "id": 5,
+          "title": "📊 Document Count by Index",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "elasticsearch_indices_docs by (index)",
+              "legendFormat": "Documents - {{index}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(elasticsearch_indices_docs[1h]) by (index) * 3600",
+              "legendFormat": "Doc Growth/h - {{index}}",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "id": 6,
+          "title": "🎯 Query Cache Performance",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(elasticsearch_indices_query_cache_hit_count[5m]) by (index)",
+              "legendFormat": "Cache Hits/s - {{index}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(elasticsearch_indices_query_cache_miss_count[5m]) by (index)",
+              "legendFormat": "Cache Misses/s - {{index}}",
+              "refId": "B"
+            },
+            {
+              "expr": "rate(elasticsearch_indices_query_cache_hit_count[5m]) / (rate(elasticsearch_indices_query_cache_hit_count[5m]) + rate(elasticsearch_indices_query_cache_miss_count[5m])) * 100 by (index)",
+              "legendFormat": "Cache Hit Ratio % - {{index}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "ops"
+            }
+          }
+        },
+        {
+          "id": 7,
+          "title": "🧹 Index Refresh & Flush Operations",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(elasticsearch_indices_refresh_total[5m]) by (index)",
+              "legendFormat": "Refresh Ops/s - {{index}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(elasticsearch_indices_refresh_time_seconds_total[5m]) / rate(elasticsearch_indices_refresh_total[5m]) by (index)",
+              "legendFormat": "Avg Refresh Time - {{index}}",
+              "refId": "B"
+            },
+            {
+              "expr": "rate(elasticsearch_indices_flush_total[5m]) by (index)",
+              "legendFormat": "Flush Ops/s - {{index}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "ops"
+            }
+          }
+        },
+        {
+          "id": 8,
+          "title": "🔄 Merge Operations Performance",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(elasticsearch_indices_merges_total[5m]) by (index)",
+              "legendFormat": "Merge Ops/s - {{index}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(elasticsearch_indices_merges_total_time_seconds[5m]) / rate(elasticsearch_indices_merges_total[5m]) by (index)",
+              "legendFormat": "Avg Merge Time - {{index}}",
+              "refId": "B"
+            },
+            {
+              "expr": "rate(elasticsearch_indices_merges_total_size_bytes[5m]) by (index) / 1024 / 1024",
+              "legendFormat": "Merge Size MB/s - {{index}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 30},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "ops"
+            }
+          }
+        },
+        {
+          "id": 9,
+          "title": "📈 Field Data & Request Cache",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "elasticsearch_indices_fielddata_memory_size_bytes by (index) / 1024 / 1024",
+              "legendFormat": "Field Data MB - {{index}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(elasticsearch_indices_fielddata_evictions[5m]) by (index)",
+              "legendFormat": "Field Data Evictions/s - {{index}}",
+              "refId": "B"
+            },
+            {
+              "expr": "elasticsearch_indices_request_cache_memory_size_bytes by (index) / 1024 / 1024",
+              "legendFormat": "Request Cache MB - {{index}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 30},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "megabytes"
+            }
+          }
+        },
+        {
+          "id": 10,
+          "title": "🏆 Top Indices by Query Volume",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "topk(15, rate(elasticsearch_indices_search_query_total[5m]))",
+              "legendFormat": "",
+              "refId": "A",
+              "format": "table"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 38},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"displayMode": "table", "align": "left"},
+              "unit": "ops",
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": 0},
+                  {"color": "yellow", "value": 10},
+                  {"color": "red", "value": 100}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 11,
+          "title": "💾 Largest Indices by Size",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "topk(15, elasticsearch_indices_store_size_bytes / 1024 / 1024)",
+              "legendFormat": "",
+              "refId": "A",
+              "format": "table"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 38},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"displayMode": "table", "align": "left"},
+              "unit": "megabytes",
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": 0},
+                  {"color": "yellow", "value": 1000},
+                  {"color": "red", "value": 10000}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 12,
+          "title": "🚨 Slowest Query Performance",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "topk(15, rate(elasticsearch_indices_search_query_time_seconds[5m]) / rate(elasticsearch_indices_search_query_total[5m]))",
+              "legendFormat": "",
+              "refId": "A",
+              "format": "table"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 38},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"displayMode": "table", "align": "left"},
+              "unit": "s",
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": 0},
+                  {"color": "yellow", "value": 0.1},
+                  {"color": "red", "value": 1}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 13,
+          "title": "⚙️ Index Settings Overview",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "elasticsearch_indices_segments_count by (index)",
+              "legendFormat": "Segment Count - {{index}}",
+              "refId": "A"
+            },
+            {
+              "expr": "elasticsearch_indices_segments_memory_bytes by (index) / 1024 / 1024",
+              "legendFormat": "Segment Memory MB - {{index}}",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 46},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "id": 14,
+          "title": "🔧 Index Health Indicators",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(elasticsearch_indices_indexing_delete_total[5m]) by (index)",
+              "legendFormat": "Delete Rate/s - {{index}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(elasticsearch_indices_get_total[5m]) by (index)",
+              "legendFormat": "Get Ops/s - {{index}}",
+              "refId": "B"
+            },
+            {
+              "expr": "rate(elasticsearch_indices_warmer_total[5m]) by (index)",
+              "legendFormat": "Warmer Ops/s - {{index}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 46},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "ops"
+            }
+          }
+        }
+      ],
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": "-- Grafana --",
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      }
+    }
