@@ -1,0 +1,388 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: n8n-platform-overview
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: grafana-enterprise
+    app.kubernetes.io/part-of: enterprise-monitoring
+    enterprise.tier: applications
+    enterprise.category: automation-platform
+spec:
+  instanceSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana-enterprise
+  json: |
+    {
+      "id": null,
+      "title": "🤖 N8N Automation Platform Overview - Enterprise Operations (Application Tier)",
+      "tags": ["enterprise", "applications", "n8n", "automation", "platform", "workflows"],
+      "style": "dark",
+      "timezone": "UTC",
+      "editable": true,
+      "hideControls": false,
+      "graphTooltip": 1,
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "timepicker": {
+        "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"],
+        "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d", "30d"]
+      },
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "title": "🏢 Platform Health Overview",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "up{job=\"n8n-dev\"}",
+              "legendFormat": "Development",
+              "refId": "A"
+            },
+            {
+              "expr": "up{job=\"n8n-prod\"}",
+              "legendFormat": "Production",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 6, "w": 8, "x": 0, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"displayMode": "list", "orientation": "horizontal"},
+              "mappings": [
+                {"options": {"0": {"text": "DOWN", "color": "red"}}, "type": "value"},
+                {"options": {"1": {"text": "UP", "color": "green"}}, "type": "value"}
+              ],
+              "thresholds": {
+                "steps": [
+                  {"color": "red", "value": 0},
+                  {"color": "green", "value": 1}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 2,
+          "title": "📊 Total Active Workflows",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "sum(n8n_active_workflows)",
+              "legendFormat": "Active Workflows",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 6, "w": 8, "x": 8, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"displayMode": "basic"},
+              "unit": "short",
+              "decimals": 0
+            }
+          }
+        },
+        {
+          "id": 3,
+          "title": "⚡ Executions Today",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "increase(n8n_workflow_executions_total[24h])",
+              "legendFormat": "Total Executions",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 6, "w": 8, "x": 16, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"displayMode": "basic"},
+              "unit": "short",
+              "decimals": 0
+            }
+          }
+        },
+        {
+          "id": 4,
+          "title": "🔄 Workflow Execution Rate (per minute)",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(n8n_workflow_executions_total{status=\"success\"}[5m]) * 60",
+              "legendFormat": "Successful Executions/min - {{instance}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(n8n_workflow_executions_total{status=\"error\"}[5m]) * 60",
+              "legendFormat": "Failed Executions/min - {{instance}}",
+              "refId": "B"
+            },
+            {
+              "expr": "rate(n8n_workflow_executions_total[5m]) * 60",
+              "legendFormat": "Total Executions/min - {{instance}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "execpm"
+            }
+          }
+        },
+        {
+          "id": 5,
+          "title": "📈 Platform Success Rate",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(n8n_workflow_executions_total{status=\"success\"}[5m]) / rate(n8n_workflow_executions_total[5m]) * 100",
+              "legendFormat": "Success Rate % - {{instance}}",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 20},
+              "unit": "percent",
+              "min": 0,
+              "max": 100,
+              "thresholds": {
+                "steps": [
+                  {"color": "red", "value": 0},
+                  {"color": "yellow", "value": 95},
+                  {"color": "green", "value": 99}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 6,
+          "title": "🏭 Environment Resource Utilization",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(container_cpu_usage_seconds_total{pod=~\"n8n-.*\"}[5m]) * 100",
+              "legendFormat": "CPU Usage % - {{pod}}",
+              "refId": "A"
+            },
+            {
+              "expr": "container_memory_working_set_bytes{pod=~\"n8n-.*\"} / container_spec_memory_limit_bytes{pod=~\"n8n-.*\"} * 100",
+              "legendFormat": "Memory Usage % - {{pod}}",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "percent",
+              "min": 0,
+              "max": 100
+            }
+          }
+        },
+        {
+          "id": 7,
+          "title": "🌐 HTTP Request Performance",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(n8n_http_requests_total{status=~\"2..\"}[5m])",
+              "legendFormat": "2xx Success - {{method}} {{instance}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(n8n_http_requests_total{status=~\"4..\"}[5m])",
+              "legendFormat": "4xx Client Error - {{method}} {{instance}}",
+              "refId": "B"
+            },
+            {
+              "expr": "rate(n8n_http_requests_total{status=~\"5..\"}[5m])",
+              "legendFormat": "5xx Server Error - {{method}} {{instance}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "reqps"
+            }
+          }
+        },
+        {
+          "id": 8,
+          "title": "🗄️ Database Performance",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "n8n_database_connections_active",
+              "legendFormat": "Active DB Connections - {{instance}}",
+              "refId": "A"
+            },
+            {
+              "expr": "n8n_database_connections_idle",
+              "legendFormat": "Idle DB Connections - {{instance}}",
+              "refId": "B"
+            },
+            {
+              "expr": "rate(n8n_database_query_duration_seconds_sum[5m]) / rate(n8n_database_query_duration_seconds_count[5m])",
+              "legendFormat": "Avg Query Duration - {{instance}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10}
+            }
+          }
+        },
+        {
+          "id": 9,
+          "title": "🧠 Node.js Runtime Health",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "nodejs_heap_space_size_used_bytes{job=~\"n8n.*\"} / 1024 / 1024",
+              "legendFormat": "Heap Used MB - {{space}} {{instance}}",
+              "refId": "A"
+            },
+            {
+              "expr": "nodejs_eventloop_lag_seconds{job=~\"n8n.*\"} * 1000",
+              "legendFormat": "Event Loop Lag ms - {{instance}}",
+              "refId": "B"
+            },
+            {
+              "expr": "rate(nodejs_gc_duration_seconds_sum{job=~\"n8n.*\"}[5m]) * 1000",
+              "legendFormat": "GC Duration ms/s - {{instance}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10}
+            }
+          }
+        },
+        {
+          "id": 10,
+          "title": "📱 Top Workflows by Execution Count",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "topk(10, increase(n8n_workflow_executions_total[1h]))",
+              "legendFormat": "",
+              "refId": "A",
+              "format": "table"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 30},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"displayMode": "table", "align": "left"},
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": 0},
+                  {"color": "yellow", "value": 50},
+                  {"color": "red", "value": 100}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 11,
+          "title": "🚨 Recent Workflow Errors",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "topk(10, increase(n8n_workflow_executions_total{status=\"error\"}[1h]))",
+              "legendFormat": "",
+              "refId": "A",
+              "format": "table"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 30},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"displayMode": "table", "align": "left"},
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": 0},
+                  {"color": "yellow", "value": 1},
+                  {"color": "red", "value": 5}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 12,
+          "title": "🔄 Queue Processing Performance",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "n8n_queue_waiting",
+              "legendFormat": "Queue Waiting - {{instance}}",
+              "refId": "A"
+            },
+            {
+              "expr": "n8n_queue_active",
+              "legendFormat": "Queue Active - {{instance}}",
+              "refId": "B"
+            },
+            {
+              "expr": "rate(n8n_queue_completed[5m])",
+              "legendFormat": "Queue Completion Rate - {{instance}}",
+              "refId": "C"
+            },
+            {
+              "expr": "rate(n8n_queue_failed[5m])",
+              "legendFormat": "Queue Failure Rate - {{instance}}",
+              "refId": "D"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 38},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "short"
+            }
+          }
+        }
+      ],
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": "-- Grafana --",
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      }
+    }

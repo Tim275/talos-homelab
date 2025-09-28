@@ -1,0 +1,445 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: kafka-cluster-overview
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: grafana-enterprise
+    app.kubernetes.io/part-of: enterprise-monitoring
+    enterprise.tier: platform
+    enterprise.category: streaming-platform
+spec:
+  instanceSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana-enterprise
+  json: |
+    {
+      "id": null,
+      "title": "🌊 Kafka Cluster Overview - Streaming Platform (Platform Tier)",
+      "tags": ["enterprise", "platform", "kafka", "streaming", "cluster", "brokers"],
+      "style": "dark",
+      "timezone": "UTC",
+      "editable": true,
+      "hideControls": false,
+      "graphTooltip": 1,
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "timepicker": {
+        "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"],
+        "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d", "30d"]
+      },
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "title": "🏢 Cluster Health Overview",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "sum(kafka_server_replicamanager_leadercount)",
+              "legendFormat": "Leader Partitions",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(kafka_server_replicamanager_partitioncount)",
+              "legendFormat": "Total Partitions",
+              "refId": "B"
+            },
+            {
+              "expr": "count(up{job=\"kafka\"})",
+              "legendFormat": "Active Brokers",
+              "refId": "C"
+            },
+            {
+              "expr": "kafka_controller_activecontrollercount",
+              "legendFormat": "Controller",
+              "refId": "D"
+            }
+          ],
+          "gridPos": {"h": 6, "w": 24, "x": 0, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"displayMode": "list", "orientation": "horizontal"},
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "id": 2,
+          "title": "📊 Broker Throughput (Messages/sec)",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(kafka_server_brokertopicmetrics_messagesinpersec[5m]) by (instance)",
+              "legendFormat": "Messages In/s - {{instance}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(kafka_server_brokertopicmetrics_messagesoutpersec[5m]) by (instance)",
+              "legendFormat": "Messages Out/s - {{instance}}",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "msgps"
+            }
+          }
+        },
+        {
+          "id": 3,
+          "title": "🌐 Network Throughput (Bytes/sec)",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(kafka_server_brokertopicmetrics_bytesinpersec[5m]) by (instance)",
+              "legendFormat": "Bytes In/s - {{instance}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(kafka_server_brokertopicmetrics_bytesoutpersec[5m]) by (instance)",
+              "legendFormat": "Bytes Out/s - {{instance}}",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "Bps"
+            }
+          }
+        },
+        {
+          "id": 4,
+          "title": "⚡ Request Performance",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "kafka_network_requestmetrics_requestspersec by (instance, request)",
+              "legendFormat": "{{request}} Requests/s - {{instance}}",
+              "refId": "A"
+            },
+            {
+              "expr": "kafka_network_requestmetrics_totaltimems_mean by (instance, request)",
+              "legendFormat": "{{request}} Latency ms - {{instance}}",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "reqps"
+            }
+          }
+        },
+        {
+          "id": 5,
+          "title": "🔄 Producer & Consumer Performance",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(kafka_server_brokertopicmetrics_producedrequestspersec[5m]) by (instance)",
+              "legendFormat": "Produce Requests/s - {{instance}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(kafka_server_brokertopicmetrics_fetchrequestspersec[5m]) by (instance)",
+              "legendFormat": "Fetch Requests/s - {{instance}}",
+              "refId": "B"
+            },
+            {
+              "expr": "kafka_server_brokertopicmetrics_failedproducerequestspersec by (instance)",
+              "legendFormat": "Failed Produce/s - {{instance}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "reqps"
+            }
+          }
+        },
+        {
+          "id": 6,
+          "title": "💾 Log & Storage Metrics",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "kafka_log_logmanager_logdirectoryofflineerror by (instance)",
+              "legendFormat": "Offline Log Directories - {{instance}}",
+              "refId": "A"
+            },
+            {
+              "expr": "kafka_log_logsize by (instance, topic)",
+              "legendFormat": "Log Size - {{topic}} {{instance}}",
+              "refId": "B"
+            },
+            {
+              "expr": "rate(kafka_log_logflushes[5m]) by (instance)",
+              "legendFormat": "Log Flushes/s - {{instance}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "bytes"
+            }
+          }
+        },
+        {
+          "id": 7,
+          "title": "🎯 JVM & Memory Performance",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "jvm_memory_heap_used{job=\"kafka\"} / 1024 / 1024",
+              "legendFormat": "Heap Used MB - {{instance}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(jvm_gc_collection_seconds_sum{job=\"kafka\"}[5m]) * 1000",
+              "legendFormat": "GC Time ms/s - {{gc}} {{instance}}",
+              "refId": "B"
+            },
+            {
+              "expr": "process_cpu_seconds_total{job=\"kafka\"} * 100",
+              "legendFormat": "CPU % - {{instance}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "megabytes"
+            }
+          }
+        },
+        {
+          "id": 8,
+          "title": "🔗 Partition Replica Management",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "kafka_server_replicamanager_underreplicatedpartitions by (instance)",
+              "legendFormat": "Under-replicated Partitions - {{instance}}",
+              "refId": "A"
+            },
+            {
+              "expr": "kafka_server_replicamanager_underminisrpartitioncount by (instance)",
+              "legendFormat": "Under Min ISR Partitions - {{instance}}",
+              "refId": "B"
+            },
+            {
+              "expr": "kafka_server_replicamanager_offlinereplicacount by (instance)",
+              "legendFormat": "Offline Replicas - {{instance}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 30},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "id": 9,
+          "title": "⚠️ Controller & Leader Elections",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(kafka_controller_controllerstats_leaderelectionrateandtimems[5m]) by (instance)",
+              "legendFormat": "Leader Elections/s - {{instance}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(kafka_controller_controllerstats_uncleanleaderelectionspersec[5m]) by (instance)",
+              "legendFormat": "Unclean Leader Elections/s - {{instance}}",
+              "refId": "B"
+            },
+            {
+              "expr": "kafka_controller_kafkacontroller_globalpartitioncount by (instance)",
+              "legendFormat": "Global Partition Count - {{instance}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 30},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "ops"
+            }
+          }
+        },
+        {
+          "id": 10,
+          "title": "🌐 Network Pool Usage",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "kafka_network_socketserver_networkprocessoravgidlepercent by (instance)",
+              "legendFormat": "Network Processor Idle % - {{instance}}",
+              "refId": "A"
+            },
+            {
+              "expr": "kafka_network_requesthandler_requesthandleravgidlepercent by (instance)",
+              "legendFormat": "Request Handler Idle % - {{instance}}",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 38},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "percent",
+              "min": 0,
+              "max": 100
+            }
+          }
+        },
+        {
+          "id": 11,
+          "title": "📈 ZooKeeper Integration",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "kafka_server_sessionexpirelistener_zookeepersessionstate by (instance)",
+              "legendFormat": "ZK Session State - {{instance}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(kafka_server_zookeeperclientmetrics_zookeeperrequestlatencyms[5m]) by (instance)",
+              "legendFormat": "ZK Request Latency ms - {{instance}}",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 38},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "ms"
+            }
+          }
+        },
+        {
+          "id": 12,
+          "title": "🏆 Top Topics by Message Rate",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "topk(15, rate(kafka_server_brokertopicmetrics_messagesinpersec[5m]))",
+              "legendFormat": "",
+              "refId": "A",
+              "format": "table"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 46},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"displayMode": "table", "align": "left"},
+              "unit": "msgps",
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": 0},
+                  {"color": "yellow", "value": 100},
+                  {"color": "red", "value": 1000}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 13,
+          "title": "💾 Top Topics by Byte Volume",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "topk(15, rate(kafka_server_brokertopicmetrics_bytesinpersec[5m]))",
+              "legendFormat": "",
+              "refId": "A",
+              "format": "table"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 46},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"displayMode": "table", "align": "left"},
+              "unit": "Bps",
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": 0},
+                  {"color": "yellow", "value": 1000000},
+                  {"color": "red", "value": 10000000}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 14,
+          "title": "🚨 Broker Health Indicators",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "kafka_server_replicamanager_underreplicatedpartitions > 0",
+              "legendFormat": "",
+              "refId": "A",
+              "format": "table"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 46},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"displayMode": "table", "align": "left"},
+              "unit": "short",
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": 0},
+                  {"color": "yellow", "value": 1},
+                  {"color": "red", "value": 10}
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": "-- Grafana --",
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      }
+    }

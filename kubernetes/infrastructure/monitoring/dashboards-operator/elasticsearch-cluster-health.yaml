@@ -1,0 +1,443 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: elasticsearch-cluster-health
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: grafana-enterprise
+    app.kubernetes.io/part-of: enterprise-monitoring
+    enterprise.tier: platform
+    enterprise.category: search-analytics
+spec:
+  instanceSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana-enterprise
+  json: |
+    {
+      "id": null,
+      "title": "🔍 Elasticsearch Cluster Health - Search & Analytics (Platform Tier)",
+      "tags": ["enterprise", "platform", "elasticsearch", "search", "analytics", "cluster"],
+      "style": "dark",
+      "timezone": "UTC",
+      "editable": true,
+      "hideControls": false,
+      "graphTooltip": 1,
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "timepicker": {
+        "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"],
+        "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d", "30d"]
+      },
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "title": "🏥 Cluster Health Status",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "elasticsearch_cluster_health_status{color=\"green\"}",
+              "legendFormat": "Green",
+              "refId": "A"
+            },
+            {
+              "expr": "elasticsearch_cluster_health_status{color=\"yellow\"}",
+              "legendFormat": "Yellow",
+              "refId": "B"
+            },
+            {
+              "expr": "elasticsearch_cluster_health_status{color=\"red\"}",
+              "legendFormat": "Red",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 6, "w": 8, "x": 0, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"displayMode": "list", "orientation": "horizontal"},
+              "mappings": [
+                {"options": {"0": {"text": "OK", "color": "green"}}, "type": "value"},
+                {"options": {"1": {"text": "WARNING", "color": "yellow"}}, "type": "value"},
+                {"options": {"2": {"text": "CRITICAL", "color": "red"}}, "type": "value"}
+              ],
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": 0},
+                  {"color": "yellow", "value": 1},
+                  {"color": "red", "value": 2}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 2,
+          "title": "🖥️ Active Nodes",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "elasticsearch_cluster_health_number_of_nodes",
+              "legendFormat": "Total Nodes",
+              "refId": "A"
+            },
+            {
+              "expr": "elasticsearch_cluster_health_number_of_data_nodes",
+              "legendFormat": "Data Nodes",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 6, "w": 8, "x": 8, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"displayMode": "basic"},
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "id": 3,
+          "title": "🗂️ Indices & Shards",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "elasticsearch_cluster_health_active_primary_shards",
+              "legendFormat": "Primary Shards",
+              "refId": "A"
+            },
+            {
+              "expr": "elasticsearch_cluster_health_active_shards",
+              "legendFormat": "Total Shards",
+              "refId": "B"
+            },
+            {
+              "expr": "elasticsearch_indices_total",
+              "legendFormat": "Indices",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 6, "w": 8, "x": 16, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"displayMode": "basic"},
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "id": 4,
+          "title": "📊 Node Resource Usage",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "elasticsearch_node_stats_jvm_mem_heap_used_percent",
+              "legendFormat": "JVM Heap % - {{name}}",
+              "refId": "A"
+            },
+            {
+              "expr": "100 - (elasticsearch_filesystem_data_available_bytes / elasticsearch_filesystem_data_size_bytes * 100)",
+              "legendFormat": "Disk Usage % - {{name}}",
+              "refId": "B"
+            },
+            {
+              "expr": "rate(elasticsearch_node_stats_process_cpu_total_time_seconds[5m]) * 100",
+              "legendFormat": "CPU % - {{name}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "percent",
+              "min": 0,
+              "max": 100
+            }
+          }
+        },
+        {
+          "id": 5,
+          "title": "🔍 Search Performance",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(elasticsearch_indices_search_query_total[5m])",
+              "legendFormat": "Search Queries/s - {{name}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(elasticsearch_indices_search_query_time_seconds[5m]) / rate(elasticsearch_indices_search_query_total[5m])",
+              "legendFormat": "Avg Query Time - {{name}}",
+              "refId": "B"
+            },
+            {
+              "expr": "rate(elasticsearch_indices_search_fetch_total[5m])",
+              "legendFormat": "Fetch Ops/s - {{name}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "ops"
+            }
+          }
+        },
+        {
+          "id": 6,
+          "title": "📝 Indexing Performance",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(elasticsearch_indices_indexing_index_total[5m])",
+              "legendFormat": "Indexing Rate/s - {{name}}",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(elasticsearch_indices_indexing_index_time_seconds[5m]) / rate(elasticsearch_indices_indexing_index_total[5m])",
+              "legendFormat": "Avg Index Time - {{name}}",
+              "refId": "B"
+            },
+            {
+              "expr": "rate(elasticsearch_indices_indexing_delete_total[5m])",
+              "legendFormat": "Delete Rate/s - {{name}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "ops"
+            }
+          }
+        },
+        {
+          "id": 7,
+          "title": "🧠 JVM Memory Details",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "elasticsearch_node_stats_jvm_mem_heap_used_bytes / 1024 / 1024",
+              "legendFormat": "Heap Used MB - {{name}}",
+              "refId": "A"
+            },
+            {
+              "expr": "elasticsearch_node_stats_jvm_mem_heap_max_bytes / 1024 / 1024",
+              "legendFormat": "Heap Max MB - {{name}}",
+              "refId": "B"
+            },
+            {
+              "expr": "rate(elasticsearch_node_stats_jvm_gc_collection_time_seconds[5m])",
+              "legendFormat": "GC Time/s - {{gc}} {{name}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "megabytes"
+            }
+          }
+        },
+        {
+          "id": 8,
+          "title": "💾 Storage Utilization",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "elasticsearch_filesystem_data_size_bytes / 1024 / 1024 / 1024",
+              "legendFormat": "Total Storage GB - {{name}}",
+              "refId": "A"
+            },
+            {
+              "expr": "elasticsearch_filesystem_data_available_bytes / 1024 / 1024 / 1024",
+              "legendFormat": "Available Storage GB - {{name}}",
+              "refId": "B"
+            },
+            {
+              "expr": "(elasticsearch_filesystem_data_size_bytes - elasticsearch_filesystem_data_available_bytes) / 1024 / 1024 / 1024",
+              "legendFormat": "Used Storage GB - {{name}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "gigabytes"
+            }
+          }
+        },
+        {
+          "id": 9,
+          "title": "🌐 Network & Thread Pools",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "elasticsearch_transport_rx_size_bytes_total",
+              "legendFormat": "Network RX Bytes - {{name}}",
+              "refId": "A"
+            },
+            {
+              "expr": "elasticsearch_transport_tx_size_bytes_total",
+              "legendFormat": "Network TX Bytes - {{name}}",
+              "refId": "B"
+            },
+            {
+              "expr": "elasticsearch_thread_pool_active",
+              "legendFormat": "Active Threads - {{type}} {{name}}",
+              "refId": "C"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "bytes"
+            }
+          }
+        },
+        {
+          "id": 10,
+          "title": "🚨 Cluster Health Metrics",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "elasticsearch_cluster_health_relocating_shards",
+              "legendFormat": "Relocating Shards",
+              "refId": "A"
+            },
+            {
+              "expr": "elasticsearch_cluster_health_initializing_shards",
+              "legendFormat": "Initializing Shards",
+              "refId": "B"
+            },
+            {
+              "expr": "elasticsearch_cluster_health_unassigned_shards",
+              "legendFormat": "Unassigned Shards",
+              "refId": "C"
+            },
+            {
+              "expr": "elasticsearch_cluster_health_delayed_unassigned_shards",
+              "legendFormat": "Delayed Unassigned",
+              "refId": "D"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 30},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "id": 11,
+          "title": "⚡ Circuit Breaker Status",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "elasticsearch_breakers_tripped_total",
+              "legendFormat": "Breaker Trips - {{breaker}} {{name}}",
+              "refId": "A"
+            },
+            {
+              "expr": "elasticsearch_breakers_estimated_size_bytes / 1024 / 1024",
+              "legendFormat": "Breaker Size MB - {{breaker}} {{name}}",
+              "refId": "B"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 30},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {"drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10},
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "id": 12,
+          "title": "📋 Top Indices by Size",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "topk(10, elasticsearch_indices_store_size_bytes / 1024 / 1024)",
+              "legendFormat": "",
+              "refId": "A",
+              "format": "table"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 38},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"displayMode": "table", "align": "left"},
+              "unit": "megabytes",
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": 0},
+                  {"color": "yellow", "value": 1000},
+                  {"color": "red", "value": 5000}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 13,
+          "title": "🎯 Most Active Indices (Ops/s)",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "topk(10, rate(elasticsearch_indices_search_query_total[5m]) + rate(elasticsearch_indices_indexing_index_total[5m]))",
+              "legendFormat": "",
+              "refId": "A",
+              "format": "table"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 38},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "custom": {"displayMode": "table", "align": "left"},
+              "unit": "ops",
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": 0},
+                  {"color": "yellow", "value": 10},
+                  {"color": "red", "value": 100}
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": "-- Grafana --",
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      }
+    }
