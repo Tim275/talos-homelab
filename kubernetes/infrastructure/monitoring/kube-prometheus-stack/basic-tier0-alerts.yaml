@@ -1,0 +1,117 @@
+# 🚨 BASIC TIER-0 CRITICAL ALERTS - Phase 1 Deployment
+# Start with the most critical alerts that indicate immediate system failure
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: basic-tier0-critical-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus
+    alertmanager: main
+    tier: "0"
+    phase: "1"
+spec:
+  groups:
+  # ================================================
+  # PHASE 1: CONTROL PLANE CRITICAL (Immediate Deploy)
+  # ================================================
+  - name: control-plane.critical
+    interval: 30s
+    rules:
+    # 1. API Server Down (MOST CRITICAL)
+    - alert: KubernetesAPIServerDown
+      expr: up{job="kubernetes-apiservers"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        tier: "0"
+        component: control-plane
+        phase: "1"
+      annotations:
+        summary: "🔴 Kubernetes API Server is DOWN"
+        description: "API Server {{ $labels.instance }} has been down for more than 1 minute. CLUSTER CONTROL PLANE FAILURE!"
+        runbook_url: "https://runbooks.homelab.io/KubernetesAPIServerDown"
+        dashboard_url: "https://grafana.homelab.io/d/kubernetes-control-plane"
+
+    # 2. ETCD No Leader (CLUSTER STATE CRITICAL)
+    - alert: ETCDNoLeader
+      expr: etcd_server_has_leader == 0
+      for: 1m
+      labels:
+        severity: critical
+        tier: "0"
+        component: control-plane
+        phase: "1"
+      annotations:
+        summary: "🔴 ETCD cluster has NO LEADER"
+        description: "ETCD cluster has no leader for > 1 minute. Cluster state is CRITICAL!"
+        runbook_url: "https://runbooks.homelab.io/ETCDNoLeader"
+
+    # 3. Node Memory Critical (OOM Risk)
+    - alert: NodeMemoryCritical
+      expr: |
+        (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.95
+      for: 2m
+      labels:
+        severity: critical
+        tier: "0"
+        component: node
+        phase: "1"
+      annotations:
+        summary: "🔴 Node {{ $labels.instance }} MEMORY CRITICAL (>95%)"
+        description: "Memory usage is at {{ $value | humanizePercentage }}. OOM killer will activate!"
+        runbook_url: "https://runbooks.homelab.io/NodeMemoryCritical"
+
+  # ================================================
+  # PHASE 1: STORAGE CRITICAL (Data Loss Risk)
+  # ================================================
+  - name: storage.critical
+    interval: 30s
+    rules:
+    # 4. Ceph Cluster Red (DATA UNAVAILABLE)
+    - alert: CephClusterRed
+      expr: ceph_health_status == 2
+      for: 1m
+      labels:
+        severity: critical
+        tier: "0"
+        component: storage
+        phase: "1"
+      annotations:
+        summary: "🔴 Ceph cluster is RED - DATA UNAVAILABLE!"
+        description: "Ceph cluster is in ERROR state. Some data is inaccessible!"
+        runbook_url: "https://runbooks.homelab.io/CephClusterRed"
+
+    # 5. PostgreSQL Down (Database Critical)
+    - alert: PostgreSQLCritical
+      expr: up{job=~".*postgres.*"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        tier: "0"
+        component: database
+        phase: "1"
+      annotations:
+        summary: "🔴 PostgreSQL database is DOWN"
+        description: "Database {{ $labels.instance }} unreachable. Applications affected!"
+        runbook_url: "https://runbooks.homelab.io/PostgreSQLDown"
+
+  # ================================================
+  # PHASE 1: BASIC EMAIL NOTIFICATION TEST
+  # ================================================
+  - name: alerting.test
+    interval: 30s
+    rules:
+    # 6. Test Alert (for testing notification channels)
+    - alert: AlertingSystemTest
+      expr: vector(1)
+      for: 0m
+      labels:
+        severity: info
+        tier: "3"
+        component: test
+        phase: "1"
+      annotations:
+        summary: "📧 Alerting system test - notifications working"
+        description: "This is a test alert to verify notification channels are working."
