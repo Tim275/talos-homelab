@@ -2,7 +2,7 @@ apiVersion: jaegertracing.io/v1
 kind: Jaeger
 metadata:
   name: jaeger
-  namespace: jaeger-system
+  namespace: jaeger
   annotations:
     # Disable Prometheus auto-discovery for non-metrics endpoints
     prometheus.io/scrape: "false"
@@ -10,10 +10,6 @@ spec:
   strategy: allinone
   storage:
     type: memory
-
-  # Disable automatic scraping for pods that don't have proper metrics endpoints
-  annotations:
-    prometheus.io/scrape: "false"
 
   # 🔄 HYBRID SETUP: Support both OTLP and Jaeger Agent flows
   collector:
@@ -26,12 +22,12 @@ spec:
         memory: 512Mi
         cpu: 500m
     options:
-      # ✅ OTLP Protocol (Modern apps)
+      # ✅ OTLP Protocol (Modern apps) - Standard ports
       collector.otlp.enabled: true
-      collector.otlp.grpc.host-port: ":14250"
-      collector.otlp.http.host-port: ":14268"
+      collector.otlp.grpc.host-port: ":4317"
+      collector.otlp.http.host-port: ":4318"
 
-      # ✅ Jaeger Protocol (Legacy apps)
+      # ✅ Jaeger Protocol (Legacy apps) - Standard ports
       collector.jaeger.grpc.host-port: ":14250"
       collector.jaeger.http.host-port: ":14268"
 
@@ -48,7 +44,6 @@ spec:
   # 🚀 AGENT AS SERVICE: No hostPort, Pod Security baseline compatible
   agent:
     strategy: Deployment  # Service instead of DaemonSet
-    replicas: 2
     options:
       # Agent sends to collector via service discovery
       reporter.grpc.host-port: "jaeger-collector:14250"
