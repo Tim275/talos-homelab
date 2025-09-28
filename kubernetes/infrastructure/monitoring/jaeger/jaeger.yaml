@@ -32,8 +32,27 @@ spec:
       limits:
         memory: 256Mi
         cpu: 300m
+  # 🔄 HYBRID SETUP: Support both OTLP and Jaeger Agent flows
+  collector:
+    options:
+      # ✅ OTLP Protocol (Modern apps)
+      collector.otlp.enabled: true
+      collector.otlp.grpc.host-port: ":14250"
+      collector.otlp.http.host-port: ":14268"
+
+      # ✅ Jaeger Protocol (Legacy apps)
+      collector.jaeger.grpc.host-port: ":14250"
+      collector.jaeger.http.host-port: ":14268"
+
+  # 🚀 AGENT AS SERVICE: No hostPort, Pod Security baseline compatible
   agent:
-    strategy: DaemonSet
+    strategy: Deployment  # Service instead of DaemonSet
+    replicas: 2
+    options:
+      # Agent sends to collector via service discovery
+      reporter.grpc.host-port: "jaeger-collector:14250"
+    service:
+      type: ClusterIP
     resources:
       requests:
         memory: 64Mi
