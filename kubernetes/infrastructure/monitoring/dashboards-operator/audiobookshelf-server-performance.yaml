@@ -1,7 +1,7 @@
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
-  name: kubernetes-scheduler
+  name: audiobookshelf-server-performance
   namespace: grafana
   labels:
     app: grafana
@@ -12,7 +12,7 @@ spec:
       app: grafana
   allowCrossNamespaceImport: true
   resyncPeriod: "10m"
-  folder: "Kubernetes Cluster"
+  folder: "Audiobookshelf Media"
   json: |
     {
       "annotations": {
@@ -43,7 +43,7 @@ spec:
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "description": "🎯 kube-scheduler Health Status",
+          "description": "🎯 Audiobookshelf Server Health",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -66,7 +66,7 @@ spec:
                 {
                   "options": {
                     "1": {
-                      "text": "HEALTHY",
+                      "text": "RUNNING",
                       "color": "green"
                     }
                   },
@@ -116,12 +116,12 @@ spec:
                 "type": "prometheus",
                 "uid": "${DS_PROMETHEUS}"
               },
-              "expr": "up{job=~\".*scheduler.*\"} or up{component=\"kube-scheduler\"}",
-              "legendFormat": "{{instance}}",
+              "expr": "up{job=~\".*audiobookshelf.*\"} or up{app=~\".*audiobookshelf.*\"}",
+              "legendFormat": "Server Status",
               "refId": "A"
             }
           ],
-          "title": "🎯 Scheduler Health",
+          "title": "🎯 Server Health",
           "type": "stat"
         },
         {
@@ -129,7 +129,7 @@ spec:
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "description": "📊 Scheduling rate per second",
+          "description": "📊 Active connections and sessions",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -138,7 +138,7 @@ spec:
               "custom": {
                 "displayMode": "basic"
               },
-              "unit": "ops"
+              "unit": "short"
             },
             "overrides": []
           },
@@ -170,12 +170,12 @@ spec:
                 "type": "prometheus",
                 "uid": "${DS_PROMETHEUS}"
               },
-              "expr": "sum(rate(scheduler_pod_scheduling_attempts_total[5m])) or sum(rate(scheduler_scheduling_attempts_total[5m]))",
-              "legendFormat": "Scheduling Rate",
+              "expr": "sum(rate(container_network_receive_packets_total{pod=~\".*audiobookshelf.*\"}[5m]))",
+              "legendFormat": "Active Sessions",
               "refId": "A"
             }
           ],
-          "title": "📊 Scheduling Rate",
+          "title": "📊 Active Sessions",
           "type": "stat"
         },
         {
@@ -183,7 +183,7 @@ spec:
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "description": "📋 Queue depth and incoming pods",
+          "description": "⚡ CPU usage by Audiobookshelf server",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -231,7 +231,7 @@ spec:
                   }
                 ]
               },
-              "unit": "short"
+              "unit": "percent"
             },
             "overrides": []
           },
@@ -259,21 +259,12 @@ spec:
                 "type": "prometheus",
                 "uid": "${DS_PROMETHEUS}"
               },
-              "expr": "sum(rate(scheduler_pod_queue_incoming_pods_total[5m])) or sum(rate(scheduler_queue_incoming_pods_total[5m]))",
-              "legendFormat": "📋 Incoming Pods",
+              "expr": "rate(container_cpu_usage_seconds_total{pod=~\".*audiobookshelf.*\",container!=\"POD\",container!=\"\"}[5m]) * 100",
+              "legendFormat": "⚡ {{pod}}",
               "refId": "A"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "expr": "sum(scheduler_pod_scheduling_queue_depth) or sum(scheduler_pending_pods)",
-              "legendFormat": "⏳ Pending Pods",
-              "refId": "B"
             }
           ],
-          "title": "📋 Queue Depth",
+          "title": "⚡ CPU Usage",
           "type": "timeseries"
         },
         {
@@ -281,7 +272,7 @@ spec:
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "description": "⚡ Scheduling latency percentiles",
+          "description": "💾 Memory usage by Audiobookshelf server",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -329,7 +320,7 @@ spec:
                   }
                 ]
               },
-              "unit": "s"
+              "unit": "bytes"
             },
             "overrides": []
           },
@@ -357,21 +348,12 @@ spec:
                 "type": "prometheus",
                 "uid": "${DS_PROMETHEUS}"
               },
-              "expr": "histogram_quantile(0.99, rate(scheduler_pod_scheduling_duration_seconds_bucket[5m])) or histogram_quantile(0.99, rate(scheduler_scheduling_duration_seconds_bucket[5m]))",
-              "legendFormat": "⚡ P99 Latency",
+              "expr": "container_memory_usage_bytes{pod=~\".*audiobookshelf.*\",container!=\"POD\",container!=\"\"}",
+              "legendFormat": "💾 {{pod}}",
               "refId": "A"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "expr": "histogram_quantile(0.95, rate(scheduler_pod_scheduling_duration_seconds_bucket[5m])) or histogram_quantile(0.95, rate(scheduler_scheduling_duration_seconds_bucket[5m]))",
-              "legendFormat": "📈 P95 Latency",
-              "refId": "B"
             }
           ],
-          "title": "⚡ Scheduling Latency",
+          "title": "💾 Memory Usage",
           "type": "timeseries"
         }
       ],
@@ -379,10 +361,10 @@ spec:
       "schemaVersion": 38,
       "style": "dark",
       "tags": [
-        "kubernetes",
-        "scheduler",
-        "cluster",
-        "talos"
+        "audiobookshelf",
+        "media",
+        "server",
+        "performance"
       ],
       "templating": {
         "list": [
@@ -413,8 +395,8 @@ spec:
       "timeRangeUpdatedDuringEdit": false,
       "timepicker": {},
       "timezone": "",
-      "title": "📋 kube-scheduler - Pod Scheduling",
-      "uid": "kubernetes-scheduler",
+      "title": "📻 Audiobookshelf Server Performance",
+      "uid": "audiobookshelf-server-performance",
       "version": 1,
       "weekStart": ""
     }
