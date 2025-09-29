@@ -1,0 +1,51 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: ceph-osd-monitoring
+  namespace: grafana
+  labels:
+    app: grafana
+    pattern: dotdc-cncf
+spec:
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  allowCrossNamespaceImport: true
+  resyncPeriod: "10m"
+  folder: "Rook-Ceph Storage"
+  json: |
+    {
+      "title": "💽 Ceph OSD Health Monitor",
+      "uid": "ceph-osd-monitoring",
+      "tags": ["ceph", "osd", "storage", "checkmk"],
+      "panels": [
+        {
+          "title": "💽 OSD Status",
+          "type": "stat",
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "steps": [
+                  {"color": "red", "value": null},
+                  {"color": "yellow", "value": 1},
+                  {"color": "green", "value": 3}
+                ]
+              },
+              "mappings": [
+                {"options": {"0": {"text": "❌ OSDs DOWN", "color": "red"}}, "type": "value"},
+                {"options": {"from": 1, "to": 2, "result": {"text": "⚠️ OSD WARNING", "color": "yellow"}}, "type": "range"},
+                {"options": {"from": 3, "to": 100, "result": {"text": "✅ OSDs HEALTHY", "color": "green"}}, "type": "range"}
+              ]
+            }
+          },
+          "targets": [
+            {
+              "expr": "ceph_osd_up or count(up{job=~\".*ceph.*\"})",
+              "legendFormat": "OSDs Up"
+            }
+          ]
+        }
+      ],
+      "time": {"from": "now-1h", "to": "now"}
+    }
