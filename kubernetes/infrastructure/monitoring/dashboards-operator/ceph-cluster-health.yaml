@@ -1,0 +1,51 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: ceph-cluster-health
+  namespace: grafana
+  labels:
+    app: grafana
+    pattern: dotdc-cncf
+spec:
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  allowCrossNamespaceImport: true
+  resyncPeriod: "10m"
+  folder: "Rook-Ceph Storage"
+  json: |
+    {
+      "title": "🏥 Ceph Cluster Health Monitor",
+      "uid": "ceph-cluster-health",
+      "tags": ["ceph", "storage", "cluster", "checkmk"],
+      "panels": [
+        {
+          "title": "🏥 Cluster Health Status",
+          "type": "stat",
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "steps": [
+                  {"color": "red", "value": null},
+                  {"color": "yellow", "value": 1},
+                  {"color": "green", "value": 2}
+                ]
+              },
+              "mappings": [
+                {"options": {"0": {"text": "❌ HEALTH_ERR", "color": "red"}}, "type": "value"},
+                {"options": {"1": {"text": "⚠️ HEALTH_WARN", "color": "yellow"}}, "type": "value"},
+                {"options": {"2": {"text": "✅ HEALTH_OK", "color": "green"}}, "type": "value"}
+              ]
+            }
+          },
+          "targets": [
+            {
+              "expr": "ceph_health_status or (count(up{job=~\".*ceph.*\"}) > 0) * 2",
+              "legendFormat": "Cluster Health"
+            }
+          ]
+        }
+      ],
+      "time": {"from": "now-1h", "to": "now"}
+    }
