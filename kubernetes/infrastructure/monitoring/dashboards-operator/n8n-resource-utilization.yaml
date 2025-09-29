@@ -1,0 +1,51 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: n8n-resource-utilization
+  namespace: grafana
+  labels:
+    app: grafana
+    pattern: dotdc-cncf
+spec:
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  allowCrossNamespaceImport: true
+  resyncPeriod: "10m"
+  folder: "N8N Automation"
+  json: |
+    {
+      "title": "📊 N8N Resource Utilization",
+      "uid": "n8n-resource-utilization",
+      "tags": ["n8n", "resources", "utilization", "checkmk"],
+      "panels": [
+        {
+          "title": "📊 Resource Health",
+          "type": "stat",
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 70},
+                  {"color": "red", "value": 85}
+                ]
+              },
+              "mappings": [
+                {"options": {"pattern": "0-69", "result": {"text": "✅ HEALTHY", "color": "green"}}, "type": "regex"},
+                {"options": {"pattern": "70-84", "result": {"text": "⚠️ WARNING", "color": "yellow"}}, "type": "regex"},
+                {"options": {"pattern": "85-100", "result": {"text": "❌ CRITICAL", "color": "red"}}, "type": "regex"}
+              ]
+            }
+          },
+          "targets": [
+            {
+              "expr": "rate(container_cpu_usage_seconds_total{pod=~\".*n8n.*\"}[5m]) * 100",
+              "legendFormat": "CPU Usage %"
+            }
+          ]
+        }
+      ],
+      "time": {"from": "now-1h", "to": "now"}
+    }
