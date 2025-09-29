@@ -1,0 +1,107 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: n8n-overview
+  namespace: grafana
+  labels:
+    app: grafana
+spec:
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  allowCrossNamespaceImport: true
+  resyncPeriod: "10m"
+  folder: "N8N Automation"
+  json: |
+    {
+      "title": "📊 N8N Overview",
+      "uid": "n8n-overview",
+      "tags": ["n8n", "automation", "workflow"],
+      "panels": [
+        {
+          "title": "🎯 Service Status",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "mappings": [
+                {"options": {"0": {"text": "Down"}}, "type": "value"},
+                {"options": {"1": {"text": "Running"}}, "type": "value"}
+              ]
+            }
+          },
+          "targets": [
+            {
+              "expr": "up{pod=~\".*n8n.*\"}",
+              "legendFormat": "N8N Status"
+            }
+          ]
+        },
+        {
+          "title": "💾 Memory Usage (MB)",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "unit": "decmbytes"
+            }
+          },
+          "targets": [
+            {
+              "expr": "container_memory_usage_bytes{pod=~\".*n8n.*\"} / 1024 / 1024",
+              "legendFormat": "Memory"
+            }
+          ]
+        },
+        {
+          "title": "⚡ CPU Usage (%)",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 1
+            }
+          },
+          "targets": [
+            {
+              "expr": "rate(container_cpu_usage_seconds_total{pod=~\".*n8n.*\"}[5m]) * 100",
+              "legendFormat": "CPU"
+            }
+          ]
+        },
+        {
+          "title": "🗄️ PostgreSQL Connections",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short"
+            }
+          },
+          "targets": [
+            {
+              "expr": "pg_stat_database_numbackends{datname=~\".*n8n.*\"}",
+              "legendFormat": "DB Connections"
+            }
+          ]
+        },
+        {
+          "title": "📈 Resource Usage Over Time",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 4},
+          "targets": [
+            {
+              "expr": "rate(container_cpu_usage_seconds_total{pod=~\".*n8n.*\"}[5m]) * 100",
+              "legendFormat": "CPU %"
+            },
+            {
+              "expr": "container_memory_usage_bytes{pod=~\".*n8n.*\"} / 1024 / 1024 / 10",
+              "legendFormat": "Memory (MB/10)"
+            }
+          ]
+        }
+      ],
+      "time": {"from": "now-1h", "to": "now"}
+    }
