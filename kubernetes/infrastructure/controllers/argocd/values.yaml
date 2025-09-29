@@ -135,9 +135,22 @@ controller:
 
     # Memory and Performance Tuning
     - name: GOGC
-      value: "80"                            # Aggressive garbage collection
+      value: "50"                            # ULTRA aggressive GC - prevent memory hangs
     - name: GOMEMLIMIT
-      value: "3GiB"                          # Go memory limit
+      value: "2GiB"                          # Hard memory limit - force restart if exceeded
+
+    # 🚨 ANTI-HANG PROTECTION - NEVER STUCK AGAIN!
+    # =============================================
+    - name: ARGOCD_CONTROLLER_HEARTBEAT_TIME
+      value: "30s"                           # Restart if no heartbeat for 30s
+    - name: ARGOCD_CONTROLLER_LIVENESS_PROBE_TIMEOUT
+      value: "60s"                           # Force restart if stuck for 60s
+    - name: ARGOCD_CONTROLLER_OPERATION_TIMEOUT
+      value: "300s"                          # Kill hanging operations after 5min
+    - name: ARGOCD_CONTROLLER_SELF_HEAL_TIMEOUT
+      value: "120s"                          # Self-heal timeout
+    - name: ARGOCD_CONTROLLER_DISABLE_COMPRESSION
+      value: "true"                          # Prevent compression hangs
   # Prefer nodes that are NOT work-00 or work-02 (i5 server)
   affinity:
     nodeAffinity:
@@ -277,6 +290,19 @@ server:
     - name: ARGOCD_SERVER_INSECURE
       value: "true"    # Already configured via params
 
+    # 🚨 SERVER ANTI-FREEZE PROTECTION
+    # =================================
+    - name: ARGOCD_SERVER_CONNECTION_STATUS_CACHE_EXPIRATION
+      value: "1m"                          # Short connection cache - prevent connection hangs
+    - name: ARGOCD_SERVER_DISABLE_AUTH
+      value: "false"                       # Keep auth but prevent auth hangs
+    - name: ARGOCD_SERVER_GRPC_KEEPALIVE_TIME
+      value: "30s"                         # GRPC keepalive
+    - name: ARGOCD_SERVER_GRPC_KEEPALIVE_TIMEOUT
+      value: "5s"                          # GRPC keepalive timeout
+    - name: ARGOCD_SERVER_MAX_CONCURRENT_LOGIN_REQUESTS_COUNT
+      value: "50"                          # Limit concurrent login requests
+
   # 🚀 INGRESS DISABLED - Using kubectl port-forward instead
   ingress:
     enabled: false  # Disabled per user request - use kubectl port-forward
@@ -371,6 +397,17 @@ repoServer:
       value: "10m"                         # Very short cache expiration to prevent stale refs
     - name: ARGOCD_REPO_SERVER_STRICT_TLS
       value: "false"                       # Allow non-strict TLS for faster git operations
+
+    # 🚨 REPO SERVER ANTI-HANG PROTECTION
+    # ====================================
+    - name: ARGOCD_REPO_SERVER_TIMEOUT_SECONDS
+      value: "120"                         # Kill hanging git operations after 2min
+    - name: ARGOCD_REPO_SERVER_GIT_REQUEST_TIMEOUT
+      value: "90s"                         # Git operation timeout
+    - name: ARGOCD_REPO_SERVER_PARALLELISM_LIMIT
+      value: "5"                           # Limit concurrent operations
+    - name: ARGOCD_REPO_SERVER_DISABLE_TLS_VERIFY
+      value: "false"                       # Prevent TLS verification hangs
 
   # 🚀 DISABLED PERSISTENT CACHE FOR BOOTSTRAP (can enable later)
   persistence:
