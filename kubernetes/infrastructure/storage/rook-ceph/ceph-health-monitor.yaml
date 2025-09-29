@@ -1,0 +1,74 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ceph-health-monitor
+  namespace: rook-ceph
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  schedule: "*/5 * * * *"  # Every 5 minutes
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: rook-ceph-system
+          containers:
+          - name: ceph-health-checker
+            image: quay.io/ceph/ceph:v19.2.3
+            command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              # Wait for cluster to be ready
+              echo "Checking Ceph cluster health..."
+              ceph status
+
+              # Check for pgp_num mismatches
+              echo "Checking for pg_num > pgp_num issues..."
+              ceph osd pool ls detail | grep -E "pg_num|pgp_num" | while read line; do
+                if echo "$line" | grep -q "pg_num"; then
+                  pool_name=$(echo "$line" | awk '{print $2}' | tr -d "'")
+                  pg_num=$(echo "$line" | grep -o 'pg_num [0-9]*' | awk '{print $2}')
+                  pgp_num=$(echo "$line" | grep -o 'pgp_num [0-9]*' | awk '{print $2}')
+
+                  if [ "$pg_num" -gt "$pgp_num" ]; then
+                    echo "FIXING: Pool $pool_name has pg_num=$pg_num > pgp_num=$pgp_num"
+                    ceph osd pool set "$pool_name" pgp_num "$pg_num"
+                    echo "FIXED: Pool $pool_name pgp_num set to $pg_num"
+                  fi
+                fi
+              done
+
+              # Final health check
+              health=$(ceph health)
+              echo "Final health status: $health"
+
+              if [ "$health" = "HEALTH_OK" ]; then
+                echo "✅ Ceph cluster is healthy"
+                exit 0
+              else
+                echo "⚠️ Ceph cluster has warnings: $health"
+                exit 0  # Don't fail the job for warnings
+              fi
+            env:
+            - name: CEPH_ARGS
+              value: "-c /etc/ceph/ceph.conf"
+            volumeMounts:
+            - name: ceph-config
+              mountPath: /etc/ceph
+            - name: mon-endpoint-volume
+              mountPath: /etc/rook
+          volumes:
+          - name: ceph-config
+            emptyDir: {}
+          - name: mon-endpoint-volume
+            configMap:
+              name: rook-ceph-mon-endpoints
+              items:
+              - key: data
+                path: mon-endpoints
+          restartPolicy: OnFailure
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
