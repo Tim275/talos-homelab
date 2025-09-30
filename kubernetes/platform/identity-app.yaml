@@ -1,56 +1,33 @@
-# 🔐 IDENTITY DOMAIN ApplicationSet - INDIVIDUAL APPLICATIONS!
-# Creates separate Applications: platform-lldap, platform-authelia
+# 🔐 IDENTITY DOMAIN - PARENT APPLICATION (APP-OF-APPS PATTERN)
+# ====================================================================
+# Enterprise Tier-0 GitOps Pattern: Parent app deploys child apps  
+# UI Hierarchy: identity (parent) → lldap, authelia (children)
 ---
 apiVersion: argoproj.io/v1alpha1
-kind: ApplicationSet
+kind: Application
 metadata:
-  name: platform-identity
+  name: identity
   namespace: argocd
   labels:
     enterprise.tier: platform
     platform.domain: identity
     team: timour
   annotations:
-    argocd.argoproj.io/sync-wave: "19"
+    argocd.argoproj.io/sync-wave: "18"
 spec:
-  generators:
-  - list:
-      elements:
-      # 🎯 ENABLED IDENTITY SERVICES - Individual Applications in ArgoCD UI
-      - name: lldap
-        path: kubernetes/platform/identity/lldap
-      - name: authelia
-        path: kubernetes/platform/identity/authelia
-
-      # ❌ DISABLED IDENTITY SERVICES - Comment/Uncomment to control
-      # - name: keycloak
-      #   path: kubernetes/platform/identity/keycloak
-      # - name: dex
-      #   path: kubernetes/platform/identity/dex
-      # - name: oauth2-proxy
-      #   path: kubernetes/platform/identity/oauth2-proxy
-  template:
-    metadata:
-      name: 'platform-{{name}}'
-      labels:
-        app.kubernetes.io/managed-by: argocd
-        platform.domain: '{{name}}'
-    spec:
-      project: platform
-      source:
-        repoURL: https://github.com/Tim275/talos-homelab
-        targetRevision: HEAD
-        path: '{{path}}'
-        kustomize: {}
-      destination:
-        server: https://kubernetes.default.svc
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
-        syncOptions:
-        - CreateNamespace=true
-        - PrunePropagationPolicy=foreground
-        - PruneLast=true
-        - RespectIgnoreDifferences=true
-        - ServerSideApply=true
+  project: platform
+  source:
+    repoURL: https://github.com/Tim275/talos-homelab
+    targetRevision: HEAD
+    path: kubernetes/platform/identity
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
