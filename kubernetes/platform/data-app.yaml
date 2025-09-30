@@ -1,10 +1,12 @@
-# 🗄️ DATA DOMAIN ApplicationSet - INDIVIDUAL APPLICATIONS!
-# Creates separate Applications: platform-influxdb, platform-cloudbeaver, platform-n8n-cnpg
+# 🗄️ DATA DOMAIN - PARENT APPLICATION (APP-OF-APPS PATTERN)
+# ====================================================================
+# Enterprise Tier-0 GitOps Pattern: Parent app deploys child apps
+# UI Hierarchy: data (parent) → influxdb, n8n-dev-cnpg, n8n-prod-cnpg (children)
 ---
 apiVersion: argoproj.io/v1alpha1
-kind: ApplicationSet
+kind: Application
 metadata:
-  name: platform-data
+  name: data
   namespace: argocd
   labels:
     enterprise.tier: platform
@@ -13,46 +15,19 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "16"
 spec:
-  generators:
-  - list:
-      elements:
-      # 🎯 ENABLED DATA SERVICES - Individual Applications in ArgoCD UI
-      # - name: mongodb
-      #   path: kubernetes/platform/data/mongodb
-      - name: influxdb
-        path: kubernetes/platform/data/influxdb
-      - name: cloudbeaver
-        path: kubernetes/platform/data/cloudbeaver
-      - name: n8n-dev-cnpg
-        path: kubernetes/platform/data/n8n-dev-cnpg
-      - name: n8n-prod-cnpg
-        path: kubernetes/platform/data/n8n-prod-cnpg
-
-      # ❌ DISABLED DATA SERVICES - Comment/Uncomment to control
-      # - name: quantlab-postgres
-      #   path: kubernetes/platform/data/quantlab-postgres
-  template:
-    metadata:
-      name: 'platform-{{name}}'
-      labels:
-        app.kubernetes.io/managed-by: argocd
-        platform.domain: '{{name}}'
-    spec:
-      project: platform
-      source:
-        repoURL: https://github.com/Tim275/talos-homelab
-        targetRevision: HEAD
-        path: '{{path}}'
-        kustomize: {}
-      destination:
-        server: https://kubernetes.default.svc
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
-        syncOptions:
-        - CreateNamespace=true
-        - PrunePropagationPolicy=foreground
-        - PruneLast=true
-        - RespectIgnoreDifferences=true
-        - ServerSideApply=true
+  project: platform
+  source:
+    repoURL: https://github.com/Tim275/talos-homelab
+    targetRevision: HEAD
+    path: kubernetes/platform/data
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
