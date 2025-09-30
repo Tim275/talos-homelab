@@ -1,7 +1,10 @@
-# 🎛️ CONTROLLERS DOMAIN Application - TRUE KUSTOMIZE CONTROL!
+# 🎛️ CONTROLLERS DOMAIN - PARENT APPLICATION (APP-OF-APPS PATTERN)
+# ====================================================================
+# Enterprise Tier-0 GitOps Pattern: Parent app deploys child apps
+# UI Hierarchy: controllers (parent) → argocd, cert-manager, etc (children)
 ---
 apiVersion: argoproj.io/v1alpha1
-kind: ApplicationSet
+kind: Application
 metadata:
   name: controllers
   namespace: argocd
@@ -12,53 +15,19 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "2"
 spec:
-  generators:
-  - list:
-      elements:
-      # 🎯 ENABLED CONTROLLERS - Individual Applications in ArgoCD UI
-      - name: argocd
-        path: kubernetes/infrastructure/controllers/argocd
-      - name: sealed-secrets
-        path: kubernetes/infrastructure/controllers/sealed-secrets
-      - name: cert-manager
-        path: kubernetes/infrastructure/controllers/cert-manager
-      - name: argo-rollouts
-        path: kubernetes/infrastructure/controllers/argo-rollouts
-      - name: cloudnative-pg
-        path: kubernetes/infrastructure/controllers/cloudnative-pg
-
-      # ❌ DISABLED CONTROLLERS
-      # - name: cluster-autoscaler     # ❌ Fixed cluster size
-      # - name: cluster-autoscaler
-      #   path: kubernetes/infrastructure/controllers/cluster-autoscaler
-  template:
-    metadata:
-      name: '{{name}}'
-      labels:
-        app.kubernetes.io/managed-by: argocd
-        infrastructure.domain: '{{name}}'
-    spec:
-      project: infrastructure
-      source:
-        repoURL: https://github.com/Tim275/talos-homelab
-        targetRevision: HEAD
-        path: '{{path}}'
-        kustomize:
-          commonAnnotations:
-            # 🎯 AUTOMATIC VICTORIAMETRICS DISCOVERY LABELS
-            # These annotations don't pollute service selectors but maintain compatibility
-            vm-scrape: "enabled"              # VMAgent namespace selector requirement
-            prometheus.io/scrape: "true"      # Standard Prometheus discovery
-            release: prometheus-operator      # Legacy Prometheus compatibility
-      destination:
-        server: https://kubernetes.default.svc
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
-        syncOptions:
-        - CreateNamespace=true
-        - PrunePropagationPolicy=foreground
-        - PruneLast=true
-        - RespectIgnoreDifferences=true
-        - ServerSideApply=true
+  project: infrastructure
+  source:
+    repoURL: https://github.com/Tim275/talos-homelab
+    targetRevision: HEAD
+    path: kubernetes/infrastructure/controllers
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true

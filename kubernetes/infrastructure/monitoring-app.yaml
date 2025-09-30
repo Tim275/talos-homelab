@@ -1,7 +1,10 @@
-# 📊 MONITORING DOMAIN ApplicationSet - INDIVIDUAL APPLICATIONS!
-# Creates separate Applications: infrastructure-prometheus, infrastructure-grafana, infrastructure-jaeger
+# 📊 MONITORING DOMAIN - PARENT APPLICATION (APP-OF-APPS PATTERN)
+# ====================================================================
+# Enterprise Tier-0 GitOps Pattern: Parent app deploys child apps
+# UI Hierarchy: monitoring (parent) → grafana, prometheus, jaeger (children)
+---
 apiVersion: argoproj.io/v1alpha1
-kind: ApplicationSet
+kind: Application
 metadata:
   name: monitoring
   namespace: argocd
@@ -12,68 +15,19 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "5"
 spec:
-  generators:
-    - list:
-        elements:
-          # 🎯 ENABLED MONITORING - Individual Applications in ArgoCD UI
-          - name: metrics-server
-            path: kubernetes/infrastructure/monitoring/metrics-server
-          - name: grafana-operator               # ✅ ENABLED: Grafana Operator for dashboard management
-            path: kubernetes/infrastructure/monitoring/grafana-operator
-          # - name: prometheus-crds                # ❌ DISABLED: CRDs included in kube-prometheus-stack
-          #   path: kubernetes/infrastructure/monitoring/prometheus-crds
-          # - name: prometheus                    # ❌ DISABLED: Using VictoriaMetrics instead
-          #   path: kubernetes/infrastructure/monitoring/prometheus
-          - name: grafana                       # ✅ ENABLED: Fixed stuck application issue
-            path: kubernetes/infrastructure/monitoring/grafana
-          - name: dashboards
-            path: kubernetes/infrastructure/monitoring/dashboards
-          - name: grafana-dashboards
-            path: kubernetes/infrastructure/monitoring/dashboards-operator
-          - name: jaeger
-            path: kubernetes/infrastructure/monitoring/jaeger
-          - name: alertmanager
-            path: kubernetes/infrastructure/monitoring/alertmanager
-          - name: loki
-            path: kubernetes/infrastructure/monitoring/loki
-          # - name: opencost                      # ❌ DISABLED: Cost monitoring not needed
-          #   path: kubernetes/infrastructure/monitoring/opencost
-          - name: hubble
-            path: kubernetes/infrastructure/monitoring/hubble
-          - name: alert-rules-grafana
-            path: kubernetes/infrastructure/monitoring/alert-rules-grafana
-          # - name: servicemonitors    # ❌ DISABLED - ServiceMonitors conflict with VMServiceScrapes
-          #   path: kubernetes/infrastructure/monitoring/servicemonitors
-          # - name: victoriametrics              # ❌ DISABLED: Using kube-prometheus-stack instead
-          #   path: kubernetes/infrastructure/monitoring/victoriametrics
-          - name: kube-prometheus-stack
-            path: kubernetes/infrastructure/monitoring/kube-prometheus-stack
-
-          # ❌ DISABLED MONITORING - Comment/Uncomment to control
-          # - name: prometheus-server
-          #   path: kubernetes/infrastructure/monitoring/prometheus-server
-  template:
-    metadata:
-      name: '{{name}}'
-      labels:
-        app.kubernetes.io/managed-by: argocd
-        infrastructure.domain: '{{name}}'
-    spec:
-      project: infrastructure
-      source:
-        repoURL: https://github.com/Tim275/talos-homelab
-        targetRevision: HEAD
-        path: '{{path}}'
-      destination:
-        server: https://kubernetes.default.svc
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
-        syncOptions:
-          - CreateNamespace=true
-          - PrunePropagationPolicy=foreground
-          - PruneLast=true
-          - RespectIgnoreDifferences=true
-          - Replace=true  # Fix CRD annotation size errors
-          # - ServerSideApply=true  # ❌ REMOVED: Causes GrafanaDashboard spec stripping issue
+  project: infrastructure
+  source:
+    repoURL: https://github.com/Tim275/talos-homelab
+    targetRevision: HEAD
+    path: kubernetes/infrastructure/monitoring
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
