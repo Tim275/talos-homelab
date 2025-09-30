@@ -4,13 +4,37 @@ cluster:
 
 kubeProxyReplacement: true
 
+# 🔥 2025 ENTERPRISE PERFORMANCE OPTIMIZATIONS
+# =============================================
+# Bypass iptables conntrack for max performance
+installNoConntrackIptablesRules: true
+
+# Native routing for best eBPF performance
+routingMode: native
+autoDirectNodeRoutes: true
+ipv4NativeRoutingCIDR: 10.244.0.0/16  # Kubernetes pod CIDR
+
 # Talos specific
 k8sServiceHost: localhost
 k8sServicePort: 7445
 securityContext:
   capabilities:
-    ciliumAgent: [ CHOWN, KILL, NET_ADMIN, NET_RAW, IPC_LOCK, SYS_ADMIN, SYS_RESOURCE, DAC_OVERRIDE, FOWNER, SETGID, SETUID ]
-    cleanCiliumState: [ NET_ADMIN, SYS_ADMIN, SYS_RESOURCE ]
+    ciliumAgent:
+      - CHOWN
+      - KILL
+      - NET_ADMIN
+      - NET_RAW
+      - IPC_LOCK
+      - SYS_ADMIN
+      - SYS_RESOURCE
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    cleanCiliumState:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - SYS_RESOURCE
 
 cgroup:
   autoMount:
@@ -21,6 +45,22 @@ cgroup:
 # https://docs.cilium.io/en/stable/operations/performance/tuning/#ebpf-host-routing
 bpf:
   hostLegacyRouting: true
+  masquerade: true  # Required for installNoConntrackIptablesRules
+
+  # 🔥 ENTERPRISE SCALE - BPF map sizing for 10K+ pods
+  # https://docs.cilium.io/en/stable/operations/performance/scalability/
+  bpfMapDynamicSizeRatio: 0.0025  # Scale maps with cluster size
+
+  # Policy enforcement acceleration
+  policyMapMax: 65536    # Max policy entries
+
+  # Connection tracking optimization
+  ctTcpMax: 524288       # 512K TCP connections
+  ctAnyMax: 262144       # 256K other connections
+
+  # NAT table sizing
+  natMax: 524288         # 512K NAT entries
+  neighMax: 524288       # 512K neighbor entries
 
 # https://docs.cilium.io/en/stable/network/concepts/ipam/
 ipam:
@@ -28,6 +68,9 @@ ipam:
   multiPoolPreAllocation: ""
 
 operator:
+  # 🔥 HIGH AVAILABILITY - 3 replicas for zero downtime
+  replicas: 3
+
   rollOutPods: true
   prometheus:
     metricsService: true
@@ -35,15 +78,18 @@ operator:
     port: 9963
     serviceMonitor:
       enabled: true
+  # 🚨 DISABLED: Too large for ConfigMap annotations
   dashboards:
-    enabled: true
+    enabled: false
+
+  # 🚀 ENTERPRISE RESOURCES
   resources:
     limits:
-      cpu: 500m
-      memory: 256Mi
+      cpu: 1000m      # Increased for HA workload
+      memory: 512Mi   # Increased for stability
     requests:
-      cpu: 50m
-      memory: 128Mi
+      cpu: 100m       # Increased baseline
+      memory: 256Mi   # Increased for HA
 rollOutCiliumPods: true
 resources:
   limits:
@@ -98,8 +144,9 @@ hubble:
     port: 9965
     serviceMonitor:
       enabled: true
+    # 🚨 DISABLED: Too large for ConfigMap annotations
     dashboards:
-      enabled: true
+      enabled: false
   relay:
     enabled: true
     rollOutPods: true
@@ -112,7 +159,8 @@ hubble:
     enabled: true
     rollOutPods: true
 
-ingressController: { enabled: false }
+ingressController:
+  enabled: false
 
 authentication:
   enabled: false
@@ -132,8 +180,10 @@ prometheus:
     enabled: true
     trustCRDsExist: true
 
+# 🚨 DISABLED: Cilium dashboards cause "Too long" annotation error
+# Instead use GrafanaDashboard CRDs in monitoring layer
 dashboards:
-  enabled: true
+  enabled: false
 clustermesh:
   useAPIServer: true
   config:

@@ -4,6 +4,17 @@
 # Optimized for homelab → enterprise scaling path
 
 configs:
+  # 🔐 CRITICAL: Secret Management
+  # ArgoCD Helm chart auto-generates these secrets on first install:
+  # - server.secretkey (for session encryption)
+  # - admin.password (initial admin password)
+  # - webhook.github.secret, etc.
+  # We explicitly tell Helm to create the secret (default behavior)
+  secret:
+    createSecret: true
+    # NEVER manually specify secrets here - let Helm auto-generate them!
+    # Manual secrets can cause "server.secretkey is missing" errors
+
   cm:
     create: true
     application.resourceTrackingMethod: annotation+label
@@ -171,6 +182,12 @@ controller:
     - name: ARGOCD_CONTROLLER_DISABLE_COMPRESSION
       value: "true"                          # Prevent compression hangs
 
+    # 🔥 2025 REDIS OPTIMIZATION - Reduce Redis traffic
+    # =================================================
+    - name: ARGOCD_APPLICATION_TREE_SHARD_SIZE
+      value: "100"                           # Split large app trees (default: 0 = no split)
+                                             # Reduces Redis key size for 1000+ resource apps
+
     # 🔥 2025 ENTERPRISE CONTROLLER SCALING
     # ====================================
     - name: ARGOCD_APP_STATE_CACHE_EXPIRATION
@@ -209,69 +226,52 @@ dex:
     limits:
       memory: 128Mi
 
+# 🚨 DISABLE INTERNAL REDIS - USE REDIS-HA INSTEAD FOR BULLETPROOF CACHE
+# ===========================================================================
+# Single Redis = single point of failure. Redis-HA = 3 replicas + Sentinel
 redis:
-  # 🚀 ENTERPRISE REDIS CONFIGURATION
-  # Redis is critical for ArgoCD performance - optimize for caching
+  enabled: false  # Disable single Redis - using redis-ha chart below
 
-  # 🚨 DISABLE PROMETHEUS SCRAPING FOR MAIN REDIS SERVICE (use exporter instead)
-  podAnnotations:
-    prometheus.io/scrape: "false"
+# 🔥 REDIS-HA: BULLETPROOF 3-NODE SETUP WITH SENTINEL AUTO-FAILOVER
+# ===================================================================
+# Never cache freeze, never hang - automatic failover in seconds
+redis-ha:
+  enabled: true
 
-  resources:
-    requests:
-      cpu: 100m      # Increased for better performance
-      memory: 256Mi  # Larger cache capacity
-    limits:
-      cpu: 500m      # Allow burst for cache operations
-      memory: 1Gi    # Enterprise cache size
+  # 🚨 DISABLE HELM TEST JOBS - NOT FOR BOOTSTRAP
+  tests:
+    enabled: false  # No test pods during bootstrap
 
-  # 🚀 REDIS EXPORTER SIDECAR (Industry Standard Pattern)
-  exporter:
-    enabled: true
-    image:
-      repository: ghcr.io/oliver006/redis_exporter
-      tag: v1.65.0  # Latest stable version
-    containerSecurityContext:
-      runAsNonRoot: true
-      readOnlyRootFilesystem: true
-      allowPrivilegeEscalation: false
-      seccompProfile:
-        type: RuntimeDefault
-      capabilities:
-        drop:
-          - ALL
+  # 🚀 3 REDIS REPLICAS for true HA (1 master + 2 replicas)
+  replicas: 3
+
+  # 🔥 SENTINEL CONFIGURATION - Auto-failover orchestration
+  sentinel:
+    quorum: 2  # Need 2 out of 3 sentinels to agree on failover
+
+  # 🚀 REDIS-HA RESOURCES - Enterprise sizing for homelab
+  redis:
     resources:
       requests:
-        cpu: 10m
-        memory: 32Mi
-      limits:
         cpu: 100m
-        memory: 128Mi
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
 
-  # 🚀 REDIS PERFORMANCE TUNING
-  extraArgs:
-    - --maxmemory-policy
-    - allkeys-lru    # Optimize memory usage with LRU eviction
-    - --save
-    - ""             # Disable persistence for cache-only usage
-    - --appendonly
-    - "no"           # Disable AOF for cache performance
+    # 🔥 REDIS PERFORMANCE TUNING (2025 Enterprise Best Practices)
+    config:
+      maxmemory-policy: "allkeys-lru"  # LRU eviction
+      save: ""                         # No persistence - pure cache
+      appendonly: "no"                 # No AOF
+      tcp-keepalive: "300"             # Connection stability
+      maxclients: "10000"              # Max connections
+      timeout: "300"                   # 5min idle timeout
 
-  # 🚀 REDIS METRICS (Works with sidecar exporter)
-  metrics:
-    enabled: true
-    serviceMonitor:
-      enabled: true
-      namespace: argocd
-      additionalLabels:
-        release: prometheus-operator
-      interval: 30s
-      scrapeTimeout: 10s
-
-
-  # 🚀 REDIS HA CONFIGURATION (when needed)
+  # 🚀 HAPROXY LOAD BALANCER - Distribute traffic across Redis nodes
   haproxy:
-    enabled: true  # Enable for production HA setup
+    enabled: true
+    replicas: 3  # HA for load balancer too!
     resources:
       requests:
         cpu: 50m
@@ -279,6 +279,18 @@ redis:
       limits:
         cpu: 200m
         memory: 256Mi
+
+  # 🚀 POD ANTI-AFFINITY - Force distribution across nodes
+  hardAntiAffinity: true  # Never run 2 Redis on same node
+
+  # 🚀 PROMETHEUS METRICS
+  exporter:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: argocd
+      additionalLabels:
+        release: prometheus-operator
 
 server:
   # 🚀 HIGH AVAILABILITY SERVER CONFIGURATION
@@ -517,3 +529,9 @@ applicationSet:
 
 notifications:
   enabled: false
+
+# ✅ REVERTED: Keep redis-secret-init enabled (default behavior)
+# The Job creates the argocd-redis secret automatically
+# Original issue was Helm hook causing ArgoCD sync hangs, but we need the secret
+redisSecretInit:
+  enabled: true  # Keep default - auto-creates argocd-redis secret

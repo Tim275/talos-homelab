@@ -1,10 +1,12 @@
-# 🚀 PRODUCTION ENVIRONMENT ApplicationSet - INDIVIDUAL APPLICATIONS!
-# Creates separate Applications: apps-prod-audiobookshelf, apps-prod-n8n, apps-prod-kafka-demo
+# 🚀 PRODUCTION ENVIRONMENT - PARENT APPLICATION (APP-OF-APPS PATTERN)
+# ====================================================================
+# Enterprise Tier-0 GitOps Pattern: Parent app deploys child apps
+# UI Hierarchy: prod (parent) → audiobookshelf, n8n, kafka-demo (children)
 ---
 apiVersion: argoproj.io/v1alpha1
-kind: ApplicationSet
+kind: Application
 metadata:
-  name: apps-prod
+  name: prod
   namespace: argocd
   labels:
     enterprise.tier: apps
@@ -13,42 +15,19 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "27"
 spec:
-  generators:
-  - list:
-      elements:
-      # 🎯 ENABLED PROD APPS - Individual Applications in ArgoCD UI
-      - name: audiobookshelf
-        path: kubernetes/apps/overlays/prod/audiobookshelf
-      - name: n8n
-        path: kubernetes/apps/overlays/prod/n8n
-      - name: kafka-demo
-        path: kubernetes/apps/overlays/prod/kafka-demo
-
-      # ❌ DISABLED PROD APPS - Comment/Uncomment to control
-      # - name: quantlab
-      #   path: kubernetes/apps/overlays/prod/quantlab
-  template:
-    metadata:
-      name: 'apps-prod-{{name}}'
-      labels:
-        app.kubernetes.io/managed-by: argocd
-        apps.environment: prod
-        apps.name: '{{name}}'
-    spec:
-      project: apps
-      source:
-        repoURL: https://github.com/Tim275/talos-homelab
-        targetRevision: HEAD
-        path: '{{path}}'
-      destination:
-        server: https://kubernetes.default.svc
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
-        syncOptions:
-        - CreateNamespace=true
-        - PrunePropagationPolicy=foreground
-        - PruneLast=true
-        - RespectIgnoreDifferences=true
-        - ServerSideApply=true
+  project: apps
+  source:
+    repoURL: https://github.com/Tim275/talos-homelab
+    targetRevision: HEAD
+    path: kubernetes/apps/overlays/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
