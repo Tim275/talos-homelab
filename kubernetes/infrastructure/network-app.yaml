@@ -1,7 +1,10 @@
-# 🌐 NETWORK DOMAIN Application - TRUE KUSTOMIZE CONTROL!
+# 🌐 NETWORK DOMAIN - PARENT APPLICATION (APP-OF-APPS PATTERN)
+# ====================================================================
+# Enterprise Tier-0 GitOps Pattern: Parent app deploys child apps
+# UI Hierarchy: network (parent) → cilium, istio, cloudflared (children)
 ---
 apiVersion: argoproj.io/v1alpha1
-kind: ApplicationSet
+kind: Application
 metadata:
   name: network
   namespace: argocd
@@ -12,51 +15,19 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "1"
 spec:
-  generators:
-  - list:
-      elements:
-      # 🎯 ENABLED NETWORK - Individual Applications in ArgoCD UI (CORRECT ORDER!)
-      - name: cilium
-        path: kubernetes/infrastructure/network/cilium
-      - name: cloudflared
-        path: kubernetes/infrastructure/network/cloudflared
-      - name: gateway
-        path: kubernetes/infrastructure/network/gateway
-      # - name: istio-base               # ❌ DISABLED - Replaced by sail-operator
-      #   path: kubernetes/infrastructure/network/istio-base
-      - name: sail-operator              # ✅ FIRST: CRDs for sailoperator.io/Istio
-        path: kubernetes/infrastructure/network/sail-operator
-      - name: istio-cni
-        path: kubernetes/infrastructure/network/istio-cni
-      - name: istio-control-plane        # ✅ AFTER: Needs sail-operator CRDs
-        path: kubernetes/infrastructure/network/istio-control-plane
-      - name: istio-gateway              # ✅ LAST: Needs istio-control-plane + ca-certs
-        path: kubernetes/infrastructure/network/istio-gateway
-
-      # ❌ EMPTY DIRECTORIES - DISABLED
-      # - name: metallb              # ❌ Empty directory, no content
-      #   path: kubernetes/infrastructure/network/metallb
-  template:
-    metadata:
-      name: '{{name}}'
-      labels:
-        app.kubernetes.io/managed-by: argocd
-        infrastructure.domain: '{{name}}'
-    spec:
-      project: infrastructure
-      source:
-        repoURL: https://github.com/Tim275/talos-homelab
-        targetRevision: HEAD
-        path: '{{path}}'
-      destination:
-        server: https://kubernetes.default.svc
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
-        syncOptions:
-        - CreateNamespace=true
-        - PrunePropagationPolicy=foreground
-        - PruneLast=true
-        - RespectIgnoreDifferences=true
-        - ServerSideApply=true
+  project: infrastructure
+  source:
+    repoURL: https://github.com/Tim275/talos-homelab
+    targetRevision: HEAD
+    path: kubernetes/infrastructure/network
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
