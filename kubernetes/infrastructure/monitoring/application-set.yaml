@@ -28,12 +28,20 @@ spec:
   goTemplateOptions: ["missingkey=error"]
 
   generators:
-  # 📄 FILE GENERATOR - Reads applicationset-control.yaml control file
-  - git:
-      repoURL: https://github.com/Tim275/talos-homelab
-      revision: HEAD
-      files:
-      - path: kubernetes/infrastructure/monitoring/applicationset-control.yaml
+  # 📄 MATRIX GENERATOR + LIST FILTERING - Enterprise Pattern
+  # Combines Git file reading with List Generator filtering
+  - matrix:
+      generators:
+      - git:
+          repoURL: https://github.com/Tim275/talos-homelab
+          revision: HEAD
+          files:
+          - path: kubernetes/infrastructure/monitoring/applicationset-control.yaml
+      - list:
+          elementsYaml: "{{.components | toJson}}"
+          selector:
+            matchLabels:
+              enabled: "true"
 
   template:
     metadata:
@@ -42,13 +50,13 @@ spec:
         app.kubernetes.io/managed-by: argocd
         infrastructure.domain: monitoring
         component: "{{.name}}"
+        enabled: "{{.enabled}}"
         gotemplate.controlled: "true"
       annotations:
         description: "{{.description}}"
         argocd.argoproj.io/sync-wave: "5"
     spec:
-      # 🎯 CONDITIONAL DEPLOYMENT - Only enabled components!
-      {{- if .enabled }}
+      # 🎯 NO CONDITIONAL - Only enabled components reach this template!
       project: infrastructure
       source:
         repoURL: https://github.com/Tim275/talos-homelab
@@ -66,4 +74,3 @@ spec:
         - PruneLast=true
         - RespectIgnoreDifferences=true
         - Replace=true
-      {{- end }}
