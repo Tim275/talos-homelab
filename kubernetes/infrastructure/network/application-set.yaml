@@ -1,67 +1,50 @@
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: network
+  name: infrastructure-network
   namespace: argocd
   labels:
-    dev.stonegarden: network
+    app.kubernetes.io/managed-by: argocd
+    enterprise.pattern: symlink-directory-control-2025
+    enterprise.tier: infrastructure
+    infrastructure.domain: network
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   generators:
-    - git:
-        repoURL: https://github.com/Tim275/talos-homelab
-        revision: HEAD
-        directories:
-          - path: "kubernetes/infrastructure/network/*"
-          # Exclude files that aren't applications
-          - path: "kubernetes/infrastructure/network/application-set.yaml"
-            exclude: true
-          - path: "kubernetes/infrastructure/network/project.yaml"
-            exclude: true
-          - path: "kubernetes/infrastructure/network/kustomization.yaml"
-            exclude: true
-          # COMPONENT TOGGLES - uncomment to disable:
-          # - path: "kubernetes/infrastructure/network/cloudflared"
-          #   exclude: true
-          # - path: "kubernetes/infrastructure/network/gateway"
-          #   exclude: true
-          - path: "kubernetes/infrastructure/network/kube-vip"
-            exclude: true
-          - path: "kubernetes/infrastructure/network/metallb"
-            exclude: true
-          - path: "kubernetes/infrastructure/network/layers"
-            exclude: true
-          - path: "kubernetes/infrastructure/network/kube-vip.disabled"
-            exclude: true
-          # EXCLUDE ALL .disabled directories
-          - path: "kubernetes/infrastructure/network/*.disabled"
-            exclude: true
+  - git:
+      repoURL: https://github.com/Tim275/talos-homelab
+      revision: HEAD
+      directories:
+      - path: kubernetes/infrastructure/network/*
   template:
     metadata:
-      name: '{{ path.basename }}'
+      name: infrastructure-{{path.basename}}
       labels:
-        dev.stonegarden: network
+        app.kubernetes.io/managed-by: argocd
+        infrastructure.domain: "{{path.basename}}"
+        symlink.controlled: "true"
       annotations:
-        # Enhanced comparison for webhook certificate management
         argocd.argoproj.io/compare-options: ServerSideDiff=true,IncludeMutationWebhook=true
     spec:
-      project: network
+      project: infrastructure
       source:
         repoURL: https://github.com/Tim275/talos-homelab
         targetRevision: HEAD
-        path: '{{ path }}'
-        plugin:
-          name: kustomize-build-with-helm
+        path: "{{path}}"
       destination:
         server: https://kubernetes.default.svc
       syncPolicy:
         automated:
-          selfHeal: true
           prune: true
+          selfHeal: true
         syncOptions:
-          - ServerSideApply=true
-          - CreateNamespace=true
-          - RespectIgnoreDifferences=true
-          - ApplyOutOfSyncOnly=true
+        - CreateNamespace=true
+        - PrunePropagationPolicy=foreground
+        - PruneLast=true
+        - RespectIgnoreDifferences=true
+        - Replace=true
       ignoreDifferences:
         # FIXED: Use jqPathExpressions instead of jsonPointers (ArgoCD bugs #12961, #9323)
         # Ignore Istio ValidatingWebhookConfiguration certificate rotation
