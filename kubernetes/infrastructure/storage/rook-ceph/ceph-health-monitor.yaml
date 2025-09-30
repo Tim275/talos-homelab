@@ -21,6 +21,9 @@ spec:
             - |
               set -e
 
+              # Export Ceph connection args
+              export CEPH_ARGS="--conf=/dev/null -m ${ROOK_CEPH_MON_HOST} --id=admin --keyring=/var/lib/rook-ceph-admin/keyring"
+
               # Wait for cluster to be ready
               echo "Checking Ceph cluster health..."
               ceph status
@@ -53,25 +56,16 @@ spec:
                 exit 0  # Don't fail the job for warnings
               fi
             env:
-            - name: CEPH_ARGS
-              value: "-m $(ROOK_CEPH_MON_HOST) --id=admin --keyring=/etc/ceph/keyring"
             - name: ROOK_CEPH_MON_HOST
               valueFrom:
                 secretKeyRef:
                   name: rook-ceph-config
                   key: mon_host
             volumeMounts:
-            - name: ceph-config
-              mountPath: /etc/ceph
-              readOnly: true
             - name: ceph-keyring
-              mountPath: /etc/ceph/keyring
-              subPath: keyring
+              mountPath: /var/lib/rook-ceph-admin
               readOnly: true
           volumes:
-          - name: ceph-config
-            secret:
-              secretName: rook-ceph-config
           - name: ceph-keyring
             secret:
               secretName: rook-ceph-admin-keyring
