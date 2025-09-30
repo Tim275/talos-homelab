@@ -54,21 +54,27 @@ spec:
               fi
             env:
             - name: CEPH_ARGS
-              value: "-c /etc/ceph/ceph.conf"
+              value: "-m $(ROOK_CEPH_MON_HOST) --id=admin --keyring=/etc/ceph/keyring"
+            - name: ROOK_CEPH_MON_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-config
+                  key: mon_host
             volumeMounts:
             - name: ceph-config
               mountPath: /etc/ceph
-            - name: mon-endpoint-volume
-              mountPath: /etc/rook
+              readOnly: true
+            - name: ceph-keyring
+              mountPath: /etc/ceph/keyring
+              subPath: keyring
+              readOnly: true
           volumes:
           - name: ceph-config
-            emptyDir: {}
-          - name: mon-endpoint-volume
-            configMap:
-              name: rook-ceph-mon-endpoints
-              items:
-              - key: data
-                path: mon-endpoints
+            secret:
+              secretName: rook-ceph-config
+          - name: ceph-keyring
+            secret:
+              secretName: rook-ceph-admin-keyring
           restartPolicy: OnFailure
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
