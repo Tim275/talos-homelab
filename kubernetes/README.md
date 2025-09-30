@@ -18,16 +18,22 @@ kubectl apply -k bootstrap/
 kubectl get applications -n argocd -w
 ```
 
-### Option 2: Direct Kustomize Deployment
+### Option 2: Enterprise Bootstrap Pattern (2-Step Control)
 
 ```bash
 export KUBECONFIG="../tofu/output/kube-config.yaml"
 
-# Deploy each layer manually via Kustomize
-kubectl apply -k security/           # Wave 0: Zero Trust Foundation
-kubectl apply -k infrastructure/     # Wave 1-6: Core Infrastructure
-kubectl apply -k platform/          # Wave 15-18: Platform Services
-kubectl apply -k apps/              # Wave 25-26: Applications
+# 🎯 STEP 1: BOOTSTRAP - Deploys ONLY Projects + ApplicationSets (no individual services)
+#           Fast bootstrap without waiting for Helm charts
+kubectl apply -k security/           # Wave 0: Security ApplicationSets
+kubectl apply -k infrastructure/     # Wave 1: Infrastructure ApplicationSets
+kubectl apply -k platform/          # Wave 15: Platform ApplicationSets
+kubectl apply -k apps/              # Wave 25: Apps ApplicationSets
+
+# 🎯 STEP 2: GRANULAR CONTROL - Comment/Uncomment in ApplicationSet files
+#           Individual services ein/ausschalten nach Bootstrap
+# Edit: infrastructure/monitoring-app.yaml, infrastructure/network-app.yaml, etc.
+# Comment/Uncomment services to enable/disable after bootstrap
 ```
 
 ### Option 3: Manual Core Bootstrap (Minimal)
@@ -58,9 +64,14 @@ kubectl port-forward svc/argocd-server -n argocd 8080:80
 ```
 
 
-## 🏗️ 2025 Enterprise Hybrid Architecture
+## 🏗️ 2025 Enterprise Bootstrap Architecture
 
-**3-Level GitOps Pattern** following Netflix/Google/Meta best practices:
+**🎯 2-Step Bootstrap Pattern** following Netflix/Google/Meta best practices:
+
+### 🚀 Enterprise Bootstrap Pattern
+
+**STEP 1: Bootstrap** - `kubectl apply -k` deploys only Projects + ApplicationSets
+**STEP 2: Granular Control** - Comment/Uncomment in ApplicationSet files for individual services
 
 ```
 🚀 LEVEL 1: BOOTSTRAP (App-of-Apps Pattern)
@@ -96,8 +107,10 @@ apps/
 ├── apps-staging        # Pre-prod testing (auto-sync, 3 retries)
 └── apps-prod           # Production (manual-sync only)
 
-🎯 LEVEL 3: KUSTOMIZE CONTROL (TRUE Control)
-*/kustomization.yaml      # Comment/Uncomment = Enable/Disable
+🎯 STEP 2: GRANULAR CONTROL (ApplicationSet Control)
+*/monitoring-app.yaml     # Comment/Uncomment services = Enable/Disable
+*/network-app.yaml        # Example: Comment grafana = Disable Grafana
+*/data-app.yaml           # Example: Comment postgresql = Disable PostgreSQL
 ```
 
 ### Component Overview
@@ -119,8 +132,8 @@ apps/
 
 ### 🚀 GitOps Best Practices
 - **App-of-Apps Pattern**: Single bootstrap entry point
-- **ApplicationSet Discovery**: Auto-discovery of components
-- **Kustomize Control**: Comment/uncomment for enable/disable
+- **2-Step Bootstrap**: Fast kubectl apply -k bootstrap, then granular control
+- **ApplicationSet Control**: Comment/uncomment in ApplicationSet files for enable/disable
 - **Sync Waves**: Ordered deployment (0 → 1-6 → 15-18 → 25-26)
 
 ### 🏢 Enterprise Sync Policies
@@ -167,11 +180,11 @@ kubectl patch application <app-name> -n argocd --type='merge' -p='{"operation":{
 
 | Feature | Benefit |
 |---------|---------|
-| **3-Level Architecture** | Clear separation of concerns, scalable to 1000+ apps |
-| **Domain ApplicationSets** | Clean ArgoCD UI, perfect for debugging |
+| **2-Step Bootstrap Pattern** | Fast kubectl apply -k bootstrap, then granular control |
+| **ApplicationSet Control** | Comment/uncomment services in ApplicationSet files |
 | **Zero Trust Security** | Enterprise-grade security foundation |
 | **Environment Separation** | Dev auto-sync, Prod manual control |
-| **TRUE Kustomize Control** | Git-native, no complex ApplicationSet logic |
+| **Git-native Control** | No complex logic, simple comment/uncomment pattern |
 | **Netflix/Google Patterns** | Battle-tested at scale, enterprise ready |
 
 ---
