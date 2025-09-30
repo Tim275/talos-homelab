@@ -171,6 +171,12 @@ controller:
     - name: ARGOCD_CONTROLLER_DISABLE_COMPRESSION
       value: "true"                          # Prevent compression hangs
 
+    # 🔥 2025 REDIS OPTIMIZATION - Reduce Redis traffic
+    # =================================================
+    - name: ARGOCD_APPLICATION_TREE_SHARD_SIZE
+      value: "100"                           # Split large app trees (default: 0 = no split)
+                                             # Reduces Redis key size for 1000+ resource apps
+
     # 🔥 2025 ENTERPRISE CONTROLLER SCALING
     # ====================================
     - name: ARGOCD_APP_STATE_CACHE_EXPIRATION
@@ -248,14 +254,20 @@ redis:
         cpu: 100m
         memory: 128Mi
 
-  # 🚀 REDIS PERFORMANCE TUNING
+  # 🚀 REDIS PERFORMANCE TUNING (2025 Enterprise Best Practices)
   extraArgs:
     - --maxmemory-policy
-    - allkeys-lru    # Optimize memory usage with LRU eviction
+    - allkeys-lru              # Optimize memory usage with LRU eviction
     - --save
-    - ""             # Disable persistence for cache-only usage
+    - ""                       # Disable persistence for cache-only usage
     - --appendonly
-    - "no"           # Disable AOF for cache performance
+    - "no"                     # Disable AOF for cache performance
+    - --tcp-keepalive
+    - "300"                    # TCP keepalive for connection stability
+    - --maxclients
+    - "10000"                  # Max concurrent connections
+    - --timeout
+    - "300"                    # Client idle timeout (5min)
 
   # 🚀 REDIS METRICS (Works with sidecar exporter)
   metrics:
@@ -269,16 +281,10 @@ redis:
       scrapeTimeout: 10s
 
 
-  # 🚀 REDIS HA CONFIGURATION (when needed)
+  # 🚨 REDIS HA DISABLED for Homelab (single replica = no HA benefit)
+  # Enable only when scaling to 3+ Redis replicas for true HA
   haproxy:
-    enabled: true  # Enable for production HA setup
-    resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        cpu: 200m
-        memory: 256Mi
+    enabled: false  # Disabled - single Redis doesn't need HAProxy overhead
 
 server:
   # 🚀 HIGH AVAILABILITY SERVER CONFIGURATION
