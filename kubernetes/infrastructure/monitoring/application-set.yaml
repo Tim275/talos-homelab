@@ -1,0 +1,69 @@
+# 🚀 ENTERPRISE APPLICATIONSET - GOTEMPLATE + FILE GENERATOR PATTERN
+# ===================================================================
+# AWS/Amazon EKS Blueprints Pattern for conditional deployment
+# Reads applicationset-control.yaml and creates Applications only for enabled: true
+#
+# 🎯 FEATURES:
+# - GoTemplate conditional deployment
+# - File generator reads applicationset-control.yaml
+# - Only enabled components appear in ArgoCD UI
+# - Enterprise-grade application control
+
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure-monitoring
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    enterprise.pattern: gotemplate-file-generator-2025
+    enterprise.tier: infrastructure
+    infrastructure.domain: monitoring
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  # 🚀 ENABLE GOTEMPLATE SUPPORT (ArgoCD 2.10+)
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+
+  generators:
+  # 📄 FILE GENERATOR - Reads applicationset-control.yaml control file
+  - git:
+      repoURL: https://github.com/Tim275/talos-homelab
+      revision: HEAD
+      files:
+      - path: kubernetes/infrastructure/monitoring/applicationset-control.yaml
+
+  template:
+    metadata:
+      name: infrastructure-monitoring-{{.name}}
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        infrastructure.domain: monitoring
+        component: "{{.name}}"
+        gotemplate.controlled: "true"
+      annotations:
+        description: "{{.description}}"
+        argocd.argoproj.io/sync-wave: "5"
+    spec:
+      # 🎯 CONDITIONAL DEPLOYMENT - Only enabled components!
+      {{- if .enabled }}
+      project: infrastructure
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: kubernetes/infrastructure/monitoring/{{.name}}
+      destination:
+        server: https://kubernetes.default.svc
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+        - PrunePropagationPolicy=foreground
+        - PruneLast=true
+        - RespectIgnoreDifferences=true
+        - Replace=true
+      {{- end }}

@@ -1,49 +1,45 @@
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: controllers
+  name: infrastructure-controllers
   namespace: argocd
   labels:
-    dev.stonegarden: controllers
+    app.kubernetes.io/managed-by: argocd
+    enterprise.pattern: symlink-directory-control-2025
+    enterprise.tier: infrastructure
+    infrastructure.domain: controllers
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
 spec:
   generators:
-    - git:
-        repoURL: https://github.com/Tim275/talos-homelab
-        revision: HEAD
-        directories:
-          - path: "kubernetes/infra/controllers/*"
-          # Exclude files that aren't applications
-          - path: "kubernetes/infra/controllers/application-set.yaml"
-            exclude: true
-          - path: "kubernetes/infra/controllers/project.yaml"
-            exclude: true
-          - path: "kubernetes/infra/controllers/kustomization.yaml"
-            exclude: true
-          # COMPONENT TOGGLES - uncomment to disable:
-          # - path: "kubernetes/infra/controllers/sealed-secrets"
-          #   exclude: true
-          # EMERGENCY DISABLE - breaking crash-restart cycle:
-          - path: "kubernetes/infra/controllers/cert-manager"
-            exclude: true
+  - git:
+      repoURL: https://github.com/Tim275/talos-homelab
+      revision: HEAD
+      directories:
+      - path: kubernetes/infrastructure/controllers/*
   template:
     metadata:
-      name: '{{ path.basename }}'
+      name: infrastructure-{{path.basename}}
       labels:
-        dev.stonegarden: controllers
+        app.kubernetes.io/managed-by: argocd
+        infrastructure.domain: "{{path.basename}}"
+        symlink.controlled: "true"
     spec:
-      project: controllers
+      project: infrastructure
       source:
         repoURL: https://github.com/Tim275/talos-homelab
         targetRevision: HEAD
-        path: '{{ path }}'
-        plugin:
-          name: kustomize-build-with-helm
+        path: "{{path}}"
       destination:
         server: https://kubernetes.default.svc
       syncPolicy:
         automated:
-          selfHeal: true
           prune: true
+          selfHeal: true
         syncOptions:
-          - ServerSideApply=true
-          - CreateNamespace=true
+        - CreateNamespace=true
+        - PrunePropagationPolicy=foreground
+        - PruneLast=true
+        - RespectIgnoreDifferences=true
+        - Replace=true
