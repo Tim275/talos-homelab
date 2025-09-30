@@ -1,7 +1,10 @@
-# 💾 STORAGE DOMAIN Application - TRUE KUSTOMIZE CONTROL!
+# 💾 STORAGE DOMAIN - PARENT APPLICATION (APP-OF-APPS PATTERN)
+# ====================================================================
+# Enterprise Tier-0 GitOps Pattern: Parent app deploys child apps
+# UI Hierarchy: storage (parent) → rook-ceph, velero (children)
 ---
 apiVersion: argoproj.io/v1alpha1
-kind: ApplicationSet
+kind: Application
 metadata:
   name: storage
   namespace: argocd
@@ -12,56 +15,19 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "3"
 spec:
-  generators:
-  - list:
-      elements:
-      # 🎯 ENABLED STORAGE - Individual Applications in ArgoCD UI
-      - name: rook-ceph
-        path: kubernetes/infrastructure/storage/rook-ceph
-      - name: rook-ceph-rgw
-        path: kubernetes/infrastructure/storage/rook-ceph-rgw
-
-      # ✅ MORE ENABLED STORAGE SERVICES
-      - name: velero
-        path: kubernetes/infrastructure/storage/velero
-
-      # ❌ USING CEPH INSTEAD
-      # - name: proxmox-csi          # ❌ Using Rook-Ceph for storage
-      #   path: kubernetes/infrastructure/storage/proxmox-csi
-
-      # ❌ DISABLED PER USER REQUEST
-      # - name: longhorn           # ❌ User requested disabled
-      #   path: kubernetes/infrastructure/storage/longhorn
-      # - name: minio              # ❌ User requested disabled
-      #   path: kubernetes/infrastructure/storage/minio
-  template:
-    metadata:
-      name: '{{name}}'
-      labels:
-        app.kubernetes.io/managed-by: argocd
-        infrastructure.domain: '{{name}}'
-    spec:
-      project: infrastructure
-      source:
-        repoURL: https://github.com/Tim275/talos-homelab
-        targetRevision: HEAD
-        path: '{{path}}'
-        kustomize:
-          commonAnnotations:
-            # 🎯 AUTOMATIC VICTORIAMETRICS DISCOVERY LABELS
-            # These annotations don't pollute service selectors but maintain compatibility
-            vm-scrape: "enabled"              # VMAgent namespace selector requirement
-            prometheus.io/scrape: "true"      # Standard Prometheus discovery
-            release: prometheus-operator      # Legacy Prometheus compatibility
-      destination:
-        server: https://kubernetes.default.svc
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
-        syncOptions:
-        - CreateNamespace=true
-        - PrunePropagationPolicy=foreground
-        - PruneLast=true
-        - RespectIgnoreDifferences=true
-        - ServerSideApply=true
+  project: infrastructure
+  source:
+    repoURL: https://github.com/Tim275/talos-homelab
+    targetRevision: HEAD
+    path: kubernetes/infrastructure/storage
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
