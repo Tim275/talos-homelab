@@ -27,6 +27,60 @@ configs:
     timeout.reconciliation.jitter: "30s"   # Add jitter to prevent thundering herd
     timeout.hard.reconciliation: "600s"    # Hard limit for reconciliation
 
+    # 🌐 GATEWAY API HEALTH CHECKS - 2025 KUBERNETES GATEWAY API
+    # ===========================================================
+    # Custom health checks for Gateway API resources
+    resource.customizations.health.gateway.networking.k8s.io_Gateway: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "Programmed" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = condition.message
+              return hs
+            elseif condition.type == "Programmed" and condition.status == "False" then
+              hs.status = "Degraded"
+              hs.message = condition.message
+              return hs
+            end
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for Gateway to be Programmed"
+      return hs
+    resource.customizations.health.gateway.networking.k8s.io_HTTPRoute: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.parents ~= nil then
+          numAccepted = 0
+          numParents = 0
+          for i, parent in ipairs(obj.status.parents) do
+            numParents = numParents + 1
+            if parent.conditions ~= nil then
+              for i, condition in ipairs(parent.conditions) do
+                if condition.type == "Accepted" and condition.status == "True" then
+                  numAccepted = numAccepted + 1
+                elseif condition.type == "Accepted" and condition.status == "False" then
+                  hs.status = "Degraded"
+                  hs.message = condition.message
+                  return hs
+                end
+              end
+            end
+          end
+          if numAccepted == numParents then
+            hs.status = "Healthy"
+            hs.message = "HTTPRoute accepted by all parents"
+            return hs
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for HTTPRoute to be accepted by parent Gateway"
+      return hs
+
   cmp:
     create: true
     plugins:
