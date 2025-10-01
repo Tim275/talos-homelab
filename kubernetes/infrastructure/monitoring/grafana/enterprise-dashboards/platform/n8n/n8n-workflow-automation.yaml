@@ -1,0 +1,87 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: n8n-workflow-automation
+  namespace: grafana
+  labels:
+    app.kubernetes.io/name: grafana-dashboard
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: grafana-operator
+    dashboard-tier: platform
+    dashboard-category: automation
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  json: |
+    {
+      "title": "N8N Workflow Automation (Dev/Prod)",
+      "tags": ["n8n", "automation", "workflows"],
+      "timezone": "browser",
+      "panels": [
+        {
+          "title": "N8N Pod Status",
+          "type": "stat",
+          "targets": [{
+            "expr": "sum(up{job=\"n8n\", namespace=~\"n8n-dev|n8n-prod\"}) by (namespace)",
+            "legendFormat": "{{namespace}}"
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": null, "color": "red"},
+                  {"value": 1, "color": "green"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "N8N CPU Usage",
+          "type": "timeseries",
+          "targets": [{
+            "expr": "rate(container_cpu_usage_seconds_total{namespace=~\"n8n-dev|n8n-prod\", container=\"n8n\"}[5m])",
+            "legendFormat": "{{namespace}} - {{pod}}"
+          }]
+        },
+        {
+          "title": "N8N Memory Usage",
+          "type": "timeseries",
+          "targets": [{
+            "expr": "container_memory_working_set_bytes{namespace=~\"n8n-dev|n8n-prod\", container=\"n8n\"}",
+            "legendFormat": "{{namespace}} - {{pod}}"
+          }]
+        },
+        {
+          "title": "N8N HTTP Requests (if metrics exposed)",
+          "type": "timeseries",
+          "targets": [{
+            "expr": "rate(http_requests_total{namespace=~\"n8n-dev|n8n-prod\"}[5m])",
+            "legendFormat": "{{namespace}} - {{method}} {{status}}"
+          }]
+        }
+      ],
+      "templating": {
+        "list": [
+          {
+            "name": "namespace",
+            "type": "custom",
+            "options": [
+              {"text": "All", "value": "$__all"},
+              {"text": "n8n-dev", "value": "n8n-dev"},
+              {"text": "n8n-prod", "value": "n8n-prod"}
+            ],
+            "current": {"text": "All", "value": "$__all"},
+            "multi": true,
+            "includeAll": true
+          }
+        ]
+      }
+    }
+  datasources:
+    - inputName: "DS_PROMETHEUS"
+      datasourceName: "Prometheus"
+  folder: "🔄 Automation"
