@@ -146,84 +146,113 @@ alertmanager:
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
             channel: '#alerts-critical'
-            title: '🚨 {{ .Status | toUpper }}: {{ .GroupLabels.alertname }}'
-            title_link: 'http://prometheus.monitoring.svc:9090/alerts'
+            username: 'AlertManager'
+            icon_emoji: ':rotating_light:'
+            title: |-
+              {{ if eq .Status "firing" }}:rotating_light:{{ else }}:white_check_mark:{{ end }} [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ len .Alerts.Firing }}{{ end }}] {{ .GroupLabels.alertname }}
+            title_link: '{{ template "__alertmanagerURL" . }}'
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else }}danger{{ end }}
             text: |-
               {{ range .Alerts }}
-              *━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━*
-              *🔥 Alert:* `{{ .Labels.alertname }}`
-              *📊 Severity:* `{{ .Labels.severity | toUpper }}`  |  *Priority:* `{{ .Labels.priority | default "P2" }}`
-              *⏰ Started:* {{ .StartsAt.Format "15:04:05 MST" }}
-              {{ if .Labels.namespace }}*📦 Namespace:* `{{ .Labels.namespace }}`{{ end }}
-              {{ if .Labels.pod }}*🎯 Pod:* `{{ .Labels.pod }}`{{ end }}
-              {{ if .Labels.container }}*📦 Container:* `{{ .Labels.container }}`{{ end }}
-              {{ if .Labels.node }}*🖥️  Node:* `{{ .Labels.node }}`{{ end }}
-              {{ if .Labels.instance }}*💻 Instance:* `{{ .Labels.instance }}`{{ end }}
-              {{ if .Labels.job }}*⚙️  Job:* `{{ .Labels.job }}`{{ end }}
-              {{ if .Labels.service }}*🔧 Service:* `{{ .Labels.service }}`{{ end }}
-              {{ if .Annotations.summary }}
-              *📝 Summary:*
-              {{ .Annotations.summary }}
-              {{ end }}
+              {{ if eq .Status "firing" }}:fire:{{ else }}:white_check_mark:{{ end }} *{{ .Labels.alertname }}* - `{{ .Labels.severity | toUpper }}`
+              {{ if .Labels.priority }}*Priority:* `{{ .Labels.priority }}`{{ end }}
+              {{ if .Annotations.summary }}*Summary:* {{ .Annotations.summary }}{{ end }}
               {{ if .Annotations.description }}
-              *📖 Description:*
-              {{ .Annotations.description }}
+              *Description:* {{ .Annotations.description }}{{ end }}
+
+              *Details:*
+              {{ if .Labels.namespace }}• Namespace: `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.pod }}• Pod: `{{ .Labels.pod }}`{{ end }}
+              {{ if .Labels.container }}• Container: `{{ .Labels.container }}`{{ end }}
+              {{ if .Labels.node }}• Node: `{{ .Labels.node }}`{{ end }}
+              {{ if .Labels.instance }}• Instance: `{{ .Labels.instance }}`{{ end }}
+              {{ if .Labels.job }}• Job: `{{ .Labels.job }}`{{ end }}
+              {{ if eq .Status "firing" }}• Started: {{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}{{ else }}• Resolved: {{ .EndsAt.Format "2006-01-02 15:04:05 MST" }}{{ end }}
               {{ end }}
-              {{ if .Annotations.runbook_url }}
-              *📚 Runbook:* {{ .Annotations.runbook_url }}
-              {{ end }}
-              *🔗 Source:* {{ .GeneratorURL }}
-              {{ end }}
-            color: 'danger'
+            actions:
+              - type: button
+                text: ':chart_with_upwards_trend: Query'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: ':green_book: Runbook'
+                url: '{{ (index .Alerts 0).Annotations.runbook_url }}'
+              - type: button
+                text: ':bar_chart: Dashboard'
+                url: '{{ (index .Alerts 0).Annotations.dashboard_url }}'
+              - type: button
+                text: ':no_bell: Silence'
+                url: |-
+                  {{ .ExternalURL }}/#/silences/new?filter=%7B{{ range .CommonLabels.SortedPairs }}{{ if ne .Name "alertname" }}{{ .Name }}%3D"{{ .Value }}"{{ end }}{{ end }}%7D
             send_resolved: true
       - name: 'all'
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/all
             channel: '#alerts-all'
-            title: '{{ if eq .Status "firing" }}⚠️{{ else }}✅{{ end }} {{ .Status | toUpper }}: {{ .GroupLabels.alertname }}'
-            title_link: 'http://prometheus.monitoring.svc:9090/alerts'
+            username: 'AlertManager'
+            icon_emoji: ':prometheus:'
+            title: |-
+              {{ if eq .Status "firing" }}:warning:{{ else }}:white_check_mark:{{ end }} [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ len .Alerts.Firing }}{{ end }}] {{ .GroupLabels.alertname }}
+            title_link: '{{ template "__alertmanagerURL" . }}'
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else if eq .CommonLabels.severity "warning" }}warning{{ else }}#439FE0{{ end }}
             text: |-
               {{ range .Alerts }}
-              *━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━*
-              *Alert:* `{{ .Labels.alertname }}`
-              *Severity:* `{{ .Labels.severity }}`  |  *Status:* `{{ .Status }}`
-              *Started:* {{ .StartsAt.Format "15:04:05 MST" }}
-              {{ if .Labels.namespace }}*Namespace:* `{{ .Labels.namespace }}`{{ end }}
-              {{ if .Labels.pod }}*Pod:* `{{ .Labels.pod }}`{{ end }}
-              {{ if .Labels.container }}*Container:* `{{ .Labels.container }}`{{ end }}
-              {{ if .Labels.node }}*Node:* `{{ .Labels.node }}`{{ end }}
-              {{ if .Labels.instance }}*Instance:* `{{ .Labels.instance }}`{{ end }}
-              {{ if .Labels.job }}*Job:* `{{ .Labels.job }}`{{ end }}
-              {{ if .Annotations.summary }}
-              *Summary:* {{ .Annotations.summary }}
+              {{ if eq .Status "firing" }}{{ if eq .Labels.severity "warning" }}:warning:{{ else }}:information_source:{{ end }}{{ else }}:white_check_mark:{{ end }} *{{ .Labels.alertname }}* - `{{ .Labels.severity | toUpper }}`
+              {{ if .Annotations.summary }}*Summary:* {{ .Annotations.summary }}{{ end }}
+              {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
+
+              *Details:*
+              {{ if .Labels.namespace }}• Namespace: `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.pod }}• Pod: `{{ .Labels.pod }}`{{ end }}
+              {{ if .Labels.container }}• Container: `{{ .Labels.container }}`{{ end }}
+              {{ if .Labels.node }}• Node: `{{ .Labels.node }}`{{ end }}
+              {{ if .Labels.instance }}• Instance: `{{ .Labels.instance }}`{{ end }}
+              {{ if .Labels.job }}• Job: `{{ .Labels.job }}`{{ end }}
+              {{ if eq .Status "firing" }}• Started: {{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}{{ else }}• Resolved: {{ .EndsAt.Format "2006-01-02 15:04:05 MST" }}{{ end }}
               {{ end }}
-              {{ if .Annotations.description }}
-              *Details:* {{ .Annotations.description }}
-              {{ end }}
-              {{ if .Annotations.runbook_url }}*Runbook:* {{ .Annotations.runbook_url }}{{ end }}
-              {{ end }}
-            color: '{{ if eq .Status "firing" }}warning{{ else }}good{{ end }}'
+            actions:
+              - type: button
+                text: ':mag: Query'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: ':green_book: Runbook'
+                url: '{{ (index .Alerts 0).Annotations.runbook_url }}'
+              - type: button
+                text: ':no_bell: Silence'
+                url: |-
+                  {{ .ExternalURL }}/#/silences/new?filter=%7B{{ range .CommonLabels.SortedPairs }}{{ if ne .Name "alertname" }}{{ .Name }}%3D"{{ .Value }}"{{ end }}{{ end }}%7D
             send_resolved: true
       - name: 'watchdog'
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/all
             channel: '#alerts-all'
-            title: '💚 Watchdog Heartbeat - Monitoring Healthy'
+            username: 'Watchdog'
+            icon_emoji: ':green_heart:'
+            title: ':heartbeat: Monitoring System Healthy'
             text: |-
-              *System Status:* ✅ All monitoring systems operational
-              *Timestamp:* {{ (index .Alerts 0).StartsAt.Format "15:04:05 MST" }}
-              *Cluster:* {{ .CommonLabels.cluster | default "homelab" }}
+              :white_check_mark: *All monitoring systems operational*
+              • Prometheus: Running
+              • AlertManager: Running
+              • Cluster: {{ .CommonLabels.cluster | default "homelab" }}
+              • Timestamp: {{ (index .Alerts 0).StartsAt.Format "2006-01-02 15:04:05 MST" }}
             color: 'good'
             send_resolved: false
       - name: 'default'
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/all
             channel: '#alerts-all'
-            title: '🔔 {{ .GroupLabels.alertname }}'
+            username: 'AlertManager'
+            icon_emoji: ':bell:'
+            title: ':bell: {{ .GroupLabels.alertname }}'
             text: |-
               {{ range .Alerts }}
               *Alert:* {{ .Labels.alertname }}
-              {{ if .Labels.namespace }}*Namespace:* {{ .Labels.namespace }}{{ end }}
-              {{ if .Labels.pod }}*Pod:* {{ .Labels.pod }}{{ end }}
               {{ if .Annotations.summary }}*Summary:* {{ .Annotations.summary }}{{ end }}
+              {{ if .Labels.namespace }}• Namespace: `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.pod }}• Pod: `{{ .Labels.pod }}`{{ end }}
               {{ end }}
+            actions:
+              - type: button
+                text: ':mag: Query'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
