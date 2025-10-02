@@ -100,3 +100,156 @@ prometheusOperator:
   # Disable TLS completely to avoid cert mount issues
   tls:
     enabled: false
+
+# AlertManager Configuration - Slack Integration
+alertmanager:
+  alertmanagerSpec:
+    secrets:
+      - alertmanager-slack-webhooks
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: 'default'
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      routes:
+        # P1-P2 Critical → #alerts-critical
+        - matchers:
+            - severity=~"critical"
+            - priority=~"P1|P2"
+          receiver: 'critical'
+          group_wait: 10s
+          group_interval: 1m
+          repeat_interval: 15m
+        # P1-P2 Critical (by tier) → #alerts-critical
+        - matchers:
+            - severity="critical"
+            - tier="0"
+          receiver: 'critical'
+          group_wait: 10s
+          group_interval: 1m
+          repeat_interval: 15m
+        # P3-P5 Warning/Info → #alerts-all
+        - matchers:
+            - severity=~"warning|info"
+          receiver: 'all'
+          # Watchdog → #alerts-all (disabled - too noisy)
+          # - matchers:
+          #     - alertname="Watchdog"
+          #   receiver: 'watchdog'
+          #   repeat_interval: 5m
+    receivers:
+      - name: 'critical'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
+            channel: '#alerts-critical'
+            username: 'AlertManager'
+            icon_emoji: ':rotating_light:'
+            title: |-
+              {{ if eq .Status "firing" }}:rotating_light:{{ else }}:white_check_mark:{{ end }} [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ len .Alerts.Firing }}{{ end }}] {{ .GroupLabels.alertname }}
+            title_link: '{{ template "__alertmanagerURL" . }}'
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else }}danger{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              {{ if eq .Status "firing" }}:fire:{{ else }}:white_check_mark:{{ end }} *{{ .Labels.alertname }}* - `{{ .Labels.severity | toUpper }}`
+              {{ if .Labels.priority }}*Priority:* `{{ .Labels.priority }}`{{ end }}
+              {{ if .Annotations.summary }}*Summary:* {{ .Annotations.summary }}{{ end }}
+              {{ if .Annotations.description }}
+              *Description:* {{ .Annotations.description }}{{ end }}
+
+              *Details:*
+              {{ if .Labels.namespace }}• Namespace: `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.pod }}• Pod: `{{ .Labels.pod }}`{{ end }}
+              {{ if .Labels.container }}• Container: `{{ .Labels.container }}`{{ end }}
+              {{ if .Labels.node }}• Node: `{{ .Labels.node }}`{{ end }}
+              {{ if .Labels.instance }}• Instance: `{{ .Labels.instance }}`{{ end }}
+              {{ if .Labels.job }}• Job: `{{ .Labels.job }}`{{ end }}
+              {{ if eq .Status "firing" }}• Started: {{ .StartsAt.Format "2006-01-02 15:04:05" }}{{ else }}• Resolved: {{ .EndsAt.Format "2006-01-02 15:04:05" }}{{ end }}
+              {{ end }}
+            actions:
+              - type: button
+                text: ':chart_with_upwards_trend: Query'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: ':green_book: Runbook'
+                url: '{{ (index .Alerts 0).Annotations.runbook_url }}'
+              - type: button
+                text: ':bar_chart: Dashboard'
+                url: '{{ (index .Alerts 0).Annotations.dashboard_url }}'
+              - type: button
+                text: ':no_bell: Silence'
+                url: |-
+                  {{ .ExternalURL }}/#/silences/new?filter=%7B{{ range .CommonLabels.SortedPairs }}{{ if ne .Name "alertname" }}{{ .Name }}%3D"{{ .Value }}"{{ end }}{{ end }}%7D
+            send_resolved: true
+      - name: 'all'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/all
+            channel: '#alerts-all'
+            username: 'AlertManager'
+            icon_emoji: ':prometheus:'
+            title: |-
+              {{ if eq .Status "firing" }}:warning:{{ else }}:white_check_mark:{{ end }} [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ len .Alerts.Firing }}{{ end }}] {{ .GroupLabels.alertname }}
+            title_link: '{{ template "__alertmanagerURL" . }}'
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else if eq .CommonLabels.severity "warning" }}warning{{ else }}#439FE0{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              {{ if eq .Status "firing" }}{{ if eq .Labels.severity "warning" }}:warning:{{ else }}:information_source:{{ end }}{{ else }}:white_check_mark:{{ end }} *{{ .Labels.alertname }}* - `{{ .Labels.severity | toUpper }}`
+              {{ if .Annotations.summary }}*Summary:* {{ .Annotations.summary }}{{ end }}
+              {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
+
+              *Details:*
+              {{ if .Labels.namespace }}• Namespace: `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.pod }}• Pod: `{{ .Labels.pod }}`{{ end }}
+              {{ if .Labels.container }}• Container: `{{ .Labels.container }}`{{ end }}
+              {{ if .Labels.node }}• Node: `{{ .Labels.node }}`{{ end }}
+              {{ if .Labels.instance }}• Instance: `{{ .Labels.instance }}`{{ end }}
+              {{ if .Labels.job }}• Job: `{{ .Labels.job }}`{{ end }}
+              {{ if eq .Status "firing" }}• Started: {{ .StartsAt.Format "2006-01-02 15:04:05" }}{{ else }}• Resolved: {{ .EndsAt.Format "2006-01-02 15:04:05" }}{{ end }}
+              {{ end }}
+            actions:
+              - type: button
+                text: ':mag: Query'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: ':green_book: Runbook'
+                url: '{{ (index .Alerts 0).Annotations.runbook_url }}'
+              - type: button
+                text: ':no_bell: Silence'
+                url: |-
+                  {{ .ExternalURL }}/#/silences/new?filter=%7B{{ range .CommonLabels.SortedPairs }}{{ if ne .Name "alertname" }}{{ .Name }}%3D"{{ .Value }}"{{ end }}{{ end }}%7D
+            send_resolved: true
+        # Watchdog receiver disabled - too noisy (every 5 minutes)
+        # - name: 'watchdog'
+        #   slack_configs:
+        #     - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/all
+        #       channel: '#alerts-all'
+        #       username: 'Watchdog'
+        #       icon_emoji: ':green_heart:'
+        #       title: ':heartbeat: Monitoring System Healthy'
+        #       text: |-
+        #         :white_check_mark: *All monitoring systems operational*
+        #       color: 'good'
+        #       send_resolved: false
+      - name: 'default'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/all
+            channel: '#alerts-all'
+            username: 'AlertManager'
+            icon_emoji: ':bell:'
+            title: ':bell: {{ .GroupLabels.alertname }}'
+            text: |-
+              {{ range .Alerts }}
+              *Alert:* {{ .Labels.alertname }}
+              {{ if .Annotations.summary }}*Summary:* {{ .Annotations.summary }}{{ end }}
+              {{ if .Labels.namespace }}• Namespace: `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.pod }}• Pod: `{{ .Labels.pod }}`{{ end }}
+              {{ end }}
+            actions:
+              - type: button
+                text: ':mag: Query'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
