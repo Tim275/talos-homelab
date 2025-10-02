@@ -7,10 +7,34 @@
 # "From 1000 alerts to 10 meaningful alerts"
 
 # ========================================
-# 🌐 INGRESS CONFIGURATION
+# 🌐 GLOBAL INGRESS (DISABLED - using Gateway API)
 # ========================================
-ingress:
-  enabled: false  # We use Gateway API HTTPRoute instead
+global:
+  ingress:
+    enabled: false  # We use Gateway API HTTPRoute instead
+
+# ========================================
+# 🔧 BACKEND API CONFIGURATION
+# ========================================
+backend:
+  enabled: true
+  replicaCount: 1
+
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "200m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+  env:
+    - name: AUTH_TYPE
+      value: "NO_AUTH"  # Start with no auth
+    - name: KEEP_API_URL
+      value: "https://keep.timourhomelab.org/backend"
+    - name: LOG_LEVEL
+      value: "INFO"
 
 # ========================================
 # 🎨 FRONTEND CONFIGURATION
@@ -19,7 +43,6 @@ frontend:
   enabled: true
   replicaCount: 1
 
-  # Use default image from Helm chart
   resources:
     requests:
       memory: "256Mi"
@@ -32,42 +55,15 @@ frontend:
     - name: NEXT_PUBLIC_API_URL
       value: "https://keep.timourhomelab.org/backend"
     - name: AUTH_TYPE
-      value: "NO_AUTH"  # Start with no auth, can add OAuth later
-
-# ========================================
-# 🔧 BACKEND API CONFIGURATION
-# ========================================
-backend:
-  enabled: true
-  replicaCount: 1
-
-  # Use default image from Helm chart
-  resources:
-    requests:
-      memory: "512Mi"
-      cpu: "200m"
-    limits:
-      memory: "1Gi"
-      cpu: "1000m"
-
-  env:
-    - name: AUTH_TYPE
       value: "NO_AUTH"  # Start with no auth
-    - name: DATABASE_URL
-      value: "sqlite:///app/data/keep.db"  # SQLite for simplicity
-    - name: KEEP_API_URL
-      value: "https://keep.timourhomelab.org/backend"
-    - name: LOG_LEVEL
-      value: "INFO"
 
 # ========================================
-# 🔌 WEBSOCKET SERVER CONFIGURATION
+# 🔌 WEBSOCKET SERVER (Soketi)
 # ========================================
 websocket:
   enabled: true
   replicaCount: 1
 
-  # Use default image from Helm chart
   resources:
     requests:
       memory: "128Mi"
@@ -77,14 +73,17 @@ websocket:
       cpu: "200m"
 
 # ========================================
-# 💾 PERSISTENCE CONFIGURATION
+# 💾 DATABASE CONFIGURATION (MySQL)
 # ========================================
-persistence:
+database:
   enabled: true
-  storageClass: "rook-ceph-block-enterprise"
-  accessMode: ReadWriteOnce
-  size: 10Gi
-  # For backend database and workflow storage
+  type: mysql  # Using MySQL (default)
+
+  pvc:
+    enabled: true
+    size: 10Gi
+    storageClass: "rook-ceph-block-enterprise"
+    retain: true
 
 # ========================================
 # 🔐 SERVICE ACCOUNTS
@@ -93,34 +92,3 @@ serviceAccount:
   create: true
   name: "keep"
   annotations: {}
-
-# ========================================
-# 📊 MONITORING
-# ========================================
-serviceMonitor:
-  enabled: true
-  namespace: monitoring
-  interval: 30s
-  labels:
-    release: prometheus-operator
-
-# ========================================
-# 🌍 SERVICE CONFIGURATION
-# ========================================
-service:
-  type: ClusterIP
-
-  frontend:
-    port: 3000
-    targetPort: 3000
-    name: http-frontend
-
-  backend:
-    port: 8080
-    targetPort: 8080
-    name: http-backend
-
-  websocket:
-    port: 6001
-    targetPort: 6001
-    name: websocket
