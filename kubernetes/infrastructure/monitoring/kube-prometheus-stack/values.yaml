@@ -146,14 +146,33 @@ alertmanager:
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
             channel: '#alerts-critical'
-            title: '🚨 CRITICAL: {{ .GroupLabels.alertname }}'
+            title: '🚨 {{ .Status | toUpper }}: {{ .GroupLabels.alertname }}'
+            title_link: 'http://prometheus.monitoring.svc:9090/alerts'
             text: |-
               {{ range .Alerts }}
-              *Alert:* {{ .Labels.alertname }}
-              *Severity:* {{ .Labels.severity }}
-              *Priority:* {{ .Labels.priority }}
-              *Summary:* {{ .Annotations.summary }}
-              *Description:* {{ .Annotations.description }}
+              *━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━*
+              *🔥 Alert:* `{{ .Labels.alertname }}`
+              *📊 Severity:* `{{ .Labels.severity | toUpper }}`  |  *Priority:* `{{ .Labels.priority | default "P2" }}`
+              *⏰ Started:* {{ .StartsAt.Format "15:04:05 MST" }}
+              {{ if .Labels.namespace }}*📦 Namespace:* `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.pod }}*🎯 Pod:* `{{ .Labels.pod }}`{{ end }}
+              {{ if .Labels.container }}*📦 Container:* `{{ .Labels.container }}`{{ end }}
+              {{ if .Labels.node }}*🖥️  Node:* `{{ .Labels.node }}`{{ end }}
+              {{ if .Labels.instance }}*💻 Instance:* `{{ .Labels.instance }}`{{ end }}
+              {{ if .Labels.job }}*⚙️  Job:* `{{ .Labels.job }}`{{ end }}
+              {{ if .Labels.service }}*🔧 Service:* `{{ .Labels.service }}`{{ end }}
+              {{ if .Annotations.summary }}
+              *📝 Summary:*
+              {{ .Annotations.summary }}
+              {{ end }}
+              {{ if .Annotations.description }}
+              *📖 Description:*
+              {{ .Annotations.description }}
+              {{ end }}
+              {{ if .Annotations.runbook_url }}
+              *📚 Runbook:* {{ .Annotations.runbook_url }}
+              {{ end }}
+              *🔗 Source:* {{ .GeneratorURL }}
               {{ end }}
             color: 'danger'
             send_resolved: true
@@ -161,25 +180,50 @@ alertmanager:
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/all
             channel: '#alerts-all'
-            title: '⚠️ {{ .GroupLabels.severity | toUpper }}: {{ .GroupLabels.alertname }}'
+            title: '{{ if eq .Status "firing" }}⚠️{{ else }}✅{{ end }} {{ .Status | toUpper }}: {{ .GroupLabels.alertname }}'
+            title_link: 'http://prometheus.monitoring.svc:9090/alerts'
             text: |-
               {{ range .Alerts }}
-              *Alert:* {{ .Labels.alertname }}
-              *Severity:* {{ .Labels.severity }}
+              *━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━*
+              *Alert:* `{{ .Labels.alertname }}`
+              *Severity:* `{{ .Labels.severity }}`  |  *Status:* `{{ .Status }}`
+              *Started:* {{ .StartsAt.Format "15:04:05 MST" }}
+              {{ if .Labels.namespace }}*Namespace:* `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.pod }}*Pod:* `{{ .Labels.pod }}`{{ end }}
+              {{ if .Labels.container }}*Container:* `{{ .Labels.container }}`{{ end }}
+              {{ if .Labels.node }}*Node:* `{{ .Labels.node }}`{{ end }}
+              {{ if .Labels.instance }}*Instance:* `{{ .Labels.instance }}`{{ end }}
+              {{ if .Labels.job }}*Job:* `{{ .Labels.job }}`{{ end }}
+              {{ if .Annotations.summary }}
               *Summary:* {{ .Annotations.summary }}
               {{ end }}
-            color: 'warning'
+              {{ if .Annotations.description }}
+              *Details:* {{ .Annotations.description }}
+              {{ end }}
+              {{ if .Annotations.runbook_url }}*Runbook:* {{ .Annotations.runbook_url }}{{ end }}
+              {{ end }}
+            color: '{{ if eq .Status "firing" }}warning{{ else }}good{{ end }}'
             send_resolved: true
       - name: 'watchdog'
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/all
             channel: '#alerts-all'
-            title: '💚 Watchdog Heartbeat'
-            text: 'Monitoring system is healthy'
+            title: '💚 Watchdog Heartbeat - Monitoring Healthy'
+            text: |-
+              *System Status:* ✅ All monitoring systems operational
+              *Timestamp:* {{ (index .Alerts 0).StartsAt.Format "15:04:05 MST" }}
+              *Cluster:* {{ .CommonLabels.cluster | default "homelab" }}
             color: 'good'
             send_resolved: false
       - name: 'default'
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/all
             channel: '#alerts-all'
-            title: 'Alert: {{ .GroupLabels.alertname }}'
+            title: '🔔 {{ .GroupLabels.alertname }}'
+            text: |-
+              {{ range .Alerts }}
+              *Alert:* {{ .Labels.alertname }}
+              {{ if .Labels.namespace }}*Namespace:* {{ .Labels.namespace }}{{ end }}
+              {{ if .Labels.pod }}*Pod:* {{ .Labels.pod }}{{ end }}
+              {{ if .Annotations.summary }}*Summary:* {{ .Annotations.summary }}{{ end }}
+              {{ end }}
