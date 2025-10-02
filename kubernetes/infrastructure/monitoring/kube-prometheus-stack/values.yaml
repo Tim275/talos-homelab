@@ -100,3 +100,86 @@ prometheusOperator:
   # Disable TLS completely to avoid cert mount issues
   tls:
     enabled: false
+
+# AlertManager Configuration - Slack Integration
+alertmanager:
+  alertmanagerSpec:
+    secrets:
+      - alertmanager-slack-webhooks
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: 'default'
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      routes:
+        # P1-P2 Critical → #alerts-critical
+        - matchers:
+            - severity=~"critical"
+            - priority=~"P1|P2"
+          receiver: 'critical'
+          group_wait: 10s
+          group_interval: 1m
+          repeat_interval: 15m
+        # P1-P2 Critical (by tier) → #alerts-critical
+        - matchers:
+            - severity="critical"
+            - tier="0"
+          receiver: 'critical'
+          group_wait: 10s
+          group_interval: 1m
+          repeat_interval: 15m
+        # P3-P5 Warning/Info → #alerts-all
+        - matchers:
+            - severity=~"warning|info"
+          receiver: 'all'
+        # Watchdog → #alerts-all
+        - matchers:
+            - alertname="Watchdog"
+          receiver: 'watchdog'
+          repeat_interval: 5m
+    receivers:
+      - name: 'critical'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
+            channel: '#alerts-critical'
+            title: '🚨 CRITICAL: {{ .GroupLabels.alertname }}'
+            text: |-
+              {{ range .Alerts }}
+              *Alert:* {{ .Labels.alertname }}
+              *Severity:* {{ .Labels.severity }}
+              *Priority:* {{ .Labels.priority }}
+              *Summary:* {{ .Annotations.summary }}
+              *Description:* {{ .Annotations.description }}
+              {{ end }}
+            color: 'danger'
+            send_resolved: true
+      - name: 'all'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/all
+            channel: '#alerts-all'
+            title: '⚠️ {{ .GroupLabels.severity | toUpper }}: {{ .GroupLabels.alertname }}'
+            text: |-
+              {{ range .Alerts }}
+              *Alert:* {{ .Labels.alertname }}
+              *Severity:* {{ .Labels.severity }}
+              *Summary:* {{ .Annotations.summary }}
+              {{ end }}
+            color: 'warning'
+            send_resolved: true
+      - name: 'watchdog'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/all
+            channel: '#alerts-all'
+            title: '💚 Watchdog Heartbeat'
+            text: 'Monitoring system is healthy'
+            color: 'good'
+            send_resolved: false
+      - name: 'default'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/all
+            channel: '#alerts-all'
+            title: 'Alert: {{ .GroupLabels.alertname }}'
