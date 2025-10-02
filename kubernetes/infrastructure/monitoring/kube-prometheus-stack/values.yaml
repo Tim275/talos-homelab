@@ -1,3 +1,4 @@
+# yamllint disable rule:line-length
 # https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml
 prometheus:
   prometheusSpec:
@@ -19,9 +20,9 @@ prometheus:
           resources:
             requests:
               storage: 20G
-        # selector:  # Remove specific PV selector, let Kubernetes handle it
-        #   matchLabels:
-        #     app: prometheus
+      # selector:  # Remove specific PV selector, let Kubernetes handle it
+      #   matchLabels:
+      #     app: prometheus
 
 # https://github.com/siderolabs/talos/discussions/7214
 kubeControllerManager:
@@ -101,7 +102,10 @@ prometheusOperator:
   tls:
     enabled: false
 
-# AlertManager Configuration - Slack Integration
+# 🚨 ENTERPRISE ALERTMANAGER CONFIG - Production Grade
+# Based on your real production alerting system
+# Priority Levels: P1 (Critical) → P2 (High) → P3 (Warning) → P5 (Info)
+
 alertmanager:
   alertmanagerSpec:
     secrets:
@@ -109,147 +113,232 @@ alertmanager:
   config:
     global:
       resolve_timeout: 5m
+      slack_api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
+
+    # 📋 ROUTE CONFIGURATION - Priority-based Routing
     route:
       receiver: 'default'
-      group_by: ['alertname', 'cluster', 'service']
+      group_by: ['alertname', 'cluster', 'namespace', 'service']
       group_wait: 30s
       group_interval: 5m
       repeat_interval: 4h
+
       routes:
-        # P1-P2 Critical → #alerts-critical
+        # ====== P1: DRINGEND/CRITICAL (RED 🔴) ======
+        # Response SLA: 5 minutes
         - matchers:
-            - severity=~"critical"
-            - priority=~"P1|P2"
-          receiver: 'critical'
-          group_wait: 10s
+            - priority="P1"
+          receiver: 'p1-critical'
+          group_wait: 0s          # INSTANT notification
           group_interval: 1m
+          repeat_interval: 5m     # Re-notify every 5 min
+          continue: false
+
+        # ====== P2: WICHTIG/HIGH (ORANGE 🟠) ======
+        # Response SLA: 15 minutes
+        - matchers:
+            - priority="P2"
+          receiver: 'p2-high'
+          group_wait: 10s
+          group_interval: 2m
           repeat_interval: 15m
-        # P1-P2 Critical (by tier) → #alerts-critical
+          continue: false
+
+        # ====== P3: WARNING (YELLOW 🟡) ======
+        # Response SLA: 1 hour
+        - matchers:
+            - priority="P3"
+          receiver: 'p3-warning'
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 1h
+          continue: false
+
+        # ====== P5: INFO (BLUE 🔵) ======
+        # Response SLA: 4 hours
+        - matchers:
+            - priority="P5"
+          receiver: 'p5-info'
+          group_wait: 2m
+          group_interval: 10m
+          repeat_interval: 4h
+          continue: false
+
+        # Fallback for alerts without priority
         - matchers:
             - severity="critical"
-            - tier="0"
-          receiver: 'critical'
+          receiver: 'p1-critical'
           group_wait: 10s
-          group_interval: 1m
           repeat_interval: 15m
-        # P3-P5 Warning/Info → #alerts-all
+
         - matchers:
-            - severity=~"warning|info"
-          receiver: 'all'
-          # Watchdog → #alerts-all (disabled - too noisy)
-          # - matchers:
-          #     - alertname="Watchdog"
-          #   receiver: 'watchdog'
-          #   repeat_interval: 5m
+            - severity="warning"
+          receiver: 'p3-warning'
+
+    # 📨 RECEIVERS - Enterprise Slack Templates
     receivers:
-      - name: 'critical'
+      # ====== P1: DRINGEND 🔴 ======
+      - name: 'p1-critical'
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
             channel: '#alerts-critical'
-            username: 'AlertManager'
+            username: 'Homelab Monitoring'
             icon_emoji: ':rotating_light:'
             title: |-
-              {{ if eq .Status "firing" }}:rotating_light:{{ else }}:white_check_mark:{{ end }} [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ len .Alerts.Firing }}{{ end }}] {{ .GroupLabels.alertname }}
+              🔴 P1 ALERT - {{ .GroupLabels.alertname }}
             title_link: '{{ template "__alertmanagerURL" . }}'
-            color: |-
-              {{ if eq .Status "resolved" }}good{{ else }}danger{{ end }}
+            color: 'danger'
             text: |-
+              📊 *Alert Summary*
               {{ range .Alerts }}
-              {{ if eq .Status "firing" }}:fire:{{ else }}:white_check_mark:{{ end }} *{{ .Labels.alertname }}* - `{{ .Labels.severity | toUpper }}`
-              {{ if .Labels.priority }}*Priority:* `{{ .Labels.priority }}`{{ end }}
-              {{ if .Annotations.summary }}*Summary:* {{ .Annotations.summary }}{{ end }}
+              *Instanz:* `{{ .Labels.instance }}{{ if .Labels.pod }}{{ .Labels.pod }}{{ end }}`
+              *Problem:* {{ .Annotations.summary }}
+              *Zeit:* {{ .StartsAt.Format "02.01.2006, 15:04:05" }} UTC
+              *Alert ID:* #{{ .Labels.alertname }}-{{ .Labels.namespace }}
+
+              🔍 *Details*
+              *Service:* {{ .Labels.job }}{{ if .Labels.namespace }} (Namespace: {{ .Labels.namespace }}){{ end }}
+              *Status:* {{ .Status | toUpper }}{{ if eq .Status "firing" }} - CRITICAL{{ end }}
               {{ if .Annotations.description }}
               *Description:* {{ .Annotations.description }}{{ end }}
+              {{ if .Labels.tier }}*Tier:* {{ .Labels.tier }}{{ end }}
 
-              *Details:*
-              {{ if .Labels.namespace }}• Namespace: `{{ .Labels.namespace }}`{{ end }}
-              {{ if .Labels.pod }}• Pod: `{{ .Labels.pod }}`{{ end }}
-              {{ if .Labels.container }}• Container: `{{ .Labels.container }}`{{ end }}
-              {{ if .Labels.node }}• Node: `{{ .Labels.node }}`{{ end }}
-              {{ if .Labels.instance }}• Instance: `{{ .Labels.instance }}`{{ end }}
-              {{ if .Labels.job }}• Job: `{{ .Labels.job }}`{{ end }}
-              {{ if eq .Status "firing" }}• Started: {{ .StartsAt.Format "2006-01-02 15:04:05" }}{{ else }}• Resolved: {{ .EndsAt.Format "2006-01-02 15:04:05" }}{{ end }}
+              📈 *System Metriken*
+              {{ if .Annotations.current_value }}⚠️ Current Value: `{{ .Annotations.current_value }}`{{ end }}
+              {{ if .Annotations.threshold }}⚠️ Threshold: `{{ .Annotations.threshold }}`{{ end }}
+
+              🔗 *Links*
+              <{{ .GeneratorURL }}|Prometheus Query> | <{{ .Annotations.dashboard_url }}|Dashboard>{{ if .Annotations.runbook_url }} | <{{ .Annotations.runbook_url }}|Runbook>{{ end }}
+
+              ⚡ *Action Required*
+              Team: @Sysadmins - Immediate investigation required!
               {{ end }}
             actions:
               - type: button
-                text: ':chart_with_upwards_trend: Query'
+                text: ':chart_with_upwards_trend: Prometheus'
                 url: '{{ (index .Alerts 0).GeneratorURL }}'
-              - type: button
-                text: ':green_book: Runbook'
-                url: '{{ (index .Alerts 0).Annotations.runbook_url }}'
               - type: button
                 text: ':bar_chart: Dashboard'
                 url: '{{ (index .Alerts 0).Annotations.dashboard_url }}'
               - type: button
-                text: ':no_bell: Silence'
-                url: |-
-                  {{ .ExternalURL }}/#/silences/new?filter=%7B{{ range .CommonLabels.SortedPairs }}{{ if ne .Name "alertname" }}{{ .Name }}%3D"{{ .Value }}"{{ end }}{{ end }}%7D
-            send_resolved: true
-      - name: 'all'
-        slack_configs:
-          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/all
-            channel: '#alerts-all'
-            username: 'AlertManager'
-            icon_emoji: ':prometheus:'
-            title: |-
-              {{ if eq .Status "firing" }}:warning:{{ else }}:white_check_mark:{{ end }} [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ len .Alerts.Firing }}{{ end }}] {{ .GroupLabels.alertname }}
-            title_link: '{{ template "__alertmanagerURL" . }}'
-            color: |-
-              {{ if eq .Status "resolved" }}good{{ else if eq .CommonLabels.severity "warning" }}warning{{ else }}#439FE0{{ end }}
-            text: |-
-              {{ range .Alerts }}
-              {{ if eq .Status "firing" }}{{ if eq .Labels.severity "warning" }}:warning:{{ else }}:information_source:{{ end }}{{ else }}:white_check_mark:{{ end }} *{{ .Labels.alertname }}* - `{{ .Labels.severity | toUpper }}`
-              {{ if .Annotations.summary }}*Summary:* {{ .Annotations.summary }}{{ end }}
-              {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
-
-              *Details:*
-              {{ if .Labels.namespace }}• Namespace: `{{ .Labels.namespace }}`{{ end }}
-              {{ if .Labels.pod }}• Pod: `{{ .Labels.pod }}`{{ end }}
-              {{ if .Labels.container }}• Container: `{{ .Labels.container }}`{{ end }}
-              {{ if .Labels.node }}• Node: `{{ .Labels.node }}`{{ end }}
-              {{ if .Labels.instance }}• Instance: `{{ .Labels.instance }}`{{ end }}
-              {{ if .Labels.job }}• Job: `{{ .Labels.job }}`{{ end }}
-              {{ if eq .Status "firing" }}• Started: {{ .StartsAt.Format "2006-01-02 15:04:05" }}{{ else }}• Resolved: {{ .EndsAt.Format "2006-01-02 15:04:05" }}{{ end }}
-              {{ end }}
-            actions:
-              - type: button
-                text: ':mag: Query'
-                url: '{{ (index .Alerts 0).GeneratorURL }}'
-              - type: button
                 text: ':green_book: Runbook'
                 url: '{{ (index .Alerts 0).Annotations.runbook_url }}'
               - type: button
                 text: ':no_bell: Silence'
-                url: |-
-                  {{ .ExternalURL }}/#/silences/new?filter=%7B{{ range .CommonLabels.SortedPairs }}{{ if ne .Name "alertname" }}{{ .Name }}%3D"{{ .Value }}"{{ end }}{{ end }}%7D
+                url: '{{ .ExternalURL }}/#/silences'
             send_resolved: true
-        # Watchdog receiver disabled - too noisy (every 5 minutes)
-        # - name: 'watchdog'
-        #   slack_configs:
-        #     - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/all
-        #       channel: '#alerts-all'
-        #       username: 'Watchdog'
-        #       icon_emoji: ':green_heart:'
-        #       title: ':heartbeat: Monitoring System Healthy'
-        #       text: |-
-        #         :white_check_mark: *All monitoring systems operational*
-        #       color: 'good'
-        #       send_resolved: false
+
+      # ====== P2: WICHTIG 🟠 ======
+      - name: 'p2-high'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
+            channel: '#alerts-critical'
+            username: 'Homelab Monitoring'
+            icon_emoji: ':warning:'
+            title: |-
+              {{ if eq .Status "firing" }}⚠️ [FIRING:{{ len .Alerts.Firing }}]{{ else }}✅ [RESOLVED]{{ end }} {{ .GroupLabels.alertname }}
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else }}warning{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              {{ if eq .Status "firing" }}⚠️{{ else }}✅{{ end }} *{{ .Labels.alertname }}* - {{ .Labels.severity | toUpper }}
+              *Summary:* {{ .Annotations.summary }}
+              {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
+
+              *Details:*
+              {{ if .Labels.namespace }}• Namespace: `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.job }}• Job: `{{ .Labels.job }}`{{ end }}
+              {{ if .Labels.instance }}• Instance: `{{ .Labels.instance }}`{{ end }}
+              {{ if eq .Status "firing" }}• Started: {{ .StartsAt.Format "2006-01-02 15:04:05" }}{{ else }}• Resolved: {{ .EndsAt.Format "2006-01-02 15:04:05" }}{{ end }}
+
+              *Status    Priority*
+              {{ .Status | toUpper }}    P2
+              {{ end }}
+            actions:
+              - type: button
+                text: ':chart: Query'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: ':book: Runbook'
+                url: '{{ (index .Alerts 0).Annotations.runbook_url }}'
+            send_resolved: true
+
+      # ====== P3: WARNING 🟡 ======
+      - name: 'p3-warning'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/all
+            channel: '#alerts-all'
+            username: 'Homelab Monitoring'
+            icon_emoji: ':prometheus:'
+            title: |-
+              {{ if eq .Status "firing" }}⚠️ [FIRING:{{ len .Alerts.Firing }}]{{ else }}✅ [RESOLVED]{{ end }} {{ .GroupLabels.alertname }}
+            color: 'warning'
+            text: |-
+              {{ range .Alerts }}
+              {{ if eq .Status "firing" }}⚠️{{ else }}✅{{ end }} *{{ .Labels.alertname }}* - WARNING
+              *Summary:* {{ .Annotations.summary }}
+              {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
+              *Details:* {{ if .Labels.namespace }}Namespace: `{{ .Labels.namespace }}`{{ end }}{{ if .Labels.job }}, Job: `{{ .Labels.job }}`{{ end }}
+
+              *Status    Priority*
+              {{ .Status | toUpper }}    P3
+              {{ end }}
+            send_resolved: true
+
+      # ====== P5: INFO 🔵 ======
+      - name: 'p5-info'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/all
+            channel: '#alerts-all'
+            username: 'Homelab Monitoring'
+            icon_emoji: ':information_source:'
+            title: |-
+              {{ if eq .Status "firing" }}ℹ️ [INFO]{{ else }}✅ [RESOLVED]{{ end }} {{ .GroupLabels.alertname }}
+            color: '#439FE0'
+            text: |-
+              {{ range .Alerts }}
+              ℹ️ *{{ .Labels.alertname }}*
+              {{ .Annotations.summary }}
+
+              *Status    Priority*
+              {{ .Status | toUpper }}    P5
+              {{ end }}
+            send_resolved: true
+
+      # ====== DEFAULT RECEIVER ======
       - name: 'default'
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/all
             channel: '#alerts-all'
             username: 'AlertManager'
-            icon_emoji: ':bell:'
-            title: ':bell: {{ .GroupLabels.alertname }}'
+            icon_emoji: ':prometheus:'
+            title: '[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
             text: |-
               {{ range .Alerts }}
-              *Alert:* {{ .Labels.alertname }}
-              {{ if .Annotations.summary }}*Summary:* {{ .Annotations.summary }}{{ end }}
-              {{ if .Labels.namespace }}• Namespace: `{{ .Labels.namespace }}`{{ end }}
-              {{ if .Labels.pod }}• Pod: `{{ .Labels.pod }}`{{ end }}
+              *{{ .Labels.alertname }}*
+              {{ .Annotations.summary }}
               {{ end }}
-            actions:
-              - type: button
-                text: ':mag: Query'
-                url: '{{ (index .Alerts 0).GeneratorURL }}'
+            send_resolved: true
+
+    # 🚫 INHIBIT RULES - Prevent Alert Spam
+    inhibit_rules:
+      # Critical alerts suppress warnings for same target
+      - source_matchers:
+          - severity="critical"
+        target_matchers:
+          - severity="warning"
+        equal: ['namespace', 'alertname', 'instance']
+
+      # P1 suppresses P2/P3 for same service
+      - source_matchers:
+          - priority="P1"
+        target_matchers:
+          - priority=~"P2|P3"
+        equal: ['namespace', 'job']
+
+      # Node down suppresses pod alerts on that node
+      - source_matchers:
+          - alertname="NodeDown"
+        target_matchers:
+          - alertname=~"Pod.*|Container.*"
+        equal: ['node']
