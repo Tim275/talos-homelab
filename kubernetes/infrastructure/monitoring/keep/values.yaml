@@ -1,0 +1,138 @@
+# yamllint disable rule:line-length
+# Keep AIOps Platform - Helm Values
+# https://github.com/keephq/helm-charts
+
+# 🤖 Keep - Open Source AIOps & Alert Management
+# AI-powered alert correlation, workflows, and automation
+# "From 1000 alerts to 10 meaningful alerts"
+
+# ========================================
+# 🌐 INGRESS CONFIGURATION
+# ========================================
+ingress:
+  enabled: false  # We use Gateway API HTTPRoute instead
+
+# ========================================
+# 🎨 FRONTEND CONFIGURATION
+# ========================================
+frontend:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: us-central1-docker.pkg.dev/keephq/keep/keep-ui
+    tag: latest
+    pullPolicy: Always
+
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  env:
+    - name: NEXT_PUBLIC_API_URL
+      value: "https://keep.timourhomelab.org/backend"
+    - name: AUTH_TYPE
+      value: "NO_AUTH"  # Start with no auth, can add OAuth later
+
+# ========================================
+# 🔧 BACKEND API CONFIGURATION
+# ========================================
+backend:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: us-central1-docker.pkg.dev/keephq/keep/keep-api
+    tag: latest
+    pullPolicy: Always
+
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "200m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+  env:
+    - name: AUTH_TYPE
+      value: "NO_AUTH"  # Start with no auth
+    - name: DATABASE_URL
+      value: "sqlite:///app/data/keep.db"  # SQLite for simplicity
+    - name: KEEP_API_URL
+      value: "https://keep.timourhomelab.org/backend"
+    - name: LOG_LEVEL
+      value: "INFO"
+
+# ========================================
+# 🔌 WEBSOCKET SERVER CONFIGURATION
+# ========================================
+websocket:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: us-central1-docker.pkg.dev/keephq/keep/keep-websocket-server
+    tag: latest
+    pullPolicy: Always
+
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+# ========================================
+# 💾 PERSISTENCE CONFIGURATION
+# ========================================
+persistence:
+  enabled: true
+  storageClass: "rook-ceph-block-enterprise"
+  accessMode: ReadWriteOnce
+  size: 10Gi
+  # For backend database and workflow storage
+
+# ========================================
+# 🔐 SERVICE ACCOUNTS
+# ========================================
+serviceAccount:
+  create: true
+  name: "keep"
+  annotations: {}
+
+# ========================================
+# 📊 MONITORING
+# ========================================
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  interval: 30s
+  labels:
+    release: prometheus-operator
+
+# ========================================
+# 🌍 SERVICE CONFIGURATION
+# ========================================
+service:
+  type: ClusterIP
+
+  frontend:
+    port: 3000
+    targetPort: 3000
+    name: http-frontend
+
+  backend:
+    port: 8080
+    targetPort: 8080
+    name: http-backend
+
+  websocket:
+    port: 6001
+    targetPort: 6001
+    name: websocket
