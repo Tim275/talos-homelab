@@ -1,359 +1,359 @@
 # yamllint disable rule:line-length
-apiVersion: v1
-kind: ConfigMap
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
 metadata:
   name: tier2-storage-alerts
   namespace: monitoring
   labels:
     prometheus: kube-prometheus-stack
-data:
-  tier2-storage.yaml: |
-    groups:
-      # ========================================
-      # 💾 TIER-2: STORAGE & DATA
-      # ========================================
-      # Storage infrastructure - P1/P2/P3 priority
-      # SLA: P1 = 5min, P2 = 15min, P3 = 1hr
+    role: alert-rules
+spec:
+  groups:
+    # ========================================
+    # 💾 TIER-2: STORAGE & DATA
+    # ========================================
+    # Storage infrastructure - P1/P2/P3 priority
+    # SLA: P1 = 5min, P2 = 15min, P3 = 1hr
 
-      - name: tier2.ceph.critical
-        interval: 30s
-        rules:
-          # ====== CEPH CLUSTER HEALTH (P1 - DRINGEND) ======
-          - alert: CephClusterDown
-            expr: ceph_health_status == 3
-            for: 5m
-            labels:
-              severity: critical
-              priority: P1
-              tier: "2"
-              component: ceph
-            annotations:
-              summary: "CEPH cluster is in HEALTH_ERR state"
-              description: |
-                CEPH cluster health is CRITICAL (HEALTH_ERR). Data availability at risk! Immediate investigation required.
-              current_value: "HEALTH_ERR"
-              threshold: "HEALTH_OK required"
-              dashboard_url: "https://grafana.homelab.local/d/rook-ceph-cluster/rook-ceph-cluster"
-              runbook_url: "https://docs.ceph.com/en/latest/rados/operations/monitoring/"
+    - name: tier2.ceph.critical
+      interval: 30s
+      rules:
+        # ====== CEPH CLUSTER HEALTH (P1 - DRINGEND) ======
+        - alert: CephClusterDown
+          expr: ceph_health_status == 3
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            tier: "2"
+            component: ceph
+          annotations:
+            summary: "CEPH cluster is in HEALTH_ERR state"
+            description: |
+              CEPH cluster health is CRITICAL (HEALTH_ERR). Data availability at risk! Immediate investigation required.
+            current_value: "HEALTH_ERR"
+            threshold: "HEALTH_OK required"
+            dashboard_url: "https://grafana.homelab.local/d/rook-ceph-cluster/rook-ceph-cluster"
+            runbook_url: "https://docs.ceph.com/en/latest/rados/operations/monitoring/"
 
-          - alert: CephClusterWarning
-            expr: ceph_health_status == 2
-            for: 15m
-            labels:
-              severity: warning
-              priority: P3
-              tier: "2"
-              component: ceph
-            annotations:
-              summary: "CEPH cluster is in HEALTH_WARN state"
-              description: "CEPH cluster health is WARNING (HEALTH_WARN) for 15 minutes. Check cluster status."
-              current_value: "HEALTH_WARN"
-              threshold: "HEALTH_OK required"
-              dashboard_url: "https://grafana.homelab.local/d/rook-ceph-cluster/rook-ceph-cluster"
-              runbook_url: "https://docs.ceph.com/en/latest/rados/operations/health-checks/"
+        - alert: CephClusterWarning
+          expr: ceph_health_status == 2
+          for: 15m
+          labels:
+            severity: warning
+            priority: P3
+            tier: "2"
+            component: ceph
+          annotations:
+            summary: "CEPH cluster is in HEALTH_WARN state"
+            description: "CEPH cluster health is WARNING (HEALTH_WARN) for 15 minutes. Check cluster status."
+            current_value: "HEALTH_WARN"
+            threshold: "HEALTH_OK required"
+            dashboard_url: "https://grafana.homelab.local/d/rook-ceph-cluster/rook-ceph-cluster"
+            runbook_url: "https://docs.ceph.com/en/latest/rados/operations/health-checks/"
 
-          - alert: CephStorageSpaceCritical
-            expr: (ceph_cluster_total_used_bytes / ceph_cluster_total_bytes) * 100 > 85
-            for: 10m
-            labels:
-              severity: critical
-              priority: P2
-              tier: "2"
-              component: ceph
-            annotations:
-              summary: "CEPH cluster storage > 85% full"
-              description: |
-                CEPH cluster is {{ $value | humanize }}% full. Critical storage capacity - add OSDs immediately!
-              current_value: "{{ $value | humanize }}%"
-              threshold: "85%"
-              dashboard_url: "https://grafana.homelab.local/d/rook-ceph-cluster/rook-ceph-cluster"
-              runbook_url: "https://docs.ceph.com/en/latest/rados/operations/add-or-rm-osds/"
+        - alert: CephStorageSpaceCritical
+          expr: (ceph_cluster_total_used_bytes / ceph_cluster_total_bytes) * 100 > 85
+          for: 10m
+          labels:
+            severity: critical
+            priority: P2
+            tier: "2"
+            component: ceph
+          annotations:
+            summary: "CEPH cluster storage > 85% full"
+            description: |
+              CEPH cluster is {{ $value | humanize }}% full. Critical storage capacity - add OSDs immediately!
+            current_value: "{{ $value | humanize }}%"
+            threshold: "85%"
+            dashboard_url: "https://grafana.homelab.local/d/rook-ceph-cluster/rook-ceph-cluster"
+            runbook_url: "https://docs.ceph.com/en/latest/rados/operations/add-or-rm-osds/"
 
-          - alert: CephStorageSpaceWarning
-            expr: (ceph_cluster_total_used_bytes / ceph_cluster_total_bytes) * 100 > 75
-            for: 15m
-            labels:
-              severity: warning
-              priority: P3
-              tier: "2"
-              component: ceph
-            annotations:
-              summary: "CEPH cluster storage > 75% full"
-              description: "CEPH cluster is {{ $value | humanize }}% full. Plan capacity expansion."
-              current_value: "{{ $value | humanize }}%"
-              threshold: "75%"
-              dashboard_url: "https://grafana.homelab.local/d/rook-ceph-cluster/rook-ceph-cluster"
-              runbook_url: "https://docs.ceph.com/en/latest/rados/operations/add-or-rm-osds/"
+        - alert: CephStorageSpaceWarning
+          expr: (ceph_cluster_total_used_bytes / ceph_cluster_total_bytes) * 100 > 75
+          for: 15m
+          labels:
+            severity: warning
+            priority: P3
+            tier: "2"
+            component: ceph
+          annotations:
+            summary: "CEPH cluster storage > 75% full"
+            description: "CEPH cluster is {{ $value | humanize }}% full. Plan capacity expansion."
+            current_value: "{{ $value | humanize }}%"
+            threshold: "75%"
+            dashboard_url: "https://grafana.homelab.local/d/rook-ceph-cluster/rook-ceph-cluster"
+            runbook_url: "https://docs.ceph.com/en/latest/rados/operations/add-or-rm-osds/"
 
-          # ====== CEPH OSD (P1/P2) ======
-          - alert: CephOSDDown
-            expr: ceph_osd_up == 0
-            for: 5m
-            labels:
-              severity: critical
-              priority: P2
-              tier: "2"
-              component: ceph-osd
-            annotations:
-              summary: "CEPH OSD {{ $labels.ceph_daemon }} is DOWN"
-              description: "OSD {{ $labels.ceph_daemon }} has been down for 5 minutes. Data redundancy degraded!"
-              current_value: "OSD down"
-              threshold: "All OSDs up"
-              dashboard_url: "https://grafana.homelab.local/d/rook-ceph-osd/rook-ceph-osd"
-              runbook_url: "https://docs.ceph.com/en/latest/rados/operations/monitoring-osd-pg/"
+        # ====== CEPH OSD (P1/P2) ======
+        - alert: CephOSDDown
+          expr: ceph_osd_up == 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: P2
+            tier: "2"
+            component: ceph-osd
+          annotations:
+            summary: "CEPH OSD {{ $labels.ceph_daemon }} is DOWN"
+            description: "OSD {{ $labels.ceph_daemon }} has been down for 5 minutes. Data redundancy degraded!"
+            current_value: "OSD down"
+            threshold: "All OSDs up"
+            dashboard_url: "https://grafana.homelab.local/d/rook-ceph-osd/rook-ceph-osd"
+            runbook_url: "https://docs.ceph.com/en/latest/rados/operations/monitoring-osd-pg/"
 
-          - alert: CephOSDNearFull
-            expr: (ceph_osd_stat_bytes_used / ceph_osd_stat_bytes) * 100 > 85
-            for: 10m
-            labels:
-              severity: critical
-              priority: P2
-              tier: "2"
-              component: ceph-osd
-            annotations:
-              summary: "CEPH OSD {{ $labels.ceph_daemon }} > 85% full"
-              description: |
-                OSD {{ $labels.ceph_daemon }} is {{ $value | humanize }}% full. OSD will be marked full soon - rebalance required!
-              current_value: "{{ $value | humanize }}%"
-              threshold: "85%"
-              dashboard_url: "https://grafana.homelab.local/d/rook-ceph-osd/rook-ceph-osd"
-              runbook_url: "https://docs.ceph.com/en/latest/rados/operations/monitoring-osd-pg/"
+        - alert: CephOSDNearFull
+          expr: (ceph_osd_stat_bytes_used / ceph_osd_stat_bytes) * 100 > 85
+          for: 10m
+          labels:
+            severity: critical
+            priority: P2
+            tier: "2"
+            component: ceph-osd
+          annotations:
+            summary: "CEPH OSD {{ $labels.ceph_daemon }} > 85% full"
+            description: |
+              OSD {{ $labels.ceph_daemon }} is {{ $value | humanize }}% full. OSD will be marked full soon - rebalance required!
+            current_value: "{{ $value | humanize }}%"
+            threshold: "85%"
+            dashboard_url: "https://grafana.homelab.local/d/rook-ceph-osd/rook-ceph-osd"
+            runbook_url: "https://docs.ceph.com/en/latest/rados/operations/monitoring-osd-pg/"
 
-          - alert: CephOSDFlapping
-            expr: rate(ceph_osd_up[5m]) > 0
-            for: 10m
-            labels:
-              severity: critical
-              priority: P2
-              tier: "2"
-              component: ceph-osd
-            annotations:
-              summary: "CEPH OSD {{ $labels.ceph_daemon }} is flapping"
-              description: |
-                OSD {{ $labels.ceph_daemon }} is flapping (up/down) for 10 minutes. Network or hardware issue!
-              current_value: "Flapping detected"
-              threshold: "Stable OSD state"
-              dashboard_url: "https://grafana.homelab.local/d/rook-ceph-osd/rook-ceph-osd"
-              runbook_url: "https://docs.ceph.com/en/latest/rados/troubleshooting/troubleshooting-osd/"
+        - alert: CephOSDFlapping
+          expr: rate(ceph_osd_up[5m]) > 0
+          for: 10m
+          labels:
+            severity: critical
+            priority: P2
+            tier: "2"
+            component: ceph-osd
+          annotations:
+            summary: "CEPH OSD {{ $labels.ceph_daemon }} is flapping"
+            description: |
+              OSD {{ $labels.ceph_daemon }} is flapping (up/down) for 10 minutes. Network or hardware issue!
+            current_value: "Flapping detected"
+            threshold: "Stable OSD state"
+            dashboard_url: "https://grafana.homelab.local/d/rook-ceph-osd/rook-ceph-osd"
+            runbook_url: "https://docs.ceph.com/en/latest/rados/troubleshooting/troubleshooting-osd/"
 
-          # ====== CEPH POOLS (P2/P3) ======
-          - alert: CephPoolNearFull
-            expr: (ceph_pool_stored / ceph_pool_max_avail) * 100 > 85
-            for: 10m
-            labels:
-              severity: critical
-              priority: P2
-              tier: "2"
-              component: ceph-pool
-            annotations:
-              summary: "CEPH pool {{ $labels.pool }} > 85% full"
-              description: "Pool {{ $labels.pool }} is {{ $value | humanize }}% full. Risk of write failures!"
-              current_value: "{{ $value | humanize }}%"
-              threshold: "85%"
-              dashboard_url: "https://grafana.homelab.local/d/rook-ceph-pools/rook-ceph-pools"
-              runbook_url: "https://docs.ceph.com/en/latest/rados/operations/pools/"
+        # ====== CEPH POOLS (P2/P3) ======
+        - alert: CephPoolNearFull
+          expr: (ceph_pool_stored / ceph_pool_max_avail) * 100 > 85
+          for: 10m
+          labels:
+            severity: critical
+            priority: P2
+            tier: "2"
+            component: ceph-pool
+          annotations:
+            summary: "CEPH pool {{ $labels.pool }} > 85% full"
+            description: "Pool {{ $labels.pool }} is {{ $value | humanize }}% full. Risk of write failures!"
+            current_value: "{{ $value | humanize }}%"
+            threshold: "85%"
+            dashboard_url: "https://grafana.homelab.local/d/rook-ceph-pools/rook-ceph-pools"
+            runbook_url: "https://docs.ceph.com/en/latest/rados/operations/pools/"
 
-          - alert: CephPGsDown
-            expr: ceph_pg_down > 0
-            for: 5m
-            labels:
-              severity: critical
-              priority: P2
-              tier: "2"
-              component: ceph
-            annotations:
-              summary: "{{ $value }} CEPH placement groups are down"
-              description: "CEPH has {{ $value }} placement groups in down state. Data unavailable!"
-              current_value: "{{ $value }} PGs down"
-              threshold: "0 PGs down"
-              dashboard_url: "https://grafana.homelab.local/d/rook-ceph-cluster/rook-ceph-cluster"
-              runbook_url: "https://docs.ceph.com/en/latest/rados/operations/pg-states/"
+        - alert: CephPGsDown
+          expr: ceph_pg_down > 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: P2
+            tier: "2"
+            component: ceph
+          annotations:
+            summary: "{{ $value }} CEPH placement groups are down"
+            description: "CEPH has {{ $value }} placement groups in down state. Data unavailable!"
+            current_value: "{{ $value }} PGs down"
+            threshold: "0 PGs down"
+            dashboard_url: "https://grafana.homelab.local/d/rook-ceph-cluster/rook-ceph-cluster"
+            runbook_url: "https://docs.ceph.com/en/latest/rados/operations/pg-states/"
 
-          - alert: CephPGsIncomplete
-            expr: ceph_pg_incomplete > 0
-            for: 10m
-            labels:
-              severity: critical
-              priority: P2
-              tier: "2"
-              component: ceph
-            annotations:
-              summary: "{{ $value }} CEPH placement groups are incomplete"
-              description: "CEPH has {{ $value }} PGs in incomplete state for 10 minutes. Data loss risk!"
-              current_value: "{{ $value }} PGs incomplete"
-              threshold: "0 PGs incomplete"
-              dashboard_url: "https://grafana.homelab.local/d/rook-ceph-cluster/rook-ceph-cluster"
-              runbook_url: "https://docs.ceph.com/en/latest/rados/operations/pg-states/"
+        - alert: CephPGsIncomplete
+          expr: ceph_pg_incomplete > 0
+          for: 10m
+          labels:
+            severity: critical
+            priority: P2
+            tier: "2"
+            component: ceph
+          annotations:
+            summary: "{{ $value }} CEPH placement groups are incomplete"
+            description: "CEPH has {{ $value }} PGs in incomplete state for 10 minutes. Data loss risk!"
+            current_value: "{{ $value }} PGs incomplete"
+            threshold: "0 PGs incomplete"
+            dashboard_url: "https://grafana.homelab.local/d/rook-ceph-cluster/rook-ceph-cluster"
+            runbook_url: "https://docs.ceph.com/en/latest/rados/operations/pg-states/"
 
-          - alert: CephPGsDegraded
-            expr: (ceph_pg_degraded / ceph_pg_total) * 100 > 20
-            for: 15m
-            labels:
-              severity: warning
-              priority: P3
-              tier: "2"
-              component: ceph
-            annotations:
-              summary: "> 20% of CEPH PGs are degraded"
-              description: |
-                {{ $value | humanize }}% of placement groups are degraded for 15 minutes. Replication issues detected.
-              current_value: "{{ $value | humanize }}%"
-              threshold: "20%"
-              dashboard_url: "https://grafana.homelab.local/d/rook-ceph-cluster/rook-ceph-cluster"
-              runbook_url: "https://docs.ceph.com/en/latest/rados/operations/pg-states/"
+        - alert: CephPGsDegraded
+          expr: (ceph_pg_degraded / ceph_pg_total) * 100 > 20
+          for: 15m
+          labels:
+            severity: warning
+            priority: P3
+            tier: "2"
+            component: ceph
+          annotations:
+            summary: "> 20% of CEPH PGs are degraded"
+            description: |
+              {{ $value | humanize }}% of placement groups are degraded for 15 minutes. Replication issues detected.
+            current_value: "{{ $value | humanize }}%"
+            threshold: "20%"
+            dashboard_url: "https://grafana.homelab.local/d/rook-ceph-cluster/rook-ceph-cluster"
+            runbook_url: "https://docs.ceph.com/en/latest/rados/operations/pg-states/"
 
-      - name: tier2.postgresql.critical
-        interval: 30s
-        rules:
-          # ====== CLOUDNATIVEPG (P1/P2) ======
-          - alert: PostgreSQLClusterDown
-            expr: cnpg_pg_postmaster_up == 0
-            for: 3m
-            labels:
-              severity: critical
-              priority: P1
-              tier: "2"
-              component: postgresql
-            annotations:
-              summary: "PostgreSQL cluster {{ $labels.namespace }}/{{ $labels.cnpg_cluster }} is DOWN"
-              description: |
-                PostgreSQL instance {{ $labels.pod }} in cluster {{ $labels.cnpg_cluster }} is unreachable. Database unavailable!
-              current_value: "PostgreSQL down"
-              threshold: "100% availability required"
-              dashboard_url: "https://grafana.homelab.local/d/cloudnativepg-cluster/cloudnativepg-cluster"
-              runbook_url: "https://cloudnative-pg.io/documentation/current/troubleshooting/"
+    - name: tier2.postgresql.critical
+      interval: 30s
+      rules:
+        # ====== CLOUDNATIVEPG (P1/P2) ======
+        - alert: PostgreSQLClusterDown
+          expr: cnpg_pg_postmaster_up == 0
+          for: 3m
+          labels:
+            severity: critical
+            priority: P1
+            tier: "2"
+            component: postgresql
+          annotations:
+            summary: "PostgreSQL cluster {{ $labels.namespace }}/{{ $labels.cnpg_cluster }} is DOWN"
+            description: |
+              PostgreSQL instance {{ $labels.pod }} in cluster {{ $labels.cnpg_cluster }} is unreachable. Database unavailable!
+            current_value: "PostgreSQL down"
+            threshold: "100% availability required"
+            dashboard_url: "https://grafana.homelab.local/d/cloudnativepg-cluster/cloudnativepg-cluster"
+            runbook_url: "https://cloudnative-pg.io/documentation/current/troubleshooting/"
 
-          - alert: PostgreSQLReplicationLag
-            expr: cnpg_pg_replication_lag > 300
-            for: 10m
-            labels:
-              severity: critical
-              priority: P2
-              tier: "2"
-              component: postgresql
-            annotations:
-              summary: "PostgreSQL replication lag > 5 minutes in {{ $labels.namespace }}/{{ $labels.cnpg_cluster }}"
-              description: |
-                PostgreSQL replica {{ $labels.pod }} in cluster {{ $labels.cnpg_cluster }} has {{ $value }}s replication lag. Data consistency risk!
-              current_value: "{{ $value }}s"
-              threshold: "300s (5 minutes)"
-              dashboard_url: "https://grafana.homelab.local/d/cloudnativepg-cluster/cloudnativepg-cluster"
-              runbook_url: "https://cloudnative-pg.io/documentation/current/replication/"
+        - alert: PostgreSQLReplicationLag
+          expr: cnpg_pg_replication_lag > 300
+          for: 10m
+          labels:
+            severity: critical
+            priority: P2
+            tier: "2"
+            component: postgresql
+          annotations:
+            summary: "PostgreSQL replication lag > 5 minutes in {{ $labels.namespace }}/{{ $labels.cnpg_cluster }}"
+            description: |
+              PostgreSQL replica {{ $labels.pod }} in cluster {{ $labels.cnpg_cluster }} has {{ $value }}s replication lag. Data consistency risk!
+            current_value: "{{ $value }}s"
+            threshold: "300s (5 minutes)"
+            dashboard_url: "https://grafana.homelab.local/d/cloudnativepg-cluster/cloudnativepg-cluster"
+            runbook_url: "https://cloudnative-pg.io/documentation/current/replication/"
 
-          - alert: PostgreSQLTooManyConnections
-            expr: (cnpg_backends_total / cnpg_pg_settings_max_connections) * 100 > 80
-            for: 10m
-            labels:
-              severity: critical
-              priority: P2
-              tier: "2"
-              component: postgresql
-            annotations:
-              summary: "PostgreSQL {{ $labels.namespace }}/{{ $labels.cnpg_cluster }} connections > 80%"
-              description: |
-                PostgreSQL instance {{ $labels.pod }} is using {{ $value | humanize }}% of max_connections. Connection exhaustion risk!
-              current_value: "{{ $value | humanize }}%"
-              threshold: "80%"
-              dashboard_url: "https://grafana.homelab.local/d/cloudnativepg-cluster/cloudnativepg-cluster"
-              runbook_url: "https://cloudnative-pg.io/documentation/current/monitoring/"
+        - alert: PostgreSQLTooManyConnections
+          expr: (cnpg_backends_total / cnpg_pg_settings_max_connections) * 100 > 80
+          for: 10m
+          labels:
+            severity: critical
+            priority: P2
+            tier: "2"
+            component: postgresql
+          annotations:
+            summary: "PostgreSQL {{ $labels.namespace }}/{{ $labels.cnpg_cluster }} connections > 80%"
+            description: |
+              PostgreSQL instance {{ $labels.pod }} is using {{ $value | humanize }}% of max_connections. Connection exhaustion risk!
+            current_value: "{{ $value | humanize }}%"
+            threshold: "80%"
+            dashboard_url: "https://grafana.homelab.local/d/cloudnativepg-cluster/cloudnativepg-cluster"
+            runbook_url: "https://cloudnative-pg.io/documentation/current/monitoring/"
 
-          - alert: PostgreSQLDatabaseSizeExceeded
-            expr: cnpg_pg_database_size_bytes > 50e9
-            for: 15m
-            labels:
-              severity: warning
-              priority: P3
-              tier: "2"
-              component: postgresql
-            annotations:
-              summary: "PostgreSQL database {{ $labels.datname }} > 50GB in {{ $labels.namespace }}/{{ $labels.cnpg_cluster }}"
-              description: |
-                Database {{ $labels.datname }} is {{ $value | humanize1024 }}. Consider archiving or partitioning.
-              current_value: "{{ $value | humanize1024 }}"
-              threshold: "50GB"
-              dashboard_url: "https://grafana.homelab.local/d/cloudnativepg-cluster/cloudnativepg-cluster"
-              runbook_url: "https://cloudnative-pg.io/documentation/current/backup_recovery/"
+        - alert: PostgreSQLDatabaseSizeExceeded
+          expr: cnpg_pg_database_size_bytes > 50e9
+          for: 15m
+          labels:
+            severity: warning
+            priority: P3
+            tier: "2"
+            component: postgresql
+          annotations:
+            summary: "PostgreSQL database {{ $labels.datname }} > 50GB in {{ $labels.namespace }}/{{ $labels.cnpg_cluster }}"
+            description: |
+              Database {{ $labels.datname }} is {{ $value | humanize1024 }}. Consider archiving or partitioning.
+            current_value: "{{ $value | humanize1024 }}"
+            threshold: "50GB"
+            dashboard_url: "https://grafana.homelab.local/d/cloudnativepg-cluster/cloudnativepg-cluster"
+            runbook_url: "https://cloudnative-pg.io/documentation/current/backup_recovery/"
 
-          - alert: PostgreSQLDeadlocks
-            expr: rate(cnpg_pg_stat_database_deadlocks[5m]) > 0.1
-            for: 10m
-            labels:
-              severity: warning
-              priority: P3
-              tier: "2"
-              component: postgresql
-            annotations:
-              summary: "PostgreSQL deadlocks detected in {{ $labels.namespace }}/{{ $labels.cnpg_cluster }}"
-              description: |
-                Database {{ $labels.datname }} is experiencing {{ $value }} deadlocks/sec. Application concurrency issues!
-              current_value: "{{ $value }} deadlocks/sec"
-              threshold: "0.1 deadlocks/sec"
-              dashboard_url: "https://grafana.homelab.local/d/cloudnativepg-cluster/cloudnativepg-cluster"
-              runbook_url: "https://www.postgresql.org/docs/current/explicit-locking.html"
+        - alert: PostgreSQLDeadlocks
+          expr: rate(cnpg_pg_stat_database_deadlocks[5m]) > 0.1
+          for: 10m
+          labels:
+            severity: warning
+            priority: P3
+            tier: "2"
+            component: postgresql
+          annotations:
+            summary: "PostgreSQL deadlocks detected in {{ $labels.namespace }}/{{ $labels.cnpg_cluster }}"
+            description: |
+              Database {{ $labels.datname }} is experiencing {{ $value }} deadlocks/sec. Application concurrency issues!
+            current_value: "{{ $value }} deadlocks/sec"
+            threshold: "0.1 deadlocks/sec"
+            dashboard_url: "https://grafana.homelab.local/d/cloudnativepg-cluster/cloudnativepg-cluster"
+            runbook_url: "https://www.postgresql.org/docs/current/explicit-locking.html"
 
-          - alert: PostgreSQLHighTransactionIdUtilization
-            expr: (cnpg_pg_txid_current / 2147483648) * 100 > 80
-            for: 10m
-            labels:
-              severity: critical
-              priority: P2
-              tier: "2"
-              component: postgresql
-            annotations:
-              summary: "PostgreSQL transaction ID utilization > 80% in {{ $labels.namespace }}/{{ $labels.cnpg_cluster }}"
-              description: |
-                PostgreSQL instance {{ $labels.pod }} has {{ $value | humanize }}% transaction ID utilization. VACUUM required to prevent wraparound!
-              current_value: "{{ $value | humanize }}%"
-              threshold: "80%"
-              dashboard_url: "https://grafana.homelab.local/d/cloudnativepg-cluster/cloudnativepg-cluster"
-              runbook_url: "https://www.postgresql.org/docs/current/routine-vacuuming.html#VACUUM-FOR-WRAPAROUND"
+        - alert: PostgreSQLHighTransactionIdUtilization
+          expr: (cnpg_pg_txid_current / 2147483648) * 100 > 80
+          for: 10m
+          labels:
+            severity: critical
+            priority: P2
+            tier: "2"
+            component: postgresql
+          annotations:
+            summary: "PostgreSQL transaction ID utilization > 80% in {{ $labels.namespace }}/{{ $labels.cnpg_cluster }}"
+            description: |
+              PostgreSQL instance {{ $labels.pod }} has {{ $value | humanize }}% transaction ID utilization. VACUUM required to prevent wraparound!
+            current_value: "{{ $value | humanize }}%"
+            threshold: "80%"
+            dashboard_url: "https://grafana.homelab.local/d/cloudnativepg-cluster/cloudnativepg-cluster"
+            runbook_url: "https://www.postgresql.org/docs/current/routine-vacuuming.html#VACUUM-FOR-WRAPAROUND"
 
-          - alert: PostgreSQLSlowQueries
-            expr: rate(cnpg_pg_stat_statements_mean_exec_time_seconds[5m]) > 1
-            for: 10m
-            labels:
-              severity: warning
-              priority: P3
-              tier: "2"
-              component: postgresql
-            annotations:
-              summary: "PostgreSQL slow queries detected in {{ $labels.namespace }}/{{ $labels.cnpg_cluster }}"
-              description: |
-                PostgreSQL database {{ $labels.datname }} has queries averaging {{ $value }}s execution time. Performance degradation.
-              current_value: "{{ $value }}s"
-              threshold: "1s average execution"
-              dashboard_url: "https://grafana.homelab.local/d/cloudnativepg-cluster/cloudnativepg-cluster"
-              runbook_url: "https://www.postgresql.org/docs/current/performance-tips.html"
+        - alert: PostgreSQLSlowQueries
+          expr: rate(cnpg_pg_stat_statements_mean_exec_time_seconds[5m]) > 1
+          for: 10m
+          labels:
+            severity: warning
+            priority: P3
+            tier: "2"
+            component: postgresql
+          annotations:
+            summary: "PostgreSQL slow queries detected in {{ $labels.namespace }}/{{ $labels.cnpg_cluster }}"
+            description: |
+              PostgreSQL database {{ $labels.datname }} has queries averaging {{ $value }}s execution time. Performance degradation.
+            current_value: "{{ $value }}s"
+            threshold: "1s average execution"
+            dashboard_url: "https://grafana.homelab.local/d/cloudnativepg-cluster/cloudnativepg-cluster"
+            runbook_url: "https://www.postgresql.org/docs/current/performance-tips.html"
 
-          - alert: PostgreSQLBackupFailed
-            expr: cnpg_pg_backup_last_failed > 0
-            for: 5m
-            labels:
-              severity: critical
-              priority: P2
-              tier: "2"
-              component: postgresql
-            annotations:
-              summary: "PostgreSQL backup failed for {{ $labels.namespace }}/{{ $labels.cnpg_cluster }}"
-              description: "Last backup for cluster {{ $labels.cnpg_cluster }} failed. Data protection compromised!"
-              current_value: "Backup failed"
-              threshold: "0 failed backups"
-              dashboard_url: "https://grafana.homelab.local/d/cloudnativepg-cluster/cloudnativepg-cluster"
-              runbook_url: "https://cloudnative-pg.io/documentation/current/backup_recovery/"
+        - alert: PostgreSQLBackupFailed
+          expr: cnpg_pg_backup_last_failed > 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: P2
+            tier: "2"
+            component: postgresql
+          annotations:
+            summary: "PostgreSQL backup failed for {{ $labels.namespace }}/{{ $labels.cnpg_cluster }}"
+            description: "Last backup for cluster {{ $labels.cnpg_cluster }} failed. Data protection compromised!"
+            current_value: "Backup failed"
+            threshold: "0 failed backups"
+            dashboard_url: "https://grafana.homelab.local/d/cloudnativepg-cluster/cloudnativepg-cluster"
+            runbook_url: "https://cloudnative-pg.io/documentation/current/backup_recovery/"
 
-          - alert: PostgreSQLBackupTooOld
-            expr: (time() - cnpg_pg_backup_last_successful_timestamp) > 86400
-            for: 10m
-            labels:
-              severity: critical
-              priority: P2
-              tier: "2"
-              component: postgresql
-            annotations:
-              summary: "PostgreSQL last backup > 24h old for {{ $labels.namespace }}/{{ $labels.cnpg_cluster }}"
-              description: |
-                Last successful backup for cluster {{ $labels.cnpg_cluster }} was {{ $value | humanizeDuration }} ago. RPO violation!
-              current_value: "{{ $value | humanizeDuration }}"
-              threshold: "24 hours"
-              dashboard_url: "https://grafana.homelab.local/d/cloudnativepg-cluster/cloudnativepg-cluster"
-              runbook_url: "https://cloudnative-pg.io/documentation/current/backup_recovery/"
+        - alert: PostgreSQLBackupTooOld
+          expr: (time() - cnpg_pg_backup_last_successful_timestamp) > 86400
+          for: 10m
+          labels:
+            severity: critical
+            priority: P2
+            tier: "2"
+            component: postgresql
+          annotations:
+            summary: "PostgreSQL last backup > 24h old for {{ $labels.namespace }}/{{ $labels.cnpg_cluster }}"
+            description: |
+              Last successful backup for cluster {{ $labels.cnpg_cluster }} was {{ $value | humanizeDuration }} ago. RPO violation!
+            current_value: "{{ $value | humanizeDuration }}"
+            threshold: "24 hours"
+            dashboard_url: "https://grafana.homelab.local/d/cloudnativepg-cluster/cloudnativepg-cluster"
+            runbook_url: "https://cloudnative-pg.io/documentation/current/backup_recovery/"
