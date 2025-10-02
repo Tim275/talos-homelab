@@ -1,0 +1,333 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: n8n-enterprise-monitoring
+  namespace: grafana
+  labels:
+    app: n8n
+    dashboard-type: enterprise
+spec:
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  folder: "📱 Applications"
+  datasources:
+    - inputName: "DS_PROMETHEUS"
+      datasourceName: "Prometheus"
+  json: |
+    {
+      "title": "📱 N8N Enterprise Monitoring (Prod + Dev)",
+      "uid": "n8n-enterprise",
+      "tags": ["n8n", "workflow", "nodejs", "enterprise"],
+      "timezone": "browser",
+      "editable": true,
+      "graphTooltip": 1,
+      "time": {"from": "now-6h", "to": "now"},
+      "refresh": "30s",
+      "schemaVersion": 38,
+      "version": 1,
+      "templating": {
+        "list": [
+          {
+            "name": "namespace",
+            "type": "custom",
+            "label": "Environment",
+            "current": {"text": "Production", "value": "n8n-prod"},
+            "options": [
+              {"text": "Production", "value": "n8n-prod"},
+              {"text": "Development", "value": "n8n-dev"}
+            ],
+            "query": "n8n-prod,n8n-dev",
+            "multi": false
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "row",
+          "title": "📊 Overview",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+          "collapsed": false
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Service Status",
+          "gridPos": {"h": 4, "w": 4, "x": 0, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "targets": [{
+            "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+            "expr": "up{job=\"n8n\",namespace=\"$namespace\"}",
+            "refId": "A",
+            "instant": true
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": null, "color": "red"},
+                  {"value": 1, "color": "green"}
+                ]
+              },
+              "mappings": [{
+                "type": "value",
+                "options": {
+                  "0": {"text": "❌ DOWN", "color": "red"},
+                  "1": {"text": "✅ UP", "color": "green"}
+                }
+              }]
+            }
+          }
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Active Workflows",
+          "gridPos": {"h": 4, "w": 4, "x": 4, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "targets": [{
+            "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+            "expr": "n8n_active_workflow_count{namespace=\"$namespace\"}",
+            "refId": "A",
+            "instant": true
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": null, "color": "blue"},
+                  {"value": 10, "color": "green"},
+                  {"value": 50, "color": "yellow"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Instance Role",
+          "gridPos": {"h": 4, "w": 4, "x": 8, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "targets": [{
+            "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+            "expr": "n8n_instance_role_leader{namespace=\"$namespace\"}",
+            "refId": "A",
+            "instant": true
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [{
+                "type": "value",
+                "options": {
+                  "0": {"text": "Follower", "color": "blue"},
+                  "1": {"text": "👑 Leader", "color": "green"}
+                }
+              }]
+            }
+          }
+        },
+        {
+          "id": 5,
+          "type": "stat",
+          "title": "Heap Memory",
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "targets": [{
+            "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+            "expr": "n8n_nodejs_heap_size_total_bytes{namespace=\"$namespace\"}",
+            "refId": "A",
+            "instant": true
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": null, "color": "green"},
+                  {"value": 500000000, "color": "yellow"},
+                  {"value": 1000000000, "color": "red"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 6,
+          "type": "stat",
+          "title": "Event Loop Lag P99",
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 1},
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "targets": [{
+            "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+            "expr": "n8n_nodejs_eventloop_lag_p99_seconds{namespace=\"$namespace\"} * 1000",
+            "refId": "A",
+            "instant": true
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms",
+              "decimals": 2,
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": null, "color": "green"},
+                  {"value": 100, "color": "yellow"},
+                  {"value": 500, "color": "red"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 7,
+          "type": "row",
+          "title": "🔄 Event Loop Performance",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5},
+          "collapsed": false
+        },
+        {
+          "id": 8,
+          "type": "timeseries",
+          "title": "Event Loop Lag (p50, p90, p99)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "n8n_nodejs_eventloop_lag_p50_seconds{namespace=\"$namespace\"} * 1000",
+              "legendFormat": "p50",
+              "refId": "A"
+            },
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "n8n_nodejs_eventloop_lag_p90_seconds{namespace=\"$namespace\"} * 1000",
+              "legendFormat": "p90",
+              "refId": "B"
+            },
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "n8n_nodejs_eventloop_lag_p99_seconds{namespace=\"$namespace\"} * 1000",
+              "legendFormat": "p99",
+              "refId": "C"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms",
+              "custom": {"drawStyle": "line", "fillOpacity": 10}
+            }
+          }
+        },
+        {
+          "id": 9,
+          "type": "timeseries",
+          "title": "Active Handles & Requests",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "n8n_nodejs_active_handles{namespace=\"$namespace\"}",
+              "legendFormat": "Active Handles",
+              "refId": "A"
+            },
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "n8n_nodejs_active_requests_total{namespace=\"$namespace\"}",
+              "legendFormat": "Active Requests",
+              "refId": "B"
+            },
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "n8n_nodejs_active_resources{namespace=\"$namespace\"}",
+              "legendFormat": "Active Resources",
+              "refId": "C"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {"drawStyle": "line", "fillOpacity": 10}
+            }
+          }
+        },
+        {
+          "id": 10,
+          "type": "row",
+          "title": "🗑️ Garbage Collection",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 14},
+          "collapsed": false
+        },
+        {
+          "id": 11,
+          "type": "timeseries",
+          "title": "GC Duration (Rate)",
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 15},
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "targets": [{
+            "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+            "expr": "rate(n8n_nodejs_gc_duration_seconds_sum{namespace=\"$namespace\"}[5m]) * 1000",
+            "legendFormat": "GC Duration (ms/s)",
+            "refId": "A"
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms",
+              "custom": {"drawStyle": "line", "fillOpacity": 10}
+            }
+          }
+        },
+        {
+          "id": 12,
+          "type": "row",
+          "title": "💾 Memory",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 23},
+          "collapsed": false
+        },
+        {
+          "id": 13,
+          "type": "timeseries",
+          "title": "Heap Memory Usage",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "targets": [{
+            "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+            "expr": "n8n_nodejs_heap_size_total_bytes{namespace=\"$namespace\"}",
+            "legendFormat": "Heap Size",
+            "refId": "A"
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {"drawStyle": "line", "fillOpacity": 10}
+            }
+          }
+        },
+        {
+          "id": 14,
+          "type": "timeseries",
+          "title": "External Memory",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "targets": [{
+            "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+            "expr": "n8n_nodejs_external_memory_bytes{namespace=\"$namespace\"}",
+            "legendFormat": "External Memory",
+            "refId": "A"
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {"drawStyle": "line", "fillOpacity": 10}
+            }
+          }
+        }
+      ]
+    }
