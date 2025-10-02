@@ -1,0 +1,204 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: n8n-prod
+  namespace: grafana
+  labels:
+    app: n8n
+    environment: production
+spec:
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  folder: "📱 Applications"
+  datasources:
+    - inputName: "DS_PROMETHEUS"
+      datasourceName: "Prometheus"
+    - inputName: "DS_POSTGRESQL"
+      datasourceName: "PostgreSQL"
+  json: |
+    {
+      "title": "N8N Production - Queue Mode Monitoring",
+      "uid": "n8n-prod-queue",
+      "tags": ["n8n", "production", "queue", "workflows"],
+      "timezone": "Europe/Berlin",
+      "editable": true,
+      "graphTooltip": 1,
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "refresh": "30s",
+      "panels": [
+        {
+          "type": "stat",
+          "title": "🟢 N8N Status",
+          "gridPos": {"h": 3, "w": 3, "x": 0, "y": 0},
+          "targets": [{
+            "expr": "sum(up{namespace=\"n8n-prod\",job=\"n8n\"})",
+            "refId": "A"
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [{
+                "type": "value",
+                "options": {
+                  "0": {"text": "❌ DOWN", "color": "red"},
+                  "1": {"text": "✅ UP", "color": "green"}
+                }
+              }],
+              "thresholds": {
+                "steps": [{"color": "green", "value": null}]
+              }
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "textMode": "value"
+          }
+        },
+        {
+          "type": "stat",
+          "title": "N8N Version",
+          "gridPos": {"h": 3, "w": 4, "x": 3, "y": 0},
+          "targets": [{
+            "expr": "max by (version) (n8n_version_info{namespace=\"n8n-prod\"})",
+            "legendFormat": "{{version}}",
+            "refId": "A"
+          }],
+          "options": {
+            "colorMode": "value",
+            "textMode": "name"
+          }
+        },
+        {
+          "type": "stat",
+          "title": "💾 Memory Usage",
+          "gridPos": {"h": 3, "w": 4, "x": 7, "y": 0},
+          "targets": [{
+            "expr": "sum(n8n_process_resident_memory_bytes{namespace=\"n8n-prod\"})",
+            "refId": "A"
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 500000000},
+                  {"color": "red", "value": 1000000000}
+                ]
+              }
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area"
+          }
+        },
+        {
+          "type": "stat",
+          "title": "⏱️ Uptime",
+          "gridPos": {"h": 3, "w": 4, "x": 11, "y": 0},
+          "targets": [{
+            "expr": "time() - max(n8n_process_start_time_seconds{namespace=\"n8n-prod\"})",
+            "refId": "A"
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            }
+          },
+          "options": {
+            "colorMode": "value"
+          }
+        },
+        {
+          "type": "stat",
+          "title": "📊 Queue Waiting",
+          "gridPos": {"h": 3, "w": 3, "x": 15, "y": 0},
+          "targets": [{
+            "expr": "sum(n8n_scaling_mode_queue_jobs_waiting{namespace=\"n8n-prod\"}) or on() vector(0)",
+            "refId": "A"
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 10},
+                  {"color": "red", "value": 50}
+                ]
+              }
+            }
+          },
+          "options": {
+            "colorMode": "value"
+          }
+        },
+        {
+          "type": "stat",
+          "title": "⚡ Queue Active",
+          "gridPos": {"h": 3, "w": 3, "x": 18, "y": 0},
+          "targets": [{
+            "expr": "sum(n8n_scaling_mode_queue_jobs_active{namespace=\"n8n-prod\"}) or on() vector(0)",
+            "refId": "A"
+          }],
+          "options": {
+            "colorMode": "value"
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "🚀 Throughput (Jobs Completed/s) - Last Hour",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 3},
+          "targets": [{
+            "expr": "sum(rate(n8n_scaling_mode_queue_jobs_completed{namespace=\"n8n-prod\"}[5m])) or on() vector(0)",
+            "legendFormat": "completed/s",
+            "refId": "A"
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10
+              }
+            }
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "❌ Error Rate (Jobs Failed/s) - Last Hour",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 3},
+          "targets": [{
+            "expr": "sum(rate(n8n_scaling_mode_queue_jobs_failed{namespace=\"n8n-prod\"}[5m])) or on() vector(0)",
+            "legendFormat": "failed/s",
+            "refId": "A"
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10
+              }
+            }
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "💻 CPU Usage Rate (5m)",
+          "gridPos": {"h": 6, "w": 24, "x": 0, "y": 11},
+          "targets": [{
+            "expr": "sum(rate(n8n_process_cpu_seconds_total{namespace=\"n8n-prod\"}[5m])) or on() vector(0)",
+            "legendFormat": "cpu s/s",
+            "refId": "A"
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            }
+          }
+        }
+      ]
+    }
