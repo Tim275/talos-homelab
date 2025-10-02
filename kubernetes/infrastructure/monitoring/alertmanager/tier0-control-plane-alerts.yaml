@@ -1,0 +1,307 @@
+# yamllint disable rule:line-length
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tier0-control-plane-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+data:
+  tier0-control-plane.yaml: |
+    groups:
+      # ========================================
+      # 🔴 TIER-0: KUBERNETES CONTROL PLANE
+      # ========================================
+      # Critical infrastructure - P1/P2 priority only
+      # SLA: P1 = 5min, P2 = 15min response time
+
+      - name: tier0.control-plane.critical
+        interval: 30s
+        rules:
+          # ====== KUBE-APISERVER (P1 - DRINGEND) ======
+          - alert: KubeAPIServerDown
+            expr: absent(up{job="kube-apiserver"} == 1)
+            for: 1m
+            labels:
+              severity: critical
+              priority: P1
+              tier: "0"
+              component: api-server
+            annotations:
+              summary: "Kubernetes API Server is DOWN"
+              description: "The Kubernetes API Server is completely unavailable. All cluster operations are blocked."
+              current_value: "API Server unreachable"
+              threshold: "100% availability required"
+              dashboard_url: "https://grafana.homelab.local/d/k8s-system-api-server/kubernetes-system-api-server"
+              runbook_url: "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubeapiserverdown"
+
+          - alert: KubeAPIServerHighErrorRate
+            expr: sum(rate(apiserver_request_total{code=~"5.."}[5m])) / sum(rate(apiserver_request_total[5m])) > 0.05
+            for: 5m
+            labels:
+              severity: critical
+              priority: P1
+              tier: "0"
+              component: api-server
+            annotations:
+              summary: "API Server error rate > 5%"
+              description: |
+                API Server is returning {{ $value | humanizePercentage }} errors. This indicates severe API health issues.
+              current_value: "{{ $value | humanizePercentage }}"
+              threshold: "5% error rate"
+              dashboard_url: "https://grafana.homelab.local/d/k8s-system-api-server/kubernetes-system-api-server"
+              runbook_url: "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubeapiserverdown"
+
+          - alert: KubeAPIServerHighLatency
+            expr: histogram_quantile(0.99, sum(rate(apiserver_request_duration_seconds_bucket{verb!="WATCH"}[5m])) by (le, verb)) > 4
+            for: 10m
+            labels:
+              severity: critical
+              priority: P2
+              tier: "0"
+              component: api-server
+            annotations:
+              summary: "API Server P99 latency > 4s"
+              description: |
+                API Server {{ $labels.verb }} requests are taking {{ $value }}s at P99. Performance degradation detected.
+              current_value: "{{ $value }}s"
+              threshold: "4s P99 latency"
+              dashboard_url: "https://grafana.homelab.local/d/k8s-system-api-server/kubernetes-system-api-server"
+              runbook_url: "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubeapiserverlatencyhigh"
+
+          - alert: KubeAPIServerCertificateExpiring
+            expr: apiserver_client_certificate_expiration_seconds_count{job="kube-apiserver"} > 0 and histogram_quantile(0.01, sum by (job, le) (rate(apiserver_client_certificate_expiration_seconds_bucket{job="kube-apiserver"}[5m]))) < 86400
+            for: 15m
+            labels:
+              severity: critical
+              priority: P1
+              tier: "0"
+              component: api-server
+            annotations:
+              summary: "API Server client certificate expiring in < 24h"
+              description: |
+                API Server client certificate expires in {{ $value | humanizeDuration }}. Immediate renewal required.
+              current_value: "{{ $value | humanizeDuration }}"
+              threshold: "24 hours"
+              dashboard_url: "https://grafana.homelab.local/d/k8s-system-api-server/kubernetes-system-api-server"
+              runbook_url: "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubeapiclientcertificateexpiration"
+
+          # ====== ETCD (P1 - DRINGEND) ======
+          - alert: ETCDClusterDown
+            expr: up{job="kube-etcd"} == 0
+            for: 1m
+            labels:
+              severity: critical
+              priority: P1
+              tier: "0"
+              component: etcd
+            annotations:
+              summary: "ETCD cluster member DOWN on {{ $labels.instance }}"
+              description: "ETCD member {{ $labels.instance }} is DOWN. Cluster state storage compromised."
+              current_value: "ETCD member unreachable"
+              threshold: "100% quorum required"
+              dashboard_url: "https://grafana.homelab.local/d/talos-etcd/talos-etcd-cluster-health"
+              runbook_url: "https://etcd.io/docs/v3.5/op-guide/recovery/"
+
+          - alert: ETCDInsufficientMembers
+            expr: count(up{job="kube-etcd"} == 1) < ((count(up{job="kube-etcd"}) + 1) / 2)
+            for: 3m
+            labels:
+              severity: critical
+              priority: P1
+              tier: "0"
+              component: etcd
+            annotations:
+              summary: "ETCD cluster lost quorum"
+              description: |
+                ETCD cluster has only {{ $value }} members available. Quorum lost - cluster cannot commit writes!
+              current_value: "{{ $value }} members"
+              threshold: "Quorum required (>50%)"
+              dashboard_url: "https://grafana.homelab.local/d/talos-etcd/talos-etcd-cluster-health"
+              runbook_url: "https://etcd.io/docs/v3.5/op-guide/recovery/"
+
+          - alert: ETCDHighNumberOfLeaderChanges
+            expr: increase(etcd_server_leader_changes_seen_total[15m]) > 3
+            for: 5m
+            labels:
+              severity: critical
+              priority: P2
+              tier: "0"
+              component: etcd
+            annotations:
+              summary: "ETCD cluster instability - frequent leader changes"
+              description: |
+                ETCD cluster has {{ $value }} leader changes in 15min. Network issues or resource contention.
+              current_value: "{{ $value }} changes"
+              threshold: "3 changes per 15min"
+              dashboard_url: "https://grafana.homelab.local/d/talos-etcd/talos-etcd-cluster-health"
+              runbook_url: "https://etcd.io/docs/v3.5/op-guide/recovery/"
+
+          - alert: ETCDHighFsyncDurations
+            expr: histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m])) > 0.5
+            for: 10m
+            labels:
+              severity: critical
+              priority: P2
+              tier: "0"
+              component: etcd
+            annotations:
+              summary: "ETCD slow disk performance - fsync > 500ms"
+              description: |
+                ETCD WAL fsync is taking {{ $value }}s at P99 on {{ $labels.instance }}. Disk I/O bottleneck detected.
+              current_value: "{{ $value }}s"
+              threshold: "500ms P99"
+              dashboard_url: "https://grafana.homelab.local/d/talos-etcd/talos-etcd-cluster-health"
+              runbook_url: "https://etcd.io/docs/v3.5/op-guide/performance/"
+
+          - alert: ETCDHighCommitDurations
+            expr: histogram_quantile(0.99, rate(etcd_disk_backend_commit_duration_seconds_bucket[5m])) > 0.25
+            for: 10m
+            labels:
+              severity: critical
+              priority: P2
+              tier: "0"
+              component: etcd
+            annotations:
+              summary: "ETCD slow backend commit - > 250ms"
+              description: |
+                ETCD backend commit is taking {{ $value }}s at P99 on {{ $labels.instance }}. Performance degradation.
+              current_value: "{{ $value }}s"
+              threshold: "250ms P99"
+              dashboard_url: "https://grafana.homelab.local/d/talos-etcd/talos-etcd-cluster-health"
+              runbook_url: "https://etcd.io/docs/v3.5/op-guide/performance/"
+
+          - alert: ETCDDatabaseSizeExceeded
+            expr: etcd_mvcc_db_total_size_in_bytes > 8e9
+            for: 10m
+            labels:
+              severity: critical
+              priority: P2
+              tier: "0"
+              component: etcd
+            annotations:
+              summary: "ETCD database size > 8GB"
+              description: |
+                ETCD database on {{ $labels.instance }} is {{ $value | humanize1024 }}. Approaching 8GB limit - defragmentation needed.
+              current_value: "{{ $value | humanize1024 }}"
+              threshold: "8GB"
+              dashboard_url: "https://grafana.homelab.local/d/talos-etcd/talos-etcd-cluster-health"
+              runbook_url: "https://etcd.io/docs/v3.5/op-guide/maintenance/"
+
+          # ====== CONTROLLER MANAGER (P2 - WICHTIG) ======
+          - alert: KubeControllerManagerDown
+            expr: absent(up{job="kube-controller-manager"} == 1)
+            for: 5m
+            labels:
+              severity: critical
+              priority: P2
+              tier: "0"
+              component: controller-manager
+            annotations:
+              summary: "Kube Controller Manager is DOWN"
+              description: |
+                Controller Manager is unavailable. Cluster reconciliation stopped - resources will drift from desired state.
+              current_value: "Controller Manager unreachable"
+              threshold: "100% availability required"
+              dashboard_url: "https://grafana.homelab.local/d/k8s-control-plane-controller-manager/kubernetes-controller-manager"
+              runbook_url: "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubecontrollermanagerdown"
+
+          - alert: KubeControllerManagerHighWorkQueueDepth
+            expr: workqueue_depth{job="kube-controller-manager"} > 100
+            for: 15m
+            labels:
+              severity: critical
+              priority: P2
+              tier: "0"
+              component: controller-manager
+            annotations:
+              summary: "Controller Manager work queue depth > 100"
+              description: "Controller {{ $labels.name }} has {{ $value }} items queued. Reconciliation lag detected."
+              current_value: "{{ $value }} items"
+              threshold: "100 items"
+              dashboard_url: "https://grafana.homelab.local/d/k8s-control-plane-controller-manager/kubernetes-controller-manager"
+              runbook_url: "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubecontrollermanagerdown"
+
+          # ====== SCHEDULER (P2 - WICHTIG) ======
+          - alert: KubeSchedulerDown
+            expr: absent(up{job="kube-scheduler"} == 1)
+            for: 5m
+            labels:
+              severity: critical
+              priority: P2
+              tier: "0"
+              component: scheduler
+            annotations:
+              summary: "Kube Scheduler is DOWN"
+              description: "Scheduler is unavailable. New pods cannot be scheduled to nodes!"
+              current_value: "Scheduler unreachable"
+              threshold: "100% availability required"
+              dashboard_url: "https://grafana.homelab.local/d/k8s-control-plane-scheduler/kubernetes-scheduler"
+              runbook_url: "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubeschedulerdown"
+
+          - alert: KubeSchedulerHighSchedulingLatency
+            expr: histogram_quantile(0.99, sum(rate(scheduler_scheduling_duration_seconds_bucket[5m])) by (le)) > 1
+            for: 10m
+            labels:
+              severity: critical
+              priority: P2
+              tier: "0"
+              component: scheduler
+            annotations:
+              summary: "Scheduler P99 latency > 1s"
+              description: "Scheduler is taking {{ $value }}s to schedule pods at P99. Performance degradation."
+              current_value: "{{ $value }}s"
+              threshold: "1s P99 latency"
+              dashboard_url: "https://grafana.homelab.local/d/k8s-control-plane-scheduler/kubernetes-scheduler"
+              runbook_url: "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubeschedulerdown"
+
+          # ====== KUBELET (P2 - WICHTIG) ======
+          - alert: KubeletDown
+            expr: absent(up{job="kubelet"} == 1)
+            for: 5m
+            labels:
+              severity: critical
+              priority: P2
+              tier: "0"
+              component: kubelet
+            annotations:
+              summary: "Kubelet DOWN on node {{ $labels.node }}"
+              description: "Kubelet on {{ $labels.node }} is unreachable. Node workloads at risk!"
+              current_value: "Kubelet unreachable"
+              threshold: "100% availability required"
+              dashboard_url: "https://grafana.homelab.local/d/k8s-control-plane-kubelet/kubernetes-kubelet"
+              runbook_url: "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubeletdown"
+
+          - alert: KubeletTooManyPods
+            expr: max(kubelet_running_pods) by(instance, node) > 110
+            for: 15m
+            labels:
+              severity: critical
+              priority: P2
+              tier: "0"
+              component: kubelet
+            annotations:
+              summary: "Kubelet running > 110 pods on {{ $labels.node }}"
+              description: |
+                Kubelet on {{ $labels.node }} is running {{ $value }} pods. Approaching default limit of 110!
+              current_value: "{{ $value }} pods"
+              threshold: "110 pods per node"
+              dashboard_url: "https://grafana.homelab.local/d/k8s-control-plane-kubelet/kubernetes-kubelet"
+              runbook_url: "https://kubernetes.io/docs/setup/best-practices/cluster-large/"
+
+          - alert: KubeletPodStartupLatencyHigh
+            expr: histogram_quantile(0.99, sum(rate(kubelet_pod_start_duration_seconds_bucket[5m])) by (instance, le)) > 60
+            for: 15m
+            labels:
+              severity: critical
+              priority: P2
+              tier: "0"
+              component: kubelet
+            annotations:
+              summary: "Kubelet pod startup P99 > 60s on {{ $labels.node }}"
+              description: |
+                Kubelet on {{ $labels.node }} is taking {{ $value }}s to start pods at P99. Performance issue.
+              current_value: "{{ $value }}s"
+              threshold: "60s P99"
+              dashboard_url: "https://grafana.homelab.local/d/k8s-control-plane-kubelet/kubernetes-kubelet"
+              runbook_url: "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubeletdown"
