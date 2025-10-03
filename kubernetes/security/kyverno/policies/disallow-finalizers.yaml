@@ -1,0 +1,40 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-finalizers
+  annotations:
+    policies.kyverno.io/title: Disallow Finalizers on All Resources
+    policies.kyverno.io/category: Cleanup
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod, Deployment, StatefulSet, DaemonSet, Job
+    policies.kyverno.io/description: >-
+      Blocks any workload (Pods, Deployments, StatefulSets, DaemonSets, Jobs)
+      from having finalizers. This prevents resources from getting stuck
+      during deletion and allows easy cleanup.
+spec:
+  validationFailureAction: Enforce  # Block resources with finalizers
+  background: true
+  rules:
+    - name: block-finalizers-on-workloads
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+                - Deployment
+                - StatefulSet
+                - DaemonSet
+                - Job
+                - CronJob
+                - ReplicaSet
+      validate:
+        message: >-
+          Finalizers are not allowed on workload resources.
+          Found finalizers: {{request.object.metadata.finalizers}}.
+          Remove finalizers to deploy this resource.
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.metadata.finalizers || [] | length(@) }}"
+                operator: GreaterThan
+                value: 0
