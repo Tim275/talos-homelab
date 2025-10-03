@@ -1,0 +1,34 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: prevent-namespace-finalizers
+  annotations:
+    policies.kyverno.io/title: Prevent Namespace Finalizers
+    policies.kyverno.io/category: Cleanup
+    policies.kyverno.io/severity: low
+    policies.kyverno.io/subject: Namespace
+    policies.kyverno.io/description: >-
+      Warns when namespaces are created with finalizers.
+      Finalizers can cause namespaces to get stuck during deletion.
+      This policy helps identify such cases early.
+spec:
+  validationFailureAction: Audit  # Change to Enforce to block
+  background: true
+  rules:
+    - name: warn-on-finalizers
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      validate:
+        message: >-
+          Namespace has finalizers: {{request.object.metadata.finalizers}}.
+          Finalizers can prevent namespace deletion. Consider removing them
+          manually with: kubectl patch ns <name> -p '{"metadata":{"finalizers":null}}'
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.metadata.finalizers || [] | length(@) }}"
+                operator: GreaterThan
+                value: 0
