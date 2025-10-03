@@ -2,11 +2,31 @@
 # Helm Chart: kyverno/kyverno v3.5.2
 # CNCF Incubating Project - Kubernetes-native Policy Management
 
-# 🏗️ High Availability Configuration (Homelab Optimized)
-replicaCount: 2  # HA with 2 replicas
+# 🚨 CRITICAL SAFETY CONFIG - Prevents cluster-wide outages
+# This config prevents the disaster that happened on 2025-10-03
 
 admissionController:
-  replicas: 2
+  # 🚨 MUST-HAVE #1: failurePolicy Ignore
+  # If Kyverno webhook is down, allow deployments (don't block entire cluster!)
+  failurePolicy: Ignore
+
+  # 🚨 MUST-HAVE #2: Exclude critical namespaces
+  # Don't validate system namespaces or Kyverno itself (prevents self-blocking)
+  namespaceSelector:
+    matchExpressions:
+      - key: kubernetes.io/metadata.name
+        operator: NotIn
+        values:
+          - kube-system
+          - kube-public
+          - kube-node-lease
+          - argocd
+          - kyverno          # Don't block self!
+          - istio-system
+          - rook-ceph
+          - cert-manager
+          - sealed-secrets
+
   container:
     resources:
       requests:
@@ -15,14 +35,9 @@ admissionController:
       limits:
         cpu: 500m
         memory: 512Mi
-  serviceMonitor:
-    enabled: true
-    additionalLabels:
-      release: prometheus-operator
 
 backgroundController:
   enabled: true
-  replicas: 1
   container:
     resources:
       requests:
@@ -34,7 +49,6 @@ backgroundController:
 
 cleanupController:
   enabled: true
-  replicas: 1
   container:
     resources:
       requests:
@@ -46,7 +60,6 @@ cleanupController:
 
 reportsController:
   enabled: true
-  replicas: 1
   container:
     resources:
       requests:
@@ -55,13 +68,15 @@ reportsController:
       limits:
         cpu: 200m
         memory: 256Mi
-  serviceMonitor:
-    enabled: true
-    additionalLabels:
-      release: prometheus-operator
+
+# 🚨 MUST-HAVE #3: Cleanup webhooks on uninstall
+# Prevents stuck webhooks after Kyverno deletion
+webhooksCleanup:
+  enabled: true
 
 # 🔐 Security Configuration
 config:
+  # Don't validate these resources
   resourceFilters:
     - '[Event,*,*]'
     - '[*,kube-system,*]'
@@ -69,14 +84,9 @@ config:
     - '[*,kube-node-lease,*]'
     - '[Node,*,*]'
     - '[*,argocd,*]'
+    - '[*,kyverno,*]'        # Don't validate self
   webhookTimeout: 10
   generateSuccessEvents: false
-
-# 📊 Metrics
-metricsService:
-  create: true
-  type: ClusterIP
-  port: 8000
 
 # 🎯 Features
 features:
@@ -90,8 +100,6 @@ features:
   logging:
     format: json
     verbosity: 2
-  aggregateReports:
-    enabled: true
 
 # 🛡️ Security Context
 podSecurityContext:
