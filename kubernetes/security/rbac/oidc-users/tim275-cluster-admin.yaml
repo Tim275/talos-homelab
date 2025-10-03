@@ -1,0 +1,51 @@
+# 🔐 RBAC Mapping: tim275 → cluster-admin
+# Security Layer: Authorization for OIDC user tim275
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: oidc-tim275-cluster-admin
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    rbac.homelab.local/auth-type: oidc
+    rbac.homelab.local/user: tim275
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    description: "Grants cluster-admin to OIDC user tim275 (via Authelia)"
+subjects:
+  # OIDC User Mapping
+  # Username from Authelia JWT: "preferred_username: tim275"
+  # After oidc-username-prefix: "oidc:tim275"
+  - kind: User
+    name: oidc:tim275  # ⚠️ Must match oidc-username-prefix + username claim
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  # Built-in Kubernetes ClusterRole with full cluster access
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
+
+# How RBAC Authorization Works:
+#
+# 1. User authenticates via Authelia
+# 2. Authelia returns JWT with claims:
+#    {
+#      "preferred_username": "tim275",
+#      "email": "tim275@homelab.local",
+#      "groups": ["admins"]
+#    }
+#
+# 3. kubectl sends JWT to kube-apiserver
+# 4. kube-apiserver validates JWT and extracts claims
+# 5. Username becomes: "oidc:tim275" (with prefix)
+# 6. kube-apiserver checks ClusterRoleBindings for "oidc:tim275"
+# 7. Finds this binding → grants cluster-admin permissions
+# 8. User can do anything in the cluster
+#
+# Permissions Granted (cluster-admin):
+# - Full read/write on all resources
+# - Create/delete namespaces
+# - Manage RBAC policies
+# - Access all secrets
+# - Deploy/delete workloads
+# - Modify cluster configuration
