@@ -17,24 +17,29 @@ spec:
   - list:
       elements:
       # 🎯 ENABLED SECURITY GOVERNANCE - Individual Applications in ArgoCD UI
-      # - name: policy-engine
-      #   path: kubernetes/security/governance/policy-engine
-      # - name: compliance
-      #   path: kubernetes/security/governance/compliance
-      # - name: audit
-      #   path: kubernetes/security/governance/audit
+      - name: kyverno
+        path: kubernetes/security/kyverno
+        namespace: kyverno
+        wave: "2"
 
-      # ❌ DISABLED SECURITY GOVERNANCE - No components ready yet
-      # Comment/Uncomment above when governance components are implemented
-
-      # ⚠️ NO ACTIVE COMPONENTS - ApplicationSet temporarily disabled
-      # Uncomment components above when ready for deployment
+      # 🔍 FUTURE GOVERNANCE COMPONENTS
+      # - name: kubescape
+      #   path: kubernetes/security/kubescape
+      #   namespace: kubescape
+      #   wave: "3"
+      # - name: falco
+      #   path: kubernetes/security/falco
+      #   namespace: falco
+      #   wave: "3"
   template:
     metadata:
       name: 'security-{{name}}'
       labels:
         app.kubernetes.io/managed-by: argocd
-        security.domain: '{{name}}'
+        security.domain: governance
+        security.component: '{{name}}'
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{wave}}'
     spec:
       project: security
       source:
@@ -43,13 +48,16 @@ spec:
         path: '{{path}}'
       destination:
         server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
       syncPolicy:
         automated:
           prune: true
           selfHeal: true
         syncOptions:
         - CreateNamespace=true
-        - PrunePropagationPolicy=foreground
-        - PruneLast=true
-        - RespectIgnoreDifferences=true
         - ServerSideApply=true
+      ignoreDifferences:
+        - group: "kyverno.io"
+          kind: ClusterPolicy
+          jsonPointers:
+            - /status
