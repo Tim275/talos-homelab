@@ -1,8 +1,8 @@
 # 🛡️ Kyverno Policies
 
 **Policy Engine**: Kyverno v3.5.2
-**Mode**: Audit (change to Enforce when ready)
-**Active Policies**: 2 (Resource Limits + No Latest Tag)
+**Mode**: Mixed (2 Audit + 1 Enforce)
+**Active Policies**: 3 (Resource Limits + No Latest Tag + No Finalizers)
 
 ---
 
@@ -63,6 +63,40 @@ spec:
   - name: app
     image: myapp:1.2.3  # ✅ Specific version
 ```
+
+---
+
+### **3. disallow-finalizers.yaml** 🚫
+**Category**: Cleanup
+**Severity**: Medium
+**Mode**: Enforce (blocks deployments)
+
+**What it does**:
+- Blocks ALL workloads (Pods, Deployments, StatefulSets, etc.) with finalizers
+- Prevents resources from getting stuck during deletion
+- Enables easy namespace cleanup
+
+**Example failure**:
+```yaml
+# ❌ BAD
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+  finalizers:
+    - some.finalizer.io  # ❌ BLOCKED by policy!
+
+# ✅ GOOD
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+  # No finalizers at all ✅
+```
+
+**Affected resources**:
+- Pod, Deployment, StatefulSet, DaemonSet
+- Job, CronJob, ReplicaSet
 
 ---
 

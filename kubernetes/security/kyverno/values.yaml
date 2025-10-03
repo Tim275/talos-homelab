@@ -1,12 +1,29 @@
 # Kyverno Policy Engine Configuration
 # Helm Chart: kyverno/kyverno v3.5.2
-# CNCF Incubating Project - Kubernetes-native Policy Management
+# MINIMAL SAFE CONFIG - Only the 3 CRITICAL safety features
 
-# 🏗️ High Availability Configuration (Homelab Optimized)
-replicaCount: 2  # HA with 2 replicas
+# 🚨 MUST-HAVE #3: Cleanup webhooks on uninstall
+webhooksCleanup:
+  enabled: true
 
+# 🔐 Security Configuration
+config:
+  # 🚨 MUST-HAVE #2: Exclude critical namespaces from validation
+  resourceFilters:
+    - '[Event,*,*]'
+    - '[*,kube-system,*]'
+    - '[*,kube-public,*]'
+    - '[*,kube-node-lease,*]'
+    - '[Node,*,*]'
+    - '[*,argocd,*]'
+    - '[*,kyverno,*]'
+    - '[*,istio-system,*]'
+    - '[*,rook-ceph,*]'
+    - '[*,cert-manager,*]'
+    - '[*,sealed-secrets,*]'
+
+# Basic resource limits
 admissionController:
-  replicas: 2
   container:
     resources:
       requests:
@@ -15,14 +32,8 @@ admissionController:
       limits:
         cpu: 500m
         memory: 512Mi
-  serviceMonitor:
-    enabled: true
-    additionalLabels:
-      release: prometheus-operator
 
 backgroundController:
-  enabled: true
-  replicas: 1
   container:
     resources:
       requests:
@@ -33,8 +44,6 @@ backgroundController:
         memory: 256Mi
 
 cleanupController:
-  enabled: true
-  replicas: 1
   container:
     resources:
       requests:
@@ -45,8 +54,6 @@ cleanupController:
         memory: 128Mi
 
 reportsController:
-  enabled: true
-  replicas: 1
   container:
     resources:
       requests:
@@ -55,69 +62,3 @@ reportsController:
       limits:
         cpu: 200m
         memory: 256Mi
-  serviceMonitor:
-    enabled: true
-    additionalLabels:
-      release: prometheus-operator
-
-# 🔐 Security Configuration
-config:
-  resourceFilters:
-    - '[Event,*,*]'
-    - '[*,kube-system,*]'
-    - '[*,kube-public,*]'
-    - '[*,kube-node-lease,*]'
-    - '[Node,*,*]'
-    - '[*,argocd,*]'
-  webhookTimeout: 10
-  generateSuccessEvents: false
-
-# 📊 Metrics
-metricsService:
-  create: true
-  type: ClusterIP
-  port: 8000
-
-# 🎯 Features
-features:
-  policyExceptions:
-    enabled: true
-  admissionReports:
-    enabled: true
-  backgroundScan:
-    enabled: true
-    backgroundScanInterval: 1h
-  logging:
-    format: json
-    verbosity: 2
-  aggregateReports:
-    enabled: true
-
-# 🛡️ Security Context
-podSecurityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  fsGroup: 1000
-  seccompProfile:
-    type: RuntimeDefault
-
-containerSecurityContext:
-  allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: true
-  runAsNonRoot: true
-  runAsUser: 1000
-  seccompProfile:
-    type: RuntimeDefault
-  capabilities:
-    drop:
-      - ALL
-
-# 📦 RBAC
-rbac:
-  create: true
-  serviceAccount:
-    create: true
-
-# 🔧 CRDs
-crds:
-  install: true
