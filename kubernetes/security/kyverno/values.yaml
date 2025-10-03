@@ -1,0 +1,123 @@
+# Kyverno Policy Engine Configuration
+# Helm Chart: kyverno/kyverno v3.5.2
+# CNCF Incubating Project - Kubernetes-native Policy Management
+
+# 🏗️ High Availability Configuration (Homelab Optimized)
+replicaCount: 2  # HA with 2 replicas
+
+admissionController:
+  replicas: 2
+  container:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  serviceMonitor:
+    enabled: true
+    additionalLabels:
+      release: prometheus-operator
+
+backgroundController:
+  enabled: true
+  replicas: 1
+  container:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+cleanupController:
+  enabled: true
+  replicas: 1
+  container:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+
+reportsController:
+  enabled: true
+  replicas: 1
+  container:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+  serviceMonitor:
+    enabled: true
+    additionalLabels:
+      release: prometheus-operator
+
+# 🔐 Security Configuration
+config:
+  resourceFilters:
+    - '[Event,*,*]'
+    - '[*,kube-system,*]'
+    - '[*,kube-public,*]'
+    - '[*,kube-node-lease,*]'
+    - '[Node,*,*]'
+    - '[*,argocd,*]'
+  webhookTimeout: 10
+  generateSuccessEvents: false
+
+# 📊 Metrics
+metricsService:
+  create: true
+  type: ClusterIP
+  port: 8000
+
+# 🎯 Features
+features:
+  policyExceptions:
+    enabled: true
+  admissionReports:
+    enabled: true
+  backgroundScan:
+    enabled: true
+    backgroundScanInterval: 1h
+  logging:
+    format: json
+    verbosity: 2
+  aggregateReports:
+    enabled: true
+
+# 🛡️ Security Context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  seccompProfile:
+    type: RuntimeDefault
+  capabilities:
+    drop:
+      - ALL
+
+# 📦 RBAC
+rbac:
+  create: true
+  serviceAccount:
+    create: true
+
+# 🔧 CRDs
+crds:
+  install: true
