@@ -1,0 +1,55 @@
+# 🔐 RBAC Mapping: LDAP "admins" Group → cluster-admin
+# Security Layer: Authorization for OIDC group admins
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: oidc-admins-group-cluster-admin
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    rbac.homelab.local/auth-type: oidc
+    rbac.homelab.local/group: admins
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    description: "Grants cluster-admin to LDAP 'admins' group members (via Authelia)"
+subjects:
+  # OIDC Group Mapping
+  # Groups from Authelia JWT: "groups: ["admins"]"
+  # After oidc-groups-prefix: ["oidc:admins"]
+  - kind: Group
+    name: oidc:admins  # ⚠️ Must match oidc-groups-prefix + group name from LDAP
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
+
+# How Group-Based RBAC Works:
+#
+# 1. LLDAP contains group "admins" with members: [tim275, alice, bob]
+# 2. User tim275 authenticates via Authelia
+# 3. Authelia queries LLDAP for tim275's groups
+# 4. Authelia returns JWT with:
+#    {
+#      "preferred_username": "tim275",
+#      "groups": ["admins", "developers"]
+#    }
+#
+# 5. kube-apiserver extracts groups and applies prefix:
+#    ["oidc:admins", "oidc:developers"]
+#
+# 6. kube-apiserver checks ClusterRoleBindings for these groups
+# 7. Finds this binding for "oidc:admins"
+# 8. Grants cluster-admin to tim275 (because he's in admins group)
+#
+# Benefits of Group-Based RBAC:
+# - Single source of truth (LDAP)
+# - Easy user onboarding (add to LDAP group)
+# - No per-user ClusterRoleBindings needed
+# - Centralized access management
+#
+# LLDAP Group Setup (in LLDAP UI):
+# 1. Create group "admins"
+# 2. Add users: tim275, alice, bob
+# 3. Authelia automatically maps groups to JWT claims
+# 4. Kubernetes RBAC grants permissions based on groups

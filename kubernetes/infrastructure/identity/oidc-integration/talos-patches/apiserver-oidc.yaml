@@ -1,0 +1,57 @@
+# Talos Machine Config Patch - API Server OIDC Integration
+# Apply this patch to control plane nodes to enable OIDC authentication
+#
+# Usage:
+#   talosctl patch mc --patch @apiserver-oidc.yaml
+#
+# Reference: https://www.talos.dev/v1.8/kubernetes-guides/configuration/oidc/
+---
+- op: add
+  path: /cluster/apiServer/extraArgs
+  value:
+    # OIDC Provider Configuration
+    oidc-issuer-url: "https://authelia.homelab.local"
+    oidc-client-id: "kubernetes"
+
+    # Token Claims Mapping
+    oidc-username-claim: "preferred_username"
+    oidc-groups-claim: "groups"
+
+    # Kubernetes RBAC Prefixes
+    oidc-username-prefix: "oidc:"
+    oidc-groups-prefix: "oidc:"
+
+    # Certificate Validation
+    # Talos uses system CA bundle (/etc/ssl/certs/ca-certificates.crt)
+    # Authelia must use valid TLS certificate (Let's Encrypt via cert-manager)
+
+    # Optional: Additional security
+    # oidc-required-claim: "email_verified:true"
+    # oidc-signing-algs: "RS256"
+
+# How OIDC Flow Works:
+# 1. User authenticates via Authelia (LLDAP backend)
+# 2. Authelia issues JWT token with username + groups claims
+# 3. kubectl sends token in Authorization: Bearer header
+# 4. kube-apiserver validates token against Authelia issuer
+# 5. Username mapped to "oidc:tim275" (with prefix)
+# 6. Groups mapped to "oidc:admins" (with prefix)
+# 7. RBAC ClusterRoleBindings checked for authorization
+# 8. Access granted/denied based on roles
+
+# Example Token Claims (from Authelia):
+# {
+#   "iss": "https://authelia.homelab.local",
+#   "sub": "tim275",
+#   "aud": "kubernetes",
+#   "exp": 1727890800,
+#   "iat": 1727887200,
+#   "preferred_username": "tim275",
+#   "email": "tim275@homelab.local",
+#   "groups": ["admins", "developers"]
+# }
+
+# After Patch Applied:
+# - kube-apiserver sees user as: "oidc:tim275"
+# - kube-apiserver sees groups as: ["oidc:admins", "oidc:developers"]
+# - ClusterRoleBindings must use these prefixed names
