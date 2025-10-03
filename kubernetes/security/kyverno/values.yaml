@@ -1,15 +1,30 @@
 # Kyverno Policy Engine Configuration
 # Helm Chart: kyverno/kyverno v3.5.2
-# CNCF Incubating Project - Kubernetes-native Policy Management
+# MINIMAL SAFE CONFIG - Only the 3 CRITICAL safety features
 
-# 🚨 CRITICAL SAFETY CONFIG - Prevents cluster-wide outages
-# This config prevents the disaster that happened on 2025-10-03
+# 🚨 MUST-HAVE #3: Cleanup webhooks on uninstall
+webhooksCleanup:
+  enabled: true
 
+# 🔐 Security Configuration
+config:
+  # 🚨 MUST-HAVE #2: Exclude critical namespaces from validation
+  resourceFilters:
+    - '[Event,*,*]'
+    - '[*,kube-system,*]'
+    - '[*,kube-public,*]'
+    - '[*,kube-node-lease,*]'
+    - '[Node,*,*]'
+    - '[*,argocd,*]'
+    - '[*,kyverno,*]'
+    - '[*,istio-system,*]'
+    - '[*,rook-ceph,*]'
+    - '[*,cert-manager,*]'
+    - '[*,sealed-secrets,*]'
+
+# Basic resource limits
 admissionController:
   container:
-    extraArgs:
-      # 🚨 CRITICAL: Set failurePolicy to Ignore for all webhooks
-      - --webhookFailurePolicy=Ignore
     resources:
       requests:
         cpu: 100m
@@ -19,7 +34,6 @@ admissionController:
         memory: 512Mi
 
 backgroundController:
-  enabled: true
   container:
     resources:
       requests:
@@ -30,7 +44,6 @@ backgroundController:
         memory: 256Mi
 
 cleanupController:
-  enabled: true
   container:
     resources:
       requests:
@@ -41,7 +54,6 @@ cleanupController:
         memory: 128Mi
 
 reportsController:
-  enabled: true
   container:
     resources:
       requests:
@@ -50,84 +62,3 @@ reportsController:
       limits:
         cpu: 200m
         memory: 256Mi
-
-# 🚨 MUST-HAVE #3: Cleanup webhooks on uninstall
-# Prevents stuck webhooks after Kyverno deletion
-webhooksCleanup:
-  enabled: true
-
-# 🔐 Security Configuration
-config:
-  # 🚨 MUST-HAVE #1: failurePolicy Ignore
-  # If Kyverno webhook is down, allow deployments (don't block entire cluster!)
-  webhooks:
-    - namespaceSelector:
-        matchExpressions:
-          # 🚨 MUST-HAVE #2: Exclude critical namespaces
-          - key: kubernetes.io/metadata.name
-            operator: NotIn
-            values:
-              - kube-system
-              - kube-public
-              - kube-node-lease
-              - argocd
-              - kyverno          # Don't block self!
-              - istio-system
-              - rook-ceph
-              - cert-manager
-              - sealed-secrets
-      failurePolicy: Ignore      # CRITICAL!
-      timeoutSeconds: 10
-
-  # Don't validate these resources
-  resourceFilters:
-    - '[Event,*,*]'
-    - '[*,kube-system,*]'
-    - '[*,kube-public,*]'
-    - '[*,kube-node-lease,*]'
-    - '[Node,*,*]'
-    - '[*,argocd,*]'
-    - '[*,kyverno,*]'        # Don't validate self
-  generateSuccessEvents: false
-
-# 🎯 Features
-features:
-  policyExceptions:
-    enabled: true
-  admissionReports:
-    enabled: true
-  backgroundScan:
-    enabled: true
-    backgroundScanInterval: 1h
-  logging:
-    format: json
-    verbosity: 2
-
-# 🛡️ Security Context
-podSecurityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  fsGroup: 1000
-  seccompProfile:
-    type: RuntimeDefault
-
-containerSecurityContext:
-  allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: true
-  runAsNonRoot: true
-  runAsUser: 1000
-  seccompProfile:
-    type: RuntimeDefault
-  capabilities:
-    drop:
-      - ALL
-
-# 📦 RBAC
-rbac:
-  create: true
-  serviceAccount:
-    create: true
-
-# 🔧 CRDs
-crds:
-  install: true
