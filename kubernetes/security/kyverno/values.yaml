@@ -6,27 +6,6 @@
 # This config prevents the disaster that happened on 2025-10-03
 
 admissionController:
-  # 🚨 MUST-HAVE #1: failurePolicy Ignore
-  # If Kyverno webhook is down, allow deployments (don't block entire cluster!)
-  failurePolicy: Ignore
-
-  # 🚨 MUST-HAVE #2: Exclude critical namespaces
-  # Don't validate system namespaces or Kyverno itself (prevents self-blocking)
-  namespaceSelector:
-    matchExpressions:
-      - key: kubernetes.io/metadata.name
-        operator: NotIn
-        values:
-          - kube-system
-          - kube-public
-          - kube-node-lease
-          - argocd
-          - kyverno          # Don't block self!
-          - istio-system
-          - rook-ceph
-          - cert-manager
-          - sealed-secrets
-
   container:
     resources:
       requests:
@@ -76,6 +55,27 @@ webhooksCleanup:
 
 # 🔐 Security Configuration
 config:
+  # 🚨 MUST-HAVE #1: failurePolicy Ignore
+  # If Kyverno webhook is down, allow deployments (don't block entire cluster!)
+  webhooks:
+    - namespaceSelector:
+        matchExpressions:
+          # 🚨 MUST-HAVE #2: Exclude critical namespaces
+          - key: kubernetes.io/metadata.name
+            operator: NotIn
+            values:
+              - kube-system
+              - kube-public
+              - kube-node-lease
+              - argocd
+              - kyverno          # Don't block self!
+              - istio-system
+              - rook-ceph
+              - cert-manager
+              - sealed-secrets
+      failurePolicy: Ignore      # CRITICAL!
+      timeoutSeconds: 10
+
   # Don't validate these resources
   resourceFilters:
     - '[Event,*,*]'
@@ -85,7 +85,6 @@ config:
     - '[Node,*,*]'
     - '[*,argocd,*]'
     - '[*,kyverno,*]'        # Don't validate self
-  webhookTimeout: 10
   generateSuccessEvents: false
 
 # 🎯 Features
