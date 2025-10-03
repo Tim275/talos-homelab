@@ -1,40 +1,36 @@
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: disallow-finalizers
+  name: disallow-namespace-finalizers
   annotations:
-    policies.kyverno.io/title: Disallow Finalizers on All Resources
+    policies.kyverno.io/title: Disallow Finalizers on Namespaces
     policies.kyverno.io/category: Cleanup
-    policies.kyverno.io/severity: medium
-    policies.kyverno.io/subject: Pod, Deployment, StatefulSet, DaemonSet, Job
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Namespace
     policies.kyverno.io/description: >-
-      Blocks any workload (Pods, Deployments, StatefulSets, DaemonSets, Jobs)
-      from having finalizers. This prevents resources from getting stuck
-      during deletion and allows easy cleanup.
+      Blocks Namespaces from having custom finalizers (except kubernetes.io defaults).
+      This prevents namespaces from getting stuck in "Terminating" state.
+      Allows easy namespace cleanup without manual finalizer removal.
 spec:
-  validationFailureAction: Enforce  # Block resources with finalizers
+  validationFailureAction: Enforce  # Block namespaces with custom finalizers
   background: true
   rules:
-    - name: block-finalizers-on-workloads
+    - name: block-custom-finalizers-on-namespaces
       match:
         any:
           - resources:
               kinds:
-                - Pod
-                - Deployment
-                - StatefulSet
-                - DaemonSet
-                - Job
-                - CronJob
-                - ReplicaSet
+                - Namespace
       validate:
         message: >-
-          Finalizers are not allowed on workload resources.
+          Custom finalizers are not allowed on Namespaces.
           Found finalizers: {{request.object.metadata.finalizers}}.
-          Remove finalizers to deploy this resource.
+          Only kubernetes.io built-in finalizers are permitted.
+          This prevents stuck namespace deletions.
         deny:
           conditions:
             any:
-              - key: "{{ request.object.metadata.finalizers || [] | length(@) }}"
+              # Block if there are any finalizers that are NOT kubernetes.io defaults
+              - key: "{{ request.object.metadata.finalizers[?!starts_with(@, 'kubernetes')] || [] | length(@) }}"
                 operator: GreaterThan
                 value: 0
