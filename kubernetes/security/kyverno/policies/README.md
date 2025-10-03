@@ -2,43 +2,13 @@
 
 **Policy Engine**: Kyverno v3.5.2
 **Mode**: Audit (change to Enforce when ready)
-**Coverage**: Pod Security Standards (PSS) Restricted Profile
+**Active Policies**: 2 (Resource Limits + No Latest Tag)
 
 ---
 
 ## 📋 DEPLOYED POLICIES
 
-### **1. require-non-root.yaml** 🔐
-**Category**: Pod Security Standards (Restricted)
-**Severity**: Medium
-
-**What it does**:
-- Ensures containers run as non-root user
-- Validates `runAsNonRoot: true` in securityContext
-
-**Example failure**:
-```yaml
-# ❌ BAD
-spec:
-  containers:
-  - name: nginx
-    image: nginx:1.21
-    # Missing runAsNonRoot!
-
-# ✅ GOOD
-spec:
-  securityContext:
-    runAsNonRoot: true
-  containers:
-  - name: nginx
-    image: nginx:1.21
-    securityContext:
-      runAsNonRoot: true
-```
-
----
-
-### **2. require-resource-limits.yaml** 📊
+### **1. require-resource-limits.yaml** 📊
 **Category**: Best Practices
 **Severity**: Medium
 
@@ -71,7 +41,7 @@ spec:
 
 ---
 
-### **3. disallow-latest-tag.yaml** 🏷️
+### **2. disallow-latest-tag.yaml** 🏷️
 **Category**: Best Practices
 **Severity**: Medium
 
@@ -92,38 +62,6 @@ spec:
   containers:
   - name: app
     image: myapp:1.2.3  # ✅ Specific version
-```
-
----
-
-### **4. drop-all-capabilities.yaml** 🔒
-**Category**: Pod Security Standards (Restricted)
-**Severity**: Medium
-
-**What it does**:
-- Requires dropping ALL Linux capabilities
-- Only add back specific capabilities if needed
-
-**Example failure**:
-```yaml
-# ❌ BAD
-spec:
-  containers:
-  - name: app
-    image: myapp:1.0
-    # Missing capabilities drop!
-
-# ✅ GOOD
-spec:
-  containers:
-  - name: app
-    image: myapp:1.0
-    securityContext:
-      capabilities:
-        drop:
-          - ALL
-        add:
-          - NET_BIND_SERVICE  # Only if needed!
 ```
 
 ---
