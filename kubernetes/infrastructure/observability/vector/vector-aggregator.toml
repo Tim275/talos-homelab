@@ -55,15 +55,15 @@ source = '''
 
 # Detect log type and assign proper index
 if contains(string!(.message), "etcd") || exists(.component) && .component == "etcd" {
-  .service = "etcd"
+  .service_name = "etcd"
   .node_role = "control-plane"
   .index_name = "etcd-control-plane-direct"
 } else if contains(string!(.message), "kubelet") {
-  .service = "kubelet"
+  .service_name = "kubelet"
   .node_role = "worker"
   .index_name = "kubelet-worker-direct"
 } else {
-  .service = "talos-system"
+  .service_name = "talos-system"
   .node_role = "unknown"
   .index_name = "talos-system-direct"
 }
@@ -102,8 +102,8 @@ if exists(.level) {
 # ═══════════════════════════════════════════════════════════════
 .namespace = .kubernetes.namespace
 
-# Service-based routing
-.service = if .namespace == "kube-system" {
+# Service-based routing (use service_name for routing, not service which is ECS nested object)
+.service_name = if .namespace == "kube-system" {
   "kube-system"
 } else if .namespace == "rook-ceph" {
   "rook-ceph"
@@ -158,7 +158,7 @@ if exists(.level) {
 ."log.level" = .level
 
 # ECS service.name (primary identifier)
-."service.name" = .service
+."service.name" = .service_name
 
 # ECS service.environment
 ."service.environment" = "production"
@@ -229,7 +229,7 @@ inputs = ["sample_logs"]
 endpoints = ["https://production-cluster-es-http.elastic-system.svc.cluster.local:9200"]
 mode = "data_stream"  # ← DATA STREAMS! (automatic rollover)
 data_stream.type = "logs"
-data_stream.dataset = "{{ service }}.{{ severity }}"  # Uses .service field (not nested service.name)
+data_stream.dataset = "{{ service_name }}.{{ severity }}"  # Uses .service_name for routing
 data_stream.namespace = "default"
 api_version = "v8"
 
