@@ -37,11 +37,6 @@ data:
           group_name: cn
           mail: mail
           display_name: displayName
-          # 🎯 Custom Attributes for per-app permissions
-          extra:
-            argocd: { multi_valued: true, value_type: string }
-            n8n: { multi_valued: true, value_type: string }
-            grafana: { multi_valued: true, value_type: string }
         additional_users_dn: ou=people
         users_filter: (&({username_attribute}={input})(objectClass=person))
         additional_groups_dn: ou=groups
@@ -115,56 +110,32 @@ data:
             - userinfo
           allowed_origins_from_client_redirect_uris: true
 
-        # 🎯 Custom Claims Policies (map LDAP attributes to JWT claims)
-        claims_policies:
-          argocd_policy:
-            custom_claims:
-              argocd_claim:
-                attribute: argocd
-            id_token:
-              - email
-              - name
-              - preferred_username
-              - argocd_claim
-          n8n_policy:
-            custom_claims:
-              n8n_claim:
-                attribute: n8n
-            id_token:
-              - email
-              - name
-              - preferred_username
-              - n8n_claim
-          grafana_policy:
-            custom_claims:
-              grafana_claim:
-                attribute: grafana
-            id_token:
-              - email
-              - name
-              - preferred_username
-              - grafana_claim
-
-        # 🎯 Custom Scopes (define which claims are included)
-        scopes:
-          argocd_scope:
-            claims:
-              - argocd_claim
-          n8n_scope:
-            claims:
-              - n8n_claim
-          grafana_scope:
-            claims:
-              - grafana_claim
-
         clients:
-          # ArgoCD OIDC Client
+          # 🔐 Kubernetes API Server OIDC Client (PRIMARY!)
+          # OPTIONAL: OpenID Connect integration for kubectl authentication
+          # Replaces X.509 client certificates with OIDC tokens
+          # Requires: talosctl patch with kube-apiserver OIDC flags
+          - id: kubernetes
+            description: Kubernetes API Server Authentication
+            secret: Dl8iWXZ4Rj6rZ8b2GYQxrbRZvwMBQkn/ONg05wusD5c=
+            public: false
+            authorization_policy: two_factor  # MFA required for cluster access
+            redirect_uris:
+              - http://localhost:8000
+              - http://localhost:18000
+            scopes:
+              - openid
+              - profile
+              - groups
+              - email
+            userinfo_signing_algorithm: none
+
+          # ArgoCD OIDC Client (SIMPLE - groups only!)
           - id: argocd
             description: ArgoCD GitOps Platform
-            secret: # Will be generated separately
+            secret: argocd-oidc-secret-placeholder-change-me
             public: false
             authorization_policy: two_factor
-            claims_policy: argocd_policy
             redirect_uris:
               - https://argocd.homelab.local/auth/callback
             scopes:
@@ -172,16 +143,14 @@ data:
               - profile
               - groups
               - email
-              - argocd_scope
             userinfo_signing_algorithm: none
 
-          # Grafana OIDC Client
+          # Grafana OIDC Client (SIMPLE - groups only!)
           - id: grafana
             description: Grafana Monitoring Dashboard
             secret: Ta4mFsoBZ1Popbp0r0i6cNML39eB7kvtETl5OgIHWYc=
             public: false
             authorization_policy: two_factor
-            claims_policy: grafana_policy
             redirect_uris:
               - https://grafana.homelab.local/login/generic_oauth
             scopes:
@@ -189,23 +158,20 @@ data:
               - profile
               - groups
               - email
-              - grafana_scope
             userinfo_signing_algorithm: none
 
-          # N8N OIDC Client
+          # N8N OIDC Client (SIMPLE - groups only!)
           - id: n8n
             description: N8N Workflow Automation
-            secret: # Will be generated separately
+            secret: n8n-oidc-secret-placeholder-change-me
             public: false
             authorization_policy: one_factor
-            claims_policy: n8n_policy
             redirect_uris:
               - https://n8n.homelab.local/rest/oauth2-credential/callback
             scopes:
               - openid
               - profile
               - email
-              - n8n_scope
             userinfo_signing_algorithm: none
 
           # Nextcloud OIDC Client (for future)

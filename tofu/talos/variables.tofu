@@ -46,5 +46,7 @@ variable "nodes" {
     ram_dedicated    = number
     update           = optional(bool, false)
     igpu             = optional(bool, false)
+    os_disk_size     = optional(number, 50)   # OS disk size in GB (conservative)
+    ceph_disk_size   = optional(number, 200)  # Ceph OSD disk size in GB (conservative)
   }))
 }

@@ -31,7 +31,7 @@ resource "proxmox_virtual_environment_vm" "this" {
     mac_address = each.value.mac_address
   }
 
-  # Talos OS Disk
+  # Talos OS Disk - Per-node sizing
   disk {
     datastore_id = each.value.datastore_id
     interface    = "scsi0"
@@ -40,11 +40,14 @@ resource "proxmox_virtual_environment_vm" "this" {
     discard      = "on"
     ssd          = true
     file_format  = "raw"
-    size         = 20
-    file_id      = proxmox_virtual_environment_download_file.this["${each.value.host_node}_${each.value.update == true ? local.update_image_id : local.image_id}"].id
+    # OLD: size = 20  # Original size
+    # OLD: size = 30  # First increase (commented commit)
+    size    = each.value.os_disk_size  # Conservative: 50GB for all nodes
+    file_id = proxmox_virtual_environment_download_file.this["${each.value.host_node}_${each.value.update == true ? local.update_image_id : local.image_id}"].id
   }
 
-  # Ceph Storage Disk (raw, unformatted) - Restored from working commit afb3456
+  # Ceph Storage Disk (raw, unformatted) - Per-node sizing
+  # IMPORTANT: Must be static block to prevent VM recreation!
   disk {
     datastore_id = each.value.datastore_id
     interface    = "scsi1"
@@ -53,7 +56,8 @@ resource "proxmox_virtual_environment_vm" "this" {
     discard      = "on"
     ssd          = true
     file_format  = "raw"
-    size         = 50  # 50GB für Ceph OSD (increased from 15GB)
+    # OLD: size = 50  # Original Ceph disk size
+    size = each.value.ceph_disk_size  # Conservative: 200GB for all workers
   }
 
   boot_order = ["scsi0"]
