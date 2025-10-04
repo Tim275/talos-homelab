@@ -76,7 +76,7 @@ if exists(.node_ip) {
 }
 '''
 
-# Parse and enrich all logs - ENTERPRISE 3-LAYER
+# Parse and enrich all logs - ENTERPRISE SERVICE-BASED
 [transforms.enrich_logs]
 type = "remap"
 inputs = ["vector_agents", "process_proxmox_logs", "process_talos_system_logs"]
@@ -98,25 +98,75 @@ if exists(.level) {
 }
 
 # ═══════════════════════════════════════════════════════════════
-# ENTERPRISE: Classify Layer (Infrastructure/Platform/Applications)
+# ENTERPRISE TIER-0: Service-Based Index Routing
 # ═══════════════════════════════════════════════════════════════
 .namespace = string!(.kubernetes.namespace) ?? "unknown"
 
-# Layer 1: Infrastructure
-if .namespace == "kube-system" || .namespace == "kube-public" || .namespace == "kube-node-lease" {
-  .layer = "infra"
+# Infrastructure Services (Talos/Kubernetes Core)
+if .namespace == "kube-system" {
+  if contains(string!(.kubernetes.pod_name), "etcd") {
+    .service = "etcd"
+  } else if contains(string!(.kubernetes.pod_name), "kube-apiserver") {
+    .service = "kube-apiserver"
+  } else if contains(string!(.kubernetes.pod_name), "kube-scheduler") {
+    .service = "kube-scheduler"
+  } else if contains(string!(.kubernetes.pod_name), "kube-controller") {
+    .service = "kube-controller"
+  } else if contains(string!(.kubernetes.pod_name), "cilium") {
+    .service = "cilium"
+  } else if contains(string!(.kubernetes.container_name), "kubelet") {
+    .service = "kubelet"
+  } else {
+    .service = "kube-system"
+  }
 }
-# Layer 2: Platform
-else if .namespace == "rook-ceph" || .namespace == "argocd" || .namespace == "cert-manager" || .namespace == "sealed-secrets" || .namespace == "gateway" || .namespace == "envoy-gateway-system" || .namespace == "istio-system" || .namespace == "monitoring" || .namespace == "velero" || .namespace == "kyverno" || .namespace == "cnpg-system" {
-  .layer = "platform"
+# Platform Services (by namespace)
+else if .namespace == "rook-ceph" {
+  .service = "rook-ceph"
+} else if .namespace == "argocd" {
+  .service = "argocd"
+} else if .namespace == "cert-manager" {
+  .service = "cert-manager"
+} else if .namespace == "istio-system" {
+  .service = "istio"
+} else if .namespace == "monitoring" {
+  if contains(string!(.kubernetes.pod_name), "prometheus") {
+    .service = "prometheus"
+  } else if contains(string!(.kubernetes.pod_name), "grafana") {
+    .service = "grafana"
+  } else if contains(string!(.kubernetes.pod_name), "loki") {
+    .service = "loki"
+  } else if contains(string!(.kubernetes.pod_name), "alertmanager") {
+    .service = "alertmanager"
+  } else {
+    .service = "monitoring"
+  }
 }
-# Layer 3: Applications
-else {
-  .layer = "apps"
+# Applications (specific services)
+else if .namespace == "n8n-prod" {
+  .service = "n8n-prod"
+} else if .namespace == "n8n-dev" {
+  .service = "n8n-dev"
+} else if .namespace == "kafka" {
+  .service = "kafka"
+} else if .namespace == "elastic-system" {
+  if contains(string!(.kubernetes.pod_name), "elasticsearch") {
+    .service = "elasticsearch"
+  } else if contains(string!(.kubernetes.pod_name), "kibana") {
+    .service = "kibana"
+  } else {
+    .service = "elastic-system"
+  }
+} else if .namespace == "cnpg-system" {
+  .service = "cloudnative-pg"
+} else if contains(.namespace, "boutique") {
+  .service = "boutique-" + string!(.namespace)
+} else {
+  .service = string!(.namespace)
 }
 
 # ═══════════════════════════════════════════════════════════════
-# ENTERPRISE: Map Severity (critical/warn/info/debug)
+# Map Severity (critical/warn/info/debug)
 # ═══════════════════════════════════════════════════════════════
 if .level == "error" || .level == "fatal" || .level == "critical" {
   .severity = "critical"
@@ -146,7 +196,7 @@ type = "elasticsearch"
 inputs = ["sample_logs"]
 endpoints = ["https://production-cluster-es-http.elastic-system.svc.cluster.local:9200"]
 mode = "bulk"
-bulk.index = "logs-{{ .layer }}-{{ .severity }}-%Y.%m.%d"  # ← ENTERPRISE PATTERN!
+bulk.index = "logs-{{ .service }}-{{ .severity }}-%Y.%m"  # ← SERVICE-BASED + MONTHLY ROLLOVER!
 api_version = "v8"
 
 # Authentication
