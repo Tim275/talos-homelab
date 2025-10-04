@@ -7,96 +7,73 @@ spec:
   version: 8.16.1
   # 3-node production cluster
   nodeSets:
-  - name: master-data
-    count: 3
-    config:
-      # Master + Data + Ingest roles
-      node.roles: ["master", "data", "ingest"]
-      # Cluster settings for 3-node setup
-      cluster.initial_master_nodes: ["production-cluster-master-data-0", "production-cluster-master-data-1", "production-cluster-master-data-2"]
-      # Memory settings
-      xpack.security.enabled: true
-      # CRITICAL FIX: Allow ALL indices for logging pipeline
-      # Previously was "+fluent*,-*" which blocked logstash* indices - this was the ROOT CAUSE
-      # of the EFK stack failure. FluentBit -> Fluentd -> Elasticsearch requires logstash format
-      action.auto_create_index: "true"
-    podTemplate:
-      metadata:
-        labels:
-          app.kubernetes.io/component: elasticsearch
-      spec:
-        # Resource limits für 10GB storage + 2GB RAM
-        containers:
-        - name: elasticsearch
-          resources:
-            requests:
-              memory: 2Gi
-              cpu: 500m
-            limits:
-              memory: 2Gi
-              cpu: 1
-          env:
-          - name: ES_JAVA_OPTS
-            value: "-Xms1g -Xmx1g"  # 50% of container memory
-        # Affinity - spread across nodes
-        affinity:
-          podAntiAffinity:
-            preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchLabels:
-                    elasticsearch.k8s.elastic.co/cluster-name: production-cluster
-                topologyKey: kubernetes.io/hostname
-    # Storage mit Rook-Ceph
-    volumeClaimTemplates:
-    - metadata:
-        name: elasticsearch-data
-      spec:
-        accessModes:
-        - ReadWriteOnce
-        storageClassName: rook-ceph-block-enterprise
-        resources:
-          requests:
-            storage: 10Gi
+    - name: master-data
+      count: 3
+      config:
+        # Master + Data + Ingest roles
+        node.roles: ["master", "data", "ingest"]
+        # Cluster settings for 3-node setup
+        cluster.initial_master_nodes:
+          - production-cluster-master-data-0
+          - production-cluster-master-data-1
+          - production-cluster-master-data-2
+        # Memory settings
+        xpack.security.enabled: true
+        # CRITICAL FIX: Allow ALL indices for logging pipeline
+        # Previously was "+fluent*,-*" which blocked logstash*
+        # indices - this was the ROOT CAUSE of the EFK stack
+        # failure. FluentBit -> Fluentd -> Elasticsearch
+        # requires logstash format
+        action.auto_create_index: "true"
+      podTemplate:
+        metadata:
+          labels:
+            app.kubernetes.io/component: elasticsearch
+        spec:
+          # Resource limits für 10GB storage + 2GB RAM
+          containers:
+            - name: elasticsearch
+              resources:
+                requests:
+                  memory: 2Gi
+                  cpu: 500m
+                limits:
+                  memory: 2Gi
+                  cpu: 1
+              env:
+                - name: ES_JAVA_OPTS
+                  # 50% of container memory
+                  value: "-Xms1g -Xmx1g"
+          # Affinity - spread across nodes
+          affinity:
+            podAntiAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  podAffinityTerm:
+                    labelSelector:
+                      matchLabels:
+                        elasticsearch.k8s.elastic.co/cluster-name: production-cluster
+                    topologyKey: kubernetes.io/hostname
+      # Storage mit Rook-Ceph
+      volumeClaimTemplates:
+        - metadata:
+            name: elasticsearch-data
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            storageClassName: rook-ceph-block-enterprise
+            resources:
+              requests:
+                storage: 10Gi
   # HTTP service configuration
   http:
     service:
       spec:
         type: ClusterIP
         ports:
-        - name: https
-          port: 9200
-          targetPort: 9200
+          - name: https
+            port: 9200
+            targetPort: 9200
     tls:
       selfSignedCertificate:
         disabled: false
----
-apiVersion: kibana.k8s.elastic.co/v1
-kind: Kibana
-metadata:
-  name: production-kibana
-  namespace: elastic-system
-spec:
-  version: 8.16.1
-  count: 1
-  elasticsearchRef:
-    name: production-cluster
-  podTemplate:
-    spec:
-      containers:
-      - name: kibana
-        resources:
-          requests:
-            memory: 1Gi
-            cpu: 500m
-          limits:
-            memory: 2Gi
-            cpu: 1
-  http:
-    service:
-      spec:
-        type: ClusterIP
-    tls:
-      selfSignedCertificate:
-        disabled: true  # Disable TLS - handled by Envoy Gateway + Cloudflare
