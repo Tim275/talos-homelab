@@ -8,7 +8,7 @@ talos_nodes = {
     cpu           = 6
     ram_dedicated = 16384
     datastore_id  = "local-zfs"
-    os_disk_size  = 100  # OS + /var/lib/rook monitors
+    os_disk_size  = 50  # OS + /var/lib/rook monitors (conservative increase from 20GB)
     # ceph_disk_size = 0  # Control plane has no Ceph OSD
   }
   "worker-1" = {
@@ -20,8 +20,8 @@ talos_nodes = {
     cpu            = 5
     ram_dedicated  = 32768
     datastore_id   = "local-zfs"
-    os_disk_size   = 100   # OS + /var/lib/rook monitors
-    ceph_disk_size = 800   # Ceph OSD (nipogi has 2TB total)
+    os_disk_size   = 50    # OS + /var/lib/rook monitors (conservative)
+    ceph_disk_size = 200   # Ceph OSD (conservative 4x increase)
   }
   "worker-2" = {
     host_node      = "nipogi"
@@ -32,8 +32,8 @@ talos_nodes = {
     cpu            = 5
     ram_dedicated  = 32768
     datastore_id   = "local-zfs"
-    os_disk_size   = 100   # OS + /var/lib/rook monitors
-    ceph_disk_size = 800   # Ceph OSD (nipogi has 2TB total)
+    os_disk_size   = 50    # OS + /var/lib/rook monitors (conservative)
+    ceph_disk_size = 200   # Ceph OSD (conservative 4x increase)
   }
   "worker-3" = {
     host_node      = "msa2proxmox"
@@ -44,8 +44,8 @@ talos_nodes = {
     cpu            = 8
     ram_dedicated  = 24576
     datastore_id   = "local-zfs"
-    os_disk_size   = 100   # OS + /var/lib/rook monitors
-    ceph_disk_size = 400   # Ceph OSD (msa2proxmox has 1TB total)
+    os_disk_size   = 50    # OS + /var/lib/rook monitors (conservative)
+    ceph_disk_size = 200   # Ceph OSD (conservative 4x increase)
   }
   "worker-4" = {
     host_node      = "msa2proxmox"
@@ -56,8 +56,8 @@ talos_nodes = {
     cpu            = 8
     ram_dedicated  = 24576
     datastore_id   = "local-zfs"
-    os_disk_size   = 100   # OS + /var/lib/rook monitors
-    ceph_disk_size = 400   # Ceph OSD (msa2proxmox has 1TB total)
+    os_disk_size   = 50    # OS + /var/lib/rook monitors (conservative)
+    ceph_disk_size = 200   # Ceph OSD (conservative 4x increase)
   }
   "worker-5" = {
     host_node      = "msa2proxmox"
@@ -68,8 +68,8 @@ talos_nodes = {
     cpu            = 8
     ram_dedicated  = 24576
     datastore_id   = "local-zfs"
-    os_disk_size   = 100   # OS + /var/lib/rook monitors
-    ceph_disk_size = 400   # Ceph OSD (msa2proxmox has 1TB total)
+    os_disk_size   = 50    # OS + /var/lib/rook monitors (conservative)
+    ceph_disk_size = 200   # Ceph OSD (conservative 4x increase)
   }
   "worker-6" = {
     host_node      = "msa2proxmox"
@@ -80,7 +80,7 @@ talos_nodes = {
     cpu            = 8
     ram_dedicated  = 24576
     datastore_id   = "local-zfs"
-    os_disk_size   = 100   # OS + /var/lib/rook monitors
-    ceph_disk_size = 400   # Ceph OSD (msa2proxmox has 1TB total)
+    os_disk_size   = 50    # OS + /var/lib/rook monitors (conservative)
+    ceph_disk_size = 200   # Ceph OSD (conservative 4x increase)
   }
 }
