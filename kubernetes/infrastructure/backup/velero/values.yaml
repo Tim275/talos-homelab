@@ -1,0 +1,86 @@
+# 🛡️ Enterprise Backup Configuration - Ceph S3 Backend
+
+# Velero server configuration
+configuration:
+  # Ceph Object Gateway (RGW) S3 configuration
+  backupStorageLocation:
+    - name: default
+      provider: aws
+      bucket: velero-backups
+      config:
+        region: us-east-1
+        s3ForcePathStyle: "true"
+        s3Url: http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
+
+  # Volume snapshot configuration
+  volumeSnapshotLocation:
+    - name: default
+      provider: aws
+      config:
+        region: us-east-1
+
+  # Feature flags
+  features: EnableCSI
+
+  # Default backup retention
+  defaultBackupTTL: 168h  # 7 days
+
+  # Resource filters
+  excludedResources:
+    - events
+    - events.events.k8s.io
+
+# Credentials from SealedSecret
+credentials:
+  useSecret: true
+  existingSecret: velero-s3-credentials
+
+# CSI snapshot controller
+deployNodeAgent: true
+
+# Node agent configuration (for CSI snapshots)
+nodeAgent:
+  podVolumePath: /var/lib/kubelet/pods
+  privileged: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Velero server resources
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+# Monitoring
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    additionalLabels:
+      release: prometheus-operator
+
+# Init containers
+initContainers:
+  # AWS plugin for S3 compatibility
+  - name: velero-plugin-for-aws
+    image: velero/velero-plugin-for-aws:v1.11.0
+    volumeMounts:
+      - mountPath: /target
+        name: plugins
+  # CSI plugin for volume snapshots
+  - name: velero-plugin-for-csi
+    image: velero/velero-plugin-for-csi:v0.8.1
+    volumeMounts:
+      - mountPath: /target
+        name: plugins
+
+# Schedule backups (will be created separately)
+schedules: {}
