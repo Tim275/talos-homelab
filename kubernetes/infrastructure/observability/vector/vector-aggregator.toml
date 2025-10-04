@@ -76,7 +76,7 @@ if exists(.node_ip) {
 }
 '''
 
-# Parse and enrich all logs
+# Parse and enrich all logs - ENTERPRISE 3-LAYER
 [transforms.enrich_logs]
 type = "remap"
 inputs = ["vector_agents", "process_proxmox_logs", "process_talos_system_logs"]
@@ -97,35 +97,40 @@ if exists(.level) {
   .level = "info"
 }
 
-# Add granular index routing field with enhanced patterns
-if exists(.kubernetes.namespace) && exists(.kubernetes.pod_name) {
-  # Create index per application: app-namespace-YYYY.MM.DD
-  if exists(.kubernetes.pod_labels.app) {
-    .index_name = string!(.kubernetes.pod_labels.app) + "-" + string!(.kubernetes.namespace)
-  } else if exists(.kubernetes.pod_labels."app.kubernetes.io/name") {
-    .index_name = string!(.kubernetes.pod_labels."app.kubernetes.io/name") + "-" + string!(.kubernetes.namespace)
-  } else if contains(string!(.kubernetes.pod_name), "etcd") {
-    .index_name = "etcd-control-plane"
-  } else if contains(string!(.kubernetes.pod_name), "kube-apiserver") {
-    .index_name = "kube-apiserver-control-plane"
-  } else if contains(string!(.kubernetes.pod_name), "kube-scheduler") {
-    .index_name = "kube-scheduler-control-plane"
-  } else if contains(string!(.kubernetes.pod_name), "kube-controller") {
-    .index_name = "kube-controller-control-plane"
-  } else if string!(.kubernetes.namespace) == "kube-system" {
-    .index_name = "system-" + string!(.kubernetes.container_name) + "-kube-system"
-  } else {
-    .index_name = "pod-" + string!(.kubernetes.namespace)
-  }
-} else if .source == "proxmox" && exists(.host) {
-  # Create index per Proxmox node: proxmox-hostname-YYYY.MM.DD
-  .index_name = "proxmox-" + string!(.host)
-} else if exists(.kubernetes.node_name) {
-  # Create index per Kubernetes node: node-nodename-YYYY.MM.DD
-  .index_name = "node-" + string!(.kubernetes.node_name)
-} else {
-  .index_name = "general"
+# ═══════════════════════════════════════════════════════════════
+# ENTERPRISE: Classify Layer (Infrastructure/Platform/Applications)
+# ═══════════════════════════════════════════════════════════════
+.namespace = string!(.kubernetes.namespace) ?? "unknown"
+
+# Layer 1: Infrastructure
+if .namespace == "kube-system" || .namespace == "kube-public" || .namespace == "kube-node-lease" {
+  .layer = "infra"
 }
+# Layer 2: Platform
+else if .namespace == "rook-ceph" || .namespace == "argocd" || .namespace == "cert-manager" || .namespace == "sealed-secrets" || .namespace == "gateway" || .namespace == "envoy-gateway-system" || .namespace == "istio-system" || .namespace == "monitoring" || .namespace == "velero" || .namespace == "kyverno" || .namespace == "cnpg-system" {
+  .layer = "platform"
+}
+# Layer 3: Applications
+else {
+  .layer = "apps"
+}
+
+# ═══════════════════════════════════════════════════════════════
+# ENTERPRISE: Map Severity (critical/warn/info/debug)
+# ═══════════════════════════════════════════════════════════════
+if .level == "error" || .level == "fatal" || .level == "critical" {
+  .severity = "critical"
+} else if .level == "warn" || .level == "warning" {
+  .severity = "warn"
+} else if .level == "debug" || .level == "trace" {
+  .severity = "debug"
+} else {
+  .severity = "info"
+}
+
+# Add cluster metadata
+.cluster = "talos-homelab"
+.environment = "production"
 '''
 
 # Sample logs to reduce volume (optional)
@@ -135,13 +140,13 @@ inputs = ["enrich_logs"]
 rate = 100  # Keep all logs (set lower to sample, e.g. 10 = 10%)
 key_field = ".kubernetes.pod"  # Sample per pod
 
-# Elasticsearch sink
+# Elasticsearch sink - ENTERPRISE INDEX PATTERN
 [sinks.elasticsearch]
 type = "elasticsearch"
 inputs = ["sample_logs"]
 endpoints = ["https://production-cluster-es-http.elastic-system.svc.cluster.local:9200"]
 mode = "bulk"
-bulk.index = "vector-{{ .index_name }}-%Y.%m.%d"
+bulk.index = "logs-{{ .layer }}-{{ .severity }}-%Y.%m.%d"  # ← ENTERPRISE PATTERN!
 api_version = "v8"
 
 # Authentication
@@ -175,4 +180,3 @@ type = "console"
 inputs = ["sample_logs"]
 encoding.codec = "json"
 target = "stdout"
-
