@@ -1,0 +1,330 @@
+# Enterprise Vector Configuration
+# 3-Layer Logging Architecture with Severity-Based Routing
+# See LOGGING_PLAN.md for full documentation
+
+# Vector Helm Chart Values
+role: "Aggregator"
+
+# Resource limits for aggregator
+resources:
+  requests:
+    memory: "512Mi"
+    cpu: "500m"
+  limits:
+    memory: "2Gi"
+    cpu: "2000m"
+
+# Environment variables
+env:
+  - name: ELASTICSEARCH_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: production-cluster-es-elastic-user
+        key: elastic
+
+# Vector configuration
+customConfig:
+  data_dir: "/vector-data-dir"
+
+  api:
+    enabled: true
+    address: "0.0.0.0:8686"
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # SOURCES
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  sources:
+    # Vector agents (DaemonSet) send logs here
+    vector_agents:
+      type: "vector"
+      address: "0.0.0.0:6000"
+      version: "2"
+
+    # Proxmox syslog (external infrastructure)
+    proxmox_syslog:
+      type: "syslog"
+      address: "0.0.0.0:514"
+      mode: "udp"
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # TRANSFORMS - ENTERPRISE 3-LAYER ARCHITECTURE
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  transforms:
+    # ──────────────────────────────────────────────────────────────────
+    # STEP 1: Parse Kubernetes Metadata
+    # ──────────────────────────────────────────────────────────────────
+    parse_k8s_metadata:
+      type: "remap"
+      inputs: ["vector_agents"]
+      source: |
+        # Ensure timestamp exists
+        if !exists(.timestamp) {
+          .timestamp = now()
+        }
+
+        # Extract namespace (critical for layer classification)
+        if exists(.kubernetes.namespace) {
+          .namespace = string!(.kubernetes.namespace)
+        } else {
+          .namespace = "unknown"
+        }
+
+        # Extract pod name
+        if exists(.kubernetes.pod_name) {
+          .pod_name = string!(.kubernetes.pod_name)
+        } else {
+          .pod_name = "unknown"
+        }
+
+        # Extract container name
+        if exists(.kubernetes.container_name) {
+          .container_name = string!(.kubernetes.container_name)
+        } else {
+          .container_name = "unknown"
+        }
+
+        # Extract node name
+        if exists(.kubernetes.node_name) {
+          .node_name = string!(.kubernetes.node_name)
+        } else {
+          .node_name = "unknown"
+        }
+
+    # ──────────────────────────────────────────────────────────────────
+    # STEP 2: Extract Log Level (Severity)
+    # ──────────────────────────────────────────────────────────────────
+    extract_log_level:
+      type: "remap"
+      inputs: ["parse_k8s_metadata"]
+      source: |
+        # Initialize log_level if not exists
+        if exists(.level) {
+          .log_level = downcase(string!(.level))
+        } else if exists(.severity) {
+          .log_level = downcase(string!(.severity))
+        } else {
+          # Parse from message content
+          message = downcase(string!(.message))
+
+          # Critical/Error patterns
+          if contains(message, "error") ||
+             contains(message, "fatal") ||
+             contains(message, "critical") ||
+             contains(message, "panic") ||
+             contains(message, "failed") ||
+             contains(message, "exception") {
+            .log_level = "error"
+          }
+          # Warn patterns
+          else if contains(message, "warn") ||
+                  contains(message, "warning") ||
+                  contains(message, "deprecated") {
+            .log_level = "warn"
+          }
+          # Debug patterns
+          else if contains(message, "debug") ||
+                  contains(message, "trace") ||
+                  contains(message, "verbose") {
+            .log_level = "debug"
+          }
+          # Default to info
+          else {
+            .log_level = "info"
+          }
+        }
+
+    # ──────────────────────────────────────────────────────────────────
+    # STEP 3: Classify Layer (Infrastructure/Platform/Applications)
+    # ──────────────────────────────────────────────────────────────────
+    classify_layer:
+      type: "remap"
+      inputs: ["extract_log_level"]
+      source: |
+        namespace = string!(.namespace)
+
+        # ═══════════════════════════════════════════════════════════════
+        # LAYER 1: INFRASTRUCTURE (Talos/Kubernetes Core)
+        # ═══════════════════════════════════════════════════════════════
+        if namespace == "kube-system" ||
+           namespace == "kube-public" ||
+           namespace == "kube-node-lease" {
+          .layer = "infra"
+          .layer_full = "infrastructure"
+        }
+
+        # ═══════════════════════════════════════════════════════════════
+        # LAYER 2: PLATFORM SERVICES (Storage/Network/GitOps/Security)
+        # ═══════════════════════════════════════════════════════════════
+        else if namespace == "rook-ceph" ||
+                namespace == "argocd" ||
+                namespace == "cert-manager" ||
+                namespace == "sealed-secrets" ||
+                namespace == "gateway" ||
+                namespace == "envoy-gateway-system" ||
+                namespace == "istio-system" ||
+                namespace == "monitoring" ||
+                namespace == "velero" ||
+                namespace == "kyverno" ||
+                namespace == "cnpg-system" {
+          .layer = "platform"
+          .layer_full = "platform-services"
+        }
+
+        # ═══════════════════════════════════════════════════════════════
+        # LAYER 3: APPLICATIONS (Everything else)
+        # ═══════════════════════════════════════════════════════════════
+        else {
+          .layer = "apps"
+          .layer_full = "applications"
+        }
+
+    # ──────────────────────────────────────────────────────────────────
+    # STEP 4: Map Log Level to Severity (for index routing)
+    # ──────────────────────────────────────────────────────────────────
+    map_severity:
+      type: "remap"
+      inputs: ["classify_layer"]
+      source: |
+        log_level = string!(.log_level)
+
+        # Map to severity tiers
+        if log_level == "error" ||
+           log_level == "fatal" ||
+           log_level == "critical" ||
+           log_level == "panic" {
+          .severity = "critical"
+        } else if log_level == "warn" || log_level == "warning" {
+          .severity = "warn"
+        } else if log_level == "debug" || log_level == "trace" {
+          .severity = "debug"
+        } else {
+          .severity = "info"
+        }
+
+    # ──────────────────────────────────────────────────────────────────
+    # STEP 5: Determine Index Name & Rollover Pattern
+    # ──────────────────────────────────────────────────────────────────
+    determine_index:
+      type: "remap"
+      inputs: ["map_severity"]
+      source: |
+        layer = string!(.layer)
+        severity = string!(.severity)
+
+        # Set index pattern based on severity
+        # Critical: Monthly rollover (logs-infra-critical-2025.10)
+        # Warn:     Daily rollover (logs-infra-warn-2025.10.04)
+        # Info:     Weekly rollover (logs-infra-info-2025.W40)
+        # Debug:    Daily rollover (logs-infra-debug-2025.10.04)
+
+        if severity == "critical" {
+          .index_pattern = "logs-" + layer + "-critical-%Y.%m"
+          .rollover = "monthly"
+        } else if severity == "warn" {
+          .index_pattern = "logs-" + layer + "-warn-%Y.%m.%d"
+          .rollover = "daily"
+        } else if severity == "info" {
+          .index_pattern = "logs-" + layer + "-info-%Y.W%V"
+          .rollover = "weekly"
+        } else {  # debug
+          .index_pattern = "logs-" + layer + "-debug-%Y.%m.%d"
+          .rollover = "daily"
+        }
+
+    # ──────────────────────────────────────────────────────────────────
+    # STEP 6: Enrich with Cluster Metadata
+    # ──────────────────────────────────────────────────────────────────
+    enrich_metadata:
+      type: "remap"
+      inputs: ["determine_index"]
+      source: |
+        # Add cluster-wide metadata
+        .cluster = "talos-homelab"
+        .datacenter = "homelab"
+        .environment = "production"
+
+        # Add Vector metadata
+        .ingested_by = "vector-aggregator"
+        .ingested_at = now()
+
+    # ──────────────────────────────────────────────────────────────────
+    # STEP 7: Process Proxmox Logs (External Infrastructure)
+    # ──────────────────────────────────────────────────────────────────
+    process_proxmox_logs:
+      type: "remap"
+      inputs: ["proxmox_syslog"]
+      source: |
+        .source = "proxmox"
+        .cluster = "talos-homelab"
+        .datacenter = "homelab"
+        .layer = "infra"
+        .layer_full = "infrastructure"
+        .node_type = "hypervisor"
+
+        # Proxmox logs are infrastructure-critical
+        .severity = "critical"
+        .index_pattern = "logs-infra-critical-%Y.%m"
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # SINKS - ELASTICSEARCH
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  sinks:
+    # ──────────────────────────────────────────────────────────────────
+    # Kubernetes Logs → Elasticsearch (Layer-based indices)
+    # ──────────────────────────────────────────────────────────────────
+    elasticsearch_k8s:
+      type: "elasticsearch"
+      inputs: ["enrich_metadata"]
+      endpoints: ["https://production-cluster-es-http.elastic-system.svc.cluster.local:9200"]
+      mode: "bulk"
+      bulk:
+        # Use dynamic index pattern from transform
+        index: "{{ index_pattern }}"
+        action: "create"
+      compression: "gzip"
+      api_version: "v8"
+      auth:
+        strategy: "basic"
+        user: "elastic"
+        password: "${ELASTICSEARCH_PASSWORD}"
+      tls:
+        verify_certificate: false
+        verify_hostname: false
+      batch:
+        timeout_secs: 5
+        max_bytes: 10485760  # 10MB
+      request:
+        timeout_secs: 60
+
+    # ──────────────────────────────────────────────────────────────────
+    # Proxmox Logs → Elasticsearch (Infrastructure critical)
+    # ──────────────────────────────────────────────────────────────────
+    elasticsearch_proxmox:
+      type: "elasticsearch"
+      inputs: ["process_proxmox_logs"]
+      endpoints: ["https://production-cluster-es-http.elastic-system.svc.cluster.local:9200"]
+      mode: "bulk"
+      bulk:
+        index: "{{ index_pattern }}"
+        action: "create"
+      compression: "gzip"
+      api_version: "v8"
+      auth:
+        strategy: "basic"
+        user: "elastic"
+        password: "${ELASTICSEARCH_PASSWORD}"
+      tls:
+        verify_certificate: false
+        verify_hostname: false
+
+    # ──────────────────────────────────────────────────────────────────
+    # Metrics Sink (for Vector internal metrics)
+    # ──────────────────────────────────────────────────────────────────
+    prometheus_exporter:
+      type: "prometheus_exporter"
+      inputs: []
+      address: "0.0.0.0:9090"
+      default_namespace: "vector"
