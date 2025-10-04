@@ -144,9 +144,73 @@ if exists(.level) {
   "info"
 }
 
-# Add cluster metadata
+# ═══════════════════════════════════════════════════════════════
+# ENTERPRISE: ECS-Compliant Field Mappings
+# ═══════════════════════════════════════════════════════════════
+
+# ECS version
+."ecs.version" = "8.17"
+
+# Rename @timestamp for ECS compliance
+."@timestamp" = .timestamp
+
+# ECS log.level (normalized)
+."log.level" = .level
+
+# ECS service.name (primary identifier)
+."service.name" = .service
+
+# ECS service.environment
+."service.environment" = "production"
+
+# Add cluster metadata (custom fields)
 .cluster = "talos-homelab"
+.datacenter = "homelab"
 .environment = "production"
+
+# ═══════════════════════════════════════════════════════════════
+# ENTERPRISE: OpenTelemetry Tracing Support
+# ═══════════════════════════════════════════════════════════════
+
+# Extract trace.id from headers/metadata (if exists)
+if exists(.trace_id) {
+  ."trace.id" = string!(.trace_id)
+} else if exists(.traceId) {
+  ."trace.id" = string!(.traceId)
+} else if exists(.headers."X-Trace-Id") {
+  ."trace.id" = string!(.headers."X-Trace-Id")
+}
+
+# Extract transaction.id (if exists)
+if exists(.transaction_id) {
+  ."transaction.id" = string!(.transaction_id)
+} else if exists(.transactionId) {
+  ."transaction.id" = string!(.transactionId)
+}
+
+# Extract span.id (if exists)
+if exists(.span_id) {
+  ."span.id" = string!(.span_id)
+} else if exists(.spanId) {
+  ."span.id" = string!(.spanId)
+}
+
+# ═══════════════════════════════════════════════════════════════
+# ENTERPRISE: Structured Logging Support
+# ═══════════════════════════════════════════════════════════════
+
+# If log is JSON, preserve structured fields
+if exists(.workflow_id) {
+  ."workflow.id" = string!(.workflow_id)
+}
+
+if exists(.user_id) {
+  ."user.id" = string!(.user_id)
+}
+
+if exists(.error) {
+  ."error.message" = string!(.error)
+}
 '''
 
 # Sample logs to reduce volume (optional)
@@ -156,13 +220,17 @@ inputs = ["enrich_logs"]
 rate = 100  # Keep all logs (set lower to sample, e.g. 10 = 10%)
 key_field = ".kubernetes.pod"  # Sample per pod
 
-# Elasticsearch sink - ENTERPRISE INDEX PATTERN
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ELASTICSEARCH SINK - ENTERPRISE DATA STREAMS + ECS
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [sinks.elasticsearch]
 type = "elasticsearch"
 inputs = ["sample_logs"]
 endpoints = ["https://production-cluster-es-http.elastic-system.svc.cluster.local:9200"]
-mode = "bulk"
-bulk.index = "logs-{{ .service }}-{{ .severity }}-%Y.%m"  # ← SERVICE-BASED + MONTHLY ROLLOVER!
+mode = "data_stream"  # ← DATA STREAMS! (automatic rollover)
+data_stream.type = "logs"
+data_stream.dataset = "{{ service.name }}.{{ severity }}"  # ECS field!
+data_stream.namespace = "default"
 api_version = "v8"
 
 # Authentication
