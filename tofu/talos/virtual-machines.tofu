@@ -31,7 +31,7 @@ resource "proxmox_virtual_environment_vm" "this" {
     mac_address = each.value.mac_address
   }
 
-  # Talos OS Disk
+  # Talos OS Disk - Per-node sizing
   disk {
     datastore_id = each.value.datastore_id
     interface    = "scsi0"
@@ -40,20 +40,27 @@ resource "proxmox_virtual_environment_vm" "this" {
     discard      = "on"
     ssd          = true
     file_format  = "raw"
-    size         = 30  # Increased from 20GB for /var/lib/rook monitor data
-    file_id      = proxmox_virtual_environment_download_file.this["${each.value.host_node}_${each.value.update == true ? local.update_image_id : local.image_id}"].id
+    # OLD: size = 20  # Original size
+    # OLD: size = 30  # First increase for /var/lib/rook
+    size    = each.value.os_disk_size  # NEW: Per-node (100GB for all)
+    file_id = proxmox_virtual_environment_download_file.this["${each.value.host_node}_${each.value.update == true ? local.update_image_id : local.image_id}"].id
   }
 
-  # Ceph Storage Disk (raw, unformatted) - Restored from working commit afb3456
-  disk {
-    datastore_id = each.value.datastore_id
-    interface    = "scsi1"
-    iothread     = true
-    cache        = "none"
-    discard      = "on"
-    ssd          = true
-    file_format  = "raw"
-    size         = 50  # 50GB für Ceph OSD (increased from 15GB)
+  # Ceph Storage Disk (raw, unformatted) - Per-node sizing
+  # Only created for worker nodes (controlplane has no Ceph OSD)
+  dynamic "disk" {
+    for_each = each.value.machine_type == "worker" ? [1] : []
+    content {
+      datastore_id = each.value.datastore_id
+      interface    = "scsi1"
+      iothread     = true
+      cache        = "none"
+      discard      = "on"
+      ssd          = true
+      file_format  = "raw"
+      # OLD: size = 50  # Original Ceph disk size
+      size = each.value.ceph_disk_size  # NEW: Per-node (800GB nipogi, 400GB msa)
+    }
   }
 
   boot_order = ["scsi0"]
