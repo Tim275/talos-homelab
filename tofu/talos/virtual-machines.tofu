@@ -41,26 +41,23 @@ resource "proxmox_virtual_environment_vm" "this" {
     ssd          = true
     file_format  = "raw"
     # OLD: size = 20  # Original size
-    # OLD: size = 30  # First increase for /var/lib/rook
-    size    = each.value.os_disk_size  # NEW: Per-node (100GB for all)
+    # OLD: size = 30  # First increase (commented commit)
+    size    = each.value.os_disk_size  # Conservative: 50GB for all nodes
     file_id = proxmox_virtual_environment_download_file.this["${each.value.host_node}_${each.value.update == true ? local.update_image_id : local.image_id}"].id
   }
 
   # Ceph Storage Disk (raw, unformatted) - Per-node sizing
-  # Only created for worker nodes (controlplane has no Ceph OSD)
-  dynamic "disk" {
-    for_each = each.value.machine_type == "worker" ? [1] : []
-    content {
-      datastore_id = each.value.datastore_id
-      interface    = "scsi1"
-      iothread     = true
-      cache        = "none"
-      discard      = "on"
-      ssd          = true
-      file_format  = "raw"
-      # OLD: size = 50  # Original Ceph disk size
-      size = each.value.ceph_disk_size  # NEW: Per-node (800GB nipogi, 400GB msa)
-    }
+  # IMPORTANT: Must be static block to prevent VM recreation!
+  disk {
+    datastore_id = each.value.datastore_id
+    interface    = "scsi1"
+    iothread     = true
+    cache        = "none"
+    discard      = "on"
+    ssd          = true
+    file_format  = "raw"
+    # OLD: size = 50  # Original Ceph disk size
+    size = each.value.ceph_disk_size  # Conservative: 200GB for all workers
   }
 
   boot_order = ["scsi0"]

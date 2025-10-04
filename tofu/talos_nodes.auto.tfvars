@@ -1,15 +1,15 @@
 talos_nodes = {
   "ctrl-0" = {
-    host_node     = "nipogi"
-    machine_type  = "controlplane"
-    ip            = "192.168.68.101"
-    mac_address   = "BC:24:11:2E:C8:A0"
-    vm_id         = 1000
-    cpu           = 6
-    ram_dedicated = 16384
-    datastore_id  = "local-zfs"
-    os_disk_size  = 50  # OS + /var/lib/rook monitors (conservative increase from 20GB)
-    # ceph_disk_size = 0  # Control plane has no Ceph OSD
+    host_node      = "nipogi"
+    machine_type   = "controlplane"
+    ip             = "192.168.68.101"
+    mac_address    = "BC:24:11:2E:C8:A0"
+    vm_id          = 1000
+    cpu            = 6
+    ram_dedicated  = 16384
+    datastore_id   = "local-zfs"
+    os_disk_size   = 50   # OS + /var/lib/rook monitors (conservative)
+    ceph_disk_size = 50   # Control plane disk (exists but unused by Ceph)
   }
   "worker-1" = {
     host_node      = "nipogi"
