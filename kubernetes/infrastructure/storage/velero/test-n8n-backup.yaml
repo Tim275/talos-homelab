@@ -1,0 +1,53 @@
+---
+# Manual N8N Backup Test - Tier 0 Critical Database
+apiVersion: velero.io/v1
+kind: Backup
+metadata:
+  name: n8n-prod-manual-test
+  namespace: velero
+  labels:
+    backup.tier: tier0
+    backup.type: manual-test
+spec:
+  # Include N8N Production namespace
+  includedNamespaces:
+    - n8n-prod
+
+  # Backup all resources in namespace
+  includedResources:
+    - '*'
+
+  # Include Volume Snapshots (CSI)
+  snapshotVolumes: true
+  defaultVolumesToFsBackup: false  # Use CSI snapshots
+
+  # Backup TTL (keep for 7 days)
+  ttl: 168h
+
+  # Storage Location
+  storageLocation: default
+
+  # Volume Snapshot Location
+  volumeSnapshotLocations:
+    - default
+
+  # Backup Hooks - Ensure PostgreSQL consistency
+  hooks:
+    resources:
+      - name: postgres-backup-hook
+        includedNamespaces:
+          - n8n-prod
+        labelSelector:
+          matchLabels:
+            cnpg.io/cluster: n8n-postgres
+        pre:
+          - exec:
+              container: postgres
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  echo "🔄 Flushing PostgreSQL WAL before backup..."
+                  psql -U postgres -c "CHECKPOINT;"
+              onError: Continue
+              timeout: 30s
