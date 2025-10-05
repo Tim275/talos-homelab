@@ -4,14 +4,23 @@ kind: Kustomization
 namespace: n8n-prod
 
 resources:
-  # - namespace.yaml     # ❌ REMOVED - Platform creates namespace via CNPG
-  - secret.yaml
-  - deployment.yaml
-  - service.yaml
+  # Configuration
   - configmap.yaml
-  - pvc.yaml
+  - sealed-secrets.yaml  # ⚠️ NEW: Encrypted encryption key + Redis password
+
+  # Deployments - Queue Mode
+  - deployment-main.yaml   # ⚠️ NEW: Main process (1 replica, stateless)
+  - deployment-worker.yaml # ⚠️ NEW: Workers (3 replicas, stateless)
+  - hpa-worker.yaml        # ⚠️ NEW: Auto-scaling for workers
+
+  # Networking
+  - service.yaml
   - httproute.yaml
-  # - servicemonitor.yaml # ❌ MOVED - ServiceMonitors in monitoring namespace
+
+  # ❌ REMOVED - No longer needed:
+  # - deployment.yaml      # Old single deployment with PVC
+  # - secret.yaml          # Replaced by sealed-secrets.yaml
+  # - pvc.yaml             # NO PVC NEEDED - STATELESS!
 
 commonLabels:
   app.kubernetes.io/name: n8n
