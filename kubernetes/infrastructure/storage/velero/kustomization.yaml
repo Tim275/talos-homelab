@@ -16,4 +16,73 @@ helmCharts:
     releaseName: velero
     namespace: velero
     includeCRDs: true
-    valuesFile: values.yaml
+    valuesInline:
+      image:
+        repository: velero/velero
+        tag: v1.14.1
+      replicas: 2
+      credentials:
+        useSecret: true
+        existingSecret: velero-s3-credentials
+      configuration:
+        defaultBackupTTL: 168h
+        backupStorageLocation:
+          - name: default
+            provider: aws
+            bucket: velero-backups
+            config:
+              region: eu-west-1
+              s3ForcePathStyle: "true"
+              s3Url: http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
+        volumeSnapshotLocation:
+          - name: default
+            provider: csi
+      snapshotsEnabled: true
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 512Mi
+        requests:
+          cpu: 500m
+          memory: 256Mi
+      metrics:
+        enabled: true
+        scrapeInterval: 30s
+        scrapeTimeout: 10s
+        service:
+          annotations:
+            prometheus.io/scrape: "true"
+            prometheus.io/port: "8085"
+            prometheus.io/path: "/metrics"
+      nodeAgent:
+        enable: true
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+          requests:
+            cpu: 500m
+            memory: 512Mi
+      podSecurityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containerSecurityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+      serviceAccount:
+        server:
+          create: true
+          name: velero
+      initContainers:
+        - name: velero-plugin-for-aws
+          image: velero/velero-plugin-for-aws:v1.11.0
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - mountPath: /target
+              name: plugins
