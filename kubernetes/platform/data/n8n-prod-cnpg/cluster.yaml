@@ -43,6 +43,31 @@ spec:
   # Pod Disruption Budget (prevent accidental downtime)
   enablePDB: true
 
+  # Enterprise Barman Backup Configuration (Tier-0)
+  # Daily backups to Ceph RGW S3-compatible storage
+  backup:
+    barmanObjectStore:
+      destinationPath: s3://n8n-postgres-backups/
+      endpointURL: http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
+      s3Credentials:
+        accessKeyId:
+          name: n8n-postgres-backup-s3
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: n8n-postgres-backup-s3
+          key: ACCESS_SECRET_KEY
+      wal:
+        compression: gzip
+        encryption: AES256
+        # Enterprise: WAL archiving every 5 minutes for RPO < 5 min
+        # Homelab: Daily backups are sufficient (commented for reference)
+        # archiveTimeout: 5m
+      data:
+        compression: gzip
+        encryption: AES256
+        jobs: 2  # Parallel compression jobs
+    retentionPolicy: "30d"  # Keep backups for 30 days
+
   # Bootstrap from existing cluster or create new
   bootstrap:
     initdb:
