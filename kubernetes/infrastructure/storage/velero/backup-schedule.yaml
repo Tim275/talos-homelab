@@ -1,21 +1,21 @@
-# =á ENTERPRISE VELERO BACKUP SCHEDULES
+# ENTERPRISE VELERO BACKUP SCHEDULES
 # ========================================
 # Tier-based backup strategy following enterprise best practices
 # Reference: Velero Best Practices, GitLab/Netflix/Spotify backup patterns
 
 ---
-# =æ TIER 0: CRITICAL DATABASES - Every 6 hours, 7 days retention
+# TIER 0: CRITICAL DATABASES - Every 24h, 7 days retention (Homelab optimized)
 # PostgreSQL, Redis, LLDAP, Authelia secrets
 apiVersion: velero.io/v1
 kind: Schedule
 metadata:
-  name: tier0-databases-6h
+  name: tier0-databases-24h
   namespace: velero
   labels:
     backup.tier: tier0
     backup.type: database
 spec:
-  schedule: "0 */6 * * *"  # Every 6 hours (00:00, 06:00, 12:00, 18:00)
+  schedule: "0 3 * * *"  # Daily at 3 AM
   template:
     ttl: 168h  # 7 days retention
     includedNamespaces:
@@ -34,7 +34,7 @@ spec:
       - default
 
 ---
-# =Ê TIER 1: STATEFUL APPLICATIONS - Daily, 14 days retention
+# TIER 1: STATEFUL APPLICATIONS - Daily, 14 days retention
 # N8N workflows, Grafana dashboards, ArgoCD config
 apiVersion: velero.io/v1
 kind: Schedule
@@ -67,7 +67,7 @@ spec:
       - default
 
 ---
-# = TIER 2: PLATFORM SERVICES - Weekly, 30 days retention
+# TIER 2: PLATFORM SERVICES - Weekly, 30 days retention
 # Identity platform (LLDAP, Authelia), Cert-Manager, Sealed Secrets
 apiVersion: velero.io/v1
 kind: Schedule
@@ -94,7 +94,7 @@ spec:
       - default
 
 ---
-# < TIER 3: FULL CLUSTER BACKUP - Monthly, 90 days retention
+# TIER 3: FULL CLUSTER BACKUP - Monthly, 90 days retention
 # Complete cluster state backup for disaster recovery
 apiVersion: velero.io/v1
 kind: Schedule
@@ -118,26 +118,9 @@ spec:
     storageLocation: default
     volumeSnapshotLocations:
       - default
-    hooks:
-      resources:
-        # Pre-backup hook: Flush N8N workflows to disk
-        - name: n8n-flush-workflows
-          includedNamespaces:
-            - n8n-dev
-            - n8n-prod
-          labelSelector:
-            matchLabels:
-              app.kubernetes.io/name: n8n
-          pre:
-            - exec:
-                command:
-                  - /bin/sh
-                  - -c
-                  - "n8n export:workflow --all --output=/data/backups/workflows.json || true"
-                timeout: 2m
 
 ---
-# ¡ TIER 4: CONFIGURATION BACKUP - Every 4 hours, 3 days retention
+# TIER 4: CONFIGURATION BACKUP - Every 4 hours, 3 days retention
 # ArgoCD Applications, Kyverno Policies, Network Policies (lightweight)
 apiVersion: velero.io/v1
 kind: Schedule
