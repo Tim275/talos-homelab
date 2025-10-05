@@ -12,8 +12,8 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "3"  # After operator (wave 2)
 spec:
-  # Single instance for n8n (can scale later)
-  instances: 1
+  # HA: 1 Primary + 1 Replica for production
+  instances: 2
 
   # PostgreSQL version
   imageName: ghcr.io/cloudnative-pg/postgresql:16.1
@@ -32,6 +32,17 @@ spec:
     size: 8Gi
     storageClass: rook-ceph-block-enterprise
 
+  # High Availability Configuration
+  minSyncReplicas: 0  # Optional sync replication (async for better performance)
+  maxSyncReplicas: 0  # With 2 instances, we have 1 replica (async replication)
+
+  # Pod Anti-Affinity (distribute across nodes)
+  affinity:
+    podAntiAffinityType: required  # Force different nodes
+
+  # Pod Disruption Budget (prevent accidental downtime)
+  enablePDB: true
+
   # Bootstrap from existing cluster or create new
   bootstrap:
     initdb:
@@ -39,17 +50,3 @@ spec:
       owner: n8n
       secret:
         name: n8n-postgres-credentials
-
----
-# n8n database user credentials
-apiVersion: v1
-kind: Secret
-metadata:
-  name: n8n-postgres-credentials
-  namespace: n8n-prod
-  annotations:
-    argocd.argoproj.io/sync-wave: "2"  # Same as operator, before cluster
-type: kubernetes.io/basic-auth
-stringData:
-  username: n8n
-  password: n8nPassword123  # CHANGE THIS IN PRODUCTION!

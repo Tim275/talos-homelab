@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: velero
+  name: proxmox-csi
   namespace: argocd
   labels:
     app.kubernetes.io/managed-by: argocd
@@ -11,22 +11,20 @@ spec:
   source:
     repoURL: https://github.com/Tim275/talos-homelab
     targetRevision: HEAD
-    path: kubernetes/infrastructure/storage/velero
+    path: kubernetes/infrastructure/storage/proxmox-csi
   destination:
     server: https://kubernetes.default.svc
-  ignoreDifferences:
-    - group: apiextensions.k8s.io
-      kind: CustomResourceDefinition
-      jqPathExpressions:
-        - '.spec.conversion.webhook.clientConfig.caBundle'
-        - '.metadata.annotations'
+    namespace: csi-proxmox
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      - PrunePropagationPolicy=foreground
-      - PruneLast=true
-      - RespectIgnoreDifferences=true
       - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
