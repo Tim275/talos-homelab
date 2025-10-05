@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: n8n-main
+  namespace: n8n-prod
+  labels:
+    app: n8n
+    component: main
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  replicas: 1  # ⚠️ ALWAYS 1 - No leader election in N8N!
+  strategy:
+    type: Recreate  # Prevent duplicate cron triggers
+  selector:
+    matchLabels:
+      app: n8n
+      component: main
+  template:
+    metadata:
+      labels:
+        app: n8n
+        component: main
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: n8n
+          image: docker.n8n.io/n8nio/n8n:1.112.3
+          command: ["n8n"]  # Main mode (webhooks, UI, cron)
+          ports:
+            - containerPort: 3008
+              name: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false  # N8N needs /tmp
+            capabilities:
+              drop:
+                - ALL
+          envFrom:
+            - configMapRef:
+                name: n8n-configmap
+            - secretRef:
+                name: n8n-secrets
+          env:
+            - name: OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS
+              value: "true"  # Send manual executions to workers
+          # ⚠️ NO volumeMounts - STATELESS!
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3008
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 3008
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+      # ⚠️ NO volumes - STATELESS!
+      restartPolicy: Always

@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: n8n-worker
+  namespace: n8n-prod
+  labels:
+    app: n8n
+    component: worker
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  replicas: 3  # Can be scaled by HPA!
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: n8n
+      component: worker
+  template:
+    metadata:
+      labels:
+        app: n8n
+        component: worker
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: n8n-worker
+          image: docker.n8n.io/n8nio/n8n:1.112.3
+          command: ["n8n", "worker"]  # ⚠️ CRITICAL: Worker mode!
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false  # N8N needs /tmp
+            capabilities:
+              drop:
+                - ALL
+          envFrom:
+            - configMapRef:
+                name: n8n-configmap
+            - secretRef:
+                name: n8n-secrets
+          env:
+            - name: N8N_CONCURRENCY_PRODUCTION_LIMIT
+              value: "10"  # 10 concurrent executions per worker
+          # ⚠️ NO volumeMounts - STATELESS!
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "1000m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 5678  # Workers expose health on port 5678
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+      # ⚠️ NO volumes - STATELESS!
+      restartPolicy: Always
