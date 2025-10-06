@@ -1,0 +1,121 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: argocd-controller-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+    release: prometheus-operator
+spec:
+  groups:
+    - name: argocd.controller
+      interval: 30s
+      rules:
+        # ====== P1: CRITICAL - ArgoCD Controller Down ======
+        - alert: ArgoCDControllerDown
+          expr: |
+            up{job="argocd-application-controller-metrics"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            priority: P1
+            component: argocd
+            tier: infrastructure
+          annotations:
+            summary: "ArgoCD Application Controller is DOWN"
+            description: |
+              The ArgoCD Application Controller has been down for 2 minutes.
+              This means GitOps deployments are NOT being synced!
+
+              Impact: No automatic deployments, manual sync required
+              Team: @Sysadmins
+            dashboard_url: "http://argocd.timourhomelab.org"
+            runbook_url: "https://argo-cd.readthedocs.io/en/stable/operator-manual/health/"
+
+        # ====== P2: HIGH - Controller High Memory ======
+        - alert: ArgoCDControllerHighMemory
+          expr: |
+            container_memory_working_set_bytes{
+              pod=~"argocd-application-controller-.*",
+              container="application-controller"
+            }
+            / container_spec_memory_limit_bytes{
+              pod=~"argocd-application-controller-.*",
+              container="application-controller"
+            }
+            > 0.90
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: argocd
+            tier: infrastructure
+          annotations:
+            summary: "ArgoCD Controller using >90% memory"
+            description: |
+              ArgoCD Application Controller is using {{ $value | humanizePercentage }} of its memory limit.
+              This may lead to OOM kills and deployment failures.
+
+              Current: {{ $value | humanizePercentage }}
+              Threshold: 90%
+            dashboard_url: "http://grafana.timourhomelab.org/d/argocd"
+
+        # ====== P2: HIGH - Sync Failures ======
+        - alert: ArgoCDSyncFailures
+          expr: |
+            sum(increase(argocd_app_sync_total{phase="Error"}[5m])) > 3
+          for: 2m
+          labels:
+            severity: warning
+            priority: P2
+            component: argocd
+            tier: infrastructure
+          annotations:
+            summary: "Multiple ArgoCD sync failures detected"
+            description: |
+              {{ $value }} application syncs have failed in the last 5 minutes.
+              Check ArgoCD UI for failed applications.
+
+              Failed Syncs: {{ $value }}
+              Threshold: 3
+            dashboard_url: "http://argocd.timourhomelab.org/applications"
+
+        # ====== P3: WARNING - Pending Operations ======
+        - alert: ArgoCDPendingOperations
+          expr: |
+            sum(argocd_app_k8s_request_total{status_code!~"2.."}) > 50
+          for: 10m
+          labels:
+            severity: info
+            priority: P3
+            component: argocd
+            tier: infrastructure
+          annotations:
+            summary: "High number of pending Kubernetes operations"
+            description: |
+              ArgoCD has {{ $value }} pending Kubernetes API operations.
+              This may indicate API server issues or controller slowness.
+
+              Pending Operations: {{ $value }}
+              Threshold: 50
+            dashboard_url: "http://grafana.timourhomelab.org/d/argocd"
+
+        # ====== P3: WARNING - Applications Out of Sync ======
+        - alert: ArgoCDApplicationsOutOfSync
+          expr: |
+            sum(argocd_app_info{sync_status!="Synced"}) > 5
+          for: 15m
+          labels:
+            severity: info
+            priority: P3
+            component: argocd
+            tier: infrastructure
+          annotations:
+            summary: "Multiple applications out of sync"
+            description: |
+              {{ $value }} ArgoCD applications are out of sync for >15 minutes.
+              Check if auto-sync is disabled or if there are deployment issues.
+
+              Out of Sync Apps: {{ $value }}
+              Threshold: 5
+            dashboard_url: "http://argocd.timourhomelab.org/applications"
