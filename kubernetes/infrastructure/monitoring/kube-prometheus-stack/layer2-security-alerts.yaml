@@ -1,0 +1,168 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: layer2-security-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+    release: prometheus-operator
+    layer: security
+spec:
+  groups:
+    - name: security.certificates.critical
+      interval: 30s
+      rules:
+        # ====== P1: CRITICAL - Certificate Expires in <24h ======
+        - alert: CertificateExpiresIn24Hours
+          expr: |
+            certmanager_certificate_expiration_timestamp_seconds
+            - time() < (24 * 3600)
+          for: 1h
+          labels:
+            severity: critical
+            priority: P1
+            component: cert-manager
+            tier: security
+            layer: layer2
+          annotations:
+            summary: "Certificate {{ $labels.name }} expires in <24 hours"
+            description: |
+              Certificate {{ $labels.name }} in namespace {{ $labels.namespace }}
+              will expire in less than 24 hours!
+
+              This will cause service outage if not renewed immediately.
+
+              Time remaining: {{ $value | humanizeDuration }}
+              Team: @platform-oncall
+
+        # ====== P1: CRITICAL - Sealed Secrets Controller Down ======
+        - alert: SealedSecretsControllerDown
+          expr: |
+            up{job="sealed-secrets-controller"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: sealed-secrets
+            tier: security
+            layer: layer2
+          annotations:
+            summary: "Sealed Secrets Controller is DOWN"
+            description: |
+              Sealed Secrets Controller has been down for 5 minutes.
+              Cannot decrypt SealedSecrets!
+
+              Impact: Applications cannot access encrypted secrets
+              Team: @platform-oncall
+
+    - name: security.certificates.high
+      interval: 30s
+      rules:
+        # ====== P2: HIGH - Certificate Expires in <7 days ======
+        - alert: CertificateExpiresIn7Days
+          expr: |
+            certmanager_certificate_expiration_timestamp_seconds
+            - time() < (7 * 24 * 3600)
+          for: 2h
+          labels:
+            severity: warning
+            priority: P2
+            component: cert-manager
+            tier: security
+            layer: layer2
+          annotations:
+            summary: "Certificate {{ $labels.name }} expires in <7 days"
+            description: |
+              Certificate {{ $labels.name }} in namespace {{ $labels.namespace }}
+              will expire in less than 7 days.
+
+              Time remaining: {{ $value | humanizeDuration }}
+              Action: Check cert-manager logs for renewal issues
+
+        # ====== P2: HIGH - Certificate Issuance Failed ======
+        - alert: CertificateIssuanceFailed
+          expr: |
+            sum(rate(certmanager_certificate_ready_status{
+              condition="False"
+            }[5m])) by (name, namespace) > 0
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: cert-manager
+            tier: security
+            layer: layer2
+          annotations:
+            summary: "Certificate {{ $labels.name }} issuance failed"
+            description: |
+              Certificate {{ $labels.name }} in {{ $labels.namespace }}
+              has failed to issue for 10 minutes.
+
+              Check cert-manager logs for ACME challenge failures.
+
+        # ====== P2: HIGH - Cert-Manager Controller Down ======
+        - alert: CertManagerControllerDown
+          expr: |
+            up{job="cert-manager"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: cert-manager
+            tier: security
+            layer: layer2
+          annotations:
+            summary: "Cert-Manager controller is DOWN"
+            description: |
+              Cert-Manager controller has been down for 5 minutes.
+              Certificate renewals will not occur!
+
+              Impact: Certificates may expire without renewal
+              Action: Check controller logs and restart if needed
+
+    - name: security.certificates.medium
+      interval: 30s
+      rules:
+        # ====== P3: MEDIUM - Certificate Expires in <30 days ======
+        - alert: CertificateExpiresIn30Days
+          expr: |
+            certmanager_certificate_expiration_timestamp_seconds
+            - time() < (30 * 24 * 3600)
+          for: 6h
+          labels:
+            severity: info
+            priority: P3
+            component: cert-manager
+            tier: security
+            layer: layer2
+          annotations:
+            summary: "Certificate {{ $labels.name }} expires in <30 days"
+            description: |
+              Certificate {{ $labels.name }} in namespace {{ $labels.namespace }}
+              will expire in less than 30 days.
+
+              Time remaining: {{ $value | humanizeDuration }}
+              Action: Monitor for automatic renewal
+
+        # ====== P3: MEDIUM - ACME Rate Limit Warning ======
+        - alert: ACMERateLimitApproaching
+          expr: |
+            sum(rate(certmanager_http_acme_client_request_count[1h]))
+            by (host) > 40
+          for: 30m
+          labels:
+            severity: info
+            priority: P3
+            component: cert-manager
+            tier: security
+            layer: layer2
+          annotations:
+            summary: "ACME rate limit approaching for {{ $labels.host }}"
+            description: |
+              Let's Encrypt ACME requests are high ({{ $value }}/hour).
+              Rate limit is 50/hour per account.
+
+              Current: {{ $value | printf "%.0f" }} requests/hour
+              Limit: 50 requests/hour
+
+              Action: Reduce certificate churn or use staging issuer
