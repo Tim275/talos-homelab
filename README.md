@@ -190,12 +190,7 @@ Everything needed to run my cluster & deploy my applications:
         <td>Distributed tracing system for monitoring and troubleshooting microservices-based applications</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://avatars.githubusercontent.com/u/42351474?s=200&v=4"></td>
-        <td><a href="https://kiali.io/">Kiali</a></td>
-        <td>Observability console for Istio with service mesh topology, metrics and traffic visualization</td>
-    </tr>
-    <tr>
-        <td><img width="32" src="https://redis.io/wp-content/uploads/2024/04/Logotype.svg?auto=webp&quality=85,75&width=120"></td>
+        <td><img width="32" src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/redis/redis-original.svg"></td>
         <td><a href="https://redis.io/">Redis</a></td>
         <td>In-memory data store used for caching, message queuing and session storage</td>
     </tr>
@@ -223,10 +218,5 @@ Everything needed to run my cluster & deploy my applications:
         <td><img width="32" src="https://avatars.githubusercontent.com/u/65666196?s=200&v=4"></td>
         <td><a href="https://redpanda.com/">Redpanda Console</a></td>
         <td>Web UI for Kafka management with topic browsing, consumer groups and schema registry</td>
-    </tr>
-    <tr>
-        <td><img width="32" src="https://kubernetes.io/images/favicon.png"></td>
-        <td><a href="https://kubernetes.io/docs/concepts/cluster-administration/addons/#metrics-server">Metrics Server</a></td>
-        <td>Cluster-wide aggregator of resource usage data for HPA and kubectl top</td>
     </tr>
 </table>
