@@ -20,9 +20,9 @@ prometheus:
           resources:
             requests:
               storage: 20G
-      # selector:  # Remove specific PV selector, let Kubernetes handle it
-      #   matchLabels:
-      #     app: prometheus
+    # selector:  # Remove specific PV selector, let Kubernetes handle it
+    #   matchLabels:
+    #     app: prometheus
 
 # https://github.com/siderolabs/talos/discussions/7214
 kubeControllerManager:
@@ -150,7 +150,7 @@ alertmanager:
 
     # 📋 ROUTE CONFIGURATION - Priority-based Routing
     route:
-      receiver: 'default'
+      receiver: 'keep-webhook'  # Send ALL alerts to Keep first for AI correlation
       group_by: ['alertname', 'cluster', 'namespace', 'service']
       group_wait: 30s
       group_interval: 5m
@@ -165,7 +165,7 @@ alertmanager:
           group_wait: 0s          # INSTANT notification
           group_interval: 1m
           repeat_interval: 5m     # Re-notify every 5 min
-          continue: false
+          continue: true          # Also send to Keep for AI correlation
 
         # ====== P2: WICHTIG/HIGH (ORANGE 🟠) ======
         # Response SLA: 15 minutes
@@ -175,7 +175,7 @@ alertmanager:
           group_wait: 10s
           group_interval: 2m
           repeat_interval: 15m
-          continue: false
+          continue: true          # Also send to Keep for AI correlation
 
         # ====== P3: WARNING (YELLOW 🟡) ======
         # Response SLA: 1 hour
@@ -185,7 +185,7 @@ alertmanager:
           group_wait: 30s
           group_interval: 5m
           repeat_interval: 1h
-          continue: false
+          continue: true          # Also send to Keep for AI correlation
 
         # ====== P5: INFO (BLUE 🔵) ======
         # Response SLA: 4 hours
@@ -195,7 +195,7 @@ alertmanager:
           group_wait: 2m
           group_interval: 10m
           repeat_interval: 4h
-          continue: false
+          continue: true          # Also send to Keep for AI correlation
 
         # Fallback for alerts without priority
         - matchers:
@@ -352,6 +352,16 @@ alertmanager:
               {{ .Annotations.summary }}
               {{ end }}
             send_resolved: true
+
+      # ====== KEEP AI WEBHOOK - Enterprise Alert Correlation ======
+      - name: 'keep-webhook'
+        webhook_configs:
+          - url: 'http://keep-backend.monitoring.svc.cluster.local:8080/alerts/event/prometheus'
+            send_resolved: true
+            http_config:
+              basic_auth:
+                username: 'api_key'
+                password: 'YQO5Wh4hCWcwAFMWyNXK09vI8v9PuMX8J3dyT6nnJbM='
 
     # 🚫 INHIBIT RULES - Prevent Alert Spam
     inhibit_rules:
