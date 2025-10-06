@@ -1,0 +1,410 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: layer5-platform-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+    release: prometheus-operator
+    layer: platform
+spec:
+  groups:
+    - name: platform.elasticsearch.critical
+      interval: 30s
+      rules:
+        # ====== P1: CRITICAL - Elasticsearch Cluster RED ======
+        - alert: ElasticsearchClusterRed
+          expr: |
+            elasticsearch_cluster_health_status{color="red"} == 1
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: elasticsearch
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Elasticsearch cluster {{ $labels.cluster }} is RED"
+            description: |
+              Elasticsearch cluster {{ $labels.cluster }} is in RED status.
+              Primary shards are unavailable - DATA LOSS RISK!
+
+              Impact: Search queries failing, data unavailable
+              Team: @platform-oncall
+
+              Check: kubectl -n elastic-system exec -it {{ $labels.pod }}
+                -- curl -s localhost:9200/_cluster/health?pretty
+
+        # ====== P1: CRITICAL - Elasticsearch All Masters Down ======
+        - alert: ElasticsearchMastersDown
+          expr: |
+            sum(up{job="elasticsearch-master"}) == 0
+          for: 3m
+          labels:
+            severity: critical
+            priority: P1
+            component: elasticsearch
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "All Elasticsearch master nodes are DOWN"
+            description: |
+              All Elasticsearch master nodes are unreachable.
+              Cluster cannot elect a master!
+
+              Impact: Complete search/logging infrastructure failure
+              Team: @platform-oncall
+
+    - name: platform.elasticsearch.high
+      interval: 30s
+      rules:
+        # ====== P2: HIGH - Elasticsearch Cluster YELLOW ======
+        - alert: ElasticsearchClusterYellow
+          expr: |
+            elasticsearch_cluster_health_status{color="yellow"} == 1
+          for: 15m
+          labels:
+            severity: warning
+            priority: P2
+            component: elasticsearch
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Elasticsearch cluster {{ $labels.cluster }} is YELLOW"
+            description: |
+              Elasticsearch cluster {{ $labels.cluster }} is in YELLOW status.
+              Replica shards are unassigned - redundancy compromised!
+
+              Duration: >15 minutes
+              Action: Check shard allocation and node health
+
+        # ====== P2: HIGH - Elasticsearch Disk High ======
+        - alert: ElasticsearchDiskSpaceHigh
+          expr: |
+            (elasticsearch_filesystem_data_size_bytes - elasticsearch_filesystem_data_available_bytes)
+            / elasticsearch_filesystem_data_size_bytes > 0.85
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: elasticsearch
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Elasticsearch node {{ $labels.node }} disk >85%"
+            description: |
+              Elasticsearch node {{ $labels.node }} disk usage is {{ $value | humanizePercentage }}.
+              High watermark (90%) approaching!
+
+              Current: {{ $value | humanizePercentage }}
+              High Watermark: 90%
+
+              Action: Delete old indices or expand storage
+
+        # ====== P2: HIGH - Elasticsearch JVM Heap High ======
+        - alert: ElasticsearchHeapHigh
+          expr: |
+            (elasticsearch_jvm_memory_used_bytes{area="heap"} / elasticsearch_jvm_memory_max_bytes{area="heap"}) > 0.90
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: elasticsearch
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Elasticsearch {{ $labels.pod }} heap >90%"
+            description: |
+              Elasticsearch pod {{ $labels.pod }} JVM heap usage is {{ $value | humanizePercentage }}.
+              GC pressure and OOM risk!
+
+              Current: {{ $value | humanizePercentage }}
+              Threshold: 90%
+
+              Action: Increase heap size or reduce indexing load
+
+    - name: platform.kafka.critical
+      interval: 30s
+      rules:
+        # ====== P1: CRITICAL - All Kafka Brokers Down ======
+        - alert: KafkaBrokersDown
+          expr: |
+            sum(kafka_server_replicamanager_leadercount) == 0
+          for: 3m
+          labels:
+            severity: critical
+            priority: P1
+            component: kafka
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "All Kafka brokers are DOWN"
+            description: |
+              All Kafka brokers are unreachable or have no leaders.
+              Message streaming infrastructure is DOWN!
+
+              Impact: Complete event streaming failure
+              Team: @platform-oncall
+
+        # ====== P1: CRITICAL - Kafka Under-Replicated Partitions ======
+        - alert: KafkaUnderReplicatedPartitions
+          expr: |
+            kafka_server_replicamanager_underreplicatedpartitions > 0
+          for: 10m
+          labels:
+            severity: critical
+            priority: P1
+            component: kafka
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Kafka has {{ $value }} under-replicated partitions"
+            description: |
+              Kafka broker {{ $labels.kubernetes_pod_name }} has {{ $value }}
+              under-replicated partitions for >10 minutes.
+
+              Under-Replicated: {{ $value }}
+              Impact: Data loss risk on broker failure
+
+              Team: @platform-oncall
+
+    - name: platform.kafka.high
+      interval: 30s
+      rules:
+        # ====== P2: HIGH - Kafka Broker Down ======
+        - alert: KafkaBrokerDown
+          expr: |
+            kafka_server_replicamanager_leadercount == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: kafka
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Kafka broker {{ $labels.kubernetes_pod_name }} is DOWN"
+            description: |
+              Kafka broker {{ $labels.kubernetes_pod_name }} has been down for 5m.
+              Partitions are being reassigned.
+
+              Action: Check broker logs and restart if needed
+
+        # ====== P2: HIGH - Kafka Offline Partitions ======
+        - alert: KafkaOfflinePartitions
+          expr: |
+            kafka_controller_kafkacontroller_offlinepartitionscount > 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: kafka
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Kafka has {{ $value }} offline partitions"
+            description: |
+              {{ $value }} Kafka partitions have no leader.
+              Messages cannot be produced or consumed!
+
+              Offline Partitions: {{ $value }}
+              Action: Check broker health and logs
+
+        # ====== P2: HIGH - Kafka Consumer Lag High ======
+        - alert: KafkaConsumerLagHigh
+          expr: |
+            kafka_consumergroup_lag > 1000
+          for: 15m
+          labels:
+            severity: warning
+            priority: P2
+            component: kafka
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Kafka consumer {{ $labels.consumergroup }} lag >1000"
+            description: |
+              Consumer group {{ $labels.consumergroup }} on topic {{ $labels.topic }}
+              has lag >1000 messages for 15 minutes.
+
+              Current Lag: {{ $value }}
+              Threshold: 1000 messages
+
+              Action: Scale consumer or check consumer health
+
+    - name: platform.n8n.critical
+      interval: 30s
+      rules:
+        # ====== P1: CRITICAL - N8N All Instances Down ======
+        - alert: N8NAllInstancesDown
+          expr: |
+            sum(up{job="n8n"}) == 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: n8n
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "All N8N workflow instances are DOWN"
+            description: |
+              All N8N workflow engine instances are unreachable.
+              Automation workflows are NOT running!
+
+              Impact: Business process automation halted
+              Team: @platform-oncall
+
+    - name: platform.n8n.high
+      interval: 30s
+      rules:
+        # ====== P2: HIGH - N8N Main Instance Down ======
+        - alert: N8NMainDown
+          expr: |
+            up{job="n8n",pod=~"n8n-main-.*"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: n8n
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "N8N main instance is DOWN"
+            description: |
+              N8N main instance {{ $labels.pod }} has been down for 5m.
+              Workflow editor UI may be unavailable.
+
+              Action: Check pod logs and database connectivity
+
+        # ====== P2: HIGH - N8N Webhook Instance Down ======
+        - alert: N8NWebhookDown
+          expr: |
+            up{job="n8n",pod=~"n8n-webhook-.*"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: n8n
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "N8N webhook instance is DOWN"
+            description: |
+              N8N webhook instance {{ $labels.pod }} has been down for 5m.
+              Incoming webhooks will fail!
+
+              Impact: External integrations not receiving events
+              Action: Check pod logs and restart if needed
+
+        # ====== P2: HIGH - N8N Worker High CPU ======
+        - alert: N8NWorkerHighCPU
+          expr: |
+            rate(container_cpu_usage_seconds_total{
+              pod=~"n8n-worker-.*",
+              container="n8n"
+            }[5m]) > 0.90
+          for: 15m
+          labels:
+            severity: warning
+            priority: P2
+            component: n8n
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "N8N worker {{ $labels.pod }} CPU >90%"
+            description: |
+              N8N worker {{ $labels.pod }} sustained CPU >90% for 15 minutes.
+              Workflow executions may be slow!
+
+              Current: {{ $value | humanizePercentage }}
+              Threshold: 90%
+
+              Action: Scale workers or optimize workflows
+
+    - name: platform.redis.high
+      interval: 30s
+      rules:
+        # ====== P2: HIGH - Redis HA Master Down ======
+        - alert: RedisHAMasterDown
+          expr: |
+            redis_instance_info{role="master"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: P2
+            component: redis
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Redis HA master instance is DOWN"
+            description: |
+              Redis HA master instance is down.
+              Sentinel should promote a replica to master.
+
+              Action: Check Sentinel logs for failover status
+
+        # ====== P2: HIGH - Redis Memory High ======
+        - alert: RedisMemoryHigh
+          expr: |
+            (redis_memory_used_bytes / redis_memory_max_bytes) > 0.90
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: redis
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Redis {{ $labels.pod }} memory >90%"
+            description: |
+              Redis instance {{ $labels.pod }} memory usage is {{ $value | humanizePercentage }}.
+              Eviction or OOM may occur!
+
+              Current: {{ $value | humanizePercentage }}
+              Threshold: 90%
+
+              Action: Increase memory limit or enable eviction policy
+
+    - name: platform.jaeger.medium
+      interval: 30s
+      rules:
+        # ====== P3: MEDIUM - Jaeger Collector Down ======
+        - alert: JaegerCollectorDown
+          expr: |
+            up{job="jaeger-collector"} == 0
+          for: 10m
+          labels:
+            severity: info
+            priority: P3
+            component: jaeger
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Jaeger collector is DOWN"
+            description: |
+              Jaeger collector has been down for 10 minutes.
+              Distributed traces are not being collected!
+
+              Impact: Loss of observability data (non-critical)
+              Action: Check collector logs
+
+        # ====== P3: MEDIUM - Jaeger Query Down ======
+        - alert: JaegerQueryDown
+          expr: |
+            up{job="jaeger-query"} == 0
+          for: 10m
+          labels:
+            severity: info
+            priority: P3
+            component: jaeger
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Jaeger query service is DOWN"
+            description: |
+              Jaeger query service has been down for 10 minutes.
+              Trace UI is unavailable.
+
+              Impact: Cannot view traces (data still collecting)
+              Action: Restart query service
