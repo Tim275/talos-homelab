@@ -1,0 +1,51 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: inject-istio-sidecar-for-apps
+  annotations:
+    policies.kyverno.io/title: Auto-inject Istio sidecar for application namespaces
+    policies.kyverno.io/category: Observability
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: |
+      Automatically adds istio-injection label to application namespaces only.
+      Excludes infrastructure and platform namespaces.
+      Only apps layer gets traced - databases and system services use their own monitoring.
+spec:
+  background: true
+  rules:
+    - name: add-istio-injection-to-app-namespaces
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+              # ✅ NUR für App-Namespaces
+              selector:
+                matchLabels:
+                  layer: apps
+      exclude:
+        any:
+          - resources:
+              # ❌ NIEMALS für diese System/Platform Namespaces
+              namespaces:
+                - kube-system
+                - istio-system
+                - cert-manager
+                - monitoring
+                - observability
+                - storage
+                - gateway
+                - argocd
+                - kyverno
+                - jaeger
+                - elastic-system
+                - tempo
+                - loki
+                - grafana
+                - velero
+                - rook-ceph
+      mutate:
+        patchStrategicMerge:
+          metadata:
+            labels:
+              istio-injection: enabled
