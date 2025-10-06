@@ -184,5 +184,49 @@ Everything needed to run my cluster & deploy my applications:
         <td><a href="https://istio.io/">Istio</a></td>
         <td>Service mesh providing secure, observable and controlled microservice communication</td>
     </tr>
+    <tr>
+        <td><img width="32" src="https://www.jaegertracing.io/img/jaeger-icon-color.png"></td>
+        <td><a href="https://www.jaegertracing.io/">Jaeger</a></td>
+        <td>Distributed tracing system for monitoring and troubleshooting microservices-based applications</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://avatars.githubusercontent.com/u/42351474?s=200&v=4"></td>
+        <td><a href="https://kiali.io/">Kiali</a></td>
+        <td>Observability console for Istio with service mesh topology, metrics and traffic visualization</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://redis.io/wp-content/uploads/2024/04/Logotype.svg?auto=webp&quality=85,75&width=120"></td>
+        <td><a href="https://redis.io/">Redis</a></td>
+        <td>In-memory data store used for caching, message queuing and session storage</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://avatars.githubusercontent.com/u/68448710?s=200&v=4"></td>
+        <td><a href="https://kyverno.io/">Kyverno</a></td>
+        <td>Kubernetes-native policy engine for security, compliance and governance automation</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://www.authelia.com/images/branding/logo-cropped.png"></td>
+        <td><a href="https://www.authelia.com/">Authelia</a></td>
+        <td>Single Sign-On and Multi-Factor authentication portal with OIDC provider</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://avatars.githubusercontent.com/u/103038211?s=200&v=4"></td>
+        <td><a href="https://github.com/lldap/lldap">LLDAP</a></td>
+        <td>Lightweight LDAP server for authentication and user directory services</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://avatars.githubusercontent.com/u/5713248?s=200&v=4"></td>
+        <td><a href="https://www.influxdata.com/">InfluxDB</a></td>
+        <td>Time series database for high-performance metrics and event storage</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://avatars.githubusercontent.com/u/65666196?s=200&v=4"></td>
+        <td><a href="https://redpanda.com/">Redpanda Console</a></td>
+        <td>Web UI for Kafka management with topic browsing, consumer groups and schema registry</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://kubernetes.io/images/favicon.png"></td>
+        <td><a href="https://kubernetes.io/docs/concepts/cluster-administration/addons/#metrics-server">Metrics Server</a></td>
+        <td>Cluster-wide aggregator of resource usage data for HPA and kubectl top</td>
+    </tr>
 </table>
-
