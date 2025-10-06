@@ -1,0 +1,237 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: layer3-network-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+    release: prometheus-operator
+    layer: network
+spec:
+  groups:
+    - name: network.cilium.critical
+      interval: 30s
+      rules:
+        # ====== P1: CRITICAL - Cilium Agent Down on Multiple Nodes ======
+        - alert: CiliumAgentsDown
+          expr: |
+            count(up{job="cilium-agent"} == 0) > 2
+          for: 3m
+          labels:
+            severity: critical
+            priority: P1
+            component: cilium
+            tier: network
+            layer: layer3
+          annotations:
+            summary: "Multiple Cilium agents are DOWN"
+            description: |
+              {{ $value }} Cilium agents are down across the cluster.
+              This affects pod networking and service mesh!
+
+              Impact: Pod communication failures, service unavailability
+              Team: @network-oncall
+
+        # ====== P1: CRITICAL - Cilium Operator Down ======
+        - alert: CiliumOperatorDown
+          expr: |
+            up{job="cilium-operator"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: cilium
+            tier: network
+            layer: layer3
+          annotations:
+            summary: "Cilium Operator is DOWN"
+            description: |
+              Cilium Operator has been down for 5 minutes.
+              CNI operations and NetworkPolicy enforcement may fail!
+
+              Impact: Cannot create/delete pods with networking
+              Team: @network-oncall
+
+    - name: network.cilium.high
+      interval: 30s
+      rules:
+        # ====== P2: HIGH - Single Cilium Agent Down ======
+        - alert: CiliumAgentDown
+          expr: |
+            up{job="cilium-agent"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: cilium
+            tier: network
+            layer: layer3
+          annotations:
+            summary: "Cilium agent down on {{ $labels.instance }}"
+            description: |
+              Cilium agent on {{ $labels.instance }} has been down for 5m.
+              Pods on this node may lose connectivity!
+
+              Node: {{ $labels.instance }}
+              Action: Check cilium-agent logs on the node
+
+        # ====== P2: HIGH - NetworkPolicy Drops High ======
+        - alert: NetworkPolicyDropsHigh
+          expr: |
+            sum(rate(cilium_drop_count_total{
+              reason="Policy denied"
+            }[5m])) by (node) > 10
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: cilium
+            tier: network
+            layer: layer3
+          annotations:
+            summary: "High NetworkPolicy drops on {{ $labels.node }}"
+            description: |
+              {{ $value | printf "%.0f" }} packets/sec dropped by NetworkPolicy
+              on node {{ $labels.node }}.
+
+              This may indicate:
+              - Misconfigured NetworkPolicies
+              - Unauthorized traffic attempts
+              - Application connectivity issues
+
+              Current: {{ $value | printf "%.0f" }} drops/sec
+              Action: Review NetworkPolicy rules
+
+        # ====== P2: HIGH - Endpoint Health Issues ======
+        - alert: CiliumEndpointsNotReady
+          expr: |
+            sum(cilium_endpoint_state{endpoint_state!="ready"})
+            by (node) > 5
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: cilium
+            tier: network
+            layer: layer3
+          annotations:
+            summary: "Multiple endpoints not ready on {{ $labels.node }}"
+            description: |
+              {{ $value }} Cilium endpoints are not ready on {{ $labels.node }}.
+              This affects pod networking!
+
+              Not Ready Endpoints: {{ $value }}
+              Action: Check cilium endpoint list on node
+
+    - name: network.gateway.high
+      interval: 30s
+      rules:
+        # ====== P2: HIGH - Envoy Gateway Controller Down ======
+        - alert: EnvoyGatewayControllerDown
+          expr: |
+            up{job="envoy-gateway"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: envoy-gateway
+            tier: network
+            layer: layer3
+          annotations:
+            summary: "Envoy Gateway controller is DOWN"
+            description: |
+              Envoy Gateway controller has been down for 5 minutes.
+              Gateway configuration updates will not be processed!
+
+              Impact: Cannot update HTTPRoutes or Gateway listeners
+              Action: Check controller logs and restart if needed
+
+        # ====== P2: HIGH - HTTPRoute Configuration Error ======
+        - alert: HTTPRouteConfigurationError
+          expr: |
+            sum(gateway_api_httproute_status{
+              status="False"
+            }) > 0
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: envoy-gateway
+            tier: network
+            layer: layer3
+          annotations:
+            summary: "HTTPRoute {{ $labels.name }} configuration error"
+            description: |
+              HTTPRoute {{ $labels.name }} in {{ $labels.namespace }}
+              has configuration errors.
+
+              Status: Invalid
+              Action: Check HTTPRoute YAML and Gateway compatibility
+
+    - name: network.connectivity.medium
+      interval: 30s
+      rules:
+        # ====== P3: MEDIUM - DNS Resolution Failures ======
+        - alert: DNSResolutionFailuresHigh
+          expr: |
+            sum(rate(coredns_dns_response_rcode_count_total{
+              rcode="SERVFAIL"
+            }[5m])) > 5
+          for: 15m
+          labels:
+            severity: info
+            priority: P3
+            component: coredns
+            tier: network
+            layer: layer3
+          annotations:
+            summary: "High DNS resolution failures"
+            description: |
+              {{ $value | printf "%.0f" }} DNS SERVFAIL responses/sec.
+              This indicates upstream DNS issues.
+
+              Current: {{ $value | printf "%.0f" }} failures/sec
+              Action: Check CoreDNS logs and upstream DNS
+
+        # ====== P3: MEDIUM - Packet Loss Detection ======
+        - alert: NodePacketLoss
+          expr: |
+            rate(node_network_transmit_errs_total[5m]) > 0.01
+            or rate(node_network_receive_errs_total[5m]) > 0.01
+          for: 15m
+          labels:
+            severity: info
+            priority: P3
+            component: node-network
+            tier: network
+            layer: layer3
+          annotations:
+            summary: "Packet loss on {{ $labels.instance }}"
+            description: |
+              Network interface {{ $labels.device }} on {{ $labels.instance }}
+              is experiencing packet errors.
+
+              TX Errors: {{ $value | printf "%.2f" }}/sec
+              Action: Check network hardware and cabling
+
+        # ====== P3: MEDIUM - Hubble Flow Export Issues ======
+        - alert: HubbleFlowExportFailing
+          expr: |
+            rate(hubble_flows_processed_total{
+              type="Error"
+            }[5m]) > 1
+          for: 15m
+          labels:
+            severity: info
+            priority: P3
+            component: hubble
+            tier: network
+            layer: layer3
+          annotations:
+            summary: "Hubble flow export errors on {{ $labels.node }}"
+            description: |
+              Hubble is experiencing flow export errors.
+              Network observability may be degraded.
+
+              Error Rate: {{ $value | printf "%.0f" }}/sec
+              Action: Check Hubble Relay logs

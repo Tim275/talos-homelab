@@ -1,0 +1,254 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: layer1-infrastructure-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+    release: prometheus-operator
+    layer: infrastructure
+spec:
+  groups:
+    - name: kubernetes.infrastructure.critical
+      interval: 30s
+      rules:
+        # ====== P1: CRITICAL - API Server Down ======
+        - alert: KubeAPIServerDown
+          expr: |
+            up{job="kube-apiserver"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            priority: P1
+            component: kube-apiserver
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "Kubernetes API Server is DOWN"
+            description: |
+              The Kubernetes API Server has been unreachable for 2 minutes.
+              This means NO kubectl commands work, NO pod scheduling!
+
+              Impact: Complete cluster control plane failure
+              Action: Immediate investigation required
+              Team: @platform-oncall
+
+        # ====== P1: CRITICAL - ETCD Cluster Unhealthy ======
+        - alert: ETCDClusterUnhealthy
+          expr: |
+            sum(up{job="kube-etcd"}) < ((count(up{job="kube-etcd"}) + 1) / 2)
+          for: 3m
+          labels:
+            severity: critical
+            priority: P1
+            component: etcd
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "ETCD cluster has lost quorum"
+            description: |
+              ETCD cluster does not have quorum (majority of members down).
+              Cluster state cannot be modified!
+
+              Current members up: {{ $value }}
+              Required for quorum: {{ query "count(up{job=\"kube-etcd\"})" | first | value }}
+
+              Impact: Cluster is READ-ONLY, no changes possible
+              Team: @platform-oncall
+
+        # ====== P1: CRITICAL - Controller Manager Down ======
+        - alert: KubeControllerManagerDown
+          expr: |
+            up{job="kube-controller-manager"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: kube-controller-manager
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "Kube Controller Manager is DOWN"
+            description: |
+              Controller Manager has been down for 5 minutes.
+              NO pod scheduling, NO replication controller management!
+
+              Impact: Cluster cannot schedule new pods or manage replicas
+              Team: @platform-oncall
+
+        # ====== P1: CRITICAL - All Worker Nodes Down ======
+        - alert: AllNodesNotReady
+          expr: |
+            count(kube_node_status_condition{condition="Ready",status="true"}) == 0
+          for: 2m
+          labels:
+            severity: critical
+            priority: P1
+            component: nodes
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "ALL worker nodes are NotReady"
+            description: |
+              Complete cluster workload failure - no nodes available!
+
+              Impact: All user-facing services are DOWN
+              Team: @platform-oncall
+
+    - name: kubernetes.infrastructure.high
+      interval: 30s
+      rules:
+        # ====== P2: HIGH - Single Node Down ======
+        - alert: NodeNotReady
+          expr: |
+            kube_node_status_condition{condition="Ready",status="true"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: kubelet
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "Node {{ $labels.node }} is NotReady"
+            description: |
+              Node {{ $labels.node }} has been NotReady for 5 minutes.
+              Workloads on this node may be affected.
+
+              Current Status: NotReady
+              Duration: >5 minutes
+
+              Action: Check node health and kubelet logs
+
+        # ====== P2: HIGH - Node Memory Pressure ======
+        - alert: NodeMemoryPressure
+          expr: |
+            kube_node_status_condition{
+              condition="MemoryPressure",
+              status="true"
+            } == 1
+          for: 2m
+          labels:
+            severity: warning
+            priority: P2
+            component: kubelet
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "Node {{ $labels.node }} has memory pressure"
+            description: |
+              Node {{ $labels.node }} is experiencing memory pressure.
+              OOM kills may occur, pods may be evicted!
+
+              Status: MemoryPressure = true
+              Action: Check node memory usage and evict non-critical pods
+
+        # ====== P2: HIGH - Node Disk Pressure ======
+        - alert: NodeDiskPressure
+          expr: |
+            kube_node_status_condition{
+              condition="DiskPressure",
+              status="true"
+            } == 1
+          for: 2m
+          labels:
+            severity: warning
+            priority: P2
+            component: kubelet
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "Node {{ $labels.node }} has disk pressure"
+            description: |
+              Node {{ $labels.node }} disk usage is >85%.
+              Image pulls and pod starts may fail!
+
+              Status: DiskPressure = true
+              Action: Clean up disk space or evict pods
+
+        # ====== P2: HIGH - Kubelet Too Many Pods ======
+        - alert: KubeletTooManyPods
+          expr: |
+            max(max(kubelet_running_pod_count) by(node)) by(instance)
+            / max(kube_node_status_capacity{resource="pods"}) by(node) > 0.95
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: kubelet
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "Node {{ $labels.node }} is near pod limit"
+            description: |
+              Node {{ $labels.node }} is running {{ $value | humanizePercentage }} of max pods.
+              Cannot schedule more pods on this node!
+
+              Current: {{ $value | humanizePercentage }}
+              Threshold: 95%
+
+    - name: kubernetes.infrastructure.medium
+      interval: 30s
+      rules:
+        # ====== P3: MEDIUM - Node High CPU ======
+        - alert: NodeCPUHighUsage
+          expr: |
+            (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) by (instance))
+            * 100 > 80
+          for: 15m
+          labels:
+            severity: info
+            priority: P3
+            component: node
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "Node {{ $labels.instance }} CPU >80%"
+            description: |
+              Node {{ $labels.instance }} sustained CPU usage >80% for 15 minutes.
+
+              Current: {{ $value | printf "%.1f" }}%
+              Threshold: 80%
+
+              Action: Check workload distribution
+
+        # ====== P3: MEDIUM - Kubelet Certificate Expiring ======
+        - alert: KubeletClientCertificateExpiration
+          expr: |
+            kubelet_certificate_manager_client_ttl_seconds < (30 * 24 * 3600)
+          for: 1h
+          labels:
+            severity: info
+            priority: P3
+            component: kubelet
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "Kubelet certificate expires in <30 days"
+            description: |
+              Kubelet client certificate on {{ $labels.node }} expires soon.
+
+              Days remaining: {{ $value | humanizeDuration }}
+              Action: Certificate should auto-renew, monitor rotation
+
+        # ====== P3: MEDIUM - Pod Crash Looping ======
+        - alert: PodCrashLooping
+          expr: |
+            rate(kube_pod_container_status_restarts_total[15m]) * 60 * 15 > 5
+          for: 5m
+          labels:
+            severity: info
+            priority: P3
+            component: pod
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} crash looping"
+            description: |
+              Pod {{ $labels.namespace }}/{{ $labels.pod }} has restarted >5 times
+              in 15 minutes.
+
+              Container: {{ $labels.container }}
+              Restarts: {{ $value | printf "%.0f" }}
+
+              Action: Check pod logs for errors

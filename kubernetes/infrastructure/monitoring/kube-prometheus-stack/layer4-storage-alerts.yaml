@@ -1,0 +1,331 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: layer4-storage-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+    release: prometheus-operator
+    layer: storage
+spec:
+  groups:
+    - name: storage.ceph.critical
+      interval: 30s
+      rules:
+        # ====== P1: CRITICAL - Ceph Cluster HEALTH_ERR ======
+        - alert: CephClusterHealthError
+          expr: |
+            ceph_health_status == 2
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: ceph
+            tier: storage
+            layer: layer4
+          annotations:
+            summary: "Ceph cluster in HEALTH_ERR state"
+            description: |
+              Ceph cluster has been in HEALTH_ERR for 5 minutes.
+              This indicates critical storage infrastructure failure!
+
+              Impact: Data unavailability, potential data loss
+              Team: @storage-oncall
+
+              Check: kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph health detail
+
+        # ====== P1: CRITICAL - Ceph OSD Quorum Lost ======
+        - alert: CephOSDQuorumLost
+          expr: |
+            (ceph_osd_up / ceph_osd_in) < 0.5
+          for: 3m
+          labels:
+            severity: critical
+            priority: P1
+            component: ceph
+            tier: storage
+            layer: layer4
+          annotations:
+            summary: "Ceph has lost OSD quorum"
+            description: |
+              More than 50% of Ceph OSDs are down!
+              Cluster cannot serve I/O operations.
+
+              OSDs Up: {{ $value | humanizePercentage }}
+              Required: >50%
+
+              Team: @storage-oncall
+
+        # ====== P1: CRITICAL - Ceph Capacity >95% ======
+        - alert: CephCapacityCritical
+          expr: |
+            (ceph_cluster_total_used_bytes / ceph_cluster_total_bytes) > 0.95
+          for: 10m
+          labels:
+            severity: critical
+            priority: P1
+            component: ceph
+            tier: storage
+            layer: layer4
+          annotations:
+            summary: "Ceph cluster >95% full"
+            description: |
+              Ceph cluster is {{ $value | humanizePercentage }} full!
+              Critical capacity reached - cluster may become READ-ONLY.
+
+              Used: {{ $value | humanizePercentage }}
+              Threshold: 95%
+
+              Action: IMMEDIATE capacity expansion or data cleanup
+              Team: @storage-oncall
+
+    - name: storage.ceph.high
+      interval: 30s
+      rules:
+        # ====== P2: HIGH - Ceph Cluster HEALTH_WARN ======
+        - alert: CephClusterHealthWarning
+          expr: |
+            ceph_health_status == 1
+          for: 15m
+          labels:
+            severity: warning
+            priority: P2
+            component: ceph
+            tier: storage
+            layer: layer4
+          annotations:
+            summary: "Ceph cluster in HEALTH_WARN state"
+            description: |
+              Ceph cluster has been in HEALTH_WARN for 15 minutes.
+              This indicates degraded storage performance.
+
+              Common causes:
+              - PGs degraded/misplaced
+              - OSDs near full
+              - Mon clock skew
+
+              Action: Check ceph health detail
+
+        # ====== P2: HIGH - Ceph OSD Down ======
+        - alert: CephOSDDown
+          expr: |
+            ceph_osd_up == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: ceph
+            tier: storage
+            layer: layer4
+          annotations:
+            summary: "Ceph OSD {{ $labels.ceph_daemon }} is DOWN"
+            description: |
+              OSD {{ $labels.ceph_daemon }} has been down for 5 minutes.
+              Cluster is rebalancing data.
+
+              OSD: {{ $labels.ceph_daemon }}
+              Host: {{ $labels.hostname }}
+
+              Action: Check OSD logs and disk health
+
+        # ====== P2: HIGH - Ceph Capacity >80% ======
+        - alert: CephCapacityWarning
+          expr: |
+            (ceph_cluster_total_used_bytes / ceph_cluster_total_bytes) > 0.80
+          for: 30m
+          labels:
+            severity: warning
+            priority: P2
+            component: ceph
+            tier: storage
+            layer: layer4
+          annotations:
+            summary: "Ceph cluster >80% full"
+            description: |
+              Ceph cluster is {{ $value | humanizePercentage }} full.
+              Plan capacity expansion soon.
+
+              Used: {{ $value | humanizePercentage }}
+              Threshold: 80%
+
+              Action: Plan capacity expansion or cleanup
+
+        # ====== P2: HIGH - Ceph PGs Degraded ======
+        - alert: CephPGsDegraded
+          expr: |
+            (ceph_pg_degraded / ceph_pg_total) > 0.1
+          for: 15m
+          labels:
+            severity: warning
+            priority: P2
+            component: ceph
+            tier: storage
+            layer: layer4
+          annotations:
+            summary: "Ceph has >10% degraded PGs"
+            description: |
+              {{ $value | humanizePercentage }} of placement groups are degraded.
+              Data redundancy is compromised!
+
+              Degraded: {{ $value | humanizePercentage }}
+              Threshold: 10%
+
+              Action: Wait for rebalancing or check OSD health
+
+    - name: storage.postgresql.critical
+      interval: 30s
+      rules:
+        # ====== P1: CRITICAL - PostgreSQL Cluster Down ======
+        - alert: PostgreSQLClusterDown
+          expr: |
+            sum(cnpg_pg_postmaster_start_time) by (namespace, name) == 0
+          for: 3m
+          labels:
+            severity: critical
+            priority: P1
+            component: cloudnative-pg
+            tier: storage
+            layer: layer4
+          annotations:
+            summary: "PostgreSQL cluster {{ $labels.name }} is DOWN"
+            description: |
+              PostgreSQL cluster {{ $labels.name }} in {{ $labels.namespace }}
+              has been completely down for 3 minutes!
+
+              Impact: Application database unavailable
+              Team: @database-oncall
+
+        # ====== P1: CRITICAL - PostgreSQL Replication Broken ======
+        - alert: PostgreSQLReplicationBroken
+          expr: |
+            cnpg_pg_replication_lag > 300
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: cloudnative-pg
+            tier: storage
+            layer: layer4
+          annotations:
+            summary: "PostgreSQL replication lag >5min"
+            description: |
+              PostgreSQL cluster {{ $labels.name }} in {{ $labels.namespace }}
+              has replication lag >5 minutes.
+
+              Replication Lag: {{ $value | humanizeDuration }}
+              Threshold: 5 minutes
+
+              Impact: Risk of data loss on failover
+              Team: @database-oncall
+
+    - name: storage.postgresql.high
+      interval: 30s
+      rules:
+        # ====== P2: HIGH - PostgreSQL Primary Down ======
+        - alert: PostgreSQLPrimaryDown
+          expr: |
+            cnpg_pg_replication_in_recovery == 1
+            and cnpg_pg_replication_is_wal_receiver_up == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: cloudnative-pg
+            tier: storage
+            layer: layer4
+          annotations:
+            summary: "PostgreSQL primary instance down"
+            description: |
+              PostgreSQL cluster {{ $labels.name }} primary is down.
+              Failover may occur!
+
+              Action: Check cluster health and logs
+
+        # ====== P2: HIGH - PostgreSQL Backup Failed ======
+        - alert: PostgreSQLBackupFailed
+          expr: |
+            time() - cnpg_pg_backup_last_successful_timestamp > (24 * 3600)
+          for: 1h
+          labels:
+            severity: warning
+            priority: P2
+            component: cloudnative-pg
+            tier: storage
+            layer: layer4
+          annotations:
+            summary: "PostgreSQL backup not successful in 24h"
+            description: |
+              PostgreSQL cluster {{ $labels.name }} has not had successful
+              backup in the last 24 hours.
+
+              Last Successful: {{ $value | humanizeDuration }} ago
+              Threshold: 24 hours
+
+              Impact: Data recovery at risk
+              Action: Check backup configuration and S3 access
+
+        # ====== P2: HIGH - PostgreSQL Connections High ======
+        - alert: PostgreSQLConnectionsHigh
+          expr: |
+            (cnpg_backends_total / cnpg_pg_settings_max_connections) > 0.90
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: cloudnative-pg
+            tier: storage
+            layer: layer4
+          annotations:
+            summary: "PostgreSQL {{ $labels.name }} connections >90%"
+            description: |
+              PostgreSQL cluster {{ $labels.name }} using {{ $value | humanizePercentage }}
+              of max connections.
+
+              Current: {{ $value | humanizePercentage }}
+              Threshold: 90%
+
+              Action: Check for connection leaks or increase max_connections
+
+    - name: storage.postgresql.medium
+      interval: 30s
+      rules:
+        # ====== P3: MEDIUM - PostgreSQL Replication Lag Warning ======
+        - alert: PostgreSQLReplicationLagWarning
+          expr: |
+            cnpg_pg_replication_lag > 60
+          for: 15m
+          labels:
+            severity: info
+            priority: P3
+            component: cloudnative-pg
+            tier: storage
+            layer: layer4
+          annotations:
+            summary: "PostgreSQL replication lag >1min"
+            description: |
+              PostgreSQL cluster {{ $labels.name }} has replication lag >1min.
+
+              Replication Lag: {{ $value }}s
+              Threshold: 60s
+
+              Action: Monitor for increasing lag
+
+        # ====== P3: MEDIUM - PostgreSQL WAL Archive Lag ======
+        - alert: PostgreSQLWALArchiveLag
+          expr: |
+            cnpg_pg_wal_archive_status{status="failed"} > 0
+          for: 30m
+          labels:
+            severity: info
+            priority: P3
+            component: cloudnative-pg
+            tier: storage
+            layer: layer4
+          annotations:
+            summary: "PostgreSQL WAL archiving failing"
+            description: |
+              PostgreSQL cluster {{ $labels.name }} has failing WAL archives.
+
+              Failed WAL files: {{ $value }}
+
+              Action: Check S3 backup configuration and connectivity
