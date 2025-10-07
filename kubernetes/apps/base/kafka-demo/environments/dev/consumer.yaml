@@ -20,71 +20,71 @@ spec:
         app.kubernetes.io/component: consumer
     spec:
       containers:
-      - name: consumer
-        image: quay.io/strimzi/kafka:latest-kafka-3.8.0
-        command:
-        - /bin/sh
-        - -c
-        args:
-        - |
-          # Wait for Kafka to be ready
-          echo "Waiting for Kafka to be ready..."
-          sleep 35
+        - name: consumer
+          image: quay.io/strimzi/kafka:latest-kafka-3.8.0
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              # Wait for Kafka to be ready
+              echo "Waiting for Kafka to be ready..."
+              sleep 35
 
-          # Create email-notifications topic if not exists
-          /opt/kafka/bin/kafka-topics.sh --bootstrap-server my-cluster-kafka-bootstrap.kafka:9092 \
-            --create --if-not-exists --topic email-notifications \
-            --partitions 3 --replication-factor 3
+              # Create email-notifications topic if not exists
+              /opt/kafka/bin/kafka-topics.sh --bootstrap-server my-cluster-kafka-bootstrap.kafka:9092 \
+                --create --if-not-exists --topic email-notifications \
+                --partitions 3 --replication-factor 3
 
-          echo "Starting Email Notification Consumer..."
+              echo "Starting Email Notification Consumer..."
 
-          # Consume messages and produce email notifications
-          /opt/kafka/bin/kafka-console-consumer.sh \
-            --bootstrap-server my-cluster-kafka-bootstrap.kafka:9092 \
-            --topic user-registrations \
-            --group email-notification-group \
-            --from-beginning | while read message; do
-
-            if [ -n "$message" ]; then
-              echo "📧 Processing registration: $message"
-
-              # Extract user_id from JSON (simple grep approach)
-              USER_ID=$(echo "$message" | grep -o '"user_id":"[^"]*"' | cut -d'"' -f4)
-              EMAIL=$(echo "$message" | grep -o '"email":"[^"]*"' | cut -d'"' -f4)
-              TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")
-
-              # Simulate email processing time
-              sleep $(shuf -i 1-3 -n 1)
-
-              # Generate email notification event
-              STATUS=$(shuf -e "sent" "delivered" "bounced" -n 1)
-              EMAIL_ID="email-$(shuf -i 10000-99999 -n 1)"
-
-              NOTIFICATION="{\"email_id\":\"${EMAIL_ID}\",\"user_id\":\"${USER_ID}\",\"recipient\":\"${EMAIL}\",\"status\":\"${STATUS}\",\"timestamp\":\"${TIMESTAMP}\",\"event_type\":\"email_notification\"}"
-
-              echo "📬 Email notification: ${NOTIFICATION}"
-
-              # Produce email notification event
-              echo "${NOTIFICATION}" | /opt/kafka/bin/kafka-console-producer.sh \
+              # Consume messages and produce email notifications
+              /opt/kafka/bin/kafka-console-consumer.sh \
                 --bootstrap-server my-cluster-kafka-bootstrap.kafka:9092 \
-                --topic email-notifications
+                --topic user-registrations \
+                --group email-notification-group \
+                --from-beginning | while read message; do
 
-              echo "✅ Email notification sent for user: ${USER_ID}"
-            fi
-          done
-        env:
-        - name: KAFKA_BROKERS
-          value: "my-cluster-kafka-bootstrap.kafka:9092"
-        - name: INPUT_TOPIC
-          value: "user-registrations"
-        - name: OUTPUT_TOPIC
-          value: "email-notifications"
-        - name: CONSUMER_GROUP
-          value: "email-notification-group"
-        resources:
-          requests:
-            memory: "128Mi"
-            cpu: "100m"
-          limits:
-            memory: "256Mi"
-            cpu: "200m"
+                if [ -n "$message" ]; then
+                  echo "📧 Processing registration: $message"
+
+                  # Extract user_id from JSON (simple grep approach)
+                  USER_ID=$(echo "$message" | grep -o '"user_id":"[^"]*"' | cut -d'"' -f4)
+                  EMAIL=$(echo "$message" | grep -o '"email":"[^"]*"' | cut -d'"' -f4)
+                  TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")
+
+                  # Simulate email processing time
+                  sleep $(shuf -i 1-3 -n 1)
+
+                  # Generate email notification event
+                  STATUS=$(shuf -e "sent" "delivered" "bounced" -n 1)
+                  EMAIL_ID="email-$(shuf -i 10000-99999 -n 1)"
+
+                  NOTIFICATION="{\"email_id\":\"${EMAIL_ID}\",\"user_id\":\"${USER_ID}\",\"recipient\":\"${EMAIL}\",\"status\":\"${STATUS}\",\"timestamp\":\"${TIMESTAMP}\",\"event_type\":\"email_notification\"}"
+
+                  echo "📬 Email notification: ${NOTIFICATION}"
+
+                  # Produce email notification event
+                  echo "${NOTIFICATION}" | /opt/kafka/bin/kafka-console-producer.sh \
+                    --bootstrap-server my-cluster-kafka-bootstrap.kafka:9092 \
+                    --topic email-notifications
+
+                  echo "✅ Email notification sent for user: ${USER_ID}"
+                fi
+              done
+          env:
+            - name: KAFKA_BROKERS
+              value: "my-cluster-kafka-bootstrap.kafka:9092"
+            - name: INPUT_TOPIC
+              value: "user-registrations"
+            - name: OUTPUT_TOPIC
+              value: "email-notifications"
+            - name: CONSUMER_GROUP
+              value: "email-notification-group"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "200m"

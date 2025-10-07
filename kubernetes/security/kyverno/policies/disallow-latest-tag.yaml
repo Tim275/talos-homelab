@@ -12,21 +12,8 @@ metadata:
       image changes. This policy validates that the image specifies a tag
       and that tag is not 'latest'.
 spec:
-  validationFailureAction: Audit  # Start with Audit
-  background: true
+  background: false
   rules:
-    - name: require-image-tag
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-      validate:
-        message: "An image tag is required and it must not be 'latest'."
-        pattern:
-          spec:
-            containers:
-              - image: "*:*"
     - name: validate-image-tag
       match:
         any:
@@ -34,8 +21,11 @@ spec:
               kinds:
                 - Pod
       validate:
-        message: "Using the ':latest' tag is not allowed."
-        pattern:
-          spec:
-            containers:
-              - image: "!*:latest"
+        failureAction: Enforce
+        message: "Using a mutable image tag e.g. 'latest' is not allowed."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.containers[].image }}"
+                operator: AnyIn
+                value: ["*:latest"]
