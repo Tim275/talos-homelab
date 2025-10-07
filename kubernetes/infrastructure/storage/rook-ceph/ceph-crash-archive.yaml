@@ -1,0 +1,90 @@
+# 🩹 Ceph Crash Archive Automation
+# Automatically archives Ceph daemon crashes every 6 hours to prevent HEALTH_WARN
+# This prevents RECENT_CRASH warnings from cluttering cluster health status
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ceph-crash-archive
+  namespace: rook-ceph
+  labels:
+    app: ceph-crash-archive
+    tier: storage
+spec:
+  schedule: "0 */6 * * *"  # Every 6 hours
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: ceph-crash-archive
+        spec:
+          serviceAccountName: rook-ceph-system
+          restartPolicy: OnFailure
+          containers:
+            - name: ceph-crash-archiver
+              image: rook/ceph:v1.17.7
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -e
+
+                  # Get mon endpoints from ConfigMap
+                  MON_ENDPOINTS=$(cat /etc/rook/mon-endpoints 2>/dev/null || echo "")
+                  if [ -z "$MON_ENDPOINTS" ]; then
+                    echo "ERROR: Cannot read mon endpoints from ConfigMap"
+                    exit 1
+                  fi
+
+                  # Create ceph.conf
+                  cat > /etc/ceph/ceph.conf <<EOF
+                  [global]
+                  mon_host = ${MON_ENDPOINTS//,/, }
+                  EOF
+
+                  # Create keyring
+                  cat > /etc/ceph/keyring <<EOF
+                  [client.admin]
+                  key = ${ROOK_CEPH_SECRET}
+                  EOF
+
+                  echo "=== Ceph Cluster Health Before ==="
+                  ceph health detail || true
+
+                  echo ""
+                  echo "=== Archiving Ceph Crashes ==="
+                  ceph crash archive-all
+
+                  echo ""
+                  echo "=== Ceph Cluster Health After ==="
+                  ceph health detail
+
+                  echo ""
+                  echo "✅ Crash archive completed successfully"
+              env:
+                - name: ROOK_CEPH_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: rook-ceph-mon
+                      key: ceph-secret
+              volumeMounts:
+                - name: ceph-config
+                  mountPath: /etc/ceph
+                - name: mon-endpoint
+                  mountPath: /etc/rook
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 64Mi
+                limits:
+                  cpu: 100m
+                  memory: 128Mi
+          volumes:
+            - name: ceph-config
+              emptyDir: {}
+            - name: mon-endpoint
+              configMap:
+                name: rook-ceph-mon-endpoints
