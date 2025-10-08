@@ -1,0 +1,52 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registries
+  annotations:
+    policies.kyverno.io/title: Restrict Image Registries
+    policies.kyverno.io/category: Best Practices, Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Only allows container images from approved registries.
+      Prevents pulling images from untrusted sources.
+spec:
+  background: true
+  rules:
+    - name: validate-registries
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        failureAction: Enforce
+        message: >-
+          Images must come from approved registries only:
+          - ghcr.io (GitHub Container Registry)
+          - quay.io (Red Hat Quay)
+          - docker.io (Docker Hub - official images only)
+          - registry.k8s.io (Kubernetes official registry)
+          - gcr.io/distroless (Google Distroless)
+        deny:
+          conditions:
+            any:
+              # Block if image doesn't start with approved registry
+              - key: "{{ request.object.spec.containers[].image }}"
+                operator: AnyNotIn
+                value:
+                  - "ghcr.io/*"
+                  - "quay.io/*"
+                  - "docker.io/library/*"  # Only official Docker images
+                  - "registry.k8s.io/*"
+                  - "gcr.io/distroless/*"
+              # Same check for initContainers
+              - key: "{{ request.object.spec.initContainers[].image || '' }}"
+                operator: AnyNotIn
+                value:
+                  - "ghcr.io/*"
+                  - "quay.io/*"
+                  - "docker.io/library/*"
+                  - "registry.k8s.io/*"
+                  - "gcr.io/distroless/*"
+                  - ""
