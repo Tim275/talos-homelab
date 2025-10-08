@@ -10,6 +10,11 @@ data:
 
     theme: light
 
+    # Identity Validation (SKIP verification for TOTP registration!)
+    identity_validation:
+      elevated_session:
+        skip_second_factor: true  # Skip email code if already logged in!
+
     server:
       address: tcp://0.0.0.0:9091
       buffers:
@@ -31,6 +36,7 @@ data:
 
     # Method 1: TOTP (Time-based One-Time Password)
     totp:
+      disable: false
       issuer: homelab.local
       period: 30
       skew: 1
@@ -101,14 +107,14 @@ data:
         - domain: "auth.timourhomelab.org"
           policy: bypass
 
-        # Admin access
+        # Admin access (TEMPORARY: one_factor until TOTP is registered!)
         - domain: "*.homelab.local"
-          policy: two_factor
+          policy: one_factor
           subject:
             - "group:cluster-admins"
 
         - domain: "*.timourhomelab.org"
-          policy: two_factor
+          policy: one_factor
           subject:
             - "group:cluster-admins"
 
@@ -129,11 +135,18 @@ data:
       find_time: 10m
       ban_time: 12h
 
-    # Notifier (File-based for now, can add SMTP later)
+    # Notifier (Outlook SMTP - Enterprise Self-Service)
     notifier:
-      disable_startup_check: true
-      filesystem:
-        filename: /data/notification.txt
+      disable_startup_check: false
+      smtp:
+        address: smtp://smtp-mail.outlook.com:587
+        username: timour.miagol@outlook.de
+        sender: "Homelab Authelia <timour.miagol@outlook.de>"
+        subject: "[Homelab] {title}"
+        startup_check_address: timour.miagol@outlook.de
+        disable_require_tls: false
+        disable_html_emails: false
+        # Password from secret: AUTHELIA_NOTIFIER_SMTP_PASSWORD
 
     # OIDC Provider Configuration (Enterprise SSO)
     identity_providers:
