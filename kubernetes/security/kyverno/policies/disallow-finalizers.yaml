@@ -21,14 +21,16 @@ spec:
               kinds:
                 - Namespace
       validate:
-        failureAction: Enforce  # Modern syntax - block violations
+        failureAction: Enforce
         message: >-
           Custom finalizers are not allowed on Namespaces.
-          Found finalizers: {{request.object.metadata.finalizers}}.
+          Found finalizers: {{ request.object.metadata.finalizers }}.
           Only kubernetes.io built-in finalizers are permitted.
           This prevents stuck namespace deletions.
-        pattern:
-          metadata:
-            # Allow no finalizers OR only kubernetes finalizers
-            =(finalizers):
-              - "kubernetes*"
+        deny:
+          conditions:
+            any:
+              # Deny if ANY finalizer doesn't start with "kubernetes"
+              - key: "{{ request.object.metadata.finalizers[] | [?!starts_with(@, 'kubernetes')] | length(@) }}"
+                operator: GreaterThan
+                value: 0
