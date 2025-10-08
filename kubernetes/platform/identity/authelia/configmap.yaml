@@ -37,6 +37,19 @@ data:
           group_name: cn
           mail: mail
           display_name: displayName
+          extra:
+            argocd:
+              multi_valued: true
+              value_type: string
+            audiobookshelf:
+              multi_valued: true
+              value_type: string
+            grafana:
+              multi_valued: true
+              value_type: string
+            n8n:
+              multi_valued: true
+              value_type: string
         additional_users_dn: ou=people
         users_filter: (&({username_attribute}={input})(objectClass=person))
         additional_groups_dn: ou=groups
@@ -110,6 +123,53 @@ data:
             - userinfo
           allowed_origins_from_client_redirect_uris: true
 
+        # Custom Claims Policies (v4.39+ feature)
+        claims_policies:
+          argocd_policy:
+            custom_claims:
+              argocd_claim:
+                attribute: argocd
+            id_token:
+              - email
+              - email_verified
+              - name
+              - preferred_username
+              - argocd_claim
+          audiobookshelf:
+            custom_claims:
+              audiobookshelf:
+                attribute: audiobookshelf
+          grafana:
+            custom_claims:
+              grafana:
+                attribute: grafana
+          n8n:
+            custom_claims:
+              n8n:
+                attribute: n8n
+          legacy:
+            id_token:
+              - email
+              - email_verified
+              - name
+              - preferred_username
+              - groups
+
+        # Custom Scopes (v4.39+ feature)
+        scopes:
+          argocd_scope:
+            claims:
+              - argocd_claim
+          audiobookshelf:
+            claims:
+              - audiobookshelf
+          grafana:
+            claims:
+              - grafana
+          n8n:
+            claims:
+              - n8n
+
         clients:
           # 🔐 Kubernetes API Server OIDC Client (PRIMARY!)
           # OPTIONAL: OpenID Connect integration for kubectl authentication
@@ -130,56 +190,81 @@ data:
               - email
             userinfo_signing_algorithm: none
 
-          # ArgoCD OIDC Client (SIMPLE - groups only!)
+          # ArgoCD OIDC Client (v4.39+ with custom claims)
           - id: argocd
             description: ArgoCD GitOps Platform
             secret: argocd-oidc-secret-placeholder-change-me
             public: false
             authorization_policy: two_factor
+            claims_policy: argocd_policy
+            pre_configured_consent_duration: 3 months
+            require_pkce: false
             redirect_uris:
               - https://argocd.homelab.local/auth/callback
             scopes:
               - openid
               - profile
-              - groups
               - email
+              - offline_access
+              - argocd_scope
+            grant_types:
+              - authorization_code
+              - refresh_token
             userinfo_signing_algorithm: none
 
-          # Grafana OIDC Client (SIMPLE - groups only!)
+          # Grafana OIDC Client (v4.39+ with custom claims)
           - id: grafana
             description: Grafana Monitoring Dashboard
             secret: Ta4mFsoBZ1Popbp0r0i6cNML39eB7kvtETl5OgIHWYc=
             public: false
             authorization_policy: two_factor
+            claims_policy: grafana
+            pre_configured_consent_duration: 3 months
+            require_pkce: true
             redirect_uris:
               - https://grafana.homelab.local/login/generic_oauth
             scopes:
               - openid
               - profile
-              - groups
               - email
+              - offline_access
+              - grafana
+            grant_types:
+              - authorization_code
+              - refresh_token
             userinfo_signing_algorithm: none
 
-          # N8N OIDC Client (SIMPLE - groups only!)
+          # N8N OIDC Client (v4.39+ with custom claims)
           - id: n8n
             description: N8N Workflow Automation
             secret: n8n-oidc-secret-placeholder-change-me
             public: false
             authorization_policy: one_factor
+            claims_policy: n8n
+            pre_configured_consent_duration: 3 months
+            require_pkce: true
             redirect_uris:
               - https://n8n.homelab.local/rest/oauth2-credential/callback
             scopes:
               - openid
               - profile
               - email
+              - offline_access
+              - n8n
+            grant_types:
+              - authorization_code
+              - refresh_token
             userinfo_signing_algorithm: none
 
-          # Audiobookshelf OIDC Client
+          # Audiobookshelf OIDC Client (v4.39+ with custom claims)
           - id: audiobookshelf
             description: Audiobookshelf Audiobook Server
             secret: audiobookshelf-oidc-secret-placeholder-change-me
             public: false
             authorization_policy: one_factor
+            claims_policy: audiobookshelf
+            pre_configured_consent_duration: 3 months
+            require_pkce: true
             redirect_uris:
               - https://audiobooks.timourhomelab.org/auth/openid/callback
               - https://audiobooks.timourhomelab.org/auth/openid/mobile-redirect
@@ -188,7 +273,11 @@ data:
               - openid
               - profile
               - email
-              - groups
+              - offline_access
+              - audiobookshelf
+            grant_types:
+              - authorization_code
+              - refresh_token
             userinfo_signing_algorithm: none
 
           # Nextcloud OIDC Client (for future)
