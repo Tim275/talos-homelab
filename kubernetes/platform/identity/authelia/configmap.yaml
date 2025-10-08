@@ -10,20 +10,57 @@ data:
 
     theme: light
 
+    # Identity Validation (SKIP verification for TOTP registration!)
+    identity_validation:
+      elevated_session:
+        skip_second_factor: true  # Skip email code if already logged in!
+
     server:
       address: tcp://0.0.0.0:9091
       buffers:
         read: 4096
         write: 4096
+      endpoints:
+        authz:
+          forward-auth:
+            implementation: ForwardAuth
+      headers:
+        csp_template: ""  # Disable CSP to avoid issues with reverse proxy
 
     log:
       level: info
       format: text
 
+    # 🔐 MULTI-METHOD 2FA CONFIGURATION (Okta-Style!)
+    # Users can choose: TOTP (Google Auth) OR WebAuthn (Fingerprint/YubiKey)
+
+    # Method 1: TOTP (Time-based One-Time Password)
     totp:
+      disable: false
       issuer: homelab.local
       period: 30
       skew: 1
+      secret_size: 32
+      algorithm: sha1
+      digits: 6
+
+    # Method 2: WebAuthn (Biometric Auth - Fingerprint, Face ID, YubiKey)
+    webauthn:
+      disable: false
+      display_name: Homelab Authentication
+      attestation_conveyance_preference: indirect
+      user_verification: preferred
+      timeout: 60s
+
+    # Method 3: Duo Push (Mobile Push Notifications - like Okta!)
+    # OPTIONAL: Enable this if you want push notifications to phone
+    # Sign up: https://duo.com/pricing/duo-free (free for 10 users)
+    # duo_api:
+    #   disable: true  # Set to false when you have Duo account
+    #   hostname: api-XXXXXXXX.duosecurity.com
+    #   integration_key: DIXXXXXXXXXXXXXXXXXX
+    #   # secret_key: from sealed secret AUTHELIA_DUO_API_SECRET_KEY
+    #   enable_self_enrollment: true
 
     # LLDAP Backend Configuration
     authentication_backend:
@@ -53,9 +90,9 @@ data:
       inactivity: 5m
       remember_me: 1M
       cookies:
-        - domain: homelab.local
-          authelia_url: https://auth.homelab.local
-          default_redirection_url: https://homelab.local
+        - domain: timourhomelab.org
+          authelia_url: https://auth.timourhomelab.org
+          default_redirection_url: https://timourhomelab.org
 
     # Storage Configuration (SQLite for minimal resources)
     storage:
@@ -66,14 +103,28 @@ data:
     access_control:
       default_policy: deny
       rules:
-        # Admin access
+        # Authelia Portal Access (Public - for login)
+        - domain: "auth.timourhomelab.org"
+          policy: bypass
+
+        # Admin access (TEMPORARY: one_factor until TOTP is registered!)
         - domain: "*.homelab.local"
-          policy: two_factor
+          policy: one_factor
+          subject:
+            - "group:cluster-admins"
+
+        - domain: "*.timourhomelab.org"
+          policy: one_factor
           subject:
             - "group:cluster-admins"
 
         # Developer access
         - domain: "*.homelab.local"
+          policy: one_factor
+          subject:
+            - "group:developers"
+
+        - domain: "*.timourhomelab.org"
           policy: one_factor
           subject:
             - "group:developers"
@@ -84,11 +135,18 @@ data:
       find_time: 10m
       ban_time: 12h
 
-    # Notifier (File-based for now, can add SMTP later)
+    # Notifier (Gmail SMTP - Enterprise Self-Service)
     notifier:
-      disable_startup_check: true
-      filesystem:
-        filename: /data/notification.txt
+      disable_startup_check: false
+      smtp:
+        address: submission://smtp.gmail.com:587
+        username: timour.miagol@gmail.com
+        sender: "Homelab Authelia <timour.miagol@gmail.com>"
+        subject: "[Homelab] {title}"
+        startup_check_address: timour.miagol@gmail.com
+        disable_require_tls: false
+        disable_html_emails: false
+        # Password from secret: AUTHELIA_NOTIFIER_SMTP_PASSWORD
 
     # OIDC Provider Configuration (Enterprise SSO)
     identity_providers:
