@@ -1,0 +1,89 @@
+# 🔒 S3 Bucket Versioning Job - Ransomware Protection
+# Enterprise Best Practice: Enable versioning for backup immutability
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: enable-velero-bucket-versioning
+  namespace: velero
+  labels:
+    app: velero
+    component: bucket-config
+    backup.tier: tier0
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: velero
+        job: enable-versioning
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: velero
+      containers:
+        - name: enable-versioning
+          image: amazon/aws-cli:2.15.17
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              echo "🔧 Configuring S3 bucket versioning for velero-backups..."
+
+              # AWS CLI configuration for Ceph RGW
+              export AWS_ACCESS_KEY_ID=$(cat /credentials/cloud | \
+                grep aws_access_key_id | cut -d'=' -f2 | tr -d ' ')
+              export AWS_SECRET_ACCESS_KEY=$(cat /credentials/cloud | \
+                grep aws_secret_access_key | cut -d'=' -f2 | tr -d ' ')
+              export AWS_DEFAULT_REGION=us-east-1
+
+              BUCKET_NAME="velero-backups"
+              S3_ENDPOINT="http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80"
+
+              # Enable versioning
+              echo "✅ Enabling bucket versioning..."
+              aws s3api put-bucket-versioning \
+                --bucket "$BUCKET_NAME" \
+                --versioning-configuration Status=Enabled \
+                --endpoint-url "$S3_ENDPOINT"
+
+              # Verify versioning is enabled
+              echo "🔍 Verifying versioning status..."
+              VERSIONING_STATUS=$(aws s3api get-bucket-versioning \
+                --bucket "$BUCKET_NAME" \
+                --endpoint-url "$S3_ENDPOINT" \
+                --query 'Status' \
+                --output text)
+
+              if [ "$VERSIONING_STATUS" = "Enabled" ]; then
+                echo "✅ SUCCESS: Bucket versioning is enabled!"
+                echo "🔒 Ransomware Protection: Active"
+              else
+                echo "❌ ERROR: Versioning not enabled (status: $VERSIONING_STATUS)"
+                exit 1
+              fi
+          volumeMounts:
+            - name: credentials
+              mountPath: /credentials
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            fsGroup: 65534
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+      volumes:
+        - name: credentials
+          secret:
+            secretName: velero-s3-credentials
