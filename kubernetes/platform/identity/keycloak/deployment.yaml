@@ -10,9 +10,9 @@ metadata:
     app.kubernetes.io/component: oidc-provider
     app.kubernetes.io/part-of: platform-identity
 spec:
-  replicas: 1  # SQLite = single replica only!
+  replicas: 1  # Single replica for homelab (resource-efficient)
   strategy:
-    type: Recreate  # No rolling updates with SQLite
+    type: Recreate  # Recreate strategy for database-backed apps
   selector:
     matchLabels:
       app.kubernetes.io/name: keycloak
@@ -37,13 +37,13 @@ spec:
         imagePullPolicy: IfNotPresent
         args:
         - start
-        - --db=dev-file  # 🔥 SQLite mode for homelab!
-        - --hostname=iam.timourhomelab.org
-        - --hostname-strict=false  # Allow localhost + public domain
-        - --http-enabled=true
+        - --db=postgres  # Production PostgreSQL backend
+        - --hostname=https://iam.timourhomelab.org  # Full URL required
         - --proxy-headers=xforwarded  # For Envoy Gateway
+        - --http-enabled=true  # Gateway terminates TLS
         - --health-enabled=true
         - --metrics-enabled=true
+        - --spi-sticky-session-encoder-infinispan-should-attach-route=false  # CRITICAL: Disable node-id in cookies
         env:
         # Admin credentials
         - name: KEYCLOAK_ADMIN
@@ -64,6 +64,21 @@ spec:
         # Log level
         - name: KC_LOG_LEVEL
           value: "INFO"
+        # PostgreSQL Database Configuration
+        - name: KC_DB
+          value: "postgres"
+        - name: KC_DB_URL
+          value: "jdbc:postgresql://keycloak-db-rw.keycloak.svc.cluster.local:5432/keycloak"
+        - name: KC_DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-db-credentials
+              key: username
+        - name: KC_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-db-credentials
+              key: password
         ports:
         - name: http
           containerPort: 8080
@@ -71,9 +86,6 @@ spec:
         - name: management
           containerPort: 9000
           protocol: TCP
-        volumeMounts:
-        - name: keycloak-data
-          mountPath: /opt/keycloak/data
         resources:
           requests:
             cpu: 500m
@@ -106,36 +118,3 @@ spec:
         #   periodSeconds: 30
         #   timeoutSeconds: 5
         #   failureThreshold: 5
-      volumes:
-      - name: keycloak-data
-        emptyDir: {}  # SQLite data stored in emptyDir (ephemeral)
-        # 💡 Change to PVC if you want persistence:
-        # persistentVolumeClaim:
-        #   claimName: keycloak-data
-
-# 🔄 FUTURE: PostgreSQL Migration Path
-# Uncomment when ready to migrate from SQLite to PostgreSQL:
-#
-# ---
-# apiVersion: postgresql.cnpg.io/v1
-# kind: Cluster
-# metadata:
-#   name: keycloak-db
-#   namespace: keycloak
-# spec:
-#   instances: 2
-#   storage:
-#     size: 10Gi
-#     storageClass: ceph-block
-#   postgresql:
-#     parameters:
-#       max_connections: "200"
-#       shared_buffers: "256MB"
-#   bootstrap:
-#     initdb:
-#       database: keycloak
-#       owner: keycloak
-#       secret:
-#         name: keycloak-db-credentials
-#   monitoring:
-#     enablePodMonitor: true
