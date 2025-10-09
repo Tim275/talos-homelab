@@ -1,0 +1,73 @@
+# 🎯 Velero UI Application
+# OTWLD Velero UI - Enterprise Backup Management Interface
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: velero-ui
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"
+spec:
+  project: infrastructure
+
+  source:
+    chart: velero-ui
+    repoURL: https://helm.otwld.com/
+    targetRevision: 0.14.0
+    helm:
+      valuesObject:
+        # 🔧 Velero Configuration
+        configuration:
+          logLevel: "info"
+          general:
+            secretPassPhrase:
+              value: "velero-homelab-secret-2025"
+              useSecret: true
+            veleroNamespace: "velero"
+            grafanaUrl: ""
+          policies:
+            enabled: false
+
+        # 🔒 Security Configuration
+        podSecurityContext:
+          runAsNonRoot: true
+          runAsUser: 65534
+          fsGroup: 65534
+          seccompProfile:
+            type: RuntimeDefault
+
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          readOnlyRootFilesystem: true
+
+        # 📊 Resources
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+        # 🌐 Service Configuration
+        service:
+          type: ClusterIP
+          port: 3000
+
+        # 🌐 Ingress DISABLED (using Gateway API HTTPRoute)
+        ingress:
+          enabled: false
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: velero
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
