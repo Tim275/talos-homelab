@@ -1,0 +1,139 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/instance: keycloak
+    app.kubernetes.io/component: oidc-provider
+    app.kubernetes.io/part-of: platform-identity
+spec:
+  replicas: 1  # SQLite = single replica only!
+  strategy:
+    type: Recreate  # No rolling updates with SQLite
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: keycloak
+        app.kubernetes.io/instance: keycloak
+        app.kubernetes.io/component: oidc-provider
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: keycloak
+        image: quay.io/keycloak/keycloak:25.0.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - start
+        - --db=dev-file  # 🔥 SQLite mode for homelab!
+        - --hostname=iam.timourhomelab.org
+        - --http-enabled=true
+        - --proxy-headers=xforwarded  # For Envoy Gateway
+        - --health-enabled=true
+        - --metrics-enabled=true
+        env:
+        # Admin credentials
+        - name: KEYCLOAK_ADMIN
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-admin
+              key: username
+        - name: KEYCLOAK_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-admin
+              key: password
+        # Health & Metrics
+        - name: KC_HEALTH_ENABLED
+          value: "true"
+        - name: KC_METRICS_ENABLED
+          value: "true"
+        # Log level
+        - name: KC_LOG_LEVEL
+          value: "INFO"
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: management
+          containerPort: 9000
+          protocol: TCP
+        volumeMounts:
+        - name: keycloak-data
+          mountPath: /opt/keycloak/data
+        resources:
+          requests:
+            cpu: 200m      # Lightweight for homelab
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 1024Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false  # Keycloak needs write access
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 90
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+      volumes:
+      - name: keycloak-data
+        emptyDir: {}  # SQLite data stored in emptyDir (ephemeral)
+        # 💡 Change to PVC if you want persistence:
+        # persistentVolumeClaim:
+        #   claimName: keycloak-data
+
+# 🔄 FUTURE: PostgreSQL Migration Path
+# Uncomment when ready to migrate from SQLite to PostgreSQL:
+#
+# ---
+# apiVersion: postgresql.cnpg.io/v1
+# kind: Cluster
+# metadata:
+#   name: keycloak-db
+#   namespace: keycloak
+# spec:
+#   instances: 2
+#   storage:
+#     size: 10Gi
+#     storageClass: ceph-block
+#   postgresql:
+#     parameters:
+#       max_connections: "200"
+#       shared_buffers: "256MB"
+#   bootstrap:
+#     initdb:
+#       database: keycloak
+#       owner: keycloak
+#       secret:
+#         name: keycloak-db-credentials
+#   monitoring:
+#     enablePodMonitor: true
