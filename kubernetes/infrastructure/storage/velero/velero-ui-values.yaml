@@ -1,0 +1,164 @@
+# 🎯 VUI (Velero UI) - Mercedes-Benz Enterprise Solution
+# https://vui.seriohub.com
+# Sponsored by Mercedes-Benz for Production Use
+
+# Global Configuration
+global:
+  namespace: velero
+
+# VUI API Service
+api:
+  image:
+    repository: dserio83/velero-api
+    tag: "0.3.1"
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  service:
+    type: ClusterIP
+    port: 8001
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    fsGroup: 65534
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+
+# VUI Web Interface
+ui:
+  image:
+    repository: dserio83/velero-ui
+    tag: "0.3.1"
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  service:
+    type: ClusterIP
+    port: 8000
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    fsGroup: 65534
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+
+# VUI Watchdog (Notifications)
+watchdog:
+  enabled: true
+  image:
+    repository: dserio83/velero-watchdog
+    tag: "0.1.8"
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    fsGroup: 65534
+    capabilities:
+      drop:
+        - ALL
+
+# VUI Core (Multi-cluster orchestration)
+core:
+  enabled: false  # Single cluster setup
+  image:
+    repository: dserio83/vui-core
+    tag: "0.1.2"
+    pullPolicy: IfNotPresent
+
+# NATS Message Bus (for watchdog notifications)
+nats:
+  image:
+    repository: nats
+    tag: "alpine3.20"
+    pullPolicy: IfNotPresent
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# Authentication
+auth:
+  enabled: true
+  # Default credentials (change in production!)
+  defaultUser:
+    username: "admin"
+    password: "velero123"  # TODO: Replace with sealed secret
+
+  # LDAP integration (future)
+  ldap:
+    enabled: false
+
+# Ingress Configuration (Gateway API HTTPRoute)
+ingress:
+  enabled: false  # Using Gateway API HTTPRoute instead
+  className: "nginx"
+  annotations: {}
+  hosts:
+    - host: velero-ui.timourhomelab.org
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Service Account
+serviceAccount:
+  create: true
+  name: velero-ui
+  annotations: {}
+
+# RBAC for Velero API access
+rbac:
+  create: true
+  clusterRole: true  # Needs cluster-wide Velero access
+
+# Pod Security
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  fsGroup: 65534
+  seccompProfile:
+    type: RuntimeDefault
+
+# Affinity for production
+affinity: {}
+nodeSelector: {}
+tolerations: []
