@@ -1,0 +1,250 @@
+# 🚨 Velero Backup Monitoring - Enterprise Tier-0 Alerts
+# Email Notifications: timour@hotmail.de
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: velero-backup-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+    role: alert-rules
+    backup.tier: tier0
+spec:
+  groups:
+    - name: velero-backup-critical
+      interval: 60s
+      rules:
+        # 🔴 CRITICAL: Backup Failed
+        - alert: VeleroBackupFailed
+          expr: |
+            increase(velero_backup_failure_total{schedule="n8n-prod-daily"}[1h]) > 0
+          for: 5m
+          labels:
+            severity: critical
+            component: velero
+            tier: tier0
+            team: platform
+          annotations:
+            summary: "🔴 Velero Backup Failed - N8N Production"
+            description: |
+              Velero backup for N8N production has FAILED!
+
+              Schedule: {{ $labels.schedule }}
+              Namespace: {{ $labels.exported_namespace }}
+              Failed Count: {{ $value }}
+
+              ⚠️ IMMEDIATE ACTION REQUIRED:
+              1. Check Velero logs: kubectl logs -n velero -l app.kubernetes.io/name=velero
+              2. Check backup details: kubectl get backup -n velero
+              3. Verify S3 connectivity: kubectl exec -n velero deploy/velero -- velero backup-location get
+              4. Check PostgreSQL pod status
+
+              📧 Email: timour@hotmail.de
+
+        # 🔴 CRITICAL: No Backup in 25 Hours (should be daily!)
+        - alert: VeleroBackupTooOld
+          expr: |
+            (time() - velero_backup_last_successful_timestamp{schedule="n8n-prod-daily"}) / 3600 > 25
+          for: 10m
+          labels:
+            severity: critical
+            component: velero
+            tier: tier0
+            team: platform
+          annotations:
+            summary: "🔴 No Recent Velero Backup - N8N Production"
+            description: |
+              No successful backup for N8N production in last {{ $value | humanizeDuration }}!
+              Expected: Daily backup at 2 AM UTC
+
+              Schedule: {{ $labels.schedule }}
+              Last Successful: {{ $value | humanizeDuration }} ago
+
+              ⚠️ DATA AT RISK - IMMEDIATE ACTION:
+              1. Check schedule status: kubectl get schedule n8n-prod-daily -n velero -o yaml
+              2. Check recent backups: kubectl get backup -n velero --sort-by=.status.startTimestamp
+              3. Manually trigger backup: velero backup create n8n-manual --from-schedule n8n-prod-daily
+
+              📧 Email: timour@hotmail.de
+
+        # 🔴 CRITICAL: Backup Partial Failure
+        - alert: VeleroBackupPartialFailure
+          expr: |
+            increase(velero_backup_partial_failure_total{schedule="n8n-prod-daily"}[1h]) > 0
+          for: 5m
+          labels:
+            severity: critical
+            component: velero
+            tier: tier0
+            team: platform
+          annotations:
+            summary: "🔴 Velero Backup Partially Failed - N8N Production"
+            description: |
+              Velero backup completed with PARTIAL FAILURES!
+              Some resources may not be backed up correctly.
+
+              Schedule: {{ $labels.schedule }}
+              Partial Failures: {{ $value }}
+
+              ⚠️ INCOMPLETE BACKUP - ACTION REQUIRED:
+              1. Check backup warnings: kubectl describe backup -n velero
+              2. Review Velero logs for errors
+              3. Verify all PVCs are included
+              4. Check CSI snapshot status
+
+              📧 Email: timour@hotmail.de
+
+        # 🔴 CRITICAL: S3 Storage Location Unavailable
+        - alert: VeleroBackupStorageLocationUnavailable
+          expr: |
+            velero_backup_storage_location_available{name="default"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: velero
+            tier: tier0
+            team: platform
+          annotations:
+            summary: "🔴 Velero S3 Storage Unavailable - Ceph RGW"
+            description: |
+              Velero backup storage location is UNAVAILABLE!
+              Cannot create or restore backups.
+
+              Storage Location: {{ $labels.name }}
+              Bucket: velero-backups
+              S3 Endpoint: rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
+
+              ⚠️ CRITICAL INFRASTRUCTURE ISSUE:
+              1. Check Ceph RGW status: kubectl get cephobjectstore -n rook-ceph
+              2. Verify S3 credentials: kubectl get secret velero-s3-credentials -n velero
+              3. Test S3 connectivity from Velero pod
+              4. Check Rook-Ceph cluster health
+
+              📧 Email: timour@hotmail.de
+
+        # 🔴 CRITICAL: No Backups in 48 Hours
+        - alert: VeleroNoRecentBackups
+          expr: |
+            (time() - velero_backup_last_successful_timestamp{schedule="n8n-prod-daily"}) / 3600 > 48
+          for: 15m
+          labels:
+            severity: critical
+            component: velero
+            tier: tier0
+            team: platform
+          annotations:
+            summary: "🔴 NO BACKUPS IN 48 HOURS - N8N Production"
+            description: |
+              CRITICAL: No successful backups for N8N in 48+ hours!
+              PRODUCTION DATA IS AT SEVERE RISK!
+
+              Schedule: {{ $labels.schedule }}
+              Time Since Last Backup: {{ $value | humanizeDuration }}
+
+              🚨 IMMEDIATE ESCALATION REQUIRED:
+              1. Check Velero deployment status
+              2. Verify schedule is active
+              3. Check for resource constraints (CPU/Memory)
+              4. Review all error logs
+              5. Consider manual backup immediately
+
+              📧 Email: timour@hotmail.de
+
+    - name: velero-backup-warnings
+      interval: 60s
+      rules:
+        # ⚠️ WARNING: Backup Duration Too Long
+        - alert: VeleroBackupDurationTooLong
+          expr: |
+            velero_backup_duration_seconds{schedule="n8n-prod-daily"} > 1800
+          for: 10m
+          labels:
+            severity: warning
+            component: velero
+            tier: tier0
+            team: platform
+          annotations:
+            summary: "⚠️ Velero Backup Taking Too Long - N8N"
+            description: |
+              Velero backup is taking longer than expected.
+              Normal duration: ~5-10 minutes
+              Current duration: {{ $value | humanizeDuration }}
+
+              Schedule: {{ $labels.schedule }}
+
+              Possible Causes:
+              - Database size increased significantly
+              - Slow S3 upload (Ceph RGW performance)
+              - Network issues
+              - Resource constraints
+
+              Action:
+              1. Monitor backup progress
+              2. Check Velero pod resources
+              3. Verify Ceph cluster performance
+
+              📧 Email: timour@hotmail.de
+
+        # ⚠️ WARNING: Backup Size Unusual
+        - alert: VeleroBackupSizeUnusual
+          expr: |
+            abs(
+              velero_backup_total_items{schedule="n8n-prod-daily"}
+              - avg_over_time(velero_backup_total_items{schedule="n8n-prod-daily"}[7d])
+            ) / avg_over_time(velero_backup_total_items{schedule="n8n-prod-daily"}[7d]) > 0.3
+          for: 15m
+          labels:
+            severity: warning
+            component: velero
+            tier: tier0
+            team: platform
+          annotations:
+            summary: "⚠️ Unusual Backup Size - N8N Production"
+            description: |
+              Backup size differs significantly from 7-day average.
+              This could indicate missing resources or data corruption.
+
+              Schedule: {{ $labels.schedule }}
+              Current Items: {{ $value }}
+              Expected Range: ±30% of average
+
+              Action:
+              1. Compare with previous backups
+              2. Verify all N8N resources are included
+              3. Check for deleted resources
+              4. Review backup logs for warnings
+
+              📧 Email: timour@hotmail.de
+
+        # ⚠️ WARNING: Scheduled Backup Missed
+        - alert: VeleroScheduleMissed
+          expr: |
+            (time() - velero_backup_last_successful_timestamp{schedule="n8n-prod-daily"}) / 3600 > 26
+            and
+            (time() - velero_backup_last_successful_timestamp{schedule="n8n-prod-daily"}) / 3600 < 48
+          for: 10m
+          labels:
+            severity: warning
+            component: velero
+            tier: tier0
+            team: platform
+          annotations:
+            summary: "⚠️ Velero Backup Schedule Missed - N8N"
+            description: |
+              Expected daily backup at 2 AM UTC was not executed.
+              Time since last backup: {{ $value | humanizeDuration }}
+
+              Schedule: {{ $labels.schedule }}
+              Expected Frequency: Daily (24h)
+
+              Possible Causes:
+              - Schedule paused
+              - Velero pod restarted during backup window
+              - Resource constraints prevented execution
+
+              Action:
+              1. Check schedule status: kubectl get schedule -n velero
+              2. Verify Velero pod uptime
+              3. Consider manual backup if critical
+
+              📧 Email: timour@hotmail.de
