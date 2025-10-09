@@ -1,0 +1,107 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: velero-ui
+  namespace: argocd
+  labels:
+    infrastructure.domain: storage
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"  # After Velero
+spec:
+  project: infrastructure
+  source:
+    repoURL: https://seriohub.github.io/velero-helm/
+    chart: vui
+    targetRevision: 1.0.6
+    helm:
+      releaseName: velero-ui
+      valuesObject:
+        global:
+          namespace: velero
+        api:
+          image:
+            repository: dserio83/velero-api
+            tag: "0.3.1"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            fsGroup: 65534
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+        ui:
+          image:
+            repository: dserio83/velero-ui
+            tag: "0.3.1"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            fsGroup: 65534
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+        watchdog:
+          enabled: true
+          image:
+            repository: dserio83/velero-watchdog
+            tag: "0.1.8"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            fsGroup: 65534
+            capabilities:
+              drop:
+                - ALL
+        core:
+          enabled: false
+        auth:
+          enabled: true
+          defaultUser:
+            username: "admin"
+            password: "velero123"
+        ingress:
+          enabled: false
+        serviceAccount:
+          create: true
+          name: velero-ui
+        rbac:
+          create: true
+          clusterRole: true
+        podSecurityContext:
+          runAsNonRoot: true
+          runAsUser: 65534
+          fsGroup: 65534
+          seccompProfile:
+            type: RuntimeDefault
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: velero
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
