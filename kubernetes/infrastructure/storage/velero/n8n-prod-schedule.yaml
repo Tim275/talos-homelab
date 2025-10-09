@@ -1,0 +1,59 @@
+# 🔄 N8N Production Automated Backup Schedule
+# Industry Best Practice: Daily backups at 2 AM with 7-day retention
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: n8n-prod-daily
+  namespace: velero
+  labels:
+    app: n8n
+    environment: production
+    backup.tier: tier0
+  annotations:
+    description: "Daily automated backup of N8N production database and configs"
+spec:
+  # Daily at 2:00 AM UTC (low traffic window)
+  schedule: "0 2 * * *"
+
+  # Backup template
+  template:
+    # Include N8N Production namespace
+    includedNamespaces:
+      - n8n-prod
+
+    # Backup all resources
+    includedResources:
+      - '*'
+
+    # ✅ CSI Volume Snapshots (PostgreSQL PVC)
+    snapshotVolumes: true
+    defaultVolumesToFsBackup: false  # Use CSI snapshots (faster + consistent)
+
+    # Backup retention: 7 days
+    ttl: 168h
+
+    # Storage locations
+    storageLocation: default
+    volumeSnapshotLocations:
+      - default
+
+    # 🔒 PostgreSQL Consistency Hooks
+    hooks:
+      resources:
+        - name: postgres-backup-hook
+          includedNamespaces:
+            - n8n-prod
+          labelSelector:
+            matchLabels:
+              cnpg.io/cluster: n8n-postgres
+          pre:
+            - exec:
+                container: postgres
+                command:
+                  - /bin/bash
+                  - -c
+                  - |
+                    echo "🔄 Flushing PostgreSQL WAL before backup..."
+                    psql -U postgres -c "CHECKPOINT;"
+                onError: Continue
+                timeout: 30s
