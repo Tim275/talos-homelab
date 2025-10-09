@@ -1,0 +1,104 @@
+# 🔧 OPTIONAL: CloudNativePG Cluster with WAL Archiving (Point-in-Time Recovery)
+#
+# ⚠️ THIS FILE IS DISABLED BY DEFAULT
+#
+# ## What is WAL Archiving?
+# - Continuously archives PostgreSQL Write-Ahead Logs to S3
+# - Enables Point-in-Time Recovery (PITR) down to the second
+# - Overhead: High S3 I/O (every DB write = WAL segment upload)
+#
+# ## When to Enable:
+# - You need second-precise recovery (e.g., "restore to 14:37:22")
+# - You can handle 10x S3 requests (vs daily base backups only)
+# - S3 versioning is enabled for ransomware protection
+#
+# ## How to Enable:
+# 1. Uncomment this file in kustomization.yaml:
+#    resources:
+#      - cluster-with-wal.yaml  # ✅ Enable PITR
+# 2. Comment out the regular cluster.yaml:
+#    # - cluster.yaml  # ❌ Disable (replaced by cluster-with-wal.yaml)
+# 3. Apply changes via ArgoCD sync
+#
+# ## Enterprise Backup Strategy with WAL:
+# - Velero: Full cluster backup daily (Disaster Recovery)
+# - CNPG Base Backup: Full PostgreSQL backup daily (30d retention)
+# - CNPG WAL Archiving: Continuous streaming (enables PITR between base backups)
+#
+# ---
+
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: n8n-postgres
+  namespace: n8n-prod
+  labels:
+    app.kubernetes.io/name: n8n-postgres
+    app.kubernetes.io/component: database
+    backup.strategy: pitr-enabled  # Marker for WAL archiving
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  instances: 2
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.1
+
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  storage:
+    size: 8Gi
+    storageClass: rook-ceph-block-enterprise
+
+  minSyncReplicas: 0
+  maxSyncReplicas: 0
+
+  affinity:
+    podAntiAffinityType: required
+
+  enablePDB: true
+
+  # 🔥 ENTERPRISE BACKUP WITH WAL ARCHIVING (PITR)
+  backup:
+    barmanObjectStore:
+      destinationPath: s3://n8n-postgres-backups/
+      endpointURL: https://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:443
+      s3Credentials:
+        accessKeyId:
+          name: n8n-postgres-backup-s3
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: n8n-postgres-backup-s3
+          key: ACCESS_SECRET_KEY
+
+      # ✅ WAL ARCHIVING ENABLED for Point-in-Time Recovery
+      wal:
+        compression: gzip
+        encryption: AES256
+        maxParallel: 2  # Upload 2 WAL files in parallel
+
+      data:
+        compression: gzip
+        encryption: AES256
+        jobs: 2
+
+      serverName: n8n-postgres
+
+    retentionPolicy: "30d"
+    target: prefer-standby
+
+    # WAL archiving settings
+    volumeSnapshot:
+      className: csi-rbdplugin-snapclass
+      snapshotOwnerReference: backup  # Tie snapshot lifecycle to backup
+
+  bootstrap:
+    initdb:
+      database: n8n
+      owner: n8n
+      secret:
+        name: n8n-postgres-credentials
