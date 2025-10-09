@@ -1,0 +1,55 @@
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: keycloak-db
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak-db
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: platform-identity
+spec:
+  instances: 2
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.2
+
+  storage:
+    size: 10Gi
+    storageClass: ceph-block
+
+  postgresql:
+    parameters:
+      max_connections: "200"
+      shared_buffers: "256MB"
+      effective_cache_size: "1GB"
+      maintenance_work_mem: "64MB"
+      checkpoint_completion_target: "0.9"
+      wal_buffers: "16MB"
+      default_statistics_target: "100"
+      random_page_cost: "1.1"
+      effective_io_concurrency: "200"
+
+  bootstrap:
+    initdb:
+      database: keycloak
+      owner: keycloak
+      secret:
+        name: keycloak-db-credentials
+
+  monitoring:
+    enablePodMonitor: true
+
+  backup:
+    retentionPolicy: "7d"
+    barmanObjectStore:
+      destinationPath: s3://keycloak-backups/
+      endpointURL: http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc.cluster.local
+      s3Credentials:
+        accessKeyId:
+          name: keycloak-s3-credentials
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: keycloak-s3-credentials
+          key: ACCESS_SECRET_KEY
+      wal:
+        compression: gzip
+        maxParallel: 2
