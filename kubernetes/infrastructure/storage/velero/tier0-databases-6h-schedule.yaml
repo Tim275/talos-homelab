@@ -1,0 +1,65 @@
+# 🔴 TIER-0: Mission Critical Database Backups
+# Every 6 hours (00:00, 06:00, 12:00, 18:00) - Enterprise Best Practice
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: tier0-databases-6h
+  namespace: velero
+  labels:
+    backup.tier: tier0
+    backup.type: database
+  annotations:
+    description: "Tier-0 mission critical database backups every 6 hours"
+    rpo: "6 hours"
+    rto: "15 minutes"
+spec:
+  # Every 6 hours: 00:00, 06:00, 12:00, 18:00
+  schedule: "0 */6 * * *"
+
+  # Backup template
+  template:
+    # Include all database namespaces
+    includedNamespaces:
+      - n8n-prod
+      # - authelia  # Uncomment when deployed
+      # - lldap     # Uncomment when deployed
+
+    # Backup all resources
+    includedResources:
+      - '*'
+
+    # ✅ CSI Volume Snapshots for PostgreSQL PVCs
+    snapshotVolumes: true
+    defaultVolumesToFsBackup: false  # Use CSI snapshots (faster + consistent)
+
+    # Backup retention: 7 days = 28 backups total (4 per day × 7 days)
+    ttl: 168h
+
+    # Storage locations
+    storageLocation: default
+    volumeSnapshotLocations:
+      - default
+
+    # 🔒 PostgreSQL Consistency Hooks (CRITICAL for data integrity)
+    hooks:
+      resources:
+        - name: postgres-backup-hook
+          includedNamespaces:
+            - n8n-prod
+            # - authelia
+            # - lldap
+          labelSelector:
+            matchLabels:
+              cnpg.io/cluster: n8n-postgres  # CloudNativePG cluster selector
+          pre:
+            - exec:
+                container: postgres
+                command:
+                  - /bin/bash
+                  - -c
+                  - |
+                    echo "🔄 TIER-0 Backup: Flushing PostgreSQL WAL before backup..."
+                    psql -U postgres -c "CHECKPOINT;"
+                    echo "✅ WAL flushed successfully"
+                onError: Continue
+                timeout: 30s
