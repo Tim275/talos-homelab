@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: relay
+  namespace: netbird
+  labels:
+    app.kubernetes.io/name: relay
+    app.kubernetes.io/component: relay-server
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: relay
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: relay
+    spec:
+      containers:
+        - name: relay
+          image: docker.io/netbirdio/relay:0.30.2
+          ports:
+            - name: relay
+              containerPort: 80
+              protocol: TCP
+          env:
+            - name: NB_RELAY_AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: relay-secret
+                  key: secret
+          livenessProbe:
+            tcpSocket:
+              port: relay
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: relay
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 4000m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault

@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: management
+  namespace: netbird
+  labels:
+    app.kubernetes.io/name: management
+    app.kubernetes.io/component: management-api
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: management
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: management
+    spec:
+      containers:
+        - name: management
+          image: docker.io/netbirdio/management:0.30.2
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          env:
+            - name: NETBIRD_MGMT_API_PORT
+              value: "80"
+            - name: NETBIRD_MGMT_DOMAIN
+              value: "netbird.timourhomelab.org:443"
+            - name: NETBIRD_MGMT_GRPC_PORT
+              value: "80"
+            - name: NETBIRD_SIGNAL_PROTOCOL
+              value: "https"
+            - name: NETBIRD_SIGNAL_ENDPOINT
+              value: "netbird.timourhomelab.org:443"
+            - name: NETBIRD_TURN_DOMAIN
+              value: "coturn.timourhomelab.org"
+            - name: NETBIRD_TURN_PORT
+              value: "3478"
+            - name: NETBIRD_TURN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: coturn-credentials
+                  key: secret
+            - name: NETBIRD_TURN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: coturn-credentials
+                  key: username
+            - name: NETBIRD_TURN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: coturn-credentials
+                  key: password
+            - name: NETBIRD_AUTH_OIDC_CONFIGURATION_ENDPOINT
+              value: "https://authelia.timourhomelab.org/.well-known/openid-configuration"
+            - name: NETBIRD_AUTH_AUDIENCE
+              value: "netbird"
+            - name: NETBIRD_AUTH_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: authelia-oidc-credentials
+                  key: client-id
+            - name: NETBIRD_AUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: authelia-oidc-credentials
+                  key: client-secret
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/netbird
+      volumes:
+        - name: data
+          emptyDir: {}
+      securityContext:
+        fsGroup: 65532
