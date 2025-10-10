@@ -1,0 +1,37 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: vpn
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: vpn
+    app.kubernetes.io/component: infrastructure
+spec:
+  generators:
+    - git:
+        repoURL: https://github.com/Tim275/talos-homelab
+        revision: HEAD
+        directories:
+          - path: kubernetes/infrastructure/vpn/*
+
+  template:
+    metadata:
+      name: '{{ path.basename }}'
+      labels:
+        app.kubernetes.io/name: '{{ path.basename }}'
+        app.kubernetes.io/component: vpn
+    spec:
+      project: vpn
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{ path }}'
+      destination:
+        name: in-cluster
+        namespace: '{{ path.basename }}'
+      syncPolicy:
+        automated:
+          selfHeal: true
+          prune: true
+        syncOptions:
+          - CreateNamespace=true
