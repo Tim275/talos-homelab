@@ -5,6 +5,8 @@ metadata:
   namespace: coturn
   labels:
     app: coturn
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"  # After certificate is ready
 spec:
   replicas: 2  # HA setup
   selector:
@@ -16,69 +18,69 @@ spec:
         app: coturn
     spec:
       containers:
-      - name: coturn
-        image: coturn/coturn:4.6.2-alpine
-        ports:
-        - name: stun-udp
-          containerPort: 3478
-          protocol: UDP
-        - name: stun-tcp
-          containerPort: 3478
-          protocol: TCP
-        - name: turn-tls
-          containerPort: 5349
-          protocol: TCP
-        - name: metrics
-          containerPort: 9641
-          protocol: TCP
-        env:
-        - name: REALM
-          valueFrom:
-            configMapKeyRef:
-              name: coturn-config
-              key: REALM
-        - name: LISTENING_IP
-          valueFrom:
-            configMapKeyRef:
-              name: coturn-config
-              key: LISTENING_IP
-        - name: LISTENING_PORT
-          valueFrom:
-            configMapKeyRef:
-              name: coturn-config
-              key: LISTENING_PORT
-        - name: TLS_LISTENING_PORT
-          valueFrom:
-            configMapKeyRef:
-              name: coturn-config
-              key: TLS_LISTENING_PORT
-        volumeMounts:
-        - name: config
-          mountPath: /etc/coturn/turnserver.conf
-          subPath: turnserver.conf
-        - name: certs
-          mountPath: /etc/coturn/certs
-          readOnly: true
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 500m
-            memory: 256Mi
-        securityContext:
-          runAsNonRoot: true
-          runAsUser: 1000
-          runAsGroup: 1000
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
-          readOnlyRootFilesystem: false  # Coturn needs write access
+        - name: coturn
+          image: coturn/coturn:4.6.2-alpine
+          ports:
+            - name: stun-udp
+              containerPort: 3478
+              protocol: UDP
+            - name: stun-tcp
+              containerPort: 3478
+              protocol: TCP
+            - name: turn-tls
+              containerPort: 5349
+              protocol: TCP
+            - name: metrics
+              containerPort: 9641
+              protocol: TCP
+          env:
+            - name: REALM
+              valueFrom:
+                configMapKeyRef:
+                  name: coturn-config
+                  key: REALM
+            - name: LISTENING_IP
+              valueFrom:
+                configMapKeyRef:
+                  name: coturn-config
+                  key: LISTENING_IP
+            - name: LISTENING_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: coturn-config
+                  key: LISTENING_PORT
+            - name: TLS_LISTENING_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: coturn-config
+                  key: TLS_LISTENING_PORT
+          volumeMounts:
+            - name: config
+              mountPath: /etc/coturn/turnserver.conf
+              subPath: turnserver.conf
+            - name: certs
+              mountPath: /etc/coturn/certs
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: false  # Coturn needs write access
       volumes:
-      - name: config
-        configMap:
-          name: turnserver-config
-      - name: certs
-        secret:
-          secretName: coturn-tls
+        - name: config
+          configMap:
+            name: turnserver-config
+        - name: certs
+          secret:
+            secretName: coturn-tls
