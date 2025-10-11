@@ -1,14 +1,18 @@
 # 🔐 VPN DOMAIN - PARENT APPLICATION (APP-OF-APPS PATTERN)
 # ====================================================================
 # Enterprise Tier-0 GitOps Pattern: Parent app deploys child apps
-# UI Hierarchy: vpn (parent) → coturn, netbird (children)
+# UI Hierarchy: vpn (parent) → tailscale (child)
+#
+# Tailscale Architecture:
+#   - Userspace WireGuard (no privileged containers)
+#   - Subnet router for Kubernetes access (Pod + Service CIDRs)
+#   - Restricted pod security standard
 #
 # Sync Wave Strategy:
 #   Wave 1: Network (Cilium/Istio) - CNI required
-#   Wave 2: Controllers (Cert-Manager) - TLS certs required
-#   Wave 3: Storage (Rook-Ceph) - Netbird PostgreSQL required
-#   Wave 4: VPN (THIS) - All dependencies ready ✅
-#   Wave 5: Monitoring - Can scrape VPN metrics
+#   Wave 2: Controllers (Cert-Manager, Sealed Secrets) - Required for auth
+#   Wave 3: VPN (THIS) - Tailscale subnet router
+#   Wave 4: Monitoring - Can scrape VPN metrics
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -19,7 +23,7 @@ metadata:
     infrastructure.domain: vpn
     team: timour
   annotations:
-    argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/sync-wave: "3"
 spec:
   project: infrastructure
   source:
