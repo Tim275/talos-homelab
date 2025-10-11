@@ -1,0 +1,57 @@
+# 🔐 ZERO TRUST AUTHENTICATION - Authelia ForwardAuth Integration
+# This SecurityPolicy protects private services with Authelia authentication
+#
+# Pattern: Network Layer (Tailscale VPN) + Identity Layer (Authelia OIDC + 2FA)
+#
+# Architecture:
+# 1. User connects via Tailscale VPN (network layer authentication)
+# 2. User accesses service via https://grafana.timourhomelab.org
+# 3. Envoy Gateway forwards auth request to Authelia
+# 4. If not authenticated: Redirect to https://auth.timourhomelab.org/login
+# 5. User logs in with LLDAP credentials + 2FA (TOTP/WebAuthn)
+# 6. Authelia sets session cookie
+# 7. Envoy Gateway validates cookie via Authelia
+# 8. Access granted to service
+#
+# Services protected:
+# - grafana.timourhomelab.org (monitoring dashboard)
+# - kibana.timourhomelab.org (log analytics)
+# - ceph.timourhomelab.org (storage dashboard)
+# - hubble.timourhomelab.org (network observability)
+# - keep.timourhomelab.org (alert management)
+# - velero.timourhomelab.org (backup management)
+#
+# Services NOT protected (public):
+# - n8n.timourhomelab.org (public workflow automation)
+# - auth.timourhomelab.org (Authelia login portal)
+# - iam.timourhomelab.org (Keycloak identity management)
+
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: authelia-forwardauth
+  namespace: gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"  # Deploy after Gateway (wave 3)
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: envoy-gateway
+  extAuth:
+    http:
+      backendRef:
+        name: authelia-ext-authz
+        namespace: authelia
+        port: 9091
+      headersToBackend:
+        - Remote-User
+        - Remote-Groups
+        - Remote-Email
+        - Remote-Name
+      path: /api/authz/forward-auth
+      # Authelia ForwardAuth endpoint configuration:
+      # - Validates session cookie from browser
+      # - Returns 200 OK if authenticated (with user headers)
+      # - Returns 302 Redirect to login if not authenticated
+      # - Session managed by Authelia (Redis-backed)
