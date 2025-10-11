@@ -18,33 +18,33 @@ spec:
       labels:
         app.kubernetes.io/name: relay
     spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: relay
           image: docker.io/netbirdio/relay:0.30.2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: false
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - NET_ADMIN
+                - NET_RAW
+                - PERFMON
+                - BPF
+          envFrom:
+            - configMapRef:
+                name: relay-config
+            - secretRef:
+                name: relay-secret
           ports:
             - name: relay
               containerPort: 80
               protocol: TCP
-          env:
-            - name: NB_RELAY_AUTH_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: relay-secret
-                  key: secret
-            - name: NB_RELAY_EXPOSED_ADDRESS
-              value: "netbird.timourhomelab.org:443"
-            - name: NB_RELAY_LISTEN_ADDRESS
-              value: ":80"
-          livenessProbe:
-            tcpSocket:
-              port: relay
-            initialDelaySeconds: 15
-            periodSeconds: 10
-          readinessProbe:
-            tcpSocket:
-              port: relay
-            initialDelaySeconds: 5
-            periodSeconds: 5
           resources:
             requests:
               cpu: 10m
@@ -52,14 +52,3 @@ spec:
             limits:
               cpu: 4000m
               memory: 64Mi
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
-            readOnlyRootFilesystem: true
-            runAsNonRoot: true
-            runAsUser: 65532
-            runAsGroup: 65532
-            seccompProfile:
-              type: RuntimeDefault
