@@ -24,6 +24,25 @@ spec:
         seccompProfile:
           type: RuntimeDefault
         fsGroup: 65532
+      initContainers:
+        - name: copy-config
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - cp /etc/netbird-ro/management.json /etc/netbird/management.json && chmod 644 /etc/netbird/management.json
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: config-ro
+              mountPath: /etc/netbird-ro
+            - name: config-rw
+              mountPath: /etc/netbird
       containers:
         - name: management
           image: docker.io/netbirdio/management:0.30.2
@@ -49,7 +68,7 @@ spec:
             - name: http
               containerPort: 80
           volumeMounts:
-            - name: config
+            - name: config-rw
               mountPath: /etc/netbird
             - name: data
               mountPath: /var/lib/netbird
@@ -61,8 +80,10 @@ spec:
               cpu: 1000m
               memory: 512Mi
       volumes:
-        - name: config
+        - name: config-ro
           configMap:
             name: management-json-config
+        - name: config-rw
+          emptyDir: {}
         - name: data
           emptyDir: {}
