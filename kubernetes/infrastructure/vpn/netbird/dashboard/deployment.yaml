@@ -18,35 +18,35 @@ spec:
       labels:
         app.kubernetes.io/name: dashboard
     spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: dashboard
           image: docker.io/netbirdio/dashboard:v2.18.1
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - NET_BIND_SERVICE
+                - CHOWN
+                - SETGID
+                - SETUID
+                - DAC_OVERRIDE
+          envFrom:
+            - configMapRef:
+                name: dashboard-config
+            - secretRef:
+                name: authelia-oidc-credentials
           ports:
             - name: http
               containerPort: 80
-              protocol: TCP
-          env:
-            - name: NETBIRD_MGMT_API_ENDPOINT
-              value: "https://netbird.timourhomelab.org"
-            - name: NETBIRD_MGMT_GRPC_API_ENDPOINT
-              value: "https://netbird.timourhomelab.org"
-            - name: AUTH_AUDIENCE
-              value: "netbird"
-            - name: AUTH_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: authelia-oidc-credentials
-                  key: client-id
-            - name: AUTH_AUTHORITY
-              value: "https://authelia.timourhomelab.org"
-            - name: USE_AUTH0
-              value: "false"
-            - name: AUTH_SUPPORTED_SCOPES
-              value: "openid profile email offline_access api"
-            - name: AUTH_REDIRECT_URI
-              value: "https://netbird.timourhomelab.org"
-            - name: AUTH_SILENT_REDIRECT_URI
-              value: "https://netbird.timourhomelab.org/silent-auth"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           readinessProbe:
             httpGet:
               path: /
@@ -60,20 +60,6 @@ spec:
             limits:
               cpu: 2000m
               memory: 128Mi
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
-            readOnlyRootFilesystem: false
-            runAsNonRoot: false
-            runAsUser: 0
-            runAsGroup: 0
-            seccompProfile:
-              type: RuntimeDefault
-          volumeMounts:
-            - name: tmp
-              mountPath: /tmp
       volumes:
         - name: tmp
           emptyDir: {}
