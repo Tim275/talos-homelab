@@ -1,5 +1,5 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: DaemonSet
 metadata:
   name: tailscale-subnet-router
   namespace: tailscale
@@ -7,13 +7,14 @@ metadata:
     app.kubernetes.io/name: tailscale
     app.kubernetes.io/component: subnet-router
 spec:
-  replicas: 1
-  strategy:
-    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: tailscale
       app.kubernetes.io/component: subnet-router
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
   template:
     metadata:
       labels:
@@ -36,13 +37,13 @@ spec:
             - name: TS_ROUTES
               value: "10.244.0.0/16,10.96.0.0/16"
             - name: TS_USERSPACE
-              value: "false"
+              value: "true"
             - name: TS_KUBE_SECRET
               value: "tailscale-state"
             - name: TS_HOSTNAME
               value: "talos-homelab-k8s"
             - name: TS_ACCEPT_ROUTES
-              value: "true"
+              value: "false"  # Don't accept routes from other devices (prevents route hijacking)
             # - name: TS_EXTRA_ARGS
             #   value: "--advertise-tags=tag:k8s"  # Disabled - add tag:k8s to Tailscale ACL first
           securityContext:
