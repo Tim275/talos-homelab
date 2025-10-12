@@ -1,0 +1,46 @@
+# 🔐 TAILSCALE OPERATOR - ENTERPRISE PATTERN
+# =============================================
+# Official Tailscale Kubernetes Operator (GA 2024)
+#
+# Architecture:
+#   - OAuth-based authentication (no auth keys needed)
+#   - CRD-based management (Connector resources)
+#   - HA support via replicas
+#   - Auto-approval via ACL tags
+#   - Helm chart via Kustomize (like Grafana/Sail operators)
+#
+# Components:
+#   1. Operator: Helm chart via kustomization.yaml helmCharts
+#   2. Connector CRD: Subnet router configuration
+#   3. OAuth Secret: SealedSecret with client credentials
+#
+# Sync Wave: 3 (after cert-manager, sealed-secrets)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tailscale-operator
+  namespace: argocd
+  labels:
+    enterprise.tier: infrastructure
+    infrastructure.domain: vpn
+    team: timour
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: infrastructure
+  source:
+    repoURL: https://github.com/Tim275/talos-homelab
+    targetRevision: HEAD
+    path: kubernetes/infrastructure/vpn/tailscale-operator
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: tailscale
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
