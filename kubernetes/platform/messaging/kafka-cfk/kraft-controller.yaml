@@ -1,0 +1,38 @@
+# KRaft Controller - Confluent for Kubernetes (CFK)
+# Replaces Zookeeper for Kafka metadata management
+# Documentation: https://docs.confluent.io/operator/current/co-kraft.html
+---
+apiVersion: platform.confluent.io/v1beta1
+kind: KRaftController
+metadata:
+  name: kraft
+  namespace: kafka
+  annotations:
+    argocd.argoproj.io/sync-wave: "11"  # Deploy before Kafka (wave 12)
+spec:
+  # 3 controllers for HA
+  replicas: 3
+
+  # Confluent Platform 7.8.0 (KRaft GA)
+  image:
+    application: docker.io/confluentinc/cp-server:7.8.0
+    init: docker.io/confluentinc/confluent-init-container:2.11.0
+
+  # Data Storage for KRaft metadata
+  dataVolumeCapacity: 2Gi
+  storageClass:
+    name: rook-ceph-block-enterprise
+
+  # Pod Configuration
+  podTemplate:
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+    podSecurityContext:
+      fsGroup: 1000
+      runAsUser: 1000
+      runAsNonRoot: true
