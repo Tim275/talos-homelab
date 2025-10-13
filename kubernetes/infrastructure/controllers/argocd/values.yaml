@@ -175,10 +175,10 @@ controller:
   resources:
     requests:
       cpu: 100m      # Homelab scale - reduced for bootstrap
-      memory: 512Mi  # Homelab scale - reduced memory
+      memory: 1Gi    # 🚨 INCREASED: 65 apps need more memory (was 512Mi)
     limits:
       cpu: 1000m     # Homelab scale - reduced CPU limit
-      memory: 2Gi    # Homelab scale - reduced memory limit
+      memory: 4Gi    # 🚨 INCREASED: Prevent OOMKilled (was 2Gi)
 
   # 🚀 ADVANCED PERFORMANCE METRICS
   metrics:
@@ -221,7 +221,7 @@ controller:
     - name: GOGC
       value: "50"                            # ULTRA aggressive GC - prevent memory hangs
     - name: GOMEMLIMIT
-      value: "2GiB"                          # Hard memory limit - force restart if exceeded
+      value: "4GiB"                          # 🚨 INCREASED: Match memory limit (was 2GiB)
 
     # 🚨 ANTI-HANG PROTECTION - NEVER STUCK AGAIN!
     # =============================================
@@ -422,6 +422,21 @@ repoServer:
 
   containerSecurityContext:
     readOnlyRootFilesystem: true
+
+  # 🚨 IMPROVED READINESS/LIVENESS PROBES - Prevent premature restarts
+  # ==================================================================
+  readinessProbe:
+    initialDelaySeconds: 30  # Wait 30s before first check (was 10s)
+    periodSeconds: 10        # Check every 10s
+    timeoutSeconds: 5        # Timeout after 5s
+    successThreshold: 1      # 1 success = ready
+    failureThreshold: 5      # 5 failures before marking unhealthy (was 3)
+  livenessProbe:
+    initialDelaySeconds: 60  # Wait 60s before first check (was 30s)
+    periodSeconds: 30        # Check every 30s
+    timeoutSeconds: 10       # Timeout after 10s
+    successThreshold: 1
+    failureThreshold: 3      # 3 failures = restart
 
   # 🚀 PERSISTENT VOLUME CONFIGURATION FOR ENTERPRISE CACHING
   volumes:
