@@ -9,24 +9,15 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "12"
 spec:
-  # 3-broker Kafka cluster with KRaft (no Zookeeper!)
+  # 3-broker Kafka cluster
   replicas: 3
 
-  # Confluent Platform 7.8.0 (Kafka 3.8.x with KRaft GA)
+  # Confluent Platform 7.8.0 (Kafka 3.8.x with KRaft)
   image:
-    application: docker.io/confluentinc/cp-kafka:7.8.0
+    application: docker.io/confluentinc/cp-server:7.8.0
     init: docker.io/confluentinc/confluent-init-container:2.11.0
 
-  # KRaft Configuration (Zookeeper replacement)
-  # https://docs.confluent.io/operator/current/co-kraft.html
-  metadataService:
-    enabled: true
-    kRaftEnabled: true
-    storageClass:
-      name: rook-ceph-block-enterprise
-    dataVolumeCapacity: 2Gi
-
-  # Data Storage (Kafka topic data)
+  # Data Storage (Kafka topic data + KRaft metadata)
   dataVolumeCapacity: 5Gi
   storageClass:
     name: rook-ceph-block-enterprise
@@ -48,11 +39,12 @@ spec:
       # Performance tuning
       - num.network.threads=8
       - num.io.threads=8
-      - socket.send.buffer.bytes=102400
-      - socket.receive.buffer.bytes=102400
-      - socket.request.max.bytes=104857600
 
-  # Kafka Listeners (plain + TLS)
+  # No Zookeeper - using KRaft
+  # KRaft is configured via dependencies.kRaftController (separate CRD)
+  # OR by making this Kafka resource act as both broker and controller
+
+  # Kafka Listeners (plain only for now)
   listeners:
     internal:
       authentication:
@@ -72,8 +64,11 @@ spec:
   # Metrics for Prometheus
   metrics:
     prometheus:
-      enabled: true
-      port: 7778
+      whitelist:
+        - kafka.server:type=*
+        - kafka.cluster:type=*
+        - kafka.controller:type=*
+        - kafka.network:type=*
 
   # Pod Configuration
   podTemplate:
