@@ -1,33 +1,17 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-
-# 🌊 Sync Wave 5: Log Storage (After storage infrastructure)
-commonAnnotations:
-  argocd.argoproj.io/sync-wave: "5"
+# 🏢 ELASTICSEARCH STACK - Production Best Practice Structure
+# =========================================================
+# Wave 1: operator/  → ECK Operator + CRDs (MUST deploy first)
+# Wave 5: cluster/   → Elasticsearch cluster + Kibana + Monitoring
 
 resources:
   - ns.yaml
-  - elasticsearch-cluster.yaml
-  - kibana.yaml  # Kibana for log visualization
-  - elasticsearch-exporter-deployment.yaml  # Elasticsearch Exporter for Prometheus metrics
-  - elasticsearch-exporter-service.yaml     # Service for Elasticsearch Exporter
-  - elasticsearch-servicemonitor.yaml       # ServiceMonitor for Prometheus scraping
-  - elasticsearch-ilm-policies.yaml         # Basic ILM policies (legacy)
-  - enterprise-index-templates.yaml         # ENTERPRISE: Data Streams + ECS + Compression
-  - enterprise-ilm-policies.yaml            # ENTERPRISE: Multi-Tier ILM (Hot/Warm/Cold)
-  # - sysctl-init.yaml  # Removed: vm.max_map_count already configured in Talos machine configs
-
-helmCharts:
-  - name: eck-operator
-    repo: https://helm.elastic.co
-    version: 3.1.0
-    releaseName: eck-operator
-    namespace: elastic-system
-    includeCRDs: true
-    valuesFile: eck-operator-values.yaml
+  - operator  # Wave 1: ECK Operator installation
+  - cluster   # Wave 5: Elasticsearch workload
 
 labels:
   - pairs:
       app.kubernetes.io/part-of: observability-stack
-      app.kubernetes.io/component: log-storage
+      app.kubernetes.io/managed-by: argocd
