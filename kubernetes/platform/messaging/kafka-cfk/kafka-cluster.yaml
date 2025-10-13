@@ -1,0 +1,90 @@
+# Kafka Cluster - Confluent for Kubernetes (CFK) CRD with KRaft
+# Documentation: https://docs.confluent.io/operator/current/co-deploy-cfk.html
+---
+apiVersion: platform.confluent.io/v1beta1
+kind: Kafka
+metadata:
+  name: kafka
+  namespace: kafka
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+spec:
+  # 3-broker Kafka cluster with KRaft (no Zookeeper!)
+  replicas: 3
+
+  # Confluent Platform 7.8.0 (Kafka 3.8.x with KRaft GA)
+  image:
+    application: docker.io/confluentinc/cp-kafka:7.8.0
+    init: docker.io/confluentinc/confluent-init-container:2.11.0
+
+  # KRaft Configuration (Zookeeper replacement)
+  # https://docs.confluent.io/operator/current/co-kraft.html
+  metadataService:
+    enabled: true
+    kRaftEnabled: true
+    storageClass:
+      name: rook-ceph-block-enterprise
+    dataVolumeCapacity: 2Gi
+
+  # Data Storage (Kafka topic data)
+  dataVolumeCapacity: 5Gi
+  storageClass:
+    name: rook-ceph-block-enterprise
+
+  # Kafka Configuration
+  configOverrides:
+    server:
+      # Replication settings (same as Strimzi config)
+      - offsets.topic.replication.factor=3
+      - transaction.state.log.replication.factor=3
+      - transaction.state.log.min.isr=2
+      - default.replication.factor=3
+      - min.insync.replicas=2
+
+      # Log retention (7 days default)
+      - log.retention.hours=168
+      - log.segment.bytes=1073741824
+
+      # Performance tuning
+      - num.network.threads=8
+      - num.io.threads=8
+      - socket.send.buffer.bytes=102400
+      - socket.receive.buffer.bytes=102400
+      - socket.request.max.bytes=104857600
+
+  # Kafka Listeners (plain + TLS)
+  listeners:
+    internal:
+      authentication:
+        type: plain
+      tls:
+        enabled: false
+
+  # Resources
+  resources:
+    requests:
+      cpu: 500m
+      memory: 2Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+
+  # Metrics for Prometheus
+  metrics:
+    prometheus:
+      enabled: true
+      port: 7778
+
+  # Pod Configuration
+  podTemplate:
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "7778"
+      prometheus.io/path: "/metrics"
+    labels:
+      app.kubernetes.io/component: kafka-broker
+      app.kubernetes.io/part-of: kafka
+    podSecurityContext:
+      fsGroup: 1000
+      runAsUser: 1000
+      runAsNonRoot: true
