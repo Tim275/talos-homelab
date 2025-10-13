@@ -138,7 +138,7 @@ Enterprise operators managing lifecycle, scaling, and HA for complex stateful wo
 
 ## ⚙️ Infrastructure
 
-Everything needed to run my cluster & deploy my applications:
+Classic Helm applications deployed without operators:
 
 <table>
     <tr>
@@ -147,39 +147,14 @@ Everything needed to run my cluster & deploy my applications:
         <th>Description</th>
     </tr>
     <tr>
-        <td><img width="32" src="https://cdn.jsdelivr.net/gh/cilium/cilium/Documentation/images/logo-solo.svg"></td>
-        <td><a href="https://cilium.io/">Cilium</a></td>
-        <td>eBPF-based networking, observability and security for Kubernetes</td>
-    </tr>
-    <tr>
         <td><img width="32" src="https://raw.githubusercontent.com/argoproj/argo-cd/master/docs/assets/argo.png"></td>
         <td><a href="https://argo-cd.readthedocs.io/">ArgoCD</a></td>
-        <td>Declarative GitOps continuous delivery for Kubernetes</td>
-    </tr>
-    <tr>
-        <td><img width="32" src="https://raw.githubusercontent.com/prometheus/prometheus/main/documentation/images/prometheus-logo.svg"></td>
-        <td><a href="https://prometheus.io/">Prometheus</a></td>
-        <td>Monitoring system and time series database for metrics collection</td>
-    </tr>
-    <tr>
-        <td><img width="32" src="https://cdn.jsdelivr.net/gh/grafana/grafana@main/public/img/grafana_icon.svg"></td>
-        <td><a href="https://grafana.com/">Grafana</a></td>
-        <td>Analytics and monitoring platform with rich visualization dashboards</td>
+        <td>Declarative GitOps continuous delivery for Kubernetes with HA Redis backend</td>
     </tr>
     <tr>
         <td><img width="32" src="https://cdn.jsdelivr.net/gh/grafana/loki@main/docs/sources/logo_and_name.png"></td>
         <td><a href="https://grafana.com/oss/loki/">Loki</a></td>
         <td>Log aggregation system designed for cloud-native applications</td>
-    </tr>
-    <tr>
-        <td><img width="32" src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/elasticsearch/elasticsearch-original.svg"></td>
-        <td><a href="https://www.elastic.co/elasticsearch/">Elasticsearch</a></td>
-        <td>Distributed search and analytics engine for centralized log storage and analysis</td>
-    </tr>
-    <tr>
-        <td><img width="32" src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/kibana/kibana-original.svg"></td>
-        <td><a href="https://www.elastic.co/kibana/">Kibana</a></td>
-        <td>Data visualization and exploration platform for Elasticsearch with dashboards and analytics</td>
     </tr>
     <tr>
         <td><img width="32" src="https://www.vectorlogo.zone/logos/fluentd/fluentd-icon.svg"></td>
@@ -194,12 +169,7 @@ Everything needed to run my cluster & deploy my applications:
     <tr>
         <td>🦀</td>
         <td><a href="https://vector.dev/">Vector</a></td>
-        <td>Rust-based observability data pipeline with intelligent log collection, transformation and routing to Elasticsearch</td>
-    </tr>
-    <tr>
-        <td><img width="32" src="https://ceph.io/assets/favicons/favicon-32x32.png"></td>
-        <td><a href="https://rook.io/">Rook Ceph</a></td>
-        <td>Cloud-native storage orchestrator with distributed Ceph backend for block, object and file storage</td>
+        <td>Rust-based observability data pipeline with intelligent log collection, transformation and routing</td>
     </tr>
     <tr>
         <td>🔒</td>
@@ -212,11 +182,6 @@ Everything needed to run my cluster & deploy my applications:
         <td>Container Storage Interface for Proxmox VE with ZFS backend</td>
     </tr>
     <tr>
-        <td>🚨</td>
-        <td><a href="https://prometheus.io/docs/alerting/latest/alertmanager/">Alertmanager</a></td>
-        <td>Alert routing and notification system with Slack integration</td>
-    </tr>
-    <tr>
         <td><img width="32" src="https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/main/site-src/images/logo/logo.svg"></td>
         <td><a href="https://gateway-api.sigs.k8s.io/">Gateway API</a></td>
         <td>Next-generation ingress API for Kubernetes with vendor-neutral traffic routing</td>
@@ -227,11 +192,6 @@ Everything needed to run my cluster & deploy my applications:
         <td>High-performance Gateway API implementation powered by Envoy Proxy with TLS termination and advanced routing</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://raw.githubusercontent.com/cert-manager/cert-manager/master/logo/logo.svg"></td>
-        <td><a href="https://cert-manager.io/">cert-manager</a></td>
-        <td>Automatic SSL certificate management with Let's Encrypt integration</td>
-    </tr>
-    <tr>
         <td><img width="32" src="https://www.vectorlogo.zone/logos/cloudflare/cloudflare-icon.svg"></td>
         <td><a href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/">Cloudflare Tunnel</a></td>
         <td>Zero-Trust secure tunnel for external access without port forwarding</td>
@@ -240,36 +200,6 @@ Everything needed to run my cluster & deploy my applications:
         <td><img width="32" src="https://velero.io/img/velero.svg"></td>
         <td><a href="https://velero.io/">Velero</a></td>
         <td>Kubernetes backup and disaster recovery with Ceph Object Storage backend</td>
-    </tr>
-    <tr>
-        <td><img width="32" src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/postgresql.svg"></td>
-        <td><a href="https://cloudnative-pg.io/">CloudNativePG (CNPG)</a></td>
-        <td>PostgreSQL database with automated backups, high availability and cloud-native operations</td>
-    </tr>
-    <tr>
-        <td><img width="32" src="https://www.mongodb.com/assets/images/global/favicon.ico"></td>
-        <td><a href="https://github.com/mongodb/mongodb-kubernetes-operator">MongoDB Operator</a></td>
-        <td>MongoDB database with replica sets, sharding and automated management in Kubernetes</td>
-    </tr>
-    <tr>
-        <td><img width="32" src="https://www.vectorlogo.zone/logos/apache_kafka/apache_kafka-icon.svg"></td>
-        <td><a href="https://kafka.apache.org/">Kafka</a></td>
-        <td>Apache Kafka platform running on Kubernetes with enterprise-grade streaming and messaging</td>
-    </tr>
-    <tr>
-        <td><img width="32" src="https://avatars.githubusercontent.com/u/23534644?s=200&v=4"></td>
-        <td><a href="https://istio.io/">Istio</a></td>
-        <td>Service mesh providing secure, observable and controlled microservice communication</td>
-    </tr>
-    <tr>
-        <td><img width="32" src="https://www.jaegertracing.io/img/jaeger-icon-color.png"></td>
-        <td><a href="https://www.jaegertracing.io/">Jaeger</a></td>
-        <td>Distributed tracing system for monitoring and troubleshooting microservices-based applications</td>
-    </tr>
-    <tr>
-        <td><img width="32" src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/redis/redis-original.svg"></td>
-        <td><a href="https://redis.io/">Redis</a></td>
-        <td>In-memory data store used for caching, message queuing and session storage</td>
     </tr>
     <tr>
         <td><img width="32" src="https://avatars.githubusercontent.com/u/68448710?s=200&v=4"></td>
@@ -290,10 +220,5 @@ Everything needed to run my cluster & deploy my applications:
         <td><img width="32" src="https://avatars.githubusercontent.com/u/5713248?s=200&v=4"></td>
         <td><a href="https://www.influxdata.com/">InfluxDB</a></td>
         <td>Time series database for high-performance metrics and event storage</td>
-    </tr>
-    <tr>
-        <td><img width="32" src="https://avatars.githubusercontent.com/u/65666196?s=200&v=4"></td>
-        <td><a href="https://redpanda.com/">Redpanda Console</a></td>
-        <td>Web UI for Kafka management with topic browsing, consumer groups and schema registry</td>
     </tr>
 </table>
