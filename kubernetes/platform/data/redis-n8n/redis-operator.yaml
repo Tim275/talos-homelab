@@ -1,0 +1,75 @@
+# Redis Operator CR for N8N
+# Managed by OpsTree Redis Operator
+apiVersion: redis.redis.opstreelabs.in/v1beta2
+kind: Redis
+metadata:
+  name: redis-n8n
+  namespace: n8n-prod
+  labels:
+    app.kubernetes.io/name: redis-n8n
+    app.kubernetes.io/component: message-queue
+    app.kubernetes.io/part-of: platform-data
+    app.kubernetes.io/managed-by: redis-operator
+spec:
+  # Redis configuration
+  kubernetesConfig:
+    image: quay.io/opstree/redis:v7.0.12
+    imagePullPolicy: IfNotPresent
+
+    # Resources (N8N needs more resources)
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+    # Security context
+    securityContext:
+      runAsUser: 1000
+      runAsNonRoot: true
+      fsGroup: 1000
+
+  # Redis settings (N8N specific)
+  redisConfig:
+    additionalRedisConfig: |
+      maxmemory 384mb
+      maxmemory-policy allkeys-lru
+      save 900 1
+      save 300 10
+      save 60 10000
+      notify-keyspace-events Ex
+
+  # Storage (8Gi for N8N queue data)
+  storage:
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 8Gi
+        storageClassName: rook-ceph-block-enterprise
+
+  # Redis Exporter for monitoring
+  redisExporter:
+    enabled: true
+    image: quay.io/opstree/redis-exporter:v1.62.0
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+  # Service configuration
+  serviceConfig:
+    serviceType: ClusterIP
+
+  # Monitoring
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
