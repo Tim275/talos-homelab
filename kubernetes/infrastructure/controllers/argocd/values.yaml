@@ -606,7 +606,114 @@ applicationSet:
       value: "10"      # Process multiple ApplicationSets in parallel
 
 notifications:
-  enabled: false
+  enabled: true
+
+  # 🔔 ENTERPRISE ARGOCD NOTIFICATIONS - Deployment Status Tracking
+  # =================================================================
+  # Separate from Prometheus alerts - focuses on deployment health
+
+  secret:
+    create: false  # Use SealedSecret instead of Helm-managed secret
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: argocd
+      additionalLabels:
+        release: prometheus-operator
+
+  # 🎯 NOTIFICATION SERVICES - Generic Webhook for Slack
+  notifiers:
+    service.webhook.slack: |
+      url: $slack-token
+
+  # 📋 SLACK TEMPLATES - Enterprise Rich Notifications
+  templates:
+    template.app-deployed: |
+      message: |
+        ✅ *Application Deployed*
+        App: {{.app.metadata.name}}
+        Namespace: {{.app.spec.destination.namespace}}
+        Sync Status: {{.app.status.sync.status}}
+        Health: {{.app.status.health.status}}
+
+    template.app-health-degraded: |
+      message: |
+        🔴 *Application Health Degraded*
+        App: {{.app.metadata.name}}
+        Namespace: {{.app.spec.destination.namespace}}
+        Health: {{.app.status.health.status}}
+        Message: {{.app.status.health.message}}
+
+    template.app-sync-failed: |
+      message: |
+        ❌ *Application Sync Failed*
+        App: {{.app.metadata.name}}
+        Namespace: {{.app.spec.destination.namespace}}
+        Sync Status: {{.app.status.sync.status}}
+        Message: {{.app.status.operationState.message}}
+
+    template.app-sync-running: |
+      message: |
+        🔄 *Application Sync Running*
+        App: {{.app.metadata.name}}
+        Namespace: {{.app.spec.destination.namespace}}
+        Operation: {{.app.status.operationState.operation.sync.revision}}
+
+    template.app-sync-succeeded: |
+      message: |
+        ✅ *Application Sync Succeeded*
+        App: {{.app.metadata.name}}
+        Namespace: {{.app.spec.destination.namespace}}
+        Sync Status: {{.app.status.sync.status}}
+        Health: {{.app.status.health.status}}
+
+  # 🚨 TRIGGERS - When to send notifications
+  triggers:
+    trigger.on-deployed: |
+      - description: Application is synced and healthy
+        send:
+        - app-deployed
+        when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+
+    trigger.on-health-degraded: |
+      - description: Application health is degraded
+        send:
+        - app-health-degraded
+        when: app.status.health.status == 'Degraded'
+
+    trigger.on-sync-failed: |
+      - description: Application sync failed
+        send:
+        - app-sync-failed
+        when: app.status.operationState.phase in ['Error', 'Failed']
+
+    trigger.on-sync-running: |
+      - description: Application is syncing
+        send:
+        - app-sync-running
+        when: app.status.operationState.phase in ['Running']
+
+    trigger.on-sync-succeeded: |
+      - description: Application sync succeeded
+        send:
+        - app-sync-succeeded
+        when: app.status.operationState.phase in ['Succeeded']
+
+  # 📢 DEFAULT SUBSCRIPTIONS - Which apps send notifications
+  # Global subscription for all apps (can override per-app via annotations)
+  subscriptions:
+    - recipients: ["webhook:slack"]
+      triggers: ["on-deployed", "on-health-degraded", "on-sync-failed", "on-sync-running", "on-sync-succeeded"]
 
 # ✅ REVERTED: Keep redis-secret-init enabled (default behavior)
 # The Job creates the argocd-redis secret automatically

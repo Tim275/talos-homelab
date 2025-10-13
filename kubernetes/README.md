@@ -122,6 +122,33 @@ apps/
 | **Platform** | 8+ Platform Services (Data, Identity, Messaging) | 15-18 | Auto |
 | **Apps** | User Applications (3 environments) | 25-26 | Dev/Staging: Auto, Prod: Manual |
 
+### 🎛️ Kubernetes Operators
+
+**Enterprise operators managing lifecycle, scaling, and HA for complex stateful workloads:**
+
+| Operator | Purpose | Namespace | Version | Manages | Deployment |
+|----------|---------|-----------|---------|---------|------------|
+| **Cilium Operator** | CNI networking + eBPF dataplane | kube-system | v1.17.0 | Pod networking, Network Policies, Hubble | Kustomize + Helm |
+| **Rook-Ceph Operator** | Storage orchestration (Block, Object, File) | rook-ceph | v1.16.0 | CephCluster, CephBlockPool, CephFilesystem | Kustomize + Helm |
+| **Sail Operator** | Istio service mesh lifecycle | istio-system | v0.1.3 | Istio control plane, Gateways | Kustomize + Helm |
+| **Cert-Manager** | TLS certificate automation | cert-manager | v1.17.0 | Certificates, Issuers, ClusterIssuers | Kustomize + Helm |
+| **Prometheus Operator** | Metrics collection & alerting | monitoring | v0.77.0 | Prometheus, AlertManager, ServiceMonitors | Kustomize + Helm (kube-prometheus-stack) |
+| **Grafana Operator** | Dashboard & visualization lifecycle | grafana | v5.17.0 | Grafana, Dashboards, Datasources | Kustomize + Helm |
+| **Jaeger Operator** | Distributed tracing | jaeger | v1.63.0 | Jaeger instances, Collectors, Queries | Kustomize + Helm |
+| **Elastic Operator** | Elasticsearch & Kibana orchestration | elastic-system | v2.17.0 | Elasticsearch clusters, Kibana instances | Kustomize + Helm |
+| **OpenTelemetry Operator** | Observability data collection | opentelemetry | v0.114.0 | Collectors, Instrumentation | Kustomize + Helm |
+| **Confluent Operator** | Kafka enterprise features & lifecycle | confluent | v2.11.0 | Kafka clusters, Connect, Schema Registry | Kustomize + Helm |
+| **Redis Operator** | Redis standalone/sentinel/replication | redis-operator-system | v0.18.0 | Redis, RedisCluster, RedisSentinel | Kustomize + Helm |
+| **Tailscale Operator** | VPN connectivity & routing | tailscale | v1.78.3 | Connectors, Subnet routes | Kustomize + Helm |
+| **CloudNativePG Operator** | PostgreSQL HA clusters | cnpg-system | v1.25.1 | PostgreSQL Clusters, Backups, Poolers | Kustomize + Helm |
+
+**Key Benefits:**
+- **Automated Lifecycle**: Upgrades, scaling, backups managed by operators
+- **Self-Healing**: Operators monitor CRs and reconcile desired state
+- **Enterprise HA**: Multi-replica deployments with auto-failover
+- **GitOps Native**: All operators deployed via ArgoCD + Kustomize
+- **Consistent Pattern**: All use Kustomize + Helm for declarative config
+
 ## 🔍 Enterprise Features
 
 ### 🛡️ Zero Trust Security

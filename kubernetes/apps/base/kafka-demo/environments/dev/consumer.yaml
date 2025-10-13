@@ -28,19 +28,17 @@ spec:
           args:
             - |
               # Wait for Kafka to be ready
-              echo "Waiting for Kafka to be ready..."
+              echo "Waiting for CFK Kafka to be ready..."
               sleep 35
 
-              # Create email-notifications topic if not exists
-              /opt/kafka/bin/kafka-topics.sh --bootstrap-server my-cluster-kafka-bootstrap.kafka:9092 \
-                --create --if-not-exists --topic email-notifications \
-                --partitions 3 --replication-factor 3
+              # Topic already exists (created during CFK migration)
+              echo "Topic email-notifications already exists in CFK Kafka"
 
-              echo "Starting Email Notification Consumer..."
+              echo "Starting Email Notification Consumer (CFK Kafka)..."
 
               # Consume messages and produce email notifications
               /opt/kafka/bin/kafka-console-consumer.sh \
-                --bootstrap-server my-cluster-kafka-bootstrap.kafka:9092 \
+                --bootstrap-server kafka.kafka.svc.cluster.local:9092 \
                 --topic user-registrations \
                 --group email-notification-group \
                 --from-beginning | while read message; do
@@ -66,7 +64,7 @@ spec:
 
                   # Produce email notification event
                   echo "${NOTIFICATION}" | /opt/kafka/bin/kafka-console-producer.sh \
-                    --bootstrap-server my-cluster-kafka-bootstrap.kafka:9092 \
+                    --bootstrap-server kafka.kafka.svc.cluster.local:9092 \
                     --topic email-notifications
 
                   echo "✅ Email notification sent for user: ${USER_ID}"
@@ -74,7 +72,7 @@ spec:
               done
           env:
             - name: KAFKA_BROKERS
-              value: "my-cluster-kafka-bootstrap.kafka:9092"
+              value: "kafka.kafka.svc.cluster.local:9092"
             - name: INPUT_TOPIC
               value: "user-registrations"
             - name: OUTPUT_TOPIC
