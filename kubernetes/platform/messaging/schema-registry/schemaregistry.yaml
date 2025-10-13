@@ -1,0 +1,62 @@
+# Schema Registry - Confluent for Kubernetes (CFK) CRD
+# Documentation: https://docs.confluent.io/operator/current/co-manage-schemas.html
+---
+apiVersion: platform.confluent.io/v1beta1
+kind: SchemaRegistry
+metadata:
+  name: schema-registry
+  namespace: kafka
+spec:
+  # Replicas (start with 1, scale to 3 for HA)
+  replicas: 1
+
+  # Image Configuration (Confluent official)
+  image:
+    application: confluentinc/cp-schema-registry:7.8.0
+    init: confluentinc/confluent-init-container:2.11.0
+
+  # Connect to existing Strimzi Kafka
+  dependencies:
+    kafka:
+      bootstrapEndpoint: my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092
+
+  # Storage for Schema Registry internal topics
+  dataVolumeCapacity: 2Gi
+  storageClass:
+    name: rook-ceph-block-enterprise
+
+  # Resources
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Service Configuration
+  listeners:
+    http:
+      port: 8081
+
+  # Monitoring
+  metrics:
+    prometheus:
+      enabled: true
+      port: 7778
+
+  # Pod Configuration
+  podTemplate:
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "7778"
+      prometheus.io/path: "/metrics"
+    labels:
+      app.kubernetes.io/component: schema-registry
+      app.kubernetes.io/part-of: kafka
+
+  # Security Context
+  podSecurityContext:
+    fsGroup: 1000
+    runAsUser: 1000
+    runAsNonRoot: true

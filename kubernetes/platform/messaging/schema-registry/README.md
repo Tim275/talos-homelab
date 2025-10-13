@@ -1,105 +1,170 @@
-# Schema Registry - TEMPORARILY DISABLED
+# Schema Registry - Confluent for Kubernetes (CFK)
 
-**Status**: Disabled (2025-10-13)
-**Reason**: Bitnami Helm chart broken (discontinued free Docker images Aug 2025)
-
----
-
-## Problem
-
-Bitnami discontinued all free Docker images on **August 28th, 2025**:
-- `docker.io/bitnami/schema-registry` → DEAD (only 1 broken tag remains)
-- Bitnami Helm chart v26.0.5 references non-existent images
-- Cannot override to use Confluent images (hardcoded Bitnami entrypoints)
+**Status**: Production-ready (2025-10-13)
+**Implementation**: Confluent for Kubernetes (CFK) Operator + CRD
+**Use Case**: Protobuf/Avro schema management for gRPC (Golang/Rust/C++)
 
 ---
 
-## Enterprise Production Solution (TODO)
+## Why CFK Operator?
 
-**Use Confluent for Kubernetes (CFK) Operator** - This is how enterprises run Schema Registry:
-
-### 1. Install CFK Operator
-
-```yaml
-# kubernetes/infrastructure/operators/confluent-for-kubernetes/kustomization.yaml
-helmCharts:
-- name: confluent-for-kubernetes
-  repo: https://packages.confluent.io/helm
-  version: 0.921.23
-  releaseName: confluent-operator
-  namespace: confluent
-```
-
-### 2. Deploy Schema Registry via CRD
-
-```yaml
-# kubernetes/platform/messaging/schema-registry/schemaregistry.yaml
-apiVersion: platform.confluent.io/v1beta1
-kind: SchemaRegistry
-metadata:
-  name: schema-registry
-  namespace: kafka
-spec:
-  replicas: 1
-  image:
-    application: confluentinc/cp-schema-registry:8.0.2
-
-  # Connect to Strimzi Kafka
-  dependencies:
-    kafka:
-      bootstrapEndpoint: my-cluster-kafka-bootstrap:9092
-
-  # Storage
-  dataVolumeCapacity: 2Gi
-  storageClass:
-    name: rook-ceph-block-enterprise
-
-  # Resources
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-```
-
-### 3. Benefits
-
-- ✅ Official Confluent solution
+Previous Bitnami Helm chart was discontinued (Aug 2025). CFK is the **enterprise-grade solution**:
 - ✅ Native Kubernetes CRDs (GitOps-ready)
+- ✅ Official Confluent solution
 - ✅ Automatic upgrades via operator
 - ✅ Production-grade HA and scaling
-- ✅ Integrated monitoring and metrics
+- ✅ Integrated monitoring (Prometheus)
 - ✅ Works with any Kafka (including Strimzi)
 
 ---
 
-## Alternative: Manual Deployment (Not Recommended)
+## Architecture
 
-If you need Schema Registry NOW without operator:
-
-```bash
-kubectl run schema-registry \
-  --image=confluentinc/cp-schema-registry:8.0.2 \
-  --env="SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS=PLAINTEXT://my-cluster-kafka-bootstrap:9092" \
-  --env="SCHEMA_REGISTRY_HOST_NAME=schema-registry" \
-  --env="SCHEMA_REGISTRY_LISTENERS=http://0.0.0.0:8081" \
-  -n kafka
-
-kubectl expose pod schema-registry --port=8081 -n kafka
+```
+┌──────────────────────────────────────────────────────────┐
+│ ArgoCD (GitOps)                                          │
+│ - infrastructure/operators/confluent-for-kubernetes      │
+│ - platform/messaging/schema-registry                     │
+└──────────────────┬───────────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────────────┐
+│ Confluent for Kubernetes Operator (namespace: confluent) │
+│ - Watches SchemaRegistry CRDs                            │
+│ - Manages lifecycle (create/update/scale)                │
+└──────────────────┬───────────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────────────┐
+│ SchemaRegistry CRD (namespace: kafka)                    │
+│ - Confluent official image (cp-schema-registry:7.8.0)    │
+│ - Connects to Strimzi Kafka                              │
+│ - Persistent storage (Rook Ceph)                         │
+│ - Prometheus metrics enabled                             │
+└──────────────────┬───────────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────────────┐
+│ Schema Registry Service                                  │
+│ - HTTP API: :8081                                        │
+│ - Protobuf/Avro/JSON Schema support                      │
+│ - Schema validation & versioning                         │
+└──────────────────────────────────────────────────────────┘
 ```
 
-**WARNING**: This is NOT production-ready (no HA, no persistence, no monitoring).
+## Deployment Steps (Already Configured!)
+
+### 1. CFK Operator Installed
+```
+kubernetes/infrastructure/operators/confluent-for-kubernetes/
+├── application.yaml       # ArgoCD Application
+├── kustomization.yaml     # Helm chart config
+├── namespace.yaml         # confluent namespace
+└── values.yaml            # Helm values
+```
+
+### 2. Schema Registry CRD Deployed
+```
+kubernetes/platform/messaging/schema-registry/
+├── schemaregistry.yaml    # CFK CRD
+├── servicemonitor.yaml    # Prometheus scraping
+└── kustomization.yaml     # Kustomize config
+```
+
+### 3. Protobuf Support
+
+Schema Registry supports Protobuf **out-of-the-box**! No extra configuration needed.
+
+**Supported formats:**
+- ✅ Protobuf (for gRPC)
+- ✅ Avro
+- ✅ JSON Schema
+
+---
+
+## Usage Examples
+
+### Register Protobuf Schema (gRPC)
+
+```bash
+# Example: Register a Protobuf schema
+curl -X POST http://schema-registry.kafka.svc.cluster.local:8081/subjects/user-value/versions \
+  -H "Content-Type: application/vnd.schemaregistry.v1+json" \
+  -d '{
+    "schemaType": "PROTOBUF",
+    "schema": "syntax = \"proto3\"; message User { string name = 1; int32 age = 2; }"
+  }'
+```
+
+### List All Schemas
+
+```bash
+curl http://schema-registry.kafka.svc.cluster.local:8081/subjects
+```
+
+### Get Schema Version
+
+```bash
+curl http://schema-registry.kafka.svc.cluster.local:8081/subjects/user-value/versions/latest
+```
+
+### Golang gRPC Integration
+
+```go
+import (
+    "github.com/riferrei/srclient"
+)
+
+// Connect to Schema Registry
+client := srclient.CreateSchemaRegistryClient("http://schema-registry.kafka.svc.cluster.local:8081")
+
+// Register Protobuf schema
+schema, err := client.CreateSchema("user-value", protoSchema, srclient.Protobuf)
+```
+
+### Rust gRPC Integration
+
+```rust
+use schema_registry_converter::async_impl::schema_registry::SrSettings;
+
+let sr_settings = SrSettings::new(
+    "http://schema-registry.kafka.svc.cluster.local:8081".to_string()
+);
+```
+
+---
+
+## Monitoring
+
+Schema Registry metrics are automatically scraped by Prometheus via ServiceMonitor.
+
+**Check metrics:**
+```bash
+kubectl port-forward -n kafka svc/schema-registry 8081:8081
+curl http://localhost:8081/metrics
+```
+
+**Grafana Dashboard:** Import dashboard ID `11777` (Confluent Schema Registry)
+
+---
+
+## Scaling for Production
+
+```bash
+# Scale to 3 replicas for HA
+kubectl edit schemaregistry schema-registry -n kafka
+# Change: spec.replicas: 3
+```
 
 ---
 
 ## References
 
 - **Confluent for Kubernetes**: https://docs.confluent.io/operator/current/overview.html
-- **Schema Registry Docs**: https://docs.confluent.io/platform/current/schema-registry/index.html
-- **Bitnami Migration Issue**: https://github.com/bitnami/containers/issues/83267
+- **Schema Registry API**: https://docs.confluent.io/platform/current/schema-registry/develop/api.html
+- **Protobuf Support**: https://docs.confluent.io/platform/current/schema-registry/serdes-develop/serdes-protobuf.html
+- **gRPC Examples**: https://github.com/confluentinc/confluent-kafka-go
 
 ---
 
-**Next Steps**: Install CFK Operator when you have time for proper production setup.
+**Status**: Ready for Protobuf/gRPC workloads with Golang/Rust/C++! 🚀
