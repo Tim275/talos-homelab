@@ -18,6 +18,33 @@ spec:
         fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        - name: wait-for-lldap
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for LLDAP service to be ready..."
+              until nc -z lldap 17170; do
+                echo "LLDAP not ready yet, waiting 5s..."
+                sleep 5
+              done
+              echo "LLDAP is ready!"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
       containers:
         - name: lldap-bootstrap
           image: ghcr.io/lldap/lldap:2025-07-10-alpine-rootless  # v0.6+ for custom attributes
