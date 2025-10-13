@@ -59,6 +59,83 @@ End User Applications
 
 
 
+## 🎛️ Kubernetes Operators
+
+Enterprise operators managing lifecycle, scaling, and HA for complex stateful workloads:
+
+<table>
+    <tr>
+        <th>Logo</th>
+        <th>Name</th>
+        <th>Description</th>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://cdn.jsdelivr.net/gh/cilium/cilium/Documentation/images/logo-solo.svg"></td>
+        <td><a href="https://cilium.io/">Cilium Operator</a></td>
+        <td>CNI networking operator with eBPF dataplane for pod networking, network policies and Hubble observability</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://ceph.io/assets/favicons/favicon-32x32.png"></td>
+        <td><a href="https://rook.io/">Rook-Ceph Operator</a></td>
+        <td>Storage orchestration operator managing CephCluster with block, object and file storage backends</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://avatars.githubusercontent.com/u/23534644?s=200&v=4"></td>
+        <td><a href="https://istio.io/">Sail Operator</a></td>
+        <td>Istio service mesh lifecycle operator managing control plane, gateways and mTLS configuration</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://raw.githubusercontent.com/cert-manager/cert-manager/master/logo/logo.svg"></td>
+        <td><a href="https://cert-manager.io/">Cert-Manager</a></td>
+        <td>TLS certificate automation operator with Let's Encrypt integration and certificate lifecycle management</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://raw.githubusercontent.com/prometheus/prometheus/main/documentation/images/prometheus-logo.svg"></td>
+        <td><a href="https://prometheus-operator.dev/">Prometheus Operator</a></td>
+        <td>Metrics collection operator managing Prometheus, AlertManager and ServiceMonitor resources</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://cdn.jsdelivr.net/gh/grafana/grafana@main/public/img/grafana_icon.svg"></td>
+        <td><a href="https://grafana-operator.github.io/grafana-operator/">Grafana Operator</a></td>
+        <td>Dashboard lifecycle operator managing Grafana instances, dashboards and datasource configuration</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://www.jaegertracing.io/img/jaeger-icon-color.png"></td>
+        <td><a href="https://www.jaegertracing.io/docs/latest/operator/">Jaeger Operator</a></td>
+        <td>Distributed tracing operator managing Jaeger instances, collectors and query services</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/elasticsearch/elasticsearch-original.svg"></td>
+        <td><a href="https://www.elastic.co/guide/en/cloud-on-k8s/current/index.html">Elastic Operator</a></td>
+        <td>Elasticsearch and Kibana orchestration operator managing clusters, indices and lifecycle policies</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://opentelemetry.io/img/logos/opentelemetry-icon-color.png"></td>
+        <td><a href="https://opentelemetry.io/docs/kubernetes/operator/">OpenTelemetry Operator</a></td>
+        <td>Observability data collection operator managing collectors, instrumentation and telemetry pipelines</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://www.vectorlogo.zone/logos/apache_kafka/apache_kafka-icon.svg"></td>
+        <td><a href="https://docs.confluent.io/operator/current/overview.html">Confluent Operator</a></td>
+        <td>Kafka enterprise operator managing clusters, Connect, Schema Registry and KRaft mode</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/redis/redis-original.svg"></td>
+        <td><a href="https://redis-operator.opstree.dev/">Redis Operator</a></td>
+        <td>Redis lifecycle operator managing standalone, sentinel and replication instances with automated failover</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://tailscale.com/files/press/tailscale-symbol-color.svg"></td>
+        <td><a href="https://tailscale.com/kb/1236/kubernetes-operator">Tailscale Operator</a></td>
+        <td>VPN connectivity operator managing connectors, subnet routes and secure mesh networking</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/postgresql.svg"></td>
+        <td><a href="https://cloudnative-pg.io/">CloudNativePG Operator</a></td>
+        <td>PostgreSQL HA operator managing clusters, automated backups, poolers and point-in-time recovery</td>
+    </tr>
+</table>
+
 ## ⚙️ Infrastructure
 
 Everything needed to run my cluster & deploy my applications:
