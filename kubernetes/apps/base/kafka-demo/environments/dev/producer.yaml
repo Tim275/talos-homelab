@@ -20,71 +20,69 @@ spec:
         app.kubernetes.io/component: producer
     spec:
       containers:
-      - name: producer
-        image: quay.io/strimzi/kafka:latest-kafka-3.8.0
-        command:
-        - /bin/sh
-        - -c
-        args:
-        - |
-          # Wait for Kafka to be ready
-          echo "Waiting for Kafka to be ready..."
-          sleep 30
+        - name: producer
+          image: quay.io/strimzi/kafka:latest-kafka-3.8.0
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              # Wait for Kafka to be ready
+              echo "Waiting for Kafka to be ready..."
+              sleep 30
 
-          # Create topic if not exists
-          /opt/kafka/bin/kafka-topics.sh --bootstrap-server my-cluster-kafka-bootstrap.kafka:9092 \
-            --create --if-not-exists --topic user-registrations \
-            --partitions 3 --replication-factor 3
+              # Topic already exists (created during CFK migration)
+              echo "Topic user-registrations already exists in CFK Kafka"
 
-          # Start producing messages
-          echo "Starting User Registration Producer..."
-          while true; do
-            TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")
-            USER_ID="user-$(shuf -i 1000-9999 -n 1)"
+              # Start producing messages
+              echo "Starting User Registration Producer (CFK Kafka)..."
+              while true; do
+                TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")
+                USER_ID="user-$(shuf -i 1000-9999 -n 1)"
 
-            # RECIPIENT EMAIL ADDRESSES - Who should receive the emails
-            # These are the email addresses that will RECEIVE emails FROM Gmail
-            if [ -n "$RECIPIENT_EMAILS" ]; then
-              # Split RECIPIENT_EMAILS by comma into array
-              IFS=',' read -ra EMAIL_POOL <<< "$RECIPIENT_EMAILS"
-            else
-              # Default recipient email addresses
-              EMAIL_POOL=(
-                "timour.miagol@outlook.de"
-                # Add more recipient addresses here
-                # "another.email@domain.com"
-              )
-            fi
+                # RECIPIENT EMAIL ADDRESSES - Who should receive the emails
+                # These are the email addresses that will RECEIVE emails FROM Gmail
+                if [ -n "$RECIPIENT_EMAILS" ]; then
+                  # Split RECIPIENT_EMAILS by comma into array
+                  IFS=',' read -ra EMAIL_POOL <<< "$RECIPIENT_EMAILS"
+                else
+                  # Default recipient email addresses
+                  EMAIL_POOL=(
+                    "timour.miagol@outlook.de"
+                    # Add more recipient addresses here
+                    # "another.email@domain.com"
+                  )
+                fi
 
-            # Randomly select a recipient email from the pool
-            RECIPIENT_EMAIL=${EMAIL_POOL[$RANDOM % ${#EMAIL_POOL[@]}]}
+                # Randomly select a recipient email from the pool
+                RECIPIENT_EMAIL=${EMAIL_POOL[$RANDOM % ${#EMAIL_POOL[@]}]}
 
-            # Log the selected recipient for debugging
-            echo "📧 Selected recipient: ${RECIPIENT_EMAIL} (will receive email FROM Gmail)"
-            REGION=$(shuf -e "us-east-1" "eu-west-1" "ap-southeast-1" -n 1)
+                # Log the selected recipient for debugging
+                echo "📧 Selected recipient: ${RECIPIENT_EMAIL} (will receive email FROM Gmail)"
+                REGION=$(shuf -e "us-east-1" "eu-west-1" "ap-southeast-1" -n 1)
 
-            MESSAGE="{\"user_id\":\"${USER_ID}\",\"email\":\"${RECIPIENT_EMAIL}\",\"timestamp\":\"${TIMESTAMP}\",\"region\":\"${REGION}\",\"event_type\":\"user_registration\"}"
+                MESSAGE="{\"user_id\":\"${USER_ID}\",\"email\":\"${RECIPIENT_EMAIL}\",\"timestamp\":\"${TIMESTAMP}\",\"region\":\"${REGION}\",\"event_type\":\"user_registration\"}"
 
-            echo "Producing: ${MESSAGE}"
-            echo "${MESSAGE}" | /opt/kafka/bin/kafka-console-producer.sh \
-              --bootstrap-server my-cluster-kafka-bootstrap.kafka:9092 \
-              --topic user-registrations
+                echo "Producing: ${MESSAGE}"
+                echo "${MESSAGE}" | /opt/kafka/bin/kafka-console-producer.sh \
+                  --bootstrap-server kafka.kafka.svc.cluster.local:9092 \
+                  --topic user-registrations
 
-            sleep $(shuf -i 2-8 -n 1)
-          done
-        env:
-        - name: KAFKA_BROKERS
-          value: "my-cluster-kafka-bootstrap.kafka:9092"
-        - name: TOPIC_NAME
-          value: "user-registrations"
-        # Comma-separated list of recipient email addresses for dynamic routing
-        # Example: "user1@domain.com,user2@company.org,test@example.de"
-        - name: RECIPIENT_EMAILS
-          value: "timour.miagol@outlook.de,timour.miagol@gmail.com"
-        resources:
-          requests:
-            memory: "128Mi"
-            cpu: "100m"
-          limits:
-            memory: "256Mi"
-            cpu: "200m"
+                sleep $(shuf -i 2-8 -n 1)
+              done
+          env:
+            - name: KAFKA_BROKERS
+              value: "kafka.kafka.svc.cluster.local:9092"
+            - name: TOPIC_NAME
+              value: "user-registrations"
+            # Comma-separated list of recipient email addresses for dynamic routing
+            # Example: "user1@domain.com,user2@company.org,test@example.de"
+            - name: RECIPIENT_EMAILS
+              value: "timour.miagol@outlook.de,timour.miagol@gmail.com"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
