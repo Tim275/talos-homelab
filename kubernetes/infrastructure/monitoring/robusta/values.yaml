@@ -19,10 +19,10 @@ holmesGPT:
   enableAiInvestigation: true
 
   # 🔧 AI Model Configuration
-  # Ollama with Phi-3 Medium (self-hosted, CPU-only)
-  # 14B parameters, 7.9GB RAM, excellent reasoning for Kubernetes
+  # Ollama with Phi-3 Mini (self-hosted, CPU-only)
+  # 3.8B parameters, 2.2GB, fast inference for alert analysis
   llm:
-    model: "phi3:medium"  # Microsoft Phi-3 Medium (14B)
+    model: "phi3:mini"    # Microsoft Phi-3 Mini (3.8B)
     provider: "openai"    # Ollama is OpenAI-compatible!
     api_url: "http://ollama.ai-inference.svc.cluster.local:11434"
     # No API key needed - runs locally!
@@ -163,13 +163,32 @@ playbooksConfig:
 # ========================================
 # 📡 SINKS CONFIGURATION
 # ========================================
-# Robusta enriches alerts from AlertManager with AI (HolmesGPT)
-# We use file_sink (stdout mode) to satisfy the minimum sink requirement
-# Enriched alerts are logged to console for debugging
-# Actual alert routing to Slack happens via AlertManager (preserves P1/P2/P3 routing)
+# Robusta enriches alerts with AI (HolmesGPT) and sends to Slack
+# - #alerts: AI-enriched alerts with root cause analysis
+# - #argocd-deployments: Deployment notifications
 
 sinksConfig:
-  # File sink in stdout mode (no file_name = console output only)
+  # 🔔 Slack Sink - AI-Enriched Alerts
+  - slack_sink:
+      name: robusta-slack-alerts
+      slack_channel: alerts
+      api_key:
+        secretKeyRef:
+          name: robusta-slack-webhook
+          key: url
+      send_enriched_alerts: true  # Send AI-analyzed alerts
+
+  # 🚀 Slack Sink - ArgoCD Deployments
+  - slack_sink:
+      name: robusta-slack-deployments
+      slack_channel: argocd-deployments
+      api_key:
+        secretKeyRef:
+          name: robusta-slack-webhook
+          key: url
+      send_enriched_alerts: true
+
+  # 📝 Console Sink - Keep for debugging
   - file_sink:
       name: robusta-console-sink
 
