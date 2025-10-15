@@ -168,7 +168,7 @@ alertmanager:
 
     # 📋 ROUTE CONFIGURATION - Priority-based Routing
     route:
-      receiver: 'keep-webhook'  # Send ALL alerts to Keep first for AI correlation
+      receiver: 'robusta-webhook'  # Send ALL alerts to Robusta + HolmesGPT for AI enrichment
       group_by: ['alertname', 'cluster', 'namespace', 'service']
       group_wait: 30s
       group_interval: 5m
@@ -183,7 +183,7 @@ alertmanager:
           group_wait: 0s          # INSTANT notification
           group_interval: 1m
           repeat_interval: 5m     # Re-notify every 5 min
-          continue: true          # Also send to Keep for AI correlation
+          continue: true          # Also send to Robusta for AI enrichment
 
         # ====== P2: WICHTIG/HIGH (ORANGE 🟠) ======
         # Response SLA: 15 minutes
@@ -193,7 +193,7 @@ alertmanager:
           group_wait: 10s
           group_interval: 2m
           repeat_interval: 15m
-          continue: true          # Also send to Keep for AI correlation
+          continue: true          # Also send to Robusta for AI enrichment
 
         # ====== P3: WARNING (YELLOW 🟡) ======
         # Response SLA: 1 hour
@@ -203,7 +203,7 @@ alertmanager:
           group_wait: 30s
           group_interval: 5m
           repeat_interval: 1h
-          continue: true          # Also send to Keep for AI correlation
+          continue: true          # Also send to Robusta for AI enrichment
 
         # ====== P5: INFO (BLUE 🔵) ======
         # Response SLA: 4 hours
@@ -213,7 +213,7 @@ alertmanager:
           group_wait: 2m
           group_interval: 10m
           repeat_interval: 4h
-          continue: true          # Also send to Keep for AI correlation
+          continue: true          # Also send to Robusta for AI enrichment
 
         # Fallback for alerts without priority
         - matchers:
@@ -232,7 +232,7 @@ alertmanager:
       - name: 'p1-critical'
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
-            channel: '#alerts-critical'
+            channel: '#alerts'
             username: 'Homelab Monitoring'
             icon_emoji: ':rotating_light:'
             title: |-
@@ -283,7 +283,7 @@ alertmanager:
       - name: 'p2-high'
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
-            channel: '#alerts-critical'
+            channel: '#alerts'
             username: 'Homelab Monitoring'
             icon_emoji: ':warning:'
             title: |-
@@ -318,7 +318,7 @@ alertmanager:
       - name: 'p3-warning'
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
-            channel: '#alerts-critical'
+            channel: '#alerts'
             username: 'Homelab Monitoring'
             icon_emoji: ':prometheus:'
             title: |-
@@ -340,7 +340,7 @@ alertmanager:
       - name: 'p5-info'
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
-            channel: '#alerts-critical'
+            channel: '#alerts'
             username: 'Homelab Monitoring'
             icon_emoji: ':information_source:'
             title: |-
@@ -360,7 +360,7 @@ alertmanager:
       - name: 'default'
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
-            channel: '#alerts-critical'
+            channel: '#alerts'
             username: 'AlertManager'
             icon_emoji: ':prometheus:'
             title: '[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
@@ -371,15 +371,11 @@ alertmanager:
               {{ end }}
             send_resolved: true
 
-      # ====== KEEP AI WEBHOOK - Enterprise Alert Correlation ======
-      - name: 'keep-webhook'
+      # ====== ROBUSTA + HOLMESGPT AI WEBHOOK - Enterprise Alert Enrichment ======
+      - name: 'robusta-webhook'
         webhook_configs:
-          - url: 'http://keep-backend.monitoring.svc.cluster.local:8080/alerts/event/prometheus'
+          - url: 'http://robusta-runner.monitoring.svc.cluster.local/api/alerts'
             send_resolved: true
-            http_config:
-              basic_auth:
-                username: 'api_key'
-                password: 'YQO5Wh4hCWcwAFMWyNXK09vI8v9PuMX8J3dyT6nnJbM='
 
     # 🚫 INHIBIT RULES - Prevent Alert Spam
     inhibit_rules:
