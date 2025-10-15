@@ -40,6 +40,30 @@ spec:
       labels:
         app: ollama
     spec:
+      # InitContainer pulls model before main container starts (Production Best Practice)
+      initContainers:
+        - name: pull-model
+          image: ollama/ollama:latest
+          command:
+            - sh
+            - -c
+            - |
+              echo "🚀 Pulling Phi-3 Mini model..."
+              ollama pull phi3:mini
+              echo "✅ Model ready!"
+          env:
+            - name: OLLAMA_MODELS
+              value: "/models"
+          volumeMounts:
+            - name: models
+              mountPath: /models
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2Gi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
       containers:
         - name: ollama
           image: ollama/ollama:latest
@@ -98,46 +122,3 @@ spec:
       protocol: TCP
   selector:
     app: ollama
-
----
-# Job to pull Phi-3 Mini model on first startup
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: ollama-pull-model
-  namespace: ai-inference
-spec:
-  ttlSecondsAfterFinished: 86400  # Keep for 24h for debugging
-  template:
-    metadata:
-      labels:
-        app: ollama-init
-    spec:
-      restartPolicy: OnFailure
-      containers:
-        - name: pull-model
-          image: curlimages/curl:latest
-          command:
-            - /bin/sh
-            - -c
-            - |
-              echo "Waiting for Ollama service to be ready..."
-              until curl -s http://ollama.ai-inference.svc.cluster.local:11434/ > /dev/null 2>&1; do
-                echo "Waiting for Ollama..."
-                sleep 5
-              done
-
-              echo "Ollama is ready! Pulling Phi-3 Mini model..."
-              curl -X POST http://ollama.ai-inference.svc.cluster.local:11434/api/pull \
-                -H "Content-Type: application/json" \
-                -d '{"name": "phi3:mini"}' \
-                -v
-
-              echo "Phi-3 Mini model pull initiated successfully!"
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: 500m
-              memory: 512Mi
