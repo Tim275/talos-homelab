@@ -793,6 +793,44 @@ notifications:
             "ts": {{.app.status.operationState.finishedAt.Unix}}
           }]
 
+    template.app-sync-status-unknown: |
+      slack:
+        attachments: |
+          [{
+            "title": "⚠️ Application Out of Sync",
+            "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
+            "color": "#FFA500",
+            "fields": [
+              {
+                "title": "Application",
+                "value": "{{.app.metadata.name}}",
+                "short": true
+              },
+              {
+                "title": "Namespace",
+                "value": "{{.app.spec.destination.namespace}}",
+                "short": true
+              },
+              {
+                "title": "Sync Status",
+                "value": "{{.app.status.sync.status}}",
+                "short": true
+              },
+              {
+                "title": "Health",
+                "value": "{{.app.status.health.status}}",
+                "short": true
+              },
+              {
+                "title": "Warning",
+                "value": "Application is out of sync with Git. Manual sync required if auto-sync is disabled.",
+                "short": false
+              }
+            ],
+            "footer": "ArgoCD Homelab - SYNC REQUIRED",
+            "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png"
+          }]
+
   # 🚨 TRIGGERS - When to send notifications
   triggers:
     trigger.on-deployed: |
@@ -825,11 +863,17 @@ notifications:
         - app-sync-succeeded
         when: app.status.operationState.phase in ['Succeeded']
 
+    trigger.on-sync-status-unknown: |
+      - description: Application status is unknown or out of sync
+        send:
+        - app-sync-status-unknown
+        when: app.status.sync.status == 'Unknown' or app.status.sync.status == 'OutOfSync'
+
   # 📢 DEFAULT SUBSCRIPTIONS - Which apps send notifications
   # Global subscription for all apps (can override per-app via annotations)
   subscriptions:
     - recipients: ["slack:argocd-deployments"]
-      triggers: ["on-deployed", "on-health-degraded", "on-sync-failed", "on-sync-succeeded"]
+      triggers: ["on-deployed", "on-health-degraded", "on-sync-failed", "on-sync-succeeded", "on-sync-status-unknown"]
 
 # ✅ REVERTED: Keep redis-secret-init enabled (default behavior)
 # The Job creates the argocd-redis secret automatically
