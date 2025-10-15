@@ -1,0 +1,170 @@
+# yamllint disable rule:line-length
+# Robusta - AI-Powered Kubernetes Monitoring
+# https://github.com/robusta-dev/robusta
+
+# 🤖 Robusta + HolmesGPT - Enterprise Alert Enrichment
+# AI-powered root cause analysis, alert correlation, and automatic remediation
+
+# ========================================
+# 🔐 CLUSTER CONFIGURATION
+# ========================================
+clusterName: "talos-homelab"
+
+# ========================================
+# 🧠 HOLMESGPT - AI INVESTIGATION ENGINE
+# ========================================
+enableHolmesGPT: true
+
+holmesGPT:
+  enableAiInvestigation: true
+
+  # 🔧 AI Model Configuration
+  # OpenAI API (for now, migrate to Ollama later)
+  # TODO: Create sealed secret with OpenAI API key
+  llm:
+    model: "gpt-4o"  # Using GPT-4 Optimized for best results
+    provider: "openai"
+    # apiKey will come from secret (to be created)
+
+  # 📦 Resource Configuration
+  resources:
+    requests:
+      cpu: 200m
+      memory: 2048Mi  # HolmesGPT needs ~2GB for AI processing
+    limits:
+      cpu: 2000m      # Allow burst for AI inference
+      memory: 4096Mi  # 4GB limit for safety
+
+  # 🔧 Toolsets Configuration
+  toolsets:
+    kubernetes/core:
+      enabled: true
+    kubernetes/logs:
+      enabled: true
+    robusta:
+      enabled: true
+    internet:
+      enabled: true  # Allow web searches for error messages
+    prometheus/metrics:
+      enabled: true
+
+# ========================================
+# 🏃 ROBUSTA RUNNER - Alert Receiver
+# ========================================
+runner:
+  # 📦 Resources
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1024Mi
+    limits:
+      cpu: 1000m
+      memory: 2048Mi
+
+  # 🔐 Service Account
+  serviceAccount:
+    create: true
+    name: robusta-runner
+
+  # 📊 Metrics Exporter
+  serviceMonitor:
+    enabled: true
+    path: /metrics
+
+  # 🌐 Service Configuration
+  service:
+    type: ClusterIP
+    annotations: {}
+
+# ========================================
+# 🚨 ALERTMANAGER INTEGRATION
+# ========================================
+# NOTE: We already have kube-prometheus-stack deployed
+# We will configure AlertManager to send webhooks to Robusta
+# via kube-prometheus-stack values (not here)
+disableCloudRouting: false  # Keep cloud routing for Robusta UI (optional)
+
+# ========================================
+# 💾 PLAYBOOKS STORAGE
+# ========================================
+# Playbooks = Robusta's automation scripts
+playbooksPersistentVolume: true
+playbooksPersistentVolumeSize: 4Gi
+playbooksPersistentVolumeStorageClass: "rook-ceph-block-enterprise"
+
+# ========================================
+# 🔔 SLACK INTEGRATION
+# ========================================
+# We already have Slack webhooks in AlertManager
+# Robusta will send enriched alerts to same Slack channel
+# TODO: Create sealed secret with Slack webhook
+
+# ========================================
+# 📊 PROMETHEUS INTEGRATION
+# ========================================
+# Robusta needs Prometheus for:
+# 1. Enriching alerts with metrics context
+# 2. HolmesGPT metric analysis
+prometheus:
+  url: "http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090"
+
+# ========================================
+# 🎯 GRAFANA INTEGRATION (Optional)
+# ========================================
+# Robusta can auto-generate Grafana dashboard URLs
+grafana:
+  url: "https://grafana.timourhomelab.org"
+
+# ========================================
+# 🐝 ROBUSTA UI (Optional SaaS Platform)
+# ========================================
+# Robusta has optional SaaS platform for:
+# - Alert timeline & correlation
+# - Multi-cluster management
+# - Advanced AI features
+#
+# For now: DISABLED (self-hosted only)
+# Later: Optional signup at https://platform.robusta.dev
+enablePlatformPlaybooks: false  # Don't send data to Robusta SaaS
+
+# ========================================
+# 📝 CUSTOM PLAYBOOKS
+# ========================================
+# Playbooks = Robusta's automation rules
+# Example: Auto-remediation, custom enrichment, etc.
+customPlaybooks: []
+
+# Active playbooks (default enrichments)
+playbooksConfig:
+  # 🔍 ALERT ENRICHMENT - Add context to every alert
+  alert_enrichment:
+    - on_prometheus_alert:
+        include:
+          - type: graph_enricher
+            resource_type: Deployment
+          - type: graph_enricher
+            resource_type: DaemonSet
+          - type: graph_enricher
+            resource_type: StatefulSet
+          - type: pod_events_enricher
+          - type: pod_logs_enricher
+            max_log_lines: 50
+          - type: prometheus_enricher
+            promql_query: "rate(container_cpu_usage_seconds_total[5m])"
+
+  # 🤖 HOLMESGPT INVESTIGATION - AI root cause analysis
+  holmesgpt_investigation:
+    - on_prometheus_alert:
+        include:
+          - type: holmes_investigation
+            ask_holmes: true
+
+# ========================================
+# 🔐 SECRETS (TO BE CREATED)
+# ========================================
+# Required secrets (via Sealed Secrets):
+# 1. robusta-holmesgpt-api-key (OpenAI API key)
+# 2. robusta-slack-webhook (optional, if different from AlertManager)
+#
+# For now: HolmesGPT will use OpenAI API
+# Later: Migrate to Ollama running on MS-A2 (96GB RAM)
