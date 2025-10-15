@@ -15,10 +15,10 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: rook-ceph-block-enterprise
+  storageClassName: rook-ceph-block-ssd  # SSD for AI model performance
   resources:
     requests:
-      storage: 20Gi  # Phi-3 Medium + overhead
+      storage: 10Gi  # Phi-3 Mini + overhead
 
 ---
 apiVersion: apps/v1
@@ -40,6 +40,30 @@ spec:
       labels:
         app: ollama
     spec:
+      # InitContainer pulls model before main container starts (Production Best Practice)
+      initContainers:
+        - name: pull-model
+          image: ollama/ollama:latest
+          command:
+            - sh
+            - -c
+            - |
+              echo "🚀 Pulling Phi-3 Mini model..."
+              ollama pull phi3:mini
+              echo "✅ Model ready!"
+          env:
+            - name: OLLAMA_MODELS
+              value: "/models"
+          volumeMounts:
+            - name: models
+              mountPath: /models
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2Gi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
       containers:
         - name: ollama
           image: ollama/ollama:latest
@@ -58,10 +82,10 @@ spec:
           resources:
             requests:
               cpu: 1000m       # 1 CPU core
-              memory: 8Gi      # 8GB for Phi-3 Medium (7.9GB) + overhead
+              memory: 4Gi      # 4GB for Phi-3 Mini (3.8GB) + overhead
             limits:
               cpu: 4000m       # 4 CPU cores for inference
-              memory: 12Gi     # 12GB limit for safety
+              memory: 6Gi      # 6GB limit for safety
           livenessProbe:
             httpGet:
               path: /
@@ -98,46 +122,3 @@ spec:
       protocol: TCP
   selector:
     app: ollama
-
----
-# Job to pull Phi-3 Medium model on first startup
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: ollama-pull-phi3-medium
-  namespace: ai-inference
-spec:
-  ttlSecondsAfterFinished: 86400  # Keep for 24h for debugging
-  template:
-    metadata:
-      labels:
-        app: ollama-init
-    spec:
-      restartPolicy: OnFailure
-      containers:
-        - name: pull-model
-          image: curlimages/curl:latest
-          command:
-            - /bin/sh
-            - -c
-            - |
-              echo "Waiting for Ollama service to be ready..."
-              until curl -s http://ollama.ai-inference.svc.cluster.local:11434/ > /dev/null 2>&1; do
-                echo "Waiting for Ollama..."
-                sleep 5
-              done
-
-              echo "Ollama is ready! Pulling Phi-3 Medium model..."
-              curl -X POST http://ollama.ai-inference.svc.cluster.local:11434/api/pull \
-                -H "Content-Type: application/json" \
-                -d '{"name": "phi3:medium"}' \
-                -v
-
-              echo "Phi-3 Medium model pull initiated successfully!"
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: 500m
-              memory: 512Mi
