@@ -77,6 +77,15 @@ runner:
     type: ClusterIP
     annotations: {}
 
+  # 🔑 Secrets Management - Load from Sealed Secret
+  # Robusta official pattern: https://docs.robusta.dev/master/configuration/sinks/slack.html
+  additional_env_vars:
+    - name: SLACK_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: robusta-slack-bot-token
+          key: token
+
 # ========================================
 # 🚨 ALERTMANAGER INTEGRATION
 # ========================================
@@ -168,9 +177,15 @@ playbooksConfig:
 # - #argocd-deployments: Deployment notifications
 
 sinksConfig:
-  # 📝 Console Sink - Debugging output
-  # TODO: Add Slack integration (requires token in values.yaml, blocked by GitHub Push Protection)
-  # See: kubernetes/infrastructure/monitoring/robusta/SLACK_INTEGRATION.md
+  # 🔔 Slack Sink - AI-Enriched Alerts with HolmesGPT
+  # Sends AI-analyzed alerts to #alerts channel via Slack Bot API
+  # Token loaded from sealed secret via environment variable (Production Pattern)
+  - slack_sink:
+      name: robusta-slack-ai-alerts
+      slack_channel: alerts
+      api_key: ${SLACK_API_KEY}
+
+  # 📝 Console Sink - Keep for debugging
   - file_sink:
       name: robusta-console-sink
 
