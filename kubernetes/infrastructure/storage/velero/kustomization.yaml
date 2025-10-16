@@ -8,6 +8,7 @@ resources:
   - ns.yaml
   - bucket.yaml              # S3 bucket for backups
   - sealed-secret-s3.yaml    # Ceph RGW S3 credentials
+  - velero-restic-credentials-sealedsecret.yaml  # Restic encryption key (client-side encryption)
   - tier0-databases-6h-schedule.yaml  # Tier-0: Mission critical databases (every 6h)
   - configure-bucket-job.yaml  # Enterprise bucket settings
   - enable-versioning-job.yaml  # S3 bucket versioning (ransomware protection)
@@ -33,6 +34,7 @@ helmCharts:
       credentials:
         useSecret: true
         existingSecret: velero-s3-credentials
+        extraSecretRef: velero-restic-credentials
       upgradeJobResources:
         requests:
           cpu: 50m
@@ -84,6 +86,10 @@ helmCharts:
           requests:
             cpu: 500m
             memory: 512Mi
+      # 🔐 ENTERPRISE ENCRYPTION - Client-Side with Restic
+      # Backups are encrypted BEFORE upload to S3!
+      defaultVolumesToFsBackup: true  # Force Restic for all PVs
+      defaultSnapshotMoveData: true   # Move snapshots via Restic (encrypted)
       podSecurityContext:
         runAsNonRoot: true
         runAsUser: 1000
