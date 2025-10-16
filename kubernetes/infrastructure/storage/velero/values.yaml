@@ -9,10 +9,11 @@ image:
 # Enterprise HA Configuration
 replicas: 2
 
-# Credentials for backup storage (Ceph RGW S3)
+# Credentials for backup storage (Ceph RGW S3 + Restic encryption)
 credentials:
   useSecret: true
   existingSecret: velero-s3-credentials  # SealedSecret mit Ceph RGW credentials
+  extraSecretRef: velero-restic-credentials  # SealedSecret with encryption key
 
 # Backup Configuration
 configuration:
@@ -56,7 +57,7 @@ metrics:
       prometheus.io/port: "8085"
       prometheus.io/path: "/metrics"
 
-# Node Agent (for pod volume backup)
+# Node Agent (for pod volume backup with Restic encryption)
 nodeAgent:
   enable: true
   resources:
@@ -66,6 +67,11 @@ nodeAgent:
     requests:
       cpu: 500m
       memory: 512Mi
+
+# 🔐 ENTERPRISE ENCRYPTION - Client-Side with Restic
+# Backups are encrypted BEFORE upload to S3!
+defaultVolumesToFsBackup: true  # Force Restic for all PVs
+defaultSnapshotMoveData: true   # Move snapshots via Restic (encrypted)
 
 # Security
 podSecurityContext:
