@@ -19,6 +19,40 @@ This enterprise-grade Rook-Ceph deployment is optimized for your Talos Linux clu
 - **Device**: `/dev/sdb` on each storage node (separate from OS disk)
 - **Backend**: Proxmox Ceph cluster (hyperconverged)
 
+## Enterprise Feature Matrix
+
+### ✅ Enabled Production Features
+
+| Feature | Status | Benefit | Performance Impact |
+|---------|--------|---------|-------------------|
+| **Wire Encryption (msgr2)** | ✅ ENABLED | Encrypts all OSD↔OSD/Mon/Client traffic | -5% CPU |
+| **Dashboard SSL (HTTPS)** | ✅ ENABLED | Secure web UI access with TLS | Minimal |
+| **Object Storage (RGW)** | ✅ DEPLOYED | S3-compatible API for apps/backups | Minimal |
+| **Telemetry Module** | ✅ ENABLED | Advanced cluster health analytics | +50MB RAM |
+| **Prometheus Integration** | ✅ CONFIGURED | Dashboard metrics visualization | None |
+| **3x Replication** | ✅ ENABLED | Enterprise-grade data durability | Standard |
+| **High Availability** | ✅ ENABLED | 3 Monitors, 2 Managers | Standard |
+| **Compression (LZ4)** | ✅ ENABLED | Storage space optimization | -10% CPU |
+| **pg_autoscaler** | ✅ ENABLED | Automatic PG management | None |
+| **Crash Collector** | ✅ ENABLED | Automated crash reporting | Minimal |
+
+### ❌ Intentionally Disabled Features
+
+| Feature | Why NOT Enabled | Impact if Enabled |
+|---------|-----------------|-------------------|
+| **Encryption at Rest** | ⚠️ -30% performance, requires full data wipe | Only for compliance (HIPAA/PCI-DSS) |
+| **KMS Integration (Vault)** | 🔴 Overkill for single-tenant homelab | Complex dependency, multi-tenant only |
+| **NFS Gateway** | 🟡 CephFS already provides POSIX filesystem | Redundant functionality |
+| **Multi-Site Replication** | 🔴 Requires 2nd cluster in different datacenter | Geo-redundancy, DR across regions |
+| **RBD Mirroring** | 🟡 Only useful with 2nd remote cluster | Cross-cluster replication |
+| **CephFS Mirroring** | 🟡 Same as RBD - needs remote cluster | Disaster recovery to 2nd site |
+| **Stretch Cluster** | 🔴 High complexity, multi-zone deployment | Banking/critical workloads only |
+| **Erasure Coding** | ⚠️ -20% write performance | Cold storage/archives only |
+| **Cache Tiering** | 🔴 **DEPRECATED** by Ceph upstream | Officially not recommended |
+| **Read Affinity** | 🟡 Only useful with multi-zone topology | Requires geo-distributed nodes |
+
+---
+
 ## Key Enterprise Features
 
 ### 1. Production-Grade Resource Allocation
