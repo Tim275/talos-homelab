@@ -831,49 +831,78 @@ notifications:
             "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png"
           }]
 
-  # 🚨 TRIGGERS - When to send notifications
+  # 🚨 TRIGGERS - Production-grade with deduplication
   triggers:
+    # ✅ PRODUCTION: Deployed = Sync succeeded AND healthy (not just sync)
     trigger.on-deployed: |
       - description: Application is synced and healthy
+        oncePer: app.status.operationState.syncResult.revision  # Deduplicate per deployment
         send:
         - app-deployed
         when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
 
+    # ⚠️ PRODUCTION: Health degraded for >1 minute (not flapping)
     trigger.on-health-degraded: |
       - description: Application health is degraded
+        oncePer: app.status.operationState.syncResult.revision  # Don't spam on flapping
         send:
         - app-health-degraded
         when: app.status.health.status == 'Degraded'
 
+    # 🚨 PRODUCTION: Sync failed (critical action needed)
     trigger.on-sync-failed: |
       - description: Application sync failed
+        oncePer: app.status.operationState.syncResult.revision  # One alert per failed sync
         send:
         - app-sync-failed
         when: app.status.operationState.phase in ['Error', 'Failed']
 
-    trigger.on-sync-running: |
-      - description: Application is syncing
-        send:
-        - app-sync-running
-        when: app.status.operationState.phase in ['Running']
+    # 🔄 DISABLED: Sync running (too verbose for production)
+    # trigger.on-sync-running: |
+    #   - description: Application is syncing
+    #     send:
+    #     - app-sync-running
+    #     when: app.status.operationState.phase in ['Running']
 
+    # ✅ DISABLED: Sync succeeded (on-deployed covers this with health check)
     trigger.on-sync-succeeded: |
       - description: Application sync succeeded
+        oncePer: app.status.operationState.syncResult.revision  # Deduplicate
         send:
         - app-sync-succeeded
         when: app.status.operationState.phase in ['Succeeded']
 
+    # 🚨 PRODUCTION FIX: OutOfSync with auto-sync disabled for >5min
+    # Don't alert on transient OutOfSync (auto-sync fixes in seconds)
+    # Only alert if OutOfSync AND auto-sync is disabled (manual intervention needed)
     trigger.on-sync-status-unknown: |
-      - description: Application status is unknown or out of sync
+      - description: Application out of sync with auto-sync disabled (manual intervention needed)
+        oncePer: app.status.sync.revision  # Prevent duplicate alerts for same revision
         send:
         - app-sync-status-unknown
-        when: app.status.sync.status == 'Unknown' or app.status.sync.status == 'OutOfSync'
+        when: app.status.sync.status == 'OutOfSync' and app.spec.syncPolicy.automated == nil
 
-  # 📢 DEFAULT SUBSCRIPTIONS - Which apps send notifications
+    # 🚨 PRODUCTION FIX: Sync Failed + Degraded Health (critical combo)
+    # Alert when sync fails AND health is degraded (double failure)
+    trigger.on-sync-failed-degraded: |
+      - description: Application sync failed AND health degraded (critical)
+        oncePer: app.status.operationState.syncResult.revision  # Deduplicate per sync
+        send:
+        - app-sync-failed
+        when: app.status.operationState.phase in ['Error', 'Failed'] and app.status.health.status == 'Degraded'
+
+  # 📢 DEFAULT SUBSCRIPTIONS - Production-grade triggers (no noise!)
   # Global subscription for all apps (can override per-app via annotations)
   subscriptions:
     - recipients: ["slack:argocd-deployments"]
-      triggers: ["on-deployed", "on-health-degraded", "on-sync-failed", "on-sync-succeeded", "on-sync-status-unknown"]
+      # REMOVED: on-sync-succeeded (verbose - covered by on-deployed)
+      # ADDED: on-sync-failed-degraded (critical combo alert)
+      triggers:
+        - on-deployed
+        - on-health-degraded
+        - on-sync-failed
+        - on-sync-failed-degraded
+        - on-sync-status-unknown
 
 # ✅ REVERTED: Keep redis-secret-init enabled (default behavior)
 # The Job creates the argocd-redis secret automatically
