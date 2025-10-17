@@ -1,15 +1,11 @@
-# yamllint disable rule:line-length
-# Robusta Helm Values - Enterprise Alerting Platform
-# https://docs.robusta.dev
+# ⚙️ ROBUSTA HELM VALUES - ENTERPRISE ALERT ENRICHMENT
+# ======================================================
+# StateLESS architecture = SealedSecrets compatible! ✅
 
-# ========================================
-# 🔐 SECRET MANAGEMENT (SealedSecrets)
-# ========================================
-# Slack webhook is stored in Kubernetes Secret (sealed)
-# Reference: kubernetes/infrastructure/monitoring/robusta/slack-webhook-sealed-secret.yaml
-
+# 🔐 CRITICAL: SealedSecrets Pattern
+# Reference existing secret created separately
 runner:
-  # 🚀 Resource allocation (homelab optimized)
+  # 📊 Enterprise resource limits
   resources:
     requests:
       cpu: 100m
@@ -18,94 +14,40 @@ runner:
       cpu: 500m
       memory: 512Mi
 
-  # 🔐 CRITICAL: Pull Slack webhook from Kubernetes Secret
-  # This pattern is 100% compatible with SealedSecrets!
+  # ✅ SealedSecrets Compatible Pattern
+  # Secret created separately, referenced here
   additional_env_vars:
     - name: SLACK_WEBHOOK
       valueFrom:
         secretKeyRef:
-          name: robusta-slack-webhook  # ← References the SealedSecret
+          name: robusta-slack-webhook
           key: webhook_url
 
-# ========================================
-# 🎯 SINK CONFIGURATION (Slack)
-# ========================================
+# 📨 Slack Integration
 sinksConfig:
   - slack_sink:
       name: homelab_slack
-      # 🔐 Use environment variable from secret
       api_key: "{{ env.SLACK_WEBHOOK }}"
       slack_channel: "#homelab-alerts"
-      max_log_file_limit_kb: 1000
 
-# ========================================
-# 🌍 GLOBAL CONFIGURATION
-# ========================================
+# 🎯 Global Configuration
+clusterName: "timour-homelab-talos"  # REQUIRED by Robusta (TOP-LEVEL!)
+
 globalConfig:
-  # Cluster identifier (REQUIRED by Robusta!)
-  clusterName: "timour-homelab-talos"
-
-  # 🔗 Prometheus integration
+  # 📊 Prometheus Integration
   prometheus_url: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090"
   alertmanager_url: "http://kube-prometheus-stack-alertmanager.monitoring.svc:9093"
 
-  # 🔐 Grafana integration (optional - for investigate links)
-  grafana_url: "https://grafana.timourhomelab.org"
+# 🔒 Security Context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
 
-# ========================================
-# 📋 BUILT-IN PLAYBOOKS (Enterprise Features)
-# ========================================
-enablePrometheusStack: true  # Alert enrichment for Prometheus alerts
-enablePlatformPlaybooks: true  # Built-in alert handlers
-
-# Playbook configuration
-playbooksPersistentVolumeSize: 1Gi
-playbooksStorageClass: rook-ceph-block-enterprise
-
-# ========================================
-# 🎨 CUSTOM ALERT ENRICHMENT PLAYBOOKS
-# ========================================
-customPlaybooks:
-  # Alert enrichment: Add pod logs to Prometheus alerts
-  - triggers:
-      - on_prometheus_alert:
-          alert_name: KubePodCrashLooping
-    actions:
-      - logs_enricher:
-          show_logs_of_previous_pod: true
-
-  # Alert enrichment: Add node info to Prometheus alerts
-  - triggers:
-      - on_prometheus_alert:
-          alert_name: KubeNodeNotReady
-    actions:
-      - node_enricher: {}
-
-  # Alert enrichment: Add cluster status to critical alerts
-  - triggers:
-      - on_prometheus_alert:
-          alert_name: KubeClusterCritical
-    actions:
-      - cluster_status_enricher: {}
-
-# ========================================
-# 🔍 MONITORING & OBSERVABILITY
-# ========================================
-kubewatch:
-  enabled: true  # Watch Kubernetes events for enrichment
-
-serviceAccount:
-  create: true
-  name: robusta
-
-# ServiceMonitor for Prometheus scraping
+# 📊 Monitoring
+enablePrometheusStack: false  # We already have kube-prometheus-stack
 enableServiceMonitors: true
 
-# ========================================
-# 🏷️ LABELS & ANNOTATIONS
-# ========================================
-commonLabels:
-  app.kubernetes.io/name: robusta
-  app.kubernetes.io/instance: homelab
-  app.kubernetes.io/component: alerting
-  environment: production
+# 🚀 Playbooks
+enablePlatformPlaybooks: true
+enableHolmesGPT: false  # Disable AI features (no API key)
