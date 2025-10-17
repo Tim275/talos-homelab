@@ -1,4 +1,11 @@
 ---
+# Source: robusta/charts/holmes/templates/holmesgpt-service-account.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: robusta-holmes-service-account
+  namespace: monitoring
+---
 # Source: robusta/templates/forwarder-service-account.yaml
 apiVersion: v1
 kind: ServiceAccount
@@ -34,6 +41,31 @@ type: Opaque
 stringData:
   SENTRY_DSN: https://4f1a66f025c60830fec303a094dcdf94@o1120648.ingest.sentry.io/6156573
 ---
+# Source: robusta/charts/holmes/templates/toolset-config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custom-toolsets-configmap
+  namespace: monitoring
+data:
+  custom_toolset.yaml: |-
+    toolsets: 
+      internet:
+        enabled: true
+      kubernetes/core:
+        enabled: true
+      kubernetes/logs:
+        enabled: true
+      prometheus/metrics:
+        enabled: true
+      robusta:
+        enabled: true
+    mcp_servers: 
+      {}
+  model_list.yaml: |-
+    
+    {}
+---
 # Source: robusta/templates/kubewatch-configmap.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -67,6 +99,195 @@ data:
       serviceaccount: true
       services: true
       statefulset: true
+---
+# Source: robusta/charts/holmes/templates/holmesgpt-service-account.yaml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: robusta-holmes-cluster-role
+  namespace : monitoring
+rules:
+  - apiGroups:
+      - "storage.k8s.io"
+    resources:
+      - storageclasses
+    verbs:
+      - list
+      - get
+      - watch
+  - apiGroups:
+      - "metrics.k8s.io"
+    resources:
+      - pods
+      - nodes
+    verbs:
+      - get
+      - list
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - daemonsets
+      - deployments
+      - events
+      - namespaces
+      - persistentvolumes
+      - persistentvolumeclaims
+      - pods
+      - pods/status
+      - pods/log
+      - replicasets
+      - replicationcontrollers
+      - services
+      - serviceaccounts
+      - endpoints
+    verbs:
+      - get
+      - list
+      - watch
+
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+
+  - apiGroups:
+      - "apiregistration.k8s.io"
+    resources:
+      - apiservices
+    verbs:
+      - get
+      - list
+
+  - apiGroups:
+      - "rbac.authorization.k8s.io"
+    resources:
+      - clusterroles
+      - clusterrolebindings
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - "autoscaling"
+    resources:
+      - horizontalpodautoscalers
+    verbs:
+      - get
+      - list
+      - watch
+
+  - apiGroups:
+      - apps
+    resources:
+      - daemonsets
+      - deployments
+      - deployments/scale
+      - replicasets
+      - replicasets/scale
+      - statefulsets
+    verbs:
+      - get
+      - list
+      - watch
+
+  - apiGroups:
+      - extensions
+    resources:
+      - daemonsets
+      - deployments
+      - deployments/scale
+      - ingresses
+      - replicasets
+      - replicasets/scale
+      - replicationcontrollers/scale
+    verbs:
+      - get
+      - list
+      - watch
+
+  - apiGroups:
+      - batch
+    resources:
+      - cronjobs
+      - jobs
+    verbs:
+      - get
+      - list
+      - watch
+
+  - apiGroups:
+      - "events.k8s.io"
+    resources:
+      - events
+    verbs:
+      - get
+      - list
+
+  - apiGroups:
+      - networking.k8s.io
+    resources:
+    - ingresses
+    - networkpolicies
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - autoscaling
+    resources:
+    - horizontalpodautoscalers
+    verbs:
+      - get
+      - list
+  - apiGroups:
+      - "policy"
+    resources:
+    - poddisruptionbudgets
+    - podsecuritypolicies
+    verbs:
+      - get
+      - list
+  - apiGroups:
+      - rbac.authorization.k8s.io
+    resources:
+    - clusterroles
+    - clusterrolebindings
+    - roles
+    - rolebindings
+    verbs:
+      - get
+      - list
+   # Prometheus CRDs
+  - apiGroups:
+      - monitoring.coreos.com
+    resources:
+      - alertmanagers
+      - alertmanagers/finalizers
+      - alertmanagers/status
+      - alertmanagerconfigs
+      - prometheuses
+      - prometheuses/finalizers
+      - prometheuses/status
+      - prometheusagents
+      - prometheusagents/finalizers
+      - prometheusagents/status
+      - thanosrulers
+      - thanosrulers/finalizers
+      - thanosrulers/status
+      - scrapeconfigs
+      - servicemonitors
+      - podmonitors
+      - probes
+      - prometheusrules
+    verbs:
+      - get
+      - list
+      - watch
 ---
 # Source: robusta/templates/forwarder-service-account.yaml
 kind: ClusterRole
@@ -161,7 +382,7 @@ rules:
       - get
       - list
       - watch
-
+    
   - apiGroups:
       - batch
     resources:
@@ -199,7 +420,7 @@ rules:
       - serviceaccounts
       - endpoints
       - secrets
-
+      
     verbs:
       - get
       - list
@@ -369,6 +590,20 @@ rules:
       - get
       - list
 ---
+# Source: robusta/charts/holmes/templates/holmesgpt-service-account.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: robusta-holmes-cluster-role-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: robusta-holmes-cluster-role
+subjects:
+  - kind: ServiceAccount
+    name: robusta-holmes-service-account
+    namespace: monitoring
+---
 # Source: robusta/templates/forwarder-service-account.yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -396,6 +631,23 @@ subjects:
   - kind: ServiceAccount
     name: robusta-runner-service-account
     namespace: monitoring
+---
+# Source: robusta/charts/holmes/templates/holmes.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: robusta-holmes
+  namespace: monitoring
+  labels:
+    app: holmes
+spec:
+  selector:
+    app: holmes
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 5050
 ---
 # Source: robusta/templates/forwarder.yaml
 apiVersion: v1
@@ -431,6 +683,70 @@ spec:
       protocol: TCP
       port: 80
       targetPort: 5000
+---
+# Source: robusta/charts/holmes/templates/holmes.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: robusta-holmes
+  namespace: monitoring
+  labels:
+    app: holmes
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: holmes
+  template:
+    metadata:
+      labels:
+        app: holmes
+      annotations:
+        # checksum annotation triggering pod reload when .Values.toolsets changes by helm upgrade
+        checksum/toolset-config: 060a20b330e0bf168372da8663876175c6c04457fa71e341212351d1b97bd703
+    spec:
+      serviceAccountName: robusta-holmes-service-account
+      containers:
+      - name: holmes
+        image: "robustadev/holmes:0.14.2"
+        imagePullPolicy: Always
+        command: ["python3", "-u", "server.py"]
+        env:
+          - name: LOG_LEVEL
+            value: INFO
+          - name: ENABLE_TELEMETRY
+            value: "true"
+          - name: SENTRY_DSN
+            value: https://51f9cd9bd2fdee16144db08fc423cd3b@o1120648.ingest.us.sentry.io/4508799804702720
+          
+          
+          
+        lifecycle:
+          preStop:
+            exec:
+              command: ["bash", "-c", "kill -SIGINT 1"]
+        volumeMounts:
+          - name: playbooks-config-secret
+            mountPath: /etc/robusta/config
+          - name: custom-toolsets-configmap
+            mountPath: /etc/holmes/config
+        resources:
+          requests:
+            cpu: 100m
+            memory: 2048Mi
+          limits:
+            memory: 2048Mi
+            
+      volumes:
+        - name: playbooks-config-secret
+          secret:
+            secretName: robusta-playbooks-config-secret
+            optional: true
+        - name: custom-toolsets-configmap
+          configMap:
+            name: custom-toolsets-configmap
+            optional: true
 ---
 # Source: robusta/templates/forwarder.yaml
 apiVersion: apps/v1
@@ -480,7 +796,7 @@ spec:
             memory: "512Mi"
           limits:
             memory: "512Mi"
-
+            
       volumes:
         - name:  robusta-kubewatch-config
           configMap:
@@ -535,17 +851,19 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: metadata.namespace
+          - name: HOLMES_ENABLED
+            value: "True"
           - name: RUNNER_VERSION
             value: 0.28.1
           - name: CERTIFICATE
-            value:
+            value: 
           - name: IMAGE_REGISTRY
             value: robustadev
           - name: CLUSTER_DOMAIN
             value: cluster.local
           - name: SET_KRR_SECURITY_CONTEXT
             value: "false"
-
+          
           - name: SLACK_WEBHOOK
             valueFrom:
               secretKeyRef:
