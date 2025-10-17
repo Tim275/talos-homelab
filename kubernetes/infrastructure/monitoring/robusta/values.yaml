@@ -1,0 +1,53 @@
+# ⚙️ ROBUSTA HELM VALUES - ENTERPRISE ALERT ENRICHMENT
+# ======================================================
+# StateLESS architecture = SealedSecrets compatible! ✅
+
+# 🔐 CRITICAL: SealedSecrets Pattern
+# Reference existing secret created separately
+runner:
+  # 📊 Enterprise resource limits
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # ✅ SealedSecrets Compatible Pattern
+  # Secret created separately, referenced here
+  additional_env_vars:
+    - name: SLACK_WEBHOOK
+      valueFrom:
+        secretKeyRef:
+          name: robusta-slack-webhook
+          key: webhook_url
+
+# 📨 Slack Integration
+sinksConfig:
+  - slack_sink:
+      name: homelab_slack
+      api_key: "{{ env.SLACK_WEBHOOK }}"
+      slack_channel: "#homelab-alerts"
+
+# 🎯 Global Configuration
+clusterName: "timour-homelab-talos"  # REQUIRED by Robusta (TOP-LEVEL!)
+
+globalConfig:
+  # 📊 Prometheus Integration
+  prometheus_url: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090"
+  alertmanager_url: "http://kube-prometheus-stack-alertmanager.monitoring.svc:9093"
+
+# 🔒 Security Context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+# 📊 Monitoring
+enablePrometheusStack: false  # We already have kube-prometheus-stack
+enableServiceMonitors: true
+
+# 🚀 Playbooks
+enablePlatformPlaybooks: true
+enableHolmesGPT: false  # Disable AI features (no API key)
