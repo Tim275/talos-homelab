@@ -1,0 +1,111 @@
+---
+# Infisical Helm Chart Values
+# Based on: https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/
+
+infisical:
+  enabled: true
+  name: infisical
+  fullnameOverride: infisical
+
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+
+  autoDatabaseSchemaMigration: true
+
+  # External PostgreSQL (CloudNativePG)
+  postgresql:
+    enabled: false
+
+  # External Redis
+  redis:
+    enabled: false
+
+  # Backend configuration
+  backend:
+    enabled: true
+    replicaCount: 2
+
+    image:
+      repository: infisical/infisical
+      tag: "latest"
+      pullPolicy: IfNotPresent
+
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "200m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+
+    # Environment variables from ConfigMap and Secrets
+    env:
+      - name: DB_CONNECTION_URI
+        value: "postgres://infisical:$(POSTGRES_PASSWORD)@infisical-postgres-rw.infisical.svc:5432/infisical?sslmode=disable"
+      - name: REDIS_URL
+        value: "redis://:$(REDIS_PASSWORD)@infisical-redis.infisical.svc:6379"
+      - name: SITE_URL
+        valueFrom:
+          configMapKeyRef:
+            name: infisical-config
+            key: SITE_URL
+      - name: NODE_ENV
+        valueFrom:
+          configMapKeyRef:
+            name: infisical-config
+            key: NODE_ENV
+
+    # Load secrets from SealedSecrets (after they're unsealed)
+    envFrom:
+      - secretRef:
+          name: infisical-postgres-credentials
+      - secretRef:
+          name: infisical-redis-credentials
+      - secretRef:
+          name: infisical-encryption-key
+      - secretRef:
+          name: infisical-jwt-secrets
+
+    service:
+      type: ClusterIP
+      port: 8080
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+
+    livenessProbe:
+      httpGet:
+        path: /api/status
+        port: 8080
+      initialDelaySeconds: 30
+      periodSeconds: 10
+
+    readinessProbe:
+      httpGet:
+        path: /api/status
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 5
+
+  # Frontend configuration
+  frontend:
+    enabled: true
+    replicaCount: 2
+
+    image:
+      repository: infisical/infisical-frontend
+      tag: "latest"
+      pullPolicy: IfNotPresent
+
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "256Mi"
+        cpu: "300m"
+
+    service:
+      type: ClusterIP
+      port: 3000
