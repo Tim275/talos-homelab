@@ -91,7 +91,7 @@ infrastructure/
 ├── infrastructure-controllers    # ArgoCD, Cert-Manager, Sealed Secrets
 ├── infrastructure-network       # Cilium CNI, Istio Service Mesh, Gateway API
 ├── infrastructure-storage       # Rook-Ceph, Proxmox CSI, Velero Backup
-├── infrastructure-monitoring    # Prometheus, Grafana, Metrics Server
+├── infrastructure-monitoring    # Prometheus, Grafana, Robusta, Keep, Metrics Server
 └── infrastructure-observability # Vector, Elasticsearch, Kibana
 
 🛠️ LEVEL 2: PLATFORM ApplicationSets (Wave 15-18)
@@ -99,7 +99,8 @@ platform/
 ├── platform-identity    # LLDAP, Authelia OIDC
 ├── platform-data       # PostgreSQL, MongoDB, InfluxDB
 ├── platform-developer  # Backstage
-└── platform-messaging  # Kafka, Redpanda Console, Schema Registry
+├── platform-messaging  # Kafka, Redpanda Console, Schema Registry
+└── platform-ai         # Ollama (phi3:mini LLM for HolmesGPT)
 
 📱 LEVEL 2: APPS ApplicationSets (Wave 25-26)
 apps/
@@ -118,8 +119,8 @@ apps/
 | Layer | Components | Wave | Sync Policy |
 |-------|------------|------|-------------|
 | **Security** | RBAC, Pod Security, Network Policies | 0 | Auto |
-| **Infrastructure** | 25+ Core Services (CNI, Storage, Monitoring) | 1-6 | Auto |
-| **Platform** | 8+ Platform Services (Data, Identity, Messaging) | 15-18 | Auto |
+| **Infrastructure** | 27+ Core Services (CNI, Storage, Monitoring, AI Alerts) | 1-6 | Auto |
+| **Platform** | 9+ Platform Services (Data, Identity, Messaging, AI) | 15-18 | Auto |
 | **Apps** | User Applications (3 environments) | 25-26 | Dev/Staging: Auto, Prod: Manual |
 
 ### 🎛️ Kubernetes Operators
@@ -173,6 +174,15 @@ apps/
 - **Logs**: Vector + Elasticsearch + Kibana
 - **Traces**: Jaeger distributed tracing
 - **Service Mesh**: Istio with mTLS
+- **AI-Powered Alerts**: Robusta + HolmesGPT (self-hosted Ollama)
+  - Alert enrichment with logs, graphs, metrics
+  - AI troubleshooting via phi3:mini LLM
+  - Root cause analysis and fix suggestions
+  - DSGVO-compliant (no cloud AI, fully on-prem)
+- **AIOps Platform**: Keep (alert correlation + AI chat)
+  - Centralized alert management
+  - AI-powered incident analysis
+  - Web UI for interactive troubleshooting
 
 ## 🔧 Operations
 

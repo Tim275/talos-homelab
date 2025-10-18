@@ -221,4 +221,31 @@ Classic Helm applications deployed without operators:
         <td><a href="https://www.influxdata.com/">InfluxDB</a></td>
         <td>Time series database for high-performance metrics and event storage</td>
     </tr>
+    <tr>
+        <td><img width="32" src="https://avatars.githubusercontent.com/u/75224818?s=200&v=4"></td>
+        <td><a href="https://docs.robusta.dev/">Robusta</a></td>
+        <td>AI-powered alert enrichment with HolmesGPT integration for automated troubleshooting and root cause analysis</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://avatars.githubusercontent.com/u/121251675?s=200&v=4"></td>
+        <td><a href="https://www.keephq.dev/">Keep</a></td>
+        <td>AIOps platform for alert correlation, centralized alert management and AI-powered incident analysis</td>
+    </tr>
+</table>
+
+## 🧠 Platform Services
+
+AI and middleware services supporting applications:
+
+<table>
+    <tr>
+        <th>Logo</th>
+        <th>Name</th>
+        <th>Description</th>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://avatars.githubusercontent.com/u/151674099?s=200&v=4"></td>
+        <td><a href="https://ollama.com/">Ollama</a></td>
+        <td>Self-hosted LLM inference engine for HolmesGPT AI troubleshooting (DSGVO-compliant)</td>
+    </tr>
 </table>
