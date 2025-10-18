@@ -3,19 +3,16 @@ kind: Kustomization
 
 # Infisical - Modern Secrets Management Platform
 # Purpose: Central secrets management with PostgreSQL + Redis
-# Bootstrap: Layer 1 (Sealed Secrets) → Layer 2 (Infisical)
+# Bootstrap: SealedSecrets (encrypted) → Infisical (runtime)
 
 resources:
   - namespace.yaml
-  # Bootstrap Sealed Secrets (Enterprise-grade)
-  - postgres-credentials-sealed.yaml
-  - redis-credentials-sealed.yaml
-  - encryption-key-sealed.yaml
-  - jwt-secrets-sealed.yaml
-  # Infrastructure
+  # Single SealedSecret with ALL Infisical configuration
+  - infisical-secrets-sealed.yaml
+  # External Infrastructure (CloudNativePG + Redis Operator)
   - postgres-cluster.yaml
   - redis.yaml
-  - infisical-secrets.yaml
+  - infisical-config.yaml
 
 namespace: infisical
 
@@ -30,7 +27,54 @@ commonAnnotations:
 helmCharts:
   - name: infisical-standalone
     repo: https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/
-    version: "1.0.4"
+    version: "1.7.1"
     releaseName: infisical
     namespace: infisical
-    valuesFile: values.yaml
+    # ✅ USE valuesInline (NOT valuesFile - ArgoCD doesn't support it!)
+    valuesInline:
+      # Disable bundled dependencies (we use external PostgreSQL/Redis)
+      postgresql:
+        enabled: false
+
+      redis:
+        enabled: false
+
+      ingress:
+        enabled: false
+        nginx:
+          enabled: false
+
+      # Infisical Application Configuration
+      infisical:
+        enabled: true
+        name: infisical
+        fullnameOverride: infisical
+        replicaCount: 1  # Minimal config
+
+        autoDatabaseSchemaMigration: true
+
+        # ✅ CRITICAL: Reference to SealedSecret containing ALL config
+        kubeSecretRef: "infisical-secrets"
+
+        image:
+          repository: infisical/infisical
+          tag: "v0.93.1-postgres"
+          pullPolicy: IfNotPresent
+
+        podAnnotations:
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "8080"
+
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+
+        service:
+          type: ClusterIP
+          annotations:
+            prometheus.io/scrape: "true"
+            prometheus.io/port: "8080"
