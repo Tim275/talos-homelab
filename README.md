@@ -27,7 +27,8 @@ This repository contains the complete configuration and documentation of my ente
 ---
 
 ## 📱 Applications
-End User Applications
+
+End-user applications deployed in dev, staging, and production environments:
 
 <table>
     <tr>
@@ -48,46 +49,12 @@ End User Applications
     <tr>
         <td><img width="32" src="https://www.vectorlogo.zone/logos/apache_kafka/apache_kafka-icon.svg"></td>
         <td><a href="kubernetes/apps/base/kafka-demo/">Kafka Email Consumer</a></td>
-        <td>Real-time email notification system consuming Kafka messages and sending welcome emails</td>
+        <td>Real-time email notification system consuming Kafka messages</td>
     </tr>
     <tr>
         <td><img width="32" src="https://www.vectorlogo.zone/logos/apache_kafka/apache_kafka-icon.svg"></td>
         <td><a href="kubernetes/apps/base/kafka-demo/">Kafka User Producer</a></td>
-        <td>Kafka message producer for user registration events with dynamic email routing</td>
-    </tr>
-</table>
-
-
-
-## 🔐 Security
-
-Zero Trust foundation and policy enforcement:
-
-<table>
-    <tr>
-        <th>Logo</th>
-        <th>Name</th>
-        <th>Description</th>
-    </tr>
-    <tr>
-        <td><img width="32" src="https://avatars.githubusercontent.com/u/68448710?s=200&v=4"></td>
-        <td><a href="https://kyverno.io/">Kyverno</a></td>
-        <td>Kubernetes-native policy engine for security, compliance and governance automation</td>
-    </tr>
-    <tr>
-        <td><img width="32" src="https://www.authelia.com/images/branding/logo-cropped.png"></td>
-        <td><a href="https://www.authelia.com/">Authelia</a></td>
-        <td>Single Sign-On and Multi-Factor authentication portal with OIDC provider</td>
-    </tr>
-    <tr>
-        <td><img width="32" src="https://avatars.githubusercontent.com/u/103038211?s=200&v=4"></td>
-        <td><a href="https://github.com/lldap/lldap">LLDAP</a></td>
-        <td>Lightweight LDAP server for authentication and user directory services</td>
-    </tr>
-    <tr>
-        <td>🔒</td>
-        <td><a href="https://sealed-secrets.netlify.app/">Sealed Secrets</a></td>
-        <td>Kubernetes controller for one-way encrypted secrets in Git</td>
+        <td>Kafka message producer for user registration events</td>
     </tr>
 </table>
 
@@ -170,7 +137,7 @@ Enterprise operators managing lifecycle, scaling, and HA for complex stateful wo
 
 ## ⚙️ Infrastructure
 
-GitOps, networking, and core cluster services:
+Core cluster services including GitOps, networking, storage, backup, and observability:
 
 <table>
     <tr>
@@ -198,18 +165,6 @@ GitOps, networking, and core cluster services:
         <td><a href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/">Cloudflare Tunnel</a></td>
         <td>Zero-Trust secure tunnel for external access without port forwarding</td>
     </tr>
-</table>
-
-## 💾 Infrastructure - Storage & Backup
-
-Persistent storage and disaster recovery:
-
-<table>
-    <tr>
-        <th>Logo</th>
-        <th>Name</th>
-        <th>Description</th>
-    </tr>
     <tr>
         <td><img width="32" src="https://ceph.io/assets/favicons/favicon-32x32.png"></td>
         <td><a href="https://rook.io/">Rook-Ceph</a></td>
@@ -224,18 +179,6 @@ Persistent storage and disaster recovery:
         <td><img width="32" src="https://velero.io/img/velero.svg"></td>
         <td><a href="https://velero.io/">Velero</a></td>
         <td>Kubernetes backup and disaster recovery with Ceph Object Storage backend</td>
-    </tr>
-</table>
-
-## 📊 Infrastructure - Observability
-
-Metrics, logs, traces, and AI-powered operations:
-
-<table>
-    <tr>
-        <th>Logo</th>
-        <th>Name</th>
-        <th>Description</th>
     </tr>
     <tr>
         <td><img width="32" src="https://raw.githubusercontent.com/prometheus/prometheus/main/documentation/images/prometheus-logo.svg"></td>
@@ -283,9 +226,6 @@ Metrics, logs, traces, and AI-powered operations:
         <td>Observability data collection with collectors and instrumentation (OTel Operator)</td>
     </tr>
     <tr>
-        <td colspan="3"><strong>AI Operations</strong></td>
-    </tr>
-    <tr>
         <td><img width="32" src="https://avatars.githubusercontent.com/u/75224818?s=200&v=4"></td>
         <td><a href="https://docs.robusta.dev/">Robusta</a></td>
         <td>AI-powered alert enrichment with automated troubleshooting and root cause analysis</td>
@@ -302,9 +242,9 @@ Metrics, logs, traces, and AI-powered operations:
     </tr>
 </table>
 
-## 🗄️ Platform Services - Data
+## 🗄️ Platform Services
 
-Databases and messaging platforms:
+Databases, messaging platforms, and identity management:
 
 <table>
     <tr>
@@ -331,5 +271,37 @@ Databases and messaging platforms:
         <td><img width="32" src="https://www.vectorlogo.zone/logos/apache_kafka/apache_kafka-icon.svg"></td>
         <td><a href="https://docs.confluent.io/operator/current/overview.html">Kafka</a></td>
         <td>Event streaming platform with Connect and Schema Registry (Confluent Operator)</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://www.authelia.com/images/branding/logo-cropped.png"></td>
+        <td><a href="https://www.authelia.com/">Authelia</a></td>
+        <td>Single Sign-On and Multi-Factor authentication portal with OIDC provider</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://avatars.githubusercontent.com/u/103038211?s=200&v=4"></td>
+        <td><a href="https://github.com/lldap/lldap">LLDAP</a></td>
+        <td>Lightweight LDAP server for authentication and user directory services</td>
+    </tr>
+</table>
+
+## 🔐 Security
+
+Zero Trust foundation and policy enforcement:
+
+<table>
+    <tr>
+        <th>Logo</th>
+        <th>Name</th>
+        <th>Description</th>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://avatars.githubusercontent.com/u/68448710?s=200&v=4"></td>
+        <td><a href="https://kyverno.io/">Kyverno</a></td>
+        <td>Kubernetes-native policy engine for security, compliance and governance automation</td>
+    </tr>
+    <tr>
+        <td>🔒</td>
+        <td><a href="https://sealed-secrets.netlify.app/">Sealed Secrets</a></td>
+        <td>Kubernetes controller for one-way encrypted secrets in Git</td>
     </tr>
 </table>
