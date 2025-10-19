@@ -1,0 +1,109 @@
+# Job: Configure Snapshot Lifecycle Management (SLM) Policy
+# This job creates an automated daily snapshot policy with 30-day retention
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: elasticsearch-configure-slm-policy
+  namespace: elastic-system
+  labels:
+    app.kubernetes.io/name: elasticsearch
+    app.kubernetes.io/component: backup
+spec:
+  ttlSecondsAfterFinished: 600  # Cleanup after 10 minutes
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: elasticsearch
+        app.kubernetes.io/component: backup
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: configure-slm
+        image: curlimages/curl:8.11.1
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+
+          echo "📅 Elasticsearch Snapshot Lifecycle Management (SLM) Setup"
+          echo "=========================================================="
+
+          # Wait for Elasticsearch to be ready
+          echo "⏳ Waiting for Elasticsearch to be ready..."
+          until curl -sk -u "elastic:$ELASTIC_PASSWORD" \
+            "https://production-cluster-es-http.elastic-system.svc.cluster.local:9200/_cluster/health" \
+            | grep -q '"status":"green\|yellow"'; do
+            echo "Waiting for Elasticsearch cluster health..."
+            sleep 10
+          done
+
+          echo "✅ Elasticsearch cluster is ready"
+
+          # Create SLM Policy
+          echo "📝 Creating SLM Policy: daily-snapshots..."
+
+          curl -sk -X PUT -u "elastic:$ELASTIC_PASSWORD" \
+            -H "Content-Type: application/json" \
+            "https://production-cluster-es-http.elastic-system.svc.cluster.local:9200/_slm/policy/daily-snapshots" \
+            -d '{
+              "schedule": "0 2 * * *",
+              "name": "<daily-snap-{now/d}>",
+              "repository": "ceph-s3-snapshots",
+              "config": {
+                "indices": ["logs-*"],
+                "ignore_unavailable": true,
+                "include_global_state": false,
+                "metadata": {
+                  "taken_by": "slm-policy",
+                  "taken_because": "daily automated snapshot"
+                }
+              },
+              "retention": {
+                "expire_after": "30d",
+                "min_count": 5,
+                "max_count": 50
+              }
+            }'
+
+          echo ""
+          echo "✅ SLM Policy created successfully!"
+
+          # Execute policy immediately for testing
+          echo "🔄 Executing SLM policy immediately (test snapshot)..."
+          curl -sk -X POST -u "elastic:$ELASTIC_PASSWORD" \
+            "https://production-cluster-es-http.elastic-system.svc.cluster.local:9200/_slm/policy/daily-snapshots/_execute"
+
+          echo ""
+          echo "✅ Test snapshot triggered!"
+
+          # Show SLM status
+          echo ""
+          echo "📋 SLM Policy Status:"
+          curl -sk -u "elastic:$ELASTIC_PASSWORD" \
+            "https://production-cluster-es-http.elastic-system.svc.cluster.local:9200/_slm/policy/daily-snapshots?human"
+
+          echo ""
+          echo ""
+          echo "🎉 Elasticsearch SLM Policy Setup Complete!"
+          echo ""
+          echo "📅 Snapshot Schedule:"
+          echo "  - Daily at 2:00 AM UTC"
+          echo "  - Retention: 30 days"
+          echo "  - Min Snapshots: 5"
+          echo "  - Max Snapshots: 50"
+          echo ""
+          echo "📦 Repository: ceph-s3-snapshots"
+          echo "📂 Indices: logs-*"
+          echo ""
+          echo "💡 Check snapshots:"
+          echo "  kubectl exec -n elastic-system production-cluster-es-master-data-0 -- \\"
+          echo "    curl -s -k -u elastic:\$ELASTIC_PASSWORD \\"
+          echo "    https://localhost:9200/_snapshot/ceph-s3-snapshots/_all?pretty"
+        env:
+        - name: ELASTIC_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: production-cluster-es-elastic-user
+              key: elastic
