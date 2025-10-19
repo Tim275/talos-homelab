@@ -1,0 +1,262 @@
+---
+# Prometheus AlertingRules for Enterprise Logging
+# Purpose: Alert on critical log patterns and Vector pipeline health
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: logging-alerts
+  namespace: elastic-system
+  labels:
+    prometheus: kube-prometheus-stack
+    role: alert-rules
+spec:
+  groups:
+    # ═══════════════════════════════════════════════════════════════
+    # GROUP 1: CRITICAL ERROR RATE ALERTS
+    # ═══════════════════════════════════════════════════════════════
+    - name: critical-errors
+      interval: 1m
+      rules:
+        - alert: HighCriticalErrorRate
+          expr: |
+            sum(rate(vector_events_in_total{service="vector-aggregator"}[5m]))
+            by (namespace) > 10
+          for: 5m
+          labels:
+            severity: critical
+            tier: tier0
+          annotations:
+            summary: "High critical error rate in {{ $labels.namespace }}"
+            description: |
+              Namespace {{ $labels.namespace }} is generating {{ $value }} critical errors per second.
+              This indicates a serious issue requiring immediate attention.
+
+        - alert: PodCrashLoopDetected
+          expr: |
+            count(vector_logs_total{message=~".*CrashLoopBackOff.*|.*Error.*|.*OOMKilled.*"})
+            by (kubernetes_namespace, kubernetes_pod_name) > 5
+          for: 10m
+          labels:
+            severity: critical
+            tier: tier0
+          annotations:
+            summary: "Pod {{ $labels.kubernetes_pod_name }} in crash loop"
+            description: |
+              Pod {{ $labels.kubernetes_pod_name }} in namespace {{ $labels.kubernetes_namespace }}
+              has crashed {{ $value }} times in the last 10 minutes.
+
+    # ═══════════════════════════════════════════════════════════════
+    # GROUP 2: VECTOR PIPELINE HEALTH
+    # ═══════════════════════════════════════════════════════════════
+    - name: vector-pipeline-health
+      interval: 1m
+      rules:
+        - alert: VectorAgentDown
+          expr: |
+            up{job="vector-agent"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            tier: tier0
+          annotations:
+            summary: "Vector Agent is down on {{ $labels.instance }}"
+            description: |
+              Vector Agent on node {{ $labels.instance }} has been down for more than 5 minutes.
+              Logs from this node are not being collected!
+
+        - alert: VectorAggregatorDown
+          expr: |
+            up{job="vector-aggregator"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            tier: tier0
+          annotations:
+            summary: "Vector Aggregator is down"
+            description: |
+              Vector Aggregator has been down for more than 2 minutes.
+              ALL log ingestion has stopped!
+
+        - alert: VectorHighEventDropRate
+          expr: |
+            rate(vector_events_dropped_total[5m]) > 100
+          for: 10m
+          labels:
+            severity: warning
+            tier: tier1
+          annotations:
+            summary: "Vector is dropping events"
+            description: |
+              Vector is dropping {{ $value }} events per second.
+              Check buffer sizes and Elasticsearch capacity.
+
+        - alert: VectorBufferUtilizationHigh
+          expr: |
+            vector_buffer_byte_size / vector_buffer_max_byte_size > 0.8
+          for: 15m
+          labels:
+            severity: warning
+            tier: tier1
+          annotations:
+            summary: "Vector buffer utilization > 80%"
+            description: |
+              Vector buffer is {{ $value | humanizePercentage }} full.
+              Consider increasing buffer size or scaling Elasticsearch.
+
+    # ═══════════════════════════════════════════════════════════════
+    # GROUP 3: ELASTICSEARCH HEALTH
+    # ═══════════════════════════════════════════════════════════════
+    - name: elasticsearch-health
+      interval: 1m
+      rules:
+        - alert: ElasticsearchClusterRed
+          expr: |
+            elasticsearch_cluster_health_status{color="red"} == 1
+          for: 5m
+          labels:
+            severity: critical
+            tier: tier0
+          annotations:
+            summary: "Elasticsearch cluster status is RED"
+            description: |
+              Elasticsearch cluster is in RED state.
+              Some indices are not available. Data loss may have occurred!
+
+        - alert: ElasticsearchClusterYellow
+          expr: |
+            elasticsearch_cluster_health_status{color="yellow"} == 1
+          for: 15m
+          labels:
+            severity: warning
+            tier: tier1
+          annotations:
+            summary: "Elasticsearch cluster status is YELLOW"
+            description: |
+              Elasticsearch cluster is in YELLOW state for more than 15 minutes.
+              Some replicas are not allocated.
+
+        - alert: ElasticsearchDiskSpaceLow
+          expr: |
+            elasticsearch_filesystem_data_available_bytes / elasticsearch_filesystem_data_size_bytes < 0.15
+          for: 10m
+          labels:
+            severity: warning
+            tier: tier1
+          annotations:
+            summary: "Elasticsearch disk space < 15%"
+            description: |
+              Elasticsearch node {{ $labels.name }} has less than 15% disk space remaining.
+              ILM policies may need adjustment or storage expansion required.
+
+    # ═══════════════════════════════════════════════════════════════
+    # GROUP 4: SECURITY ALERTS (AUTH FAILURES)
+    # ═══════════════════════════════════════════════════════════════
+    - name: security-alerts
+      interval: 1m
+      rules:
+        - alert: HighFailedLoginRate
+          expr: |
+            count(vector_logs_total{
+              service_name=~"authelia|keycloak|lldap",
+              message=~".*failed.*login.*|.*authentication.*failed.*"
+            }) by (source_ip) > 5
+          for: 5m
+          labels:
+            severity: warning
+            tier: tier4-security
+          annotations:
+            summary: "High failed login rate from {{ $labels.source_ip }}"
+            description: |
+              IP {{ $labels.source_ip }} has {{ $value }} failed login attempts in 5 minutes.
+              Possible brute-force attack!
+
+        - alert: UnauthorizedKubernetesAPIAccess
+          expr: |
+            count(vector_logs_total{
+              service_name="kube-apiserver",
+              event_outcome="failure",
+              user_name!="system:serviceaccount"
+            }) by (user_name, source_ip) > 10
+          for: 10m
+          labels:
+            severity: critical
+            tier: tier4-security
+          annotations:
+            summary: "Unauthorized K8s API access from {{ $labels.source_ip }}"
+            description: |
+              User {{ $labels.user_name }} from {{ $labels.source_ip }} has {{ $value }} unauthorized API requests.
+              Possible security breach!
+
+    # ═══════════════════════════════════════════════════════════════
+    # GROUP 5: DATA SERVICES ALERTS
+    # ═══════════════════════════════════════════════════════════════
+    - name: data-services-alerts
+      interval: 1m
+      rules:
+        - alert: PostgreSQLReplicationLag
+          expr: |
+            count(vector_logs_total{
+              service_name="cloudnative-pg",
+              message=~".*replication.*lag.*"
+            }) > 0
+          for: 10m
+          labels:
+            severity: warning
+            tier: tier2-data
+          annotations:
+            summary: "PostgreSQL replication lag detected"
+            description: |
+              PostgreSQL cluster has replication lag.
+              Check CNPG operator logs for details.
+
+        - alert: KafkaConsumerLag
+          expr: |
+            count(vector_logs_total{
+              service_name="kafka",
+              message=~".*consumer.*lag.*"
+            }) by (topic, consumer_group) > 1000
+          for: 15m
+          labels:
+            severity: warning
+            tier: tier2-data
+          annotations:
+            summary: "Kafka consumer lag > 1000 messages"
+            description: |
+              Consumer group {{ $labels.consumer_group }} on topic {{ $labels.topic }}
+              has {{ $value }} messages lag.
+
+        - alert: CephOSDDown
+          expr: |
+            count(vector_logs_total{
+              service_name="rook-ceph",
+              log_level="error",
+              message=~".*osd.*down.*"
+            }) > 0
+          for: 5m
+          labels:
+            severity: critical
+            tier: tier0
+          annotations:
+            summary: "Ceph OSD is down"
+            description: |
+              One or more Ceph OSDs are down.
+              Storage availability may be impacted!
+
+---
+# ServiceMonitor for Vector metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: vector-logging-metrics
+  namespace: elastic-system
+  labels:
+    prometheus: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vector
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
