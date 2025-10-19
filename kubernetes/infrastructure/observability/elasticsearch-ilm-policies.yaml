@@ -1,0 +1,256 @@
+---
+# Elasticsearch ILM Policies Bootstrap
+# Purpose: Configure Index Lifecycle Management for log retention
+# Retention: Critical (90d), Warn (30d), Info (7d), Debug (1d)
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: elasticsearch-ilm-bootstrap
+  namespace: elastic-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+spec:
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: create-ilm-policies
+          image: curlimages/curl:8.5.0
+          env:
+            - name: ES_URL
+              value: "https://production-cluster-es-http.elastic-system.svc.cluster.local:9200"
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: production-cluster-es-elastic-user
+                  key: elastic
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+
+              echo "🚀 Starting Elasticsearch ILM Policies Bootstrap..."
+
+              # Wait for Elasticsearch
+              until curl -k -s -u "elastic:${ELASTIC_PASSWORD}" "${ES_URL}/_cluster/health" | grep -q "yellow\|green"; do
+                echo "⏳ Waiting for Elasticsearch..."
+                sleep 10
+              done
+
+              echo "✅ Elasticsearch is ready!"
+
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              # POLICY 1: CRITICAL LOGS (90 days retention)
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              echo "📊 Creating ILM Policy: logs-critical-policy"
+
+              curl -k -X PUT "${ES_URL}/_ilm/policy/logs-critical-policy" \
+                -u "elastic:${ELASTIC_PASSWORD}" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "policy": {
+                    "phases": {
+                      "hot": {
+                        "min_age": "0ms",
+                        "actions": {
+                          "rollover": {
+                            "max_primary_shard_size": "50gb",
+                            "max_age": "7d"
+                          },
+                          "set_priority": {
+                            "priority": 100
+                          }
+                        }
+                      },
+                      "warm": {
+                        "min_age": "7d",
+                        "actions": {
+                          "set_priority": {
+                            "priority": 50
+                          },
+                          "forcemerge": {
+                            "max_num_segments": 1
+                          },
+                          "shrink": {
+                            "number_of_shards": 1
+                          }
+                        }
+                      },
+                      "cold": {
+                        "min_age": "30d",
+                        "actions": {
+                          "set_priority": {
+                            "priority": 0
+                          },
+                          "readonly": {}
+                        }
+                      },
+                      "delete": {
+                        "min_age": "90d",
+                        "actions": {
+                          "delete": {}
+                        }
+                      }
+                    }
+                  }
+                }'
+
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              # POLICY 2: WARN LOGS (30 days retention)
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              echo "📊 Creating ILM Policy: logs-warn-policy"
+
+              curl -k -X PUT "${ES_URL}/_ilm/policy/logs-warn-policy" \
+                -u "elastic:${ELASTIC_PASSWORD}" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "policy": {
+                    "phases": {
+                      "hot": {
+                        "min_age": "0ms",
+                        "actions": {
+                          "rollover": {
+                            "max_primary_shard_size": "50gb",
+                            "max_age": "3d"
+                          },
+                          "set_priority": {
+                            "priority": 100
+                          }
+                        }
+                      },
+                      "warm": {
+                        "min_age": "7d",
+                        "actions": {
+                          "set_priority": {
+                            "priority": 50
+                          },
+                          "forcemerge": {
+                            "max_num_segments": 1
+                          },
+                          "shrink": {
+                            "number_of_shards": 1
+                          }
+                        }
+                      },
+                      "delete": {
+                        "min_age": "30d",
+                        "actions": {
+                          "delete": {}
+                        }
+                      }
+                    }
+                  }
+                }'
+
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              # POLICY 3: INFO LOGS (7 days retention)
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              echo "📊 Creating ILM Policy: logs-info-policy"
+
+              curl -k -X PUT "${ES_URL}/_ilm/policy/logs-info-policy" \
+                -u "elastic:${ELASTIC_PASSWORD}" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "policy": {
+                    "phases": {
+                      "hot": {
+                        "min_age": "0ms",
+                        "actions": {
+                          "rollover": {
+                            "max_primary_shard_size": "50gb",
+                            "max_age": "1d"
+                          },
+                          "set_priority": {
+                            "priority": 100
+                          }
+                        }
+                      },
+                      "delete": {
+                        "min_age": "7d",
+                        "actions": {
+                          "delete": {}
+                        }
+                      }
+                    }
+                  }
+                }'
+
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              # POLICY 4: DEBUG LOGS (1 day retention)
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              echo "📊 Creating ILM Policy: logs-debug-policy"
+
+              curl -k -X PUT "${ES_URL}/_ilm/policy/logs-debug-policy" \
+                -u "elastic:${ELASTIC_PASSWORD}" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "policy": {
+                    "phases": {
+                      "hot": {
+                        "min_age": "0ms",
+                        "actions": {
+                          "rollover": {
+                            "max_primary_shard_size": "10gb",
+                            "max_age": "6h"
+                          },
+                          "set_priority": {
+                            "priority": 100
+                          }
+                        }
+                      },
+                      "delete": {
+                        "min_age": "1d",
+                        "actions": {
+                          "delete": {}
+                        }
+                      }
+                    }
+                  }
+                }'
+
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              # APPLY ILM POLICIES TO DATA STREAMS
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              echo "🔧 Applying ILM Policies to Data Streams..."
+
+              # Apply to CRITICAL logs
+              curl -k -X PUT "${ES_URL}/_data_stream/logs-*.critical-*/_settings" \
+                -u "elastic:${ELASTIC_PASSWORD}" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "index.lifecycle.name": "logs-critical-policy"
+                }'
+
+              # Apply to WARN logs
+              curl -k -X PUT "${ES_URL}/_data_stream/logs-*.warn-*/_settings" \
+                -u "elastic:${ELASTIC_PASSWORD}" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "index.lifecycle.name": "logs-warn-policy"
+                }'
+
+              # Apply to INFO logs
+              curl -k -X PUT "${ES_URL}/_data_stream/logs-*.info-*/_settings" \
+                -u "elastic:${ELASTIC_PASSWORD}" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "index.lifecycle.name": "logs-info-policy"
+                }'
+
+              # Apply to DEBUG logs
+              curl -k -X PUT "${ES_URL}/_data_stream/logs-*.debug-*/_settings" \
+                -u "elastic:${ELASTIC_PASSWORD}" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "index.lifecycle.name": "logs-debug-policy"
+                }'
+
+              echo "✅ All ILM Policies created and applied!"
+              echo "📊 Policies:"
+              echo "   - logs-critical-policy: 90 days (Hot→Warm→Cold→Delete)"
+              echo "   - logs-warn-policy: 30 days (Hot→Warm→Delete)"
+              echo "   - logs-info-policy: 7 days (Hot→Delete)"
+              echo "   - logs-debug-policy: 1 day (Hot→Delete)"

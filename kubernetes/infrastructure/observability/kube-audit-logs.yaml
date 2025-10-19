@@ -1,0 +1,106 @@
+---
+# Kubernetes Audit Logs Collection
+# Purpose: Collect k8s API server audit logs for security compliance
+# Collected Events: Authentication, Authorization, Resource Changes
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubernetes-audit-policy
+  namespace: kube-system
+data:
+  audit-policy.yaml: |
+    apiVersion: audit.k8s.io/v1
+    kind: Policy
+    # Don't generate audit events for all requests in RequestReceived stage.
+    omitStages:
+      - "RequestReceived"
+    rules:
+      # ═══════════════════════════════════════════════════════════════
+      # CRITICAL: Log pod exec/attach/portforward (security-sensitive)
+      # ═══════════════════════════════════════════════════════════════
+      - level: RequestResponse
+        resources:
+          - group: ""
+            resources: ["pods/exec", "pods/attach", "pods/portforward"]
+        verbs: ["create"]
+
+      # ═══════════════════════════════════════════════════════════════
+      # CRITICAL: Log secret/configmap changes
+      # ═══════════════════════════════════════════════════════════════
+      - level: RequestResponse
+        resources:
+          - group: ""
+            resources: ["secrets", "configmaps"]
+        verbs: ["create", "update", "patch", "delete"]
+
+      # ═══════════════════════════════════════════════════════════════
+      # HIGH: Log authentication/authorization failures
+      # ═══════════════════════════════════════════════════════════════
+      - level: Metadata
+        omitStages:
+          - "RequestReceived"
+        userGroups: ["system:unauthenticated"]
+
+      # ═══════════════════════════════════════════════════════════════
+      # MEDIUM: Log RBAC changes (roles, rolebindings)
+      # ═══════════════════════════════════════════════════════════════
+      - level: RequestResponse
+        resources:
+          - group: "rbac.authorization.k8s.io"
+            resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+        verbs: ["create", "update", "patch", "delete"]
+
+      # ═══════════════════════════════════════════════════════════════
+      # MEDIUM: Log pod/deployment/statefulset changes
+      # ═══════════════════════════════════════════════════════════════
+      - level: Request
+        resources:
+          - group: ""
+            resources: ["pods"]
+          - group: "apps"
+            resources: ["deployments", "statefulsets", "daemonsets"]
+        verbs: ["create", "update", "patch", "delete"]
+
+      # ═══════════════════════════════════════════════════════════════
+      # LOW: Log everything else at Metadata level
+      # ═══════════════════════════════════════════════════════════════
+      - level: Metadata
+        omitStages:
+          - "RequestReceived"
+
+---
+# Vector Source for Kubernetes Audit Logs
+# Add this to vector-aggregator.toml
+
+# [sources.kube_audit_logs]
+# type = "file"
+# include = ["/var/log/kubernetes/audit.log"]
+# read_from = "end"
+
+# [transforms.parse_kube_audit]
+# type = "remap"
+# inputs = ["kube_audit_logs"]
+# source = '''
+# . = parse_json!(string!(.message))
+# .source = "kubernetes-audit"
+# .cluster = "talos-homelab"
+# .environment = "production"
+#
+# # ECS compliance
+# ."@timestamp" = .stageTimestamp
+# ."log.level" = if .level == "RequestResponse" { "info" } else { "debug" }
+# ."service.name" = "kube-apiserver"
+# ."event.action" = .verb
+# ."event.outcome" = if .responseStatus.code < 400 { "success" } else { "failure" }
+#
+# # Security fields
+# ."user.name" = .user.username
+# ."user.id" = .user.uid
+# ."source.ip" = .sourceIPs[0]
+#
+# # Kubernetes fields
+# ."kubernetes.namespace" = .objectRef.namespace
+# ."kubernetes.resource" = .objectRef.resource
+# ."kubernetes.name" = .objectRef.name
+# '''
