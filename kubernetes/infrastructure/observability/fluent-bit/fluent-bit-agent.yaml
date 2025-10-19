@@ -1,0 +1,254 @@
+# Fluent Bit Agent Configuration
+# Alternative zu Vector Agent - läuft als DaemonSet auf jedem Node
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  namespace: elastic-system
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush         5
+        Daemon        Off
+        Log_Level     info
+        Parsers_File  parsers.conf
+
+    # ═══════════════════════════════════════════════════════════════
+    # INPUTS - Kubernetes Container Logs
+    # ═══════════════════════════════════════════════════════════════
+
+    [INPUT]
+        Name              tail
+        Path              /var/log/containers/*.log
+        Parser            docker
+        Tag               kube.*
+        Refresh_Interval  5
+        Mem_Buf_Limit     5MB
+        Skip_Long_Lines   On
+
+    # ═══════════════════════════════════════════════════════════════
+    # FILTERS - Kubernetes Metadata Enrichment
+    # ═══════════════════════════════════════════════════════════════
+
+    [FILTER]
+        Name                kubernetes
+        Match               kube.*
+        Kube_URL            https://kubernetes.default.svc:443
+        Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
+        Kube_Tag_Prefix     kube.var.log.containers.
+        Merge_Log           On
+        Keep_Log            Off
+        K8S-Logging.Parser  On
+        K8S-Logging.Exclude On
+        Annotations         Off
+        Labels              On
+
+    # ═══════════════════════════════════════════════════════════════
+    # FILTERS - ECS Field Mapping
+    # ═══════════════════════════════════════════════════════════════
+
+    [FILTER]
+        Name    modify
+        Match   kube.*
+
+        # Add ECS version
+        Add     ecs.version 8.17
+
+        # Rename timestamp
+        Rename  time @timestamp
+
+        # Add cluster metadata
+        Add     cluster talos-homelab
+        Add     datacenter homelab
+        Add     environment production
+        Add     service.environment production
+
+        # Set namespace_suffix to default
+        Add     namespace_suffix default
+
+    # ═══════════════════════════════════════════════════════════════
+    # FILTERS - Service-based routing
+    # ═══════════════════════════════════════════════════════════════
+
+    [FILTER]
+        Name    lua
+        Match   kube.*
+        Script  service_routing.lua
+        Call    enrich_service_name
+
+    # ═══════════════════════════════════════════════════════════════
+    # OUTPUT - Elasticsearch Data Streams
+    # ═══════════════════════════════════════════════════════════════
+
+    [OUTPUT]
+        Name            es
+        Match           kube.*
+        Host            production-cluster-es-http.elastic-system.svc.cluster.local
+        Port            9200
+        HTTP_User       elastic
+        HTTP_Passwd     ${ELASTICSEARCH_PASSWORD}
+        TLS             On
+        TLS.Verify      Off
+
+        # DATA STREAMS
+        Index           logs-${service_name}.${severity}-${namespace_suffix}
+        Type            _doc
+
+        # Buffering
+        Buffer_Size     10MB
+        Retry_Limit     3
+
+  parsers.conf: |
+    [PARSER]
+        Name        docker
+        Format      json
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%LZ
+
+  service_routing.lua: |
+    function enrich_service_name(tag, timestamp, record)
+        -- Get Kubernetes namespace
+        local namespace = record["kubernetes"]["namespace_name"] or "unknown"
+
+        -- Service-based routing logic (same as Vector)
+        local service_name = "unknown"
+
+        if namespace == "kube-system" then
+            service_name = "kube-system"
+        elseif namespace == "rook-ceph" then
+            service_name = "rook-ceph"
+        elseif namespace == "argocd" then
+            service_name = "argocd"
+        elseif namespace == "cert-manager" then
+            service_name = "cert-manager"
+        elseif namespace == "istio-system" then
+            service_name = "istio"
+        elseif namespace == "monitoring" then
+            service_name = "monitoring"
+        elseif namespace == "n8n-prod" then
+            service_name = "n8n-prod"
+        elseif namespace == "n8n-dev" then
+            service_name = "n8n-dev"
+        elseif namespace == "kafka" then
+            service_name = "kafka"
+        elseif namespace == "elastic-system" then
+            service_name = "elastic-system"
+        elseif namespace == "cnpg-system" then
+            service_name = "cloudnative-pg"
+        elseif string.match(namespace, "boutique") then
+            service_name = "boutique-" .. namespace
+        else
+            service_name = namespace
+        end
+
+        -- Severity mapping
+        local level = record["level"] or "info"
+        local severity = "info"
+
+        if level == "error" or level == "fatal" or level == "critical" then
+            severity = "critical"
+        elseif level == "warn" or level == "warning" then
+            severity = "warn"
+        elseif level == "debug" or level == "trace" then
+            severity = "debug"
+        end
+
+        -- Add fields
+        record["service_name"] = service_name
+        record["severity"] = severity
+        record["service.name"] = service_name
+        record["log.level"] = level
+
+        return 2, timestamp, record
+    end
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fluent-bit
+  namespace: elastic-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fluent-bit-read
+rules:
+- apiGroups: [""]
+  resources:
+  - namespaces
+  - pods
+  - nodes
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fluent-bit-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: fluent-bit-read
+subjects:
+- kind: ServiceAccount
+  name: fluent-bit
+  namespace: elastic-system
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit
+  namespace: elastic-system
+  labels:
+    app: fluent-bit
+spec:
+  selector:
+    matchLabels:
+      app: fluent-bit
+  template:
+    metadata:
+      labels:
+        app: fluent-bit
+    spec:
+      serviceAccountName: fluent-bit
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/control-plane
+        effect: NoSchedule
+      containers:
+      - name: fluent-bit
+        image: fluent/fluent-bit:3.2
+        env:
+        - name: ELASTICSEARCH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: production-cluster-es-elastic-user
+              key: elastic
+        resources:
+          requests:
+            memory: 128Mi
+            cpu: 100m
+          limits:
+            memory: 256Mi
+            cpu: 200m
+        volumeMounts:
+        - name: config
+          mountPath: /fluent-bit/etc/
+        - name: varlog
+          mountPath: /var/log
+          readOnly: true
+        - name: varlibdockercontainers
+          mountPath: /var/lib/docker/containers
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: fluent-bit-config
+      - name: varlog
+        hostPath:
+          path: /var/log
+      - name: varlibdockercontainers
+        hostPath:
+          path: /var/lib/docker/containers
