@@ -42,6 +42,23 @@ source = '''
 .cluster = "talos-homelab"
 .datacenter = "homelab"
 .node_type = "hypervisor"
+
+# ═══════════════════════════════════════════════════════════════
+# ELASTIC BEST PRACTICE: Namespace differentiation by hostname
+# ═══════════════════════════════════════════════════════════════
+# Extract hostname from syslog metadata to differentiate hosts
+.proxmox_hostname = if exists(.hostname) {
+  downcase(string!(.hostname))
+} else if contains(string!(.message), "nipogi") {
+  "nipogi"
+} else if contains(string!(.message), "minisforum") {
+  "minisforum"
+} else {
+  "unknown"
+}
+
+# Set namespace for data stream routing (Elastic Standard)
+.namespace_suffix = .proxmox_hostname
 '''
 
 # Process Talos system logs from direct talosctl access
@@ -53,27 +70,36 @@ source = '''
 .cluster = "talos-homelab"
 .environment = "production"
 
-# Detect log type and assign proper index
-if contains(string!(.message), "etcd") || exists(.component) && .component == "etcd" {
-  .service_name = "etcd"
-  .node_role = "control-plane"
-  .index_name = "etcd-control-plane-direct"
-} else if contains(string!(.message), "kubelet") {
-  .service_name = "kubelet"
-  .node_role = "worker"
-  .index_name = "kubelet-worker-direct"
-} else {
-  .service_name = "talos-system"
-  .node_role = "unknown"
-  .index_name = "talos-system-direct"
-}
-
-# Extract node IP from message context
+# ═══════════════════════════════════════════════════════════════
+# ELASTIC BEST PRACTICE: Node role separation (control-plane vs workers)
+# ═══════════════════════════════════════════════════════════════
+# Detect node role based on IP address
 if exists(.node_ip) {
   .node_ip = .node_ip
 } else {
   .node_ip = "192.168.68.101"  # Default to control plane
 }
+
+# Determine node role from IP (control-plane: .101, workers: .103-.108)
+.node_role = if .node_ip == "192.168.68.101" {
+  "control-plane"
+} else if match(string!(.node_ip), r'^192\.168\.68\.10[3-8]$') {
+  "worker"
+} else {
+  "unknown"
+}
+
+# Detect log type and assign service name
+if contains(string!(.message), "etcd") || exists(.component) && .component == "etcd" {
+  .service_name = "etcd"
+} else if contains(string!(.message), "kubelet") {
+  .service_name = "kubelet"
+} else {
+  .service_name = "talos-system"
+}
+
+# Set namespace for data stream routing (node role differentiation)
+.namespace_suffix = .node_role
 '''
 
 # Parse and enrich all logs - ENTERPRISE SERVICE-BASED
@@ -230,7 +256,7 @@ endpoints = ["https://production-cluster-es-http.elastic-system.svc.cluster.loca
 mode = "data_stream"  # ← DATA STREAMS! (automatic rollover)
 data_stream.type = "logs"
 data_stream.dataset = "{{ service_name }}.{{ severity }}"  # Uses .service_name for routing
-data_stream.namespace = "default"
+data_stream.namespace = "{{ namespace_suffix | default: \"default\" }}"  # ← ELASTIC BEST PRACTICE: Dynamic namespace!
 api_version = "v8"
 
 # Authentication
