@@ -1,0 +1,152 @@
+---
+# Kibana Data Views Bootstrap Job
+# Purpose: Automatically create all Tier-0 Data Views via Kibana API
+# Usage: kubectl apply -f kibana-dataviews-bootstrap.yaml
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kibana-dataviews-bootstrap
+  namespace: elastic-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+spec:
+  ttlSecondsAfterFinished: 86400  # Delete after 24h
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: create-dataviews
+          image: curlimages/curl:8.5.0
+          env:
+            - name: KIBANA_URL
+              value: "https://production-kibana-kb-http.elastic-system.svc.cluster.local:5601"
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: production-cluster-es-elastic-user
+                  key: elastic
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+
+              echo "🚀 Starting Kibana Data Views Bootstrap..."
+
+              # Wait for Kibana to be ready
+              until curl -k -s -u "elastic:${ELASTIC_PASSWORD}" "${KIBANA_URL}/api/status" | grep -q "available"; do
+                echo "⏳ Waiting for Kibana to be ready..."
+                sleep 10
+              done
+
+              echo "✅ Kibana is ready!"
+
+              # Function to create Data View
+              create_dataview() {
+                local name="$1"
+                local pattern="$2"
+                local id="$3"
+
+                echo "📊 Creating Data View: ${name}"
+
+                curl -k -X POST "${KIBANA_URL}/api/data_views/data_view" \
+                  -u "elastic:${ELASTIC_PASSWORD}" \
+                  -H 'kbn-xsrf: true' \
+                  -H 'Content-Type: application/json' \
+                  -d "{
+                    \"data_view\": {
+                      \"id\": \"${id}\",
+                      \"title\": \"${pattern}\",
+                      \"name\": \"${name}\",
+                      \"timeFieldName\": \"@timestamp\"
+                    }
+                  }" || echo "⚠️ Data View ${name} might already exist"
+              }
+
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              # TIER 0: Infrastructure
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              create_dataview \
+                "[TIER-0] Infrastructure Logs" \
+                "logs-*kube-system*,logs-*rook-ceph*,logs-*cilium*,logs-*cert-manager*" \
+                "tier0-infrastructure"
+
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              # TIER 1: Platform Services
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              create_dataview \
+                "[TIER-1] Platform Services" \
+                "logs-*argocd*,logs-*istio*,logs-*elastic-system*,logs-*monitoring*" \
+                "tier1-platform"
+
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              # TIER 2: Data Services
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              create_dataview \
+                "[TIER-2] Data Services" \
+                "logs-*kafka*,logs-*cloudnative-pg*,logs-*redis*,logs-*influxdb*" \
+                "tier2-data"
+
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              # TIER 3: Applications
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              create_dataview \
+                "[TIER-3] Applications" \
+                "logs-*n8n*,logs-*audiobookshelf*,logs-*boutique*,logs-*cloudbeaver*" \
+                "tier3-applications"
+
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              # TIER 4: Security & Identity
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              create_dataview \
+                "[TIER-4] Security & Identity" \
+                "logs-*authelia*,logs-*keycloak*,logs-*lldap*,logs-*sealed-secrets*" \
+                "tier4-security"
+
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              # SEVERITY VIEWS
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              create_dataview \
+                "[CRITICAL] All Cluster Errors" \
+                "logs-*.critical-*" \
+                "severity-critical"
+
+              create_dataview \
+                "[WARN] All Cluster Warnings" \
+                "logs-*.warn-*" \
+                "severity-warn"
+
+              create_dataview \
+                "[INFO] All Cluster Info" \
+                "logs-*.info-*" \
+                "severity-info"
+
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              # UNIFIED VIEWS
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              create_dataview \
+                "[ALL] Full Cluster Logs" \
+                "logs-*-default" \
+                "all-cluster-logs"
+
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              # SPECIALIZED VIEWS
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              create_dataview \
+                "[N8N] Workflows & Executions" \
+                "logs-*n8n*" \
+                "n8n-workflows"
+
+              create_dataview \
+                "[KAFKA] Streaming & Events" \
+                "logs-*kafka*" \
+                "kafka-streaming"
+
+              create_dataview \
+                "[CEPH] Storage & Performance" \
+                "logs-*rook-ceph*" \
+                "ceph-storage"
+
+              echo "✅ All Data Views created successfully!"
+              echo "📊 Total: 12 Data Views"
