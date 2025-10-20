@@ -1,7 +1,7 @@
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
-  name: tier1-postgresql-cnpg
+  name: tier1-redis-clusters
   namespace: grafana
   labels:
     app.kubernetes.io/name: grafana
@@ -9,14 +9,15 @@ metadata:
     dashboard-tier: tier1-infrastructure
 spec:
   allowCrossNamespaceImport: true
+  folder: "Redis"
   instanceSelector:
     matchLabels:
       app: grafana
   json: |
     {
-      "title": "Tier 1: PostgreSQL CloudNativePG",
-      "uid": "tier1-postgresql-cnpg",
-      "tags": ["tier1", "postgresql", "database", "cnpg"],
+      "title": "Tier 1: Redis Clusters",
+      "uid": "tier1-redis-clusters",
+      "tags": ["tier1", "redis", "cache", "database"],
       "timezone": "utc",
       "schemaVersion": 39,
       "version": 1,
@@ -27,12 +28,12 @@ spec:
       },
       "panels": [
         {
-          "title": "Database Clusters",
+          "title": "Redis Instances",
           "type": "stat",
           "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0},
           "targets": [
             {
-              "expr": "count(cnpg_pg_database_size_bytes)",
+              "expr": "count(redis_up)",
               "refId": "A",
               "datasource": {"type": "prometheus", "uid": "prometheus"}
             }
@@ -62,12 +63,12 @@ spec:
           }
         },
         {
-          "title": "Active Connections",
+          "title": "Total Connected Clients",
           "type": "stat",
           "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
           "targets": [
             {
-              "expr": "sum(pg_stat_database_numbackends)",
+              "expr": "sum(redis_connected_clients)",
               "refId": "A",
               "datasource": {"type": "prometheus", "uid": "prometheus"}
             }
@@ -97,45 +98,12 @@ spec:
           }
         },
         {
-          "title": "Total Databases",
+          "title": "Total Memory Used",
           "type": "stat",
           "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
           "targets": [
             {
-              "expr": "count(cnpg_pg_database_size_bytes)",
-              "refId": "A",
-              "datasource": {"type": "prometheus", "uid": "prometheus"}
-            }
-          ],
-          "options": {
-            "colorMode": "value",
-            "graphMode": "none",
-            "justifyMode": "center",
-            "orientation": "auto",
-            "reduceOptions": {
-              "values": false,
-              "calcs": ["lastNotNull"],
-              "fields": ""
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {"value": 0, "color": "blue"}
-                ]
-              }
-            }
-          }
-        },
-        {
-          "title": "Replication Lag",
-          "type": "stat",
-          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
-          "targets": [
-            {
-              "expr": "max(pg_replication_lag)",
+              "expr": "sum(redis_memory_used_bytes)",
               "refId": "A",
               "datasource": {"type": "prometheus", "uid": "prometheus"}
             }
@@ -153,27 +121,59 @@ spec:
           },
           "fieldConfig": {
             "defaults": {
-              "unit": "s",
+              "unit": "bytes",
               "thresholds": {
                 "mode": "absolute",
                 "steps": [
-                  {"value": 0, "color": "green"},
-                  {"value": 10, "color": "yellow"},
-                  {"value": 30, "color": "red"}
+                  {"value": 0, "color": "green"}
                 ]
               }
             }
           }
         },
         {
-          "title": "Connections per Database",
+          "title": "Total Commands/sec",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+          "targets": [
+            {
+              "expr": "sum(rate(redis_commands_processed_total[5m]))",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "values": false,
+              "calcs": ["lastNotNull"],
+              "fields": ""
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "blue"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "Connected Clients per Instance",
           "type": "timeseries",
           "gridPos": {"h": 8, "w": 12, "x": 6, "y": 4},
           "targets": [
             {
-              "expr": "pg_stat_database_numbackends",
+              "expr": "redis_connected_clients",
               "refId": "A",
-              "legendFormat": "{{datname}}",
+              "legendFormat": "{{namespace}}/{{pod}}",
               "datasource": {"type": "prometheus", "uid": "prometheus"}
             }
           ],
@@ -192,14 +192,14 @@ spec:
           }
         },
         {
-          "title": "Database Size",
+          "title": "Memory Usage per Instance",
           "type": "timeseries",
           "gridPos": {"h": 8, "w": 12, "x": 18, "y": 4},
           "targets": [
             {
-              "expr": "cnpg_pg_database_size_bytes",
+              "expr": "redis_memory_used_bytes",
               "refId": "A",
-              "legendFormat": "{{datname}}",
+              "legendFormat": "{{namespace}}/{{pod}}",
               "datasource": {"type": "prometheus", "uid": "prometheus"}
             }
           ],
@@ -219,12 +219,12 @@ spec:
           }
         },
         {
-          "title": "Database Status",
+          "title": "Redis Instances Health",
           "type": "table",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
           "targets": [
             {
-              "expr": "cnpg_pg_database_size_bytes",
+              "expr": "redis_up",
               "refId": "A",
               "format": "table",
               "instant": true,
@@ -239,31 +239,49 @@ spec:
                 "indexByName": {},
                 "renameByName": {
                   "namespace": "Namespace",
-                  "datname": "Database",
-                  "Value": "Size"
+                  "pod": "Pod",
+                  "Value": "Status"
                 }
               }
             }
           ],
           "options": {
-            "sortBy": [{"displayName": "Size", "desc": true}]
+            "sortBy": [{"displayName": "Status", "desc": false}]
           },
           "fieldConfig": {
             "defaults": {
               "custom": {"align": "left"},
-              "unit": "bytes"
-            }
+              "mappings": [
+                {"type": "value", "value": "1", "text": "UP"},
+                {"type": "value", "value": "0", "text": "DOWN"}
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "red"},
+                  {"value": 1, "color": "green"}
+                ]
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {"id": "byName", "options": "Status"},
+                "properties": [
+                  {"id": "custom.cellOptions", "value": {"type": "color-background"}}
+                ]
+              }
+            ]
           }
         },
         {
-          "title": "Transactions per Second",
+          "title": "Commands per Second",
           "type": "timeseries",
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
           "targets": [
             {
-              "expr": "rate(pg_stat_database_xact_commit[5m]) + rate(pg_stat_database_xact_rollback[5m])",
+              "expr": "rate(redis_commands_processed_total[5m])",
               "refId": "A",
-              "legendFormat": "{{datname}}",
+              "legendFormat": "{{namespace}}/{{pod}}",
               "datasource": {"type": "prometheus", "uid": "prometheus"}
             }
           ],
@@ -278,96 +296,24 @@ spec:
                 "fillOpacity": 10,
                 "showPoints": "never"
               },
-              "unit": "tps"
+              "unit": "ops"
             }
           }
         },
         {
-          "title": "Commit vs Rollback Rate",
+          "title": "Cache Hit Rate",
           "type": "timeseries",
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
           "targets": [
             {
-              "expr": "rate(pg_stat_database_xact_commit[5m])",
+              "expr": "100 * (rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m])))",
               "refId": "A",
-              "legendFormat": "{{datname}} commits",
-              "datasource": {"type": "prometheus", "uid": "prometheus"}
-            },
-            {
-              "expr": "rate(pg_stat_database_xact_rollback[5m])",
-              "refId": "B",
-              "legendFormat": "{{datname}} rollbacks",
+              "legendFormat": "{{namespace}}/{{pod}}",
               "datasource": {"type": "prometheus", "uid": "prometheus"}
             }
           ],
           "options": {
             "tooltip": {"mode": "multi", "sort": "desc"}
-          },
-          "fieldConfig": {
-            "defaults": {
-              "custom": {
-                "drawStyle": "line",
-                "lineInterpolation": "smooth",
-                "fillOpacity": 10,
-                "showPoints": "never"
-              },
-              "unit": "ops"
-            }
-          }
-        },
-        {
-          "title": "Tuple Operations (Inserts/Updates/Deletes)",
-          "type": "timeseries",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
-          "targets": [
-            {
-              "expr": "rate(pg_stat_database_tup_inserted[5m])",
-              "refId": "A",
-              "legendFormat": "{{datname}} inserts",
-              "datasource": {"type": "prometheus", "uid": "prometheus"}
-            },
-            {
-              "expr": "rate(pg_stat_database_tup_updated[5m])",
-              "refId": "B",
-              "legendFormat": "{{datname}} updates",
-              "datasource": {"type": "prometheus", "uid": "prometheus"}
-            },
-            {
-              "expr": "rate(pg_stat_database_tup_deleted[5m])",
-              "refId": "C",
-              "legendFormat": "{{datname}} deletes",
-              "datasource": {"type": "prometheus", "uid": "prometheus"}
-            }
-          ],
-          "options": {
-            "tooltip": {"mode": "multi", "sort": "desc"}
-          },
-          "fieldConfig": {
-            "defaults": {
-              "custom": {
-                "drawStyle": "line",
-                "lineInterpolation": "smooth",
-                "fillOpacity": 10,
-                "showPoints": "never"
-              },
-              "unit": "ops"
-            }
-          }
-        },
-        {
-          "title": "Cache Hit Ratio",
-          "type": "timeseries",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
-          "targets": [
-            {
-              "expr": "100 * (sum(rate(pg_stat_database_blks_hit[5m])) / (sum(rate(pg_stat_database_blks_hit[5m])) + sum(rate(pg_stat_database_blks_read[5m]))))",
-              "refId": "A",
-              "legendFormat": "Cache Hit %",
-              "datasource": {"type": "prometheus", "uid": "prometheus"}
-            }
-          ],
-          "options": {
-            "tooltip": {"mode": "single"}
           },
           "fieldConfig": {
             "defaults": {
@@ -384,10 +330,78 @@ spec:
                 "mode": "absolute",
                 "steps": [
                   {"value": 0, "color": "red"},
-                  {"value": 90, "color": "yellow"},
+                  {"value": 80, "color": "yellow"},
                   {"value": 95, "color": "green"}
                 ]
               }
+            }
+          }
+        },
+        {
+          "title": "Evicted Keys",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+          "targets": [
+            {
+              "expr": "rate(redis_evicted_keys_total[5m])",
+              "refId": "A",
+              "legendFormat": "{{namespace}}/{{pod}}",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "tooltip": {"mode": "multi", "sort": "desc"}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              },
+              "unit": "ops",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "green"},
+                  {"value": 10, "color": "yellow"},
+                  {"value": 100, "color": "red"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "Network I/O",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+          "targets": [
+            {
+              "expr": "rate(redis_net_input_bytes_total[5m])",
+              "refId": "A",
+              "legendFormat": "{{namespace}}/{{pod}} input",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            },
+            {
+              "expr": "rate(redis_net_output_bytes_total[5m])",
+              "refId": "B",
+              "legendFormat": "{{namespace}}/{{pod}} output",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "tooltip": {"mode": "multi", "sort": "desc"}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              },
+              "unit": "Bps"
             }
           }
         }
