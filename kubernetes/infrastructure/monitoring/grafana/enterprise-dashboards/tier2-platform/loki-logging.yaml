@@ -1,0 +1,393 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: tier2-loki-logging
+  namespace: grafana
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: dashboard
+    dashboard-tier: tier2-platform
+spec:
+  allowCrossNamespaceImport: true
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  json: |
+    {
+      "title": "Tier 2: Loki Log Aggregation",
+      "uid": "tier2-loki-logging",
+      "tags": ["tier2", "loki", "logging", "observability"],
+      "timezone": "utc",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "panels": [
+        {
+          "title": "Loki Health",
+          "type": "stat",
+          "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0},
+          "targets": [
+            {
+              "expr": "up{job=\"loki\"}",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "values": false,
+              "calcs": ["lastNotNull"],
+              "fields": ""
+            },
+            "textMode": "value_and_name"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                {"type": "value", "value": "1", "text": "UP"},
+                {"type": "value", "value": "0", "text": "DOWN"}
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "red"},
+                  {"value": 1, "color": "green"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "Ingested Logs/sec",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+          "targets": [
+            {
+              "expr": "sum(rate(loki_distributor_lines_received_total[5m]))",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "values": false,
+              "calcs": ["lastNotNull"],
+              "fields": ""
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "lps",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "blue"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "Ingested Bytes/sec",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+          "targets": [
+            {
+              "expr": "sum(rate(loki_distributor_bytes_received_total[5m]))",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "values": false,
+              "calcs": ["lastNotNull"],
+              "fields": ""
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "Bps",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "blue"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "Active Streams",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+          "targets": [
+            {
+              "expr": "sum(loki_ingester_streams)",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "values": false,
+              "calcs": ["lastNotNull"],
+              "fields": ""
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "green"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "Log Ingestion Rate",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 6, "y": 4},
+          "targets": [
+            {
+              "expr": "sum by (namespace) (rate(loki_distributor_lines_received_total[5m]))",
+              "refId": "A",
+              "legendFormat": "{{namespace}}",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "tooltip": {"mode": "multi", "sort": "desc"}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              },
+              "unit": "lps"
+            }
+          }
+        },
+        {
+          "title": "Bytes Ingestion Rate",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 18, "y": 4},
+          "targets": [
+            {
+              "expr": "sum by (namespace) (rate(loki_distributor_bytes_received_total[5m]))",
+              "refId": "A",
+              "legendFormat": "{{namespace}}",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "tooltip": {"mode": "multi", "sort": "desc"}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              },
+              "unit": "Bps"
+            }
+          }
+        },
+        {
+          "title": "Distributor Components Health",
+          "type": "table",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "targets": [
+            {
+              "expr": "up{job=\"loki\"}",
+              "refId": "A",
+              "format": "table",
+              "instant": true,
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true},
+                "indexByName": {},
+                "renameByName": {
+                  "pod": "Pod",
+                  "Value": "Status"
+                }
+              }
+            }
+          ],
+          "options": {
+            "sortBy": [{"displayName": "Status", "desc": false}]
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {"align": "left"},
+              "mappings": [
+                {"type": "value", "value": "1", "text": "UP"},
+                {"type": "value", "value": "0", "text": "DOWN"}
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "red"},
+                  {"value": 1, "color": "green"}
+                ]
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {"id": "byName", "options": "Status"},
+                "properties": [
+                  {"id": "custom.cellOptions", "value": {"type": "color-background"}}
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "title": "Ingester Memory (Chunks)",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+          "targets": [
+            {
+              "expr": "sum(loki_ingester_memory_chunks)",
+              "refId": "A",
+              "legendFormat": "Total Chunks",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "tooltip": {"mode": "single"}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              }
+            }
+          }
+        },
+        {
+          "title": "Query Latency (p99)",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(loki_request_duration_seconds_bucket{route=\"/loki/api/v1/query_range\"}[5m])) by (le))",
+              "refId": "A",
+              "legendFormat": "p99",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "tooltip": {"mode": "single"}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              },
+              "unit": "s",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "green"},
+                  {"value": 5, "color": "yellow"},
+                  {"value": 10, "color": "red"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "Query Rate",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+          "targets": [
+            {
+              "expr": "sum(rate(loki_request_duration_seconds_count{route=\"/loki/api/v1/query_range\"}[5m]))",
+              "refId": "A",
+              "legendFormat": "Queries/sec",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "tooltip": {"mode": "single"}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              },
+              "unit": "reqps"
+            }
+          }
+        },
+        {
+          "title": "Compactor Status",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+          "targets": [
+            {
+              "expr": "sum(rate(loki_compactor_compacted_total[5m]))",
+              "refId": "A",
+              "legendFormat": "Compactions/sec",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "tooltip": {"mode": "single"}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              },
+              "unit": "ops"
+            }
+          }
+        }
+      ]
+    }
