@@ -1,0 +1,563 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: tier0-node-system
+  namespace: grafana
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: dashboard
+    dashboard-tier: tier0-executive
+spec:
+  allowCrossNamespaceImport: true
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  json: |
+    {
+      "title": "Tier 0: Node System Overview",
+      "uid": "tier0-node-system",
+      "tags": ["tier0", "nodes", "hardware", "system"],
+      "timezone": "utc",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "panels": [
+        {
+          "title": "Node Health Score",
+          "type": "stat",
+          "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0},
+          "targets": [
+            {
+              "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{mode=\"iowait\"}[5m])))",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "values": false,
+              "calcs": ["lastNotNull"],
+              "fields": ""
+            },
+            "textMode": "value_and_name"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "red"},
+                  {"value": 85, "color": "yellow"},
+                  {"value": 95, "color": "green"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "Avg CPU Usage",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 3, "x": 6, "y": 0},
+          "targets": [
+            {
+              "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "values": false,
+              "calcs": ["lastNotNull"],
+              "fields": ""
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "green"},
+                  {"value": 70, "color": "yellow"},
+                  {"value": 85, "color": "red"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "Avg Memory Usage",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 3, "x": 9, "y": 0},
+          "targets": [
+            {
+              "expr": "100 * (1 - (avg(node_memory_MemAvailable_bytes) / avg(node_memory_MemTotal_bytes)))",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "values": false,
+              "calcs": ["lastNotNull"],
+              "fields": ""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "green"},
+                  {"value": 75, "color": "yellow"},
+                  {"value": 90, "color": "red"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "Avg Disk Usage",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 3, "x": 12, "y": 0},
+          "targets": [
+            {
+              "expr": "100 * (1 - (avg(node_filesystem_avail_bytes{fstype!=\"tmpfs\",fstype!=\"ramfs\",fstype!=\"overlay\"}) / avg(node_filesystem_size_bytes{fstype!=\"tmpfs\",fstype!=\"ramfs\",fstype!=\"overlay\"})))",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "values": false,
+              "calcs": ["lastNotNull"],
+              "fields": ""
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "green"},
+                  {"value": 75, "color": "yellow"},
+                  {"value": 90, "color": "red"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "Network In",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 3, "x": 15, "y": 0},
+          "targets": [
+            {
+              "expr": "sum(rate(node_network_receive_bytes_total{device!~\"lo|veth.*\"}[5m])) * 8",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "values": false,
+              "calcs": ["lastNotNull"],
+              "fields": ""
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bps",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "green"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "Network Out",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 3, "x": 18, "y": 0},
+          "targets": [
+            {
+              "expr": "sum(rate(node_network_transmit_bytes_total{device!~\"lo|veth.*\"}[5m])) * 8",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "values": false,
+              "calcs": ["lastNotNull"],
+              "fields": ""
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bps",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "green"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "System Load (1m)",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 3, "x": 21, "y": 0},
+          "targets": [
+            {
+              "expr": "avg(node_load1) / count(node_cpu_seconds_total{mode=\"system\"})",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "values": false,
+              "calcs": ["lastNotNull"],
+              "fields": ""
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "green"},
+                  {"value": 0.7, "color": "yellow"},
+                  {"value": 1.0, "color": "red"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "CPU Usage by Node",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 9, "x": 6, "y": 4},
+          "targets": [
+            {
+              "expr": "100 - (avg by (node) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+              "refId": "A",
+              "legendFormat": "{{node}}",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "tooltip": {"mode": "multi", "sort": "desc"}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              },
+              "unit": "percent",
+              "max": 100,
+              "min": 0
+            }
+          }
+        },
+        {
+          "title": "Memory Usage by Node",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 9, "x": 15, "y": 4},
+          "targets": [
+            {
+              "expr": "100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))",
+              "refId": "A",
+              "legendFormat": "{{node}}",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "tooltip": {"mode": "multi", "sort": "desc"}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              },
+              "unit": "percent",
+              "max": 100,
+              "min": 0
+            }
+          }
+        },
+        {
+          "title": "Disk I/O by Node",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "targets": [
+            {
+              "expr": "rate(node_disk_read_bytes_total[5m])",
+              "refId": "A",
+              "legendFormat": "{{node}} - Read",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            },
+            {
+              "expr": "rate(node_disk_written_bytes_total[5m]) * -1",
+              "refId": "B",
+              "legendFormat": "{{node}} - Write",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "tooltip": {"mode": "multi", "sort": "desc"}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              },
+              "unit": "Bps"
+            }
+          }
+        },
+        {
+          "title": "Network I/O by Node",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "targets": [
+            {
+              "expr": "rate(node_network_receive_bytes_total{device!~\"lo|veth.*\"}[5m]) * 8",
+              "refId": "A",
+              "legendFormat": "{{node}} - RX",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            },
+            {
+              "expr": "rate(node_network_transmit_bytes_total{device!~\"lo|veth.*\"}[5m]) * -8",
+              "refId": "B",
+              "legendFormat": "{{node}} - TX",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "tooltip": {"mode": "multi", "sort": "desc"}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              },
+              "unit": "bps"
+            }
+          }
+        },
+        {
+          "title": "Node Resource Summary",
+          "type": "table",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+          "targets": [
+            {
+              "expr": "node_memory_MemTotal_bytes",
+              "refId": "A",
+              "format": "table",
+              "instant": true,
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            },
+            {
+              "expr": "count by (node) (node_cpu_seconds_total{mode=\"system\"})",
+              "refId": "B",
+              "format": "table",
+              "instant": true,
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            },
+            {
+              "expr": "node_filesystem_size_bytes{fstype!=\"tmpfs\",fstype!=\"ramfs\",fstype!=\"overlay\",mountpoint=\"/\"}",
+              "refId": "C",
+              "format": "table",
+              "instant": true,
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true, "device": true, "fstype": true, "mountpoint": true},
+                "indexByName": {},
+                "renameByName": {
+                  "node": "Node",
+                  "Value #A": "Total Memory",
+                  "Value #B": "CPU Cores",
+                  "Value #C": "Root Disk Size"
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {"align": "left", "width": 150}
+            },
+            "overrides": [
+              {
+                "matcher": {"id": "byName", "options": "Total Memory"},
+                "properties": [{"id": "unit", "value": "bytes"}]
+              },
+              {
+                "matcher": {"id": "byName", "options": "Root Disk Size"},
+                "properties": [{"id": "unit", "value": "bytes"}]
+              }
+            ]
+          }
+        },
+        {
+          "title": "File Descriptor Usage",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+          "targets": [
+            {
+              "expr": "process_open_fds / process_max_fds",
+              "refId": "A",
+              "legendFormat": "{{node}} - {{job}}",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "tooltip": {"mode": "multi", "sort": "desc"}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              },
+              "unit": "percentunit",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "green"},
+                  {"value": 0.7, "color": "yellow"},
+                  {"value": 0.9, "color": "red"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "System Uptime",
+          "type": "table",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+          "targets": [
+            {
+              "expr": "time() - node_boot_time_seconds",
+              "refId": "A",
+              "format": "table",
+              "instant": true,
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true},
+                "indexByName": {},
+                "renameByName": {
+                  "node": "Node",
+                  "Value": "Uptime"
+                }
+              }
+            }
+          ],
+          "options": {
+            "sortBy": [{"displayName": "Uptime", "desc": true}]
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {"align": "left", "width": 150},
+              "unit": "s"
+            }
+          }
+        },
+        {
+          "title": "Context Switches per Second",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+          "targets": [
+            {
+              "expr": "rate(node_context_switches_total[5m])",
+              "refId": "A",
+              "legendFormat": "{{node}}",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "tooltip": {"mode": "multi", "sort": "desc"}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "fillOpacity": 10,
+                "showPoints": "never"
+              },
+              "unit": "short"
+            }
+          }
+        }
+      ]
+    }
