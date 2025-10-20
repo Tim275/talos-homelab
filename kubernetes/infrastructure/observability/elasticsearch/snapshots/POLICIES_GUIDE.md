@@ -574,15 +574,136 @@ groups:
 
 ---
 
+## Elasticsearch License Comparison & Feature Overview
+
+### 📊 License Tiers & Pricing
+
+| Feature | BASIC (Free) | PLATINUM (~$6,700/year) | ENTERPRISE (~$8,400/year) |
+|---------|--------------|------------------------|---------------------------|
+| **Core Features** |
+| Full-text search & analytics | ✅ | ✅ | ✅ |
+| TLS encryption (HTTPS) | ✅ | ✅ | ✅ |
+| Role-Based Access Control (RBAC) | ✅ | ✅ | ✅ |
+| Index Lifecycle Management (ILM) | ✅ | ✅ | ✅ |
+| Snapshot & Restore (S3) | ✅ | ✅ | ✅ |
+| Kibana dashboards | ✅ | ✅ | ✅ |
+| **Advanced Security** |
+| SAML/OIDC Authentication | ❌ | ✅ | ✅ |
+| Active Directory/LDAP | ❌ | ✅ | ✅ |
+| Field/Document-Level Security | ❌ | ❌ | ✅ |
+| Audit Logging (Compliance) | ❌ | ❌ | ✅ |
+| IP Filtering | ❌ | ✅ | ✅ |
+| **Machine Learning** |
+| Anomaly Detection | ❌ | ✅ | ✅ |
+| Forecasting | ❌ | ✅ | ✅ |
+| Log Rate Analysis | ❌ | ✅ | ✅ |
+| **Storage Optimization** |
+| Hot-Warm Architecture | ✅ | ✅ | ✅ |
+| Forcemerge + Shrink | ✅ | ✅ | ✅ |
+| **Searchable Snapshots** | ❌ | ❌ | ✅ |
+| **Cold/Frozen Tiers (S3-backed)** | ❌ | ❌ | ✅ |
+| Storage Savings | **40-50%** | **40-50%** | **90%** |
+| **Enterprise Features** |
+| Cross-Cluster Replication | ❌ | ✅ | ✅ |
+| SIEM Features | ❌ | ✅ | ✅ |
+| Canvas & Graph Analytics | ❌ | ✅ | ✅ |
+| Autoscaling | ❌ | ❌ | ✅ |
+| Multi-Stack Monitoring | ❌ | ❌ | ✅ |
+| **Support** |
+| Community Support | ✅ | ❌ | ❌ |
+| 4h Response SLA | ❌ | ✅ | ✅ |
+| 1h Critical Response SLA | ❌ | ✅ | ✅ |
+| 99.95% Uptime SLA | ❌ | ✅ | ✅ |
+
+### 💰 License Break-Even Analysis
+
+**When does Enterprise license pay for itself?**
+
+| Cold Data Volume | Basic Savings | Enterprise Savings | Extra Saved | License Cost | Net Result |
+|-----------------|---------------|-------------------|-------------|--------------|------------|
+| 5TB | 2.5TB | 4.5TB | +2TB | $8,400/year | **-$6,000 Loss** |
+| 10TB | 5TB | 9TB | +4TB | $8,400/year | **-$3,600 Loss** |
+| **18TB (Break-Even)** | 9TB | 16.2TB | +7.2TB | $8,400/year | **$0 (Break-Even)** |
+| **20TB** | 10TB | 18TB | +8TB | $8,400/year | **+$1,200 Profit** |
+| 50TB | 25TB | 45TB | +20TB | $8,400/year | **+$15,600 Profit** |
+| 100TB | 50TB | 90TB | +40TB | $8,400/year | **+$39,600 Profit** |
+
+**Assumptions:**
+- SSD storage: $0.10/GB/month ($1.20/GB/year)
+- Basic License: 40-50% savings (forcemerge + shrink + 0 replicas)
+- Enterprise License: 90% savings (searchable snapshots on S3)
+
+### 🎯 License Recommendation Decision Tree
+
+```
+Do you have >20TB cold data?
+├─ YES → Consider Enterprise (storage savings pay for license)
+└─ NO
+   ├─ Need SAML/OIDC (Keycloak, Authelia)?
+   │  ├─ YES → Consider Platinum
+   │  └─ NO
+   │     ├─ Need Machine Learning (Anomaly Detection)?
+   │     │  ├─ YES → Consider Platinum
+   │     │  └─ NO
+   │     │     ├─ Need Compliance (Audit Logs)?
+   │     │     │  ├─ YES → Consider Enterprise
+   │     │     │  └─ NO → Stay on BASIC (already optimal!)
+```
+
+### 📈 Your Current Setup (BASIC License)
+
+**Current Optimization Strategy:**
+```yaml
+Hot Phase (0-7 days):     1 replica, fast SSD  →  Baseline (100%)
+Warm Phase (7-30 days):   forcemerge + shrink  →  30% savings
+Cold Phase (30+ days):    0 replicas + readonly  →  50% savings
+Delete Phase (60/90 days): Auto-deletion  →  Compliance
+```
+
+**Total Storage Reduction: 40-50%** ✅
+
+**What you're getting for FREE:**
+- ✅ Enterprise-grade ILM with 48 policies
+- ✅ Automated S3 snapshots (daily backups)
+- ✅ Hot-Warm-Cold architecture
+- ✅ Severity-based retention (critical: 90d, warn: 60d, info: 30d, debug: 7d)
+- ✅ RBAC + TLS encryption
+
+### 🚀 Upgrade Scenarios
+
+**Upgrade to PLATINUM if:**
+- You need **SAML/OIDC** for Keycloak/Authelia integration
+- You want **Anomaly Detection** in logs (ML-powered alerts)
+- You need **Cross-Cluster Replication** for multi-datacenter setup
+- You want **Enterprise Support** with 4h/1h SLA
+
+**Upgrade to ENTERPRISE if:**
+- You have **>18TB cold data** (license pays for itself via storage savings)
+- You need **Compliance** features (audit logging, field-level security)
+- You want **90% storage savings** (searchable snapshots on S3)
+- You need **Autoscaling** for dynamic workloads
+
+**Stay on BASIC if:**
+- You have **<10TB data** (savings don't justify cost)
+- You don't need ML or advanced security
+- Current 40-50% savings are sufficient for your homelab
+
+---
+
 ## Summary
 
 Your current setup is **excellent** with 48 ILM policies and comprehensive retention strategies. Key recommendations:
 
 1. ✅ **Already Great**: Severity-based retention, hot-warm architecture, automated snapshots
-2. 🎯 **Quick Wins**: Add searchable snapshots for cold tier (90% storage savings)
-3. 🚀 **Long-Term**: Multi-frequency SLM policies, frozen tier for compliance
+2. ✅ **Already Optimized**: 40-50% storage savings with Basic license
+3. 🎯 **Future Option**: Upgrade to Enterprise when cold data exceeds 18-20TB
+4. 🔐 **Security Note**: SAML/OIDC (Keycloak) requires Platinum license
 
-**Current Storage Efficiency**: ~70% (Good)
-**With Searchable Snapshots**: ~95% (Excellent)
+**Current Storage Efficiency**: ~40-50% savings (Optimal for Basic License)
+**With Enterprise License**: ~90% savings (Requires $8,400/year)
 
-Your Elasticsearch cluster is **production-ready** with enterprise-grade data lifecycle management! 🎉
+**Break-even point**: ~18TB cold data
+
+Your Elasticsearch cluster is **production-ready** with enterprise-grade data lifecycle management optimized for Basic license! 🎉
+
+For detailed license comparison and upgrade decision matrix, see: `LICENSE_COMPARISON.md`
