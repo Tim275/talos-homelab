@@ -1,0 +1,212 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: istio-security-policies
+  namespace: grafana
+  labels:
+    app.kubernetes.io/part-of: monitoring-stack
+    tier: networking
+spec:
+  allowCrossNamespaceImport: true
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  json: |
+    {
+      "id": null,
+      "title": "🔒 Istio Security & mTLS",
+      "tags": ["istio", "security", "mtls", "policies"],
+      "timezone": "browser",
+      "panels": [
+        {
+          "id": 1,
+          "title": "Istio Security Control Center",
+          "type": "text",
+          "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
+          "options": {
+            "content": "<div style=\"text-align: center; font-size: 20px; padding: 15px; background: linear-gradient(90deg, #1f2937, #374151);\">\n<img src=\"https://raw.githubusercontent.com/istio/istio/master/logo/istio-whitelogo-bluebackground-framed.svg\" alt=\"Istio\" style=\"height: 50px; vertical-align: middle; margin-right: 15px;\">\n<strong style=\"color: white;\">🔒 Istio Security & mTLS Dashboard</strong>\n<p style=\"font-size: 14px; color: #9ca3af; margin-top: 8px;\">Zero Trust Network Security</p>\n</div>"
+          }
+        },
+        {
+          "id": 2,
+          "title": "mTLS Adoption Rate",
+          "type": "gauge",
+          "targets": [
+            {
+              "expr": "(sum(rate(istio_request_total{source_principal!=\"unknown\"}[5m])) / sum(rate(istio_request_total[5m]))) * 100",
+              "legendFormat": "mTLS Coverage"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "steps": [
+                  {"color": "red", "value": 0},
+                  {"color": "yellow", "value": 70},
+                  {"color": "green", "value": 95}
+                ]
+              },
+              "min": 0,
+              "max": 100,
+              "unit": "percent"
+            }
+          },
+          "gridPos": {"h": 8, "w": 6, "x": 0, "y": 4}
+        },
+        {
+          "id": 3,
+          "title": "Security Policy Violations",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "sum(rate(istio_request_total{response_code=\"403\"}[5m]))",
+              "legendFormat": "Forbidden/sec"
+            },
+            {
+              "expr": "sum(rate(istio_request_total{response_code=\"401\"}[5m]))",
+              "legendFormat": "Unauthorized/sec"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "steps": [
+                  {"color": "green", "value": 0},
+                  {"color": "yellow", "value": 1},
+                  {"color": "red", "value": 10}
+                ]
+              }
+            }
+          },
+          "gridPos": {"h": 8, "w": 6, "x": 6, "y": 4}
+        },
+        {
+          "id": 4,
+          "title": "TLS Version Distribution",
+          "type": "piechart",
+          "targets": [
+            {
+              "expr": "sum(rate(istio_request_total[5m])) by (connection_security_policy)",
+              "legendFormat": "{{connection_security_policy}}"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 6, "x": 12, "y": 4}
+        },
+        {
+          "id": 5,
+          "title": "Certificate Expiry Status",
+          "type": "gauge",
+          "targets": [
+            {
+              "expr": "min(pilot_k8s_cfg_events{type=\"Certificate\"}) / 86400",
+              "legendFormat": "Days to Certificate Expiry"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "steps": [
+                  {"color": "red", "value": 0},
+                  {"color": "yellow", "value": 7},
+                  {"color": "green", "value": 30}
+                ]
+              },
+              "unit": "days"
+            }
+          },
+          "gridPos": {"h": 8, "w": 6, "x": 18, "y": 4}
+        },
+        {
+          "id": 6,
+          "title": "mTLS Traffic by Service",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "sum(rate(istio_request_total{source_principal!=\"unknown\"}[5m])) by (destination_service_name)",
+              "legendFormat": "{{destination_service_name}} mTLS"
+            },
+            {
+              "expr": "sum(rate(istio_request_total{source_principal=\"unknown\"}[5m])) by (destination_service_name)",
+              "legendFormat": "{{destination_service_name}} plaintext"
+            }
+          ],
+          "yAxes": [
+            {"label": "Requests/sec", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12}
+        },
+        {
+          "id": 7,
+          "title": "Security Policy Enforcement",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "sum(rate(istio_request_total{response_code=~\"4..\"}[5m])) by (destination_service_name)",
+              "legendFormat": "{{destination_service_name}} blocked"
+            }
+          ],
+          "yAxes": [
+            {"label": "Blocked requests/sec", "show": true},
+            {"show": false}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12}
+        },
+        {
+          "id": 8,
+          "title": "Authorization Policy Activity",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "sum(rate(galley_validation_passed[5m])) by (group, version, resource)",
+              "legendFormat": "{{resource}} validations"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20}
+        },
+        {
+          "id": 9,
+          "title": "Workload Identity Distribution",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "count by (source_principal) (rate(istio_request_total{source_principal!=\"unknown\"}[5m]))",
+              "legendFormat": "{{source_principal}} - workloads"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20}
+        },
+        {
+          "id": 10,
+          "title": "Security Violations by Source",
+          "type": "table",
+          "targets": [
+            {
+              "expr": "topk(10, sum(rate(istio_request_total{response_code=~\"40[13]\"}[5m])) by (source_app, destination_service_name))",
+              "legendFormat": "{{source_app}} → {{destination_service_name}}"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28}
+        },
+        {
+          "id": 11,
+          "title": "JWT Token Validation",
+          "type": "graph",
+          "targets": [
+            {
+              "expr": "sum(rate(istio_request_total{source_principal=~\".*jwt.*\"}[5m]))",
+              "legendFormat": "JWT authenticated requests"
+            },
+            {
+              "expr": "sum(rate(istio_request_total{response_code=\"401\"}[5m]))",
+              "legendFormat": "JWT validation failures"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28}
+        }
+      ],
+      "time": {"from": "now-1h", "to": "now"},
+      "refresh": "30s"
+    }
+  folder: Istio
+  resyncPeriod: 10m
