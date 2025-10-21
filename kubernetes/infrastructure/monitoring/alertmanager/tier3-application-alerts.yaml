@@ -382,3 +382,92 @@ spec:
             threshold: "100% availability required"
             dashboard_url: "https://grafana.homelab.local"
             runbook_url: "https://grafana.com/docs/grafana/latest/troubleshooting/"
+
+    - name: tier3.ai-inference.critical
+      interval: 30s
+      rules:
+        # ====== OLLAMA / LLAMA AI INFERENCE (P2/P3) ======
+        - alert: OllamaServiceDown
+          expr: up{job="ollama",namespace="ai-inference"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: P2
+            tier: "3"
+            component: ai-inference
+          annotations:
+            summary: "Ollama AI service is DOWN"
+            description: |
+              Ollama AI inference service in ai-inference namespace is unreachable. HolmesGPT AI debugging unavailable!
+            current_value: "Ollama unreachable"
+            threshold: "100% availability required"
+            dashboard_url: "https://grafana.homelab.local/d/ollama/ollama-ai-inference"
+            runbook_url: "https://github.com/ollama/ollama/blob/main/docs/troubleshooting.md"
+
+        - alert: OllamaHighMemoryUsage
+          expr: (container_memory_working_set_bytes{namespace="ai-inference",container="ollama"} / container_spec_memory_limit_bytes) * 100 > 85
+          for: 10m
+          labels:
+            severity: warning
+            priority: P3
+            tier: "3"
+            component: ai-inference
+          annotations:
+            summary: "Ollama memory usage > 85%"
+            description: |
+              Ollama pod {{ $labels.pod }} is using {{ $value | humanize }}% of memory limit. Model inference may slow down or fail!
+            current_value: "{{ $value | humanize }}%"
+            threshold: "85%"
+            dashboard_url: "https://grafana.homelab.local/d/ollama/ollama-ai-inference"
+            runbook_url: "https://github.com/ollama/ollama/blob/main/docs/faq.md#how-do-i-configure-ollama-server"
+
+        - alert: OllamaModelLoadFailed
+          expr: rate(kube_pod_container_status_restarts_total{namespace="ai-inference",container="ollama"}[15m]) > 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: P2
+            tier: "3"
+            component: ai-inference
+          annotations:
+            summary: "Ollama container crash looping"
+            description: |
+              Ollama pod {{ $labels.pod }} is restarting. AI model (phi3:mini) may have failed to load!
+            current_value: "Restarting"
+            threshold: "0 restarts"
+            dashboard_url: "https://grafana.homelab.local/d/ollama/ollama-ai-inference"
+            runbook_url: "https://github.com/ollama/ollama/blob/main/docs/troubleshooting.md"
+
+        - alert: OllamaHighCPUUsage
+          expr: (rate(container_cpu_usage_seconds_total{namespace="ai-inference",container="ollama"}[5m])) * 100 > 90
+          for: 15m
+          labels:
+            severity: warning
+            priority: P3
+            tier: "3"
+            component: ai-inference
+          annotations:
+            summary: "Ollama CPU usage > 90%"
+            description: |
+              Ollama pod {{ $labels.pod }} is using {{ $value | humanize }}% CPU. AI inference requests may be queuing!
+            current_value: "{{ $value | humanize }}%"
+            threshold: "90%"
+            dashboard_url: "https://grafana.homelab.local/d/ollama/ollama-ai-inference"
+            runbook_url: "https://github.com/ollama/ollama/blob/main/docs/gpu.md"
+
+        - alert: OllamaPodNotReady
+          expr: kube_pod_status_ready{namespace="ai-inference",pod=~"ollama-.*"} == 0
+          for: 10m
+          labels:
+            severity: critical
+            priority: P2
+            tier: "3"
+            component: ai-inference
+          annotations:
+            summary: "Ollama pod not ready for 10 minutes"
+            description: |
+              Ollama pod {{ $labels.pod }} is not ready. AI inference unavailable - HolmesGPT cannot analyze alerts!
+            current_value: "Not ready"
+            threshold: "Ready status required"
+            dashboard_url: "https://grafana.homelab.local/d/ollama/ollama-ai-inference"
+            runbook_url: "https://github.com/ollama/ollama/blob/main/docs/troubleshooting.md"
