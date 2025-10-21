@@ -1,0 +1,119 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: DNSChaos
+metadata:
+  name: dns-failure-external-apis
+  namespace: chaos-mesh
+  annotations:
+    chaos.description: "Break DNS for external APIs - test graceful degradation"
+    chaos.severity: "medium"
+    chaos.expected: "N8N workflows fail gracefully with error messages"
+spec:
+  # 🎯 TARGET: N8N pods
+  selector:
+    namespaces:
+      - n8n-prod
+    labelSelectors:
+      app.kubernetes.io/name: n8n
+
+  # 🔥 ACTION: Make DNS fail for specific domains
+  action: error
+
+  mode: all
+
+  # 📊 DNS CONFIG: Which domains to break
+  patterns:
+    - "*.openai.com"       # Break OpenAI API
+    - "*.stripe.com"       # Break Stripe API
+    - "*.sendgrid.com"     # Break SendGrid email
+
+  # ⏱️ DURATION: Run for 5 minutes
+  duration: 5m
+
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: DNSChaos
+metadata:
+  name: dns-delay-internal
+  namespace: chaos-mesh
+  annotations:
+    chaos.description: "Add DNS resolution delay - simulate slow DNS"
+    chaos.severity: "low"
+spec:
+  selector:
+    namespaces:
+      - boutique-dev
+
+  # 🔥 ACTION: Delay DNS responses
+  action: random
+
+  mode: all
+
+  # 📊 DNS DELAY: Random responses (chaos!)
+  patterns:
+    - "*.svc.cluster.local"  # Slow down internal service discovery
+
+  duration: 3m
+
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: IOChaos
+metadata:
+  name: io-delay-ceph-storage
+  namespace: chaos-mesh
+  annotations:
+    chaos.description: "Slow down Ceph disk I/O - test storage resilience"
+    chaos.severity: "critical"
+    chaos.expected: "Apps slower but don't crash"
+spec:
+  # 🎯 TARGET: Pods using Ceph RBD storage
+  selector:
+    namespaces:
+      - n8n-prod
+    labelSelectors:
+      app.kubernetes.io/name: n8n
+
+  # 🔥 ACTION: Add I/O delay
+  action: latency
+
+  mode: one
+
+  # 📊 I/O CONFIG
+  volumePath: /home/node/.n8n  # N8N data directory
+  path: "/home/node/.n8n/**/*"  # All files
+  percent: 80                    # 80% of I/O operations get delayed
+  delay: "100ms"                 # 100ms delay
+
+  # ⏱️ DURATION: Run for 5 minutes
+  duration: 5m
+
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: IOChaos
+metadata:
+  name: io-fault-postgres
+  namespace: chaos-mesh
+  annotations:
+    chaos.description: "Inject I/O errors on Postgres - test database error handling"
+    chaos.severity: "critical"
+    chaos.expected: "Postgres fails gracefully, CNPG fails over"
+spec:
+  selector:
+    namespaces:
+      - n8n-prod-cnpg
+    labelSelectors:
+      cnpg.io/cluster: n8n-prod
+
+  # 🔥 ACTION: Random I/O errors
+  action: fault
+
+  mode: one
+
+  volumePath: /var/lib/postgresql/data
+  path: "/var/lib/postgresql/data/**/*"
+  percent: 10  # 10% of I/O operations fail (enough to cause issues!)
+  errno: 5     # EIO (I/O error)
+
+  duration: 2m
+
+  # ⚠️ WARNING: This will cause Postgres errors!
+  # CNPG should detect failure and failover to replica
