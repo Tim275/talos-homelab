@@ -1,0 +1,167 @@
+# 🎮 PRODUCTION GAME DAY - Scheduled Chaos Testing
+# This is what Netflix does - regular chaos testing in production!
+
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: weekly-chaos-gameday
+  namespace: chaos-mesh
+  annotations:
+    chaos.description: "Weekly chaos testing - every Friday 10 AM"
+    chaos.safe-for-prod: "true"  # Yes, safe because we control blast radius!
+spec:
+  # 🗓️ SCHEDULE: Every Friday at 10:00 AM
+  schedule: "0 10 * * FRI"
+
+  # 📋 TYPE: What kind of chaos?
+  type: PodChaos
+
+  # 🎯 CHAOS CONFIG
+  podChaos:
+    selector:
+      namespaces:
+        - n8n-prod
+      labelSelectors:
+        app.kubernetes.io/name: n8n
+
+    action: pod-kill
+    mode: fixed-percent
+    value: "10"  # Kill only 10% of pods! (blast radius control)
+
+    duration: 1h
+
+    # 🔁 Run every 10 minutes for 1 hour
+    scheduler:
+      cron: "@every 10m"
+
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+metadata:
+  name: disaster-recovery-drill
+  namespace: chaos-mesh
+  annotations:
+    chaos.description: "Full DR test - kill pods, delay network, stress resources"
+    chaos.severity: "critical"
+    chaos.requires: "Manual approval before run!"
+spec:
+  # 📝 ENTRY POINT
+  entry: the-entry
+
+  # 📋 WORKFLOW STEPS
+  templates:
+    - name: the-entry
+      templateType: Serial
+      children:
+        - kill-pods
+        - network-chaos
+        - stress-test
+        - verify-recovery
+
+    # STEP 1: Kill pods
+    - name: kill-pods
+      templateType: PodChaos
+      deadline: 5m
+      podChaos:
+        selector:
+          namespaces:
+            - n8n-prod
+        action: pod-kill
+        mode: fixed-percent
+        value: "30"  # Kill 30% of pods!
+
+    # STEP 2: Network chaos
+    - name: network-chaos
+      templateType: NetworkChaos
+      deadline: 5m
+      networkChaos:
+        selector:
+          namespaces:
+            - n8n-prod-cnpg
+        action: delay
+        mode: all
+        delay:
+          latency: "200ms"
+          jitter: "50ms"
+        direction: both
+
+    # STEP 3: Stress test survivors
+    - name: stress-test
+      templateType: StressChaos
+      deadline: 5m
+      stressChaos:
+        selector:
+          namespaces:
+            - n8n-prod
+        mode: fixed-percent
+        value: "50"
+        stressors:
+          cpu:
+            workers: 2
+            load: 80
+
+    # STEP 4: Verify system recovered
+    - name: verify-recovery
+      templateType: Suspend  # Wait for manual verification
+      deadline: 1h
+
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: nightly-mini-chaos
+  namespace: chaos-mesh
+  annotations:
+    chaos.description: "Nightly chaos - small failures to keep systems sharp"
+    chaos.safe-for-prod: "true"
+spec:
+  # 🗓️ SCHEDULE: Every night at 2 AM (low traffic time)
+  schedule: "0 2 * * *"
+
+  type: PodChaos
+
+  podChaos:
+    selector:
+      namespaces:
+        - n8n-prod
+        - boutique-dev
+      labelSelectors:
+        layer: apps  # Only affect app layer, not infrastructure!
+
+    action: pod-kill
+    mode: one  # Kill only ONE pod (minimal impact!)
+    duration: 1m
+
+  # 📊 HISTORY: Keep last 10 chaos events
+  historyLimit: 10
+
+  # ⏸️ PAUSE: Can be paused if needed
+  # paused: true  # Uncomment to pause scheduled chaos
+
+---
+# 🚨 CIRCUIT BREAKER PATTERN - Auto-stop chaos if alerts firing!
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: smart-chaos-with-circuit-breaker
+  namespace: chaos-mesh
+  annotations:
+    chaos.description: "Chaos with safety - stops if system unhealthy"
+spec:
+  schedule: "@every 1h"
+
+  type: NetworkChaos
+
+  networkChaos:
+    selector:
+      namespaces:
+        - n8n-prod
+    action: delay
+    mode: one
+    delay:
+      latency: "50ms"
+    duration: 5m
+
+  # ⚡ CONDITIONAL: Only run if no alerts firing
+  # This would require custom webhook/controller to check Prometheus alerts
+  # For now, we document the pattern - implement with admission webhooks
