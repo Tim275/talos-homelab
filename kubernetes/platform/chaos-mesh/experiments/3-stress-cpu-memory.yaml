@@ -1,0 +1,91 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: cpu-stress-n8n
+  namespace: chaos-mesh
+  annotations:
+    chaos.description: "Max out CPU on N8N - test if HPA autoscales"
+    chaos.severity: "high"
+    chaos.expected: "HPA should create more replicas"
+spec:
+  # 🎯 TARGET: N8N Production
+  selector:
+    namespaces:
+      - n8n-prod
+    labelSelectors:
+      app.kubernetes.io/name: n8n
+
+  # 🔥 ACTION: CPU Stress
+  mode: one
+
+  # 📊 STRESS CONFIG
+  stressors:
+    cpu:
+      workers: 4          # 4 CPU workers
+      load: 100           # 100% CPU load per worker
+
+  # ⏱️ DURATION: Run for 10 minutes
+  duration: 10m
+
+  # 🎯 CONTAINER: Target the main N8N container
+  containerNames:
+    - n8n
+
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: memory-stress-boutique
+  namespace: chaos-mesh
+  annotations:
+    chaos.description: "Fill memory until OOMKilled - test recovery"
+    chaos.severity: "critical"
+    chaos.expected: "Pod restarts, traffic routes to healthy pods"
+spec:
+  selector:
+    namespaces:
+      - boutique-dev
+    labelSelectors:
+      app: frontend
+
+  mode: one
+
+  # 📊 MEMORY STRESS CONFIG
+  stressors:
+    memory:
+      workers: 1
+      size: "1024Mi"      # Allocate 1GB RAM
+
+  duration: 5m
+
+  containerNames:
+    - server
+
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: combined-stress-kafka
+  namespace: chaos-mesh
+  annotations:
+    chaos.description: "CPU + Memory stress on Kafka - full resource exhaustion test"
+    chaos.severity: "critical"
+spec:
+  selector:
+    namespaces:
+      - kafka
+    labelSelectors:
+      app.kubernetes.io/name: kafka
+
+  mode: one
+
+  # 📊 COMBINED STRESS
+  stressors:
+    cpu:
+      workers: 2
+      load: 80
+    memory:
+      workers: 1
+      size: "512Mi"
+
+  duration: 3m

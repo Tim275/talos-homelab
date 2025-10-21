@@ -1,0 +1,57 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-kill-n8n-dev
+  namespace: chaos-mesh
+  annotations:
+    chaos.description: "Test N8N pod recovery - kills random N8N pod every 5 minutes"
+    chaos.severity: "low"
+    chaos.safe-for-prod: "false"  # Only run in dev!
+spec:
+  # 🎯 TARGET: N8N Development pods
+  selector:
+    namespaces:
+      - n8n-dev
+    labelSelectors:
+      app.kubernetes.io/name: n8n
+
+  # 🔥 ACTION: Kill the pod
+  action: pod-kill
+
+  # 📊 MODE: Kill only ONE pod at a time (safe!)
+  mode: one
+
+  # ⏱️ DURATION: Run for 30 minutes
+  duration: 30m
+
+  # 🔁 SCHEDULER: Kill a pod every 5 minutes
+  scheduler:
+    cron: "@every 5m"
+
+  # 🛡️ SAFETY: Graceful shutdown (10s)
+  gracePeriod: 10
+
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-failure-n8n-dev
+  namespace: chaos-mesh
+  annotations:
+    chaos.description: "Test N8N pod failure - makes pod unavailable but doesn't kill it"
+    chaos.severity: "medium"
+spec:
+  selector:
+    namespaces:
+      - n8n-dev
+    labelSelectors:
+      app.kubernetes.io/name: n8n
+
+  # 🔥 ACTION: Make pod fail (not responsive)
+  action: pod-failure
+
+  mode: one
+  duration: 2m
+
+  # ℹ️ This simulates a hung/frozen pod (won't respond but still running)
+  # Kubernetes should restart it after liveness probe fails
