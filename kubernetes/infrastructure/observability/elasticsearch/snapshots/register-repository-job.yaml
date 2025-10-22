@@ -9,6 +9,9 @@ metadata:
   labels:
     app.kubernetes.io/name: elasticsearch
     app.kubernetes.io/component: backup
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   ttlSecondsAfterFinished: 600  # Cleanup after 10 minutes
   template:
@@ -19,84 +22,84 @@ spec:
     spec:
       restartPolicy: OnFailure
       containers:
-      - name: register-repository
-        image: curlimages/curl:8.11.1
-        command:
-        - /bin/sh
-        - -c
-        - |
-          set -e
+        - name: register-repository
+          image: curlimages/curl:8.11.1
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
 
-          echo "📦 Elasticsearch S3 Snapshot Repository Registration"
-          echo "===================================================="
+              echo "📦 Elasticsearch S3 Snapshot Repository Registration"
+              echo "===================================================="
 
-          # Wait for Elasticsearch to be ready
-          echo "⏳ Waiting for Elasticsearch to be ready..."
-          until curl -sk -u "elastic:$ELASTIC_PASSWORD" \
-            "https://production-cluster-es-http.elastic-system.svc.cluster.local:9200/_cluster/health" \
-            | grep -q '"status":"green\|yellow"'; do
-            echo "Waiting for Elasticsearch cluster health..."
-            sleep 10
-          done
+              # Wait for Elasticsearch to be ready
+              echo "⏳ Waiting for Elasticsearch to be ready..."
+              until curl -sk -u "elastic:$ELASTIC_PASSWORD" \
+                "https://production-cluster-es-http.elastic-system.svc.cluster.local:9200/_cluster/health" \
+                | grep -q '"status":"green\|yellow"'; do
+                echo "Waiting for Elasticsearch cluster health..."
+                sleep 10
+              done
 
-          echo "✅ Elasticsearch cluster is ready"
+              echo "✅ Elasticsearch cluster is ready"
 
-          # Get S3 config from ConfigMap
-          S3_ENDPOINT="$(cat /etc/s3-config/endpoint)"
-          S3_BUCKET="$(cat /etc/s3-config/bucket)"
+              # Get S3 config from ConfigMap
+              S3_ENDPOINT="$(cat /etc/s3-config/endpoint)"
+              S3_BUCKET="$(cat /etc/s3-config/bucket)"
 
-          echo "📝 S3 Configuration:"
-          echo "  Endpoint: $S3_ENDPOINT"
-          echo "  Bucket: $S3_BUCKET"
+              echo "📝 S3 Configuration:"
+              echo "  Endpoint: $S3_ENDPOINT"
+              echo "  Bucket: $S3_BUCKET"
 
-          # Register S3 snapshot repository
-          echo "🔐 Registering S3 snapshot repository..."
+              # Register S3 snapshot repository
+              echo "🔐 Registering S3 snapshot repository..."
 
-          curl -sk -X PUT -u "elastic:$ELASTIC_PASSWORD" \
-            -H "Content-Type: application/json" \
-            "https://production-cluster-es-http.elastic-system.svc.cluster.local:9200/_snapshot/ceph-s3-snapshots" \
-            -d "{
-              \"type\": \"s3\",
-              \"settings\": {
-                \"bucket\": \"$S3_BUCKET\",
-                \"client\": \"default\",
-                \"endpoint\": \"$S3_ENDPOINT\",
-                \"protocol\": \"http\",
-                \"path_style_access\": true,
-                \"compress\": true,
-                \"max_snapshot_bytes_per_sec\": \"100mb\",
-                \"max_restore_bytes_per_sec\": \"100mb\"
-              }
-            }"
+              curl -sk -X PUT -u "elastic:$ELASTIC_PASSWORD" \
+                -H "Content-Type: application/json" \
+                "https://production-cluster-es-http.elastic-system.svc.cluster.local:9200/_snapshot/ceph-s3-snapshots" \
+                -d "{
+                  \"type\": \"s3\",
+                  \"settings\": {
+                    \"bucket\": \"$S3_BUCKET\",
+                    \"client\": \"default\",
+                    \"endpoint\": \"$S3_ENDPOINT\",
+                    \"protocol\": \"http\",
+                    \"path_style_access\": true,
+                    \"compress\": true,
+                    \"max_snapshot_bytes_per_sec\": \"100mb\",
+                    \"max_restore_bytes_per_sec\": \"100mb\"
+                  }
+                }"
 
-          echo ""
-          echo "✅ Snapshot repository registered successfully!"
+              echo ""
+              echo "✅ Snapshot repository registered successfully!"
 
-          # Verify repository
-          echo "🔍 Verifying snapshot repository..."
-          curl -sk -X POST -u "elastic:$ELASTIC_PASSWORD" \
-            "https://production-cluster-es-http.elastic-system.svc.cluster.local:9200/_snapshot/ceph-s3-snapshots/_verify"
+              # Verify repository
+              echo "🔍 Verifying snapshot repository..."
+              curl -sk -X POST -u "elastic:$ELASTIC_PASSWORD" \
+                "https://production-cluster-es-http.elastic-system.svc.cluster.local:9200/_snapshot/ceph-s3-snapshots/_verify"
 
-          echo ""
-          echo "✅ Repository verification complete!"
-          echo ""
-          echo "📋 Repository info:"
-          curl -sk -u "elastic:$ELASTIC_PASSWORD" \
-            "https://production-cluster-es-http.elastic-system.svc.cluster.local:9200/_snapshot/ceph-s3-snapshots"
+              echo ""
+              echo "✅ Repository verification complete!"
+              echo ""
+              echo "📋 Repository info:"
+              curl -sk -u "elastic:$ELASTIC_PASSWORD" \
+                "https://production-cluster-es-http.elastic-system.svc.cluster.local:9200/_snapshot/ceph-s3-snapshots"
 
-          echo ""
-          echo "🎉 Elasticsearch S3 Snapshot Repository Setup Complete!"
-        env:
-        - name: ELASTIC_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: production-cluster-es-elastic-user
-              key: elastic
-        volumeMounts:
-        - name: s3-config
-          mountPath: /etc/s3-config
-          readOnly: true
+              echo ""
+              echo "🎉 Elasticsearch S3 Snapshot Repository Setup Complete!"
+          env:
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: production-cluster-es-elastic-user
+                  key: elastic
+          volumeMounts:
+            - name: s3-config
+              mountPath: /etc/s3-config
+              readOnly: true
       volumes:
-      - name: s3-config
-        configMap:
-          name: elasticsearch-s3-config
+        - name: s3-config
+          configMap:
+            name: elasticsearch-s3-config
