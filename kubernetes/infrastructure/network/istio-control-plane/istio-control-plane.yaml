@@ -10,7 +10,7 @@ spec:
   namespace: istio-system
 
   # Istio Version to deploy
-  version: v1.26.4
+  version: v1.27.1
 
   # Update Strategy - RevisionBased for zero-downtime updates
   updateStrategy:
@@ -22,15 +22,15 @@ spec:
       meshID: mesh1
       network: network1
 
-      # Proxy configuration
+      # Proxy configuration (Envoy sidecar)
       proxy:
         resources:
           limits:
-            cpu: 100m
-            memory: 128Mi
+            cpu: 500m      # Increased for burst traffic (was 100m)
+            memory: 512Mi  # Prevents OOMKill under load (was 128Mi)
           requests:
-            cpu: 10m
-            memory: 40Mi
+            cpu: 50m       # Higher baseline (was 10m)
+            memory: 128Mi  # Reasonable request (was 40Mi)
 
     pilot:
       # Resource configuration for Istiod
@@ -42,14 +42,14 @@ spec:
           cpu: 100m
           memory: 128Mi
 
-      # High Availability
-      replicaCount: 1
+      # High Availability - 3 replicas for zero downtime
+      replicaCount: 3
 
       # Environment-specific settings
       env:
-        PILOT_TRACE_SAMPLING: "1.0"      # ❌ FIX - Must be string, not float
-        PILOT_ENABLE_AMBIENT: "true"     # ❌ FIX - Must be string, not bool
-        PILOT_ENABLE_CROSS_CLUSTER_WORKLOAD_ENTRY: "true"  # ❌ FIX - Must be string
+        PILOT_TRACE_SAMPLING: "0.01"     # 1% sampling (was 100%)
+        PILOT_ENABLE_AMBIENT: "true"     # Ambient mesh support
+        PILOT_ENABLE_CROSS_CLUSTER_WORKLOAD_ENTRY: "true"  # Multi-cluster support
 
     # Security settings
     meshConfig:
