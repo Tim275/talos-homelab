@@ -1,17 +1,44 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# 📊 SERVICEMONITORS for Enterprise Dashboards
-# Deployed in monitoring namespace for Prometheus discovery
-
-resources:
-  # ✅ INFRASTRUCTURE MONITORING
-  - servicemonitor-grafana.yaml             # Grafana monitoring UI metrics
-  - servicemonitor-cert-manager.yaml        # SSL certificate health
-
-  # ✅ APPLICATION MONITORING
-  - servicemonitor-elasticsearch-exporter.yaml  # Elasticsearch cluster health
-  - servicemonitor-kafka-exporter.yaml          # Kafka topic/consumer metrics
-  - cnpg-clusters.yaml                          # PostgreSQL cluster metrics
+# 📊 CENTRALIZED SERVICEMONITORS
+# All custom ServiceMonitors deployed AFTER Prometheus Operator CRDs
+# Helm-managed ServiceMonitors (ArgoCD, kube-prometheus-stack) stay in Helm values
 
 namespace: monitoring
+
+resources:
+  # ===== INFRASTRUCTURE MONITORING =====
+  - servicemonitor-grafana.yaml              # Grafana UI metrics
+  - servicemonitor-cert-manager.yaml         # SSL certificate health
+  - servicemonitor-sealed-secrets.yaml       # Sealed Secrets controller
+
+  # ===== NETWORK & SERVICE MESH =====
+  - servicemonitor-istio-istiod.yaml         # Istio control plane metrics (istiod)
+  - servicemonitor-envoy-gateway.yaml        # Envoy Gateway metrics
+
+  # ===== STORAGE =====
+  - servicemonitor-ceph.yaml                 # Ceph cluster health
+  - servicemonitor-ceph-exporter.yaml        # Ceph exporter metrics
+
+  # ===== OBSERVABILITY =====
+  - servicemonitor-elasticsearch-exporter.yaml  # Elasticsearch health
+  - vector-agent.yaml                           # Vector logging agent
+  - vector-aggregator.yaml                      # Vector aggregator
+  - loki.yaml                                   # Loki logging
+  - jaeger.yaml                                 # Jaeger tracing
+
+  # ===== MESSAGING =====
+  - servicemonitor-kafka-exporter.yaml          # Kafka metrics
+
+  # ===== DATABASES =====
+  - cnpg-clusters.yaml                          # PostgreSQL cluster metrics
+
+  # ===== APPLICATIONS =====
+  - application.yaml                            # Generic app metrics
+  - servicemonitor-n8n-dev.yaml                 # N8N dev environment
+  - servicemonitor-n8n-prod.yaml                # N8N prod environment
+
+# Note: ArgoCD ServiceMonitors are managed by Helm (argocd/values.yaml)
+# Note: Cilium ServiceMonitors are managed by Cilium Helm chart
+# Note: kube-prometheus-stack ServiceMonitors are managed by Helm
