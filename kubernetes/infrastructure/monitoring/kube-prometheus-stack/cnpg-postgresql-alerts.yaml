@@ -1,0 +1,175 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cnpg-postgresql-alerts
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+    app: cnpg
+    prometheus: kube-prometheus-stack
+spec:
+  groups:
+    - name: cloudnative-pg.rules
+      interval: 30s
+      rules:
+        # P2: Long-running transactions (>5 min)
+        - alert: CNPGLongRunningTransaction
+          expr: |
+            max by (namespace, pod) (
+              max_over_time(cnpg_backends_waiting_total[5m])
+            ) > 300
+          for: 1m
+          labels:
+            severity: warning
+            component: postgresql
+            tier: infrastructure
+          annotations:
+            summary: "Long-running transaction detected in PostgreSQL cluster"
+            description: |
+              PostgreSQL pod {{ $labels.pod }} in namespace {{ $labels.namespace }}
+              has a transaction running for more than 5 minutes.
+              This can cause performance degradation and replication lag.
+              VALUE: {{ $value }}s
+
+        # P2: Backends waiting (lock contention, resource exhaustion)
+        - alert: CNPGBackendsWaiting
+          expr: |
+            max by (namespace, pod) (
+              cnpg_backends_waiting_total
+            ) > 5
+          for: 5m
+          labels:
+            severity: warning
+            component: postgresql
+            tier: infrastructure
+          annotations:
+            summary: "High number of waiting backends in PostgreSQL"
+            description: |
+              PostgreSQL pod {{ $labels.pod }} in namespace {{ $labels.namespace }}
+              has {{ $value }} backends waiting (locks, I/O, etc.).
+              This indicates resource contention or blocking queries.
+
+        # P1: Transaction ID wraparound risk
+        - alert: CNPGDatabaseXidAge
+          expr: |
+            max by (namespace, pod, datname) (
+              cnpg_pg_database_xid_age
+            ) > 1000000000
+          for: 5m
+          labels:
+            severity: critical
+            component: postgresql
+            tier: infrastructure
+          annotations:
+            summary: "PostgreSQL database approaching transaction ID wraparound"
+            description: |
+              Database {{ $labels.datname }} on pod {{ $labels.pod }} in namespace {{ $labels.namespace }}
+              has XID age of {{ $value }}.
+              XID wraparound occurs at 2 billion. Immediate action required!
+
+        # P2: Replication lag (>1 minute)
+        - alert: CNPGReplicationLag
+          expr: |
+            max by (namespace, pod) (
+              cnpg_pg_replication_lag
+            ) > 60
+          for: 5m
+          labels:
+            severity: warning
+            component: postgresql
+            tier: infrastructure
+          annotations:
+            summary: "PostgreSQL replication lag detected"
+            description: |
+              PostgreSQL pod {{ $labels.pod }} in namespace {{ $labels.namespace }}
+              has replication lag of {{ $value }} seconds.
+              This impacts HA failover RPO and read replica freshness.
+
+        # P2: Failed WAL archiving
+        - alert: CNPGLastFailedArchiveTime
+          expr: |
+            time() - cnpg_pg_stat_archiver_last_failed_time > 300
+            and
+            cnpg_pg_stat_archiver_last_failed_time > 0
+          for: 5m
+          labels:
+            severity: warning
+            component: postgresql
+            tier: infrastructure
+          annotations:
+            summary: "PostgreSQL WAL archiving failures detected"
+            description: |
+              PostgreSQL pod {{ $labels.pod }} in namespace {{ $labels.namespace }}
+              has failed WAL archiving for more than 5 minutes.
+              This breaks backup continuity and PITR capability.
+
+        # P3: Deadlocks (>10 deadlocks in 5 minutes)
+        - alert: CNPGDatabaseDeadlockConflicts
+          expr: |
+            rate(cnpg_pg_stat_database_deadlocks[5m]) > 0.1
+          for: 5m
+          labels:
+            severity: warning
+            component: postgresql
+            tier: infrastructure
+          annotations:
+            summary: "High deadlock rate in PostgreSQL database"
+            description: |
+              Database {{ $labels.datname }} on pod {{ $labels.pod }} in namespace {{ $labels.namespace }}
+              is experiencing {{ $value }} deadlocks per second.
+              This indicates application concurrency issues.
+
+        # P1: Replica replication completely stopped
+        - alert: CNPGReplicaFailingReplication
+          expr: |
+            cnpg_pg_replication_in_recovery == 1
+            and
+            cnpg_pg_replication_is_wal_receiver_up == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: postgresql
+            tier: infrastructure
+          annotations:
+            summary: "PostgreSQL replica replication has stopped"
+            description: |
+              PostgreSQL replica pod {{ $labels.pod }} in namespace {{ $labels.namespace }}
+              has stopped receiving WAL from primary.
+              HA failover capability is compromised!
+
+        # P2: Cluster status not healthy
+        - alert: CNPGClusterNotHealthy
+          expr: |
+            cnpg_collector_up == 1
+            and
+            cnpg_collector_fencing_on == 1
+          for: 10m
+          labels:
+            severity: warning
+            component: postgresql
+            tier: infrastructure
+          annotations:
+            summary: "PostgreSQL cluster is fenced (split-brain protection active)"
+            description: |
+              PostgreSQL cluster {{ $labels.cluster }} in namespace {{ $labels.namespace }}
+              has fencing enabled, indicating potential split-brain or connectivity issues.
+
+        # P3: High connection saturation
+        - alert: CNPGConnectionSaturation
+          expr: |
+            (
+              sum by (namespace, pod) (cnpg_pg_stat_database_numbackends)
+              /
+              max by (namespace, pod) (cnpg_pg_settings_max_connections)
+            ) > 0.8
+          for: 10m
+          labels:
+            severity: warning
+            component: postgresql
+            tier: infrastructure
+          annotations:
+            summary: "PostgreSQL connection pool saturation"
+            description: |
+              PostgreSQL pod {{ $labels.pod }} in namespace {{ $labels.namespace }}
+              is using {{ $value | humanizePercentage }} of max_connections.
+              Consider connection pooling (PgBouncer) or increasing max_connections.
