@@ -78,7 +78,34 @@ gatewayAPI:
 socketLB:
   hostNamespaceOnly: false
 
+# DNS Proxy for DNS visibility and FQDN-based policies
+dnsProxy:
+  enabled: true
+  enableDnsCompression: true
+
+# L7 Proxy for HTTP/gRPC protocol visibility
+l7Proxy: true
+
+# 🔥 PHASE 1: PERFORMANCE - Bandwidth Manager + BBR (30-40% throughput boost)
+bandwidthManager:
+  enabled: true
+  bbr: true  # Kernel 6.12 supports BBR congestion control
+
+# 🔥 PHASE 1: PERFORMANCE - BIG TCP (reduce CPU 20-40%, max throughput)
+enableIPv4BIGTCP: true
+
+# 🔐 PHASE 2: SECURITY - WireGuard Encryption (zero-trust pod-to-pod)
+encryption:
+  enabled: true
+  type: wireguard
+  nodeEncryption: true
+  strictMode:
+    enabled: true
+    cidr: 10.244.0.0/16  # Pod CIDR
+    allowRemoteNodeIdentities: false
+
 envoy:
+  enabled: true
   securityContext:
     capabilities:
       keepCapNetBindService: true
@@ -99,12 +126,13 @@ hubble:
     rollOutPods: true
   metrics:
     enabled:
-      - dns
+      - dns:query;ignoreAAAA
       - drop
       - tcp
       - flow
       - port-distribution
       - icmp
+      - http
       - httpV2:exemplars=true;labelsContext=source_namespace,source_workload,destination_namespace,destination_workload
     enableOpenMetrics: true
     serviceMonitor:
