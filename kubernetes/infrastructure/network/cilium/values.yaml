@@ -101,8 +101,8 @@ resources:
     memory: 512Mi
 
 k8sClientRateLimit:
-  qps: 20
-  burst: 100
+  qps: 50      # Increased from 20 for Gateway API controller
+  burst: 200   # Increased from 100 for Gateway API controller
 
 l2announcements:
   enabled: true
@@ -113,11 +113,104 @@ externalIPs:
 loadBalancer:
   # https://docs.cilium.io/en/stable/network/kubernetes/kubeproxy-free/#maglev-consistent-hashing
   algorithm: maglev
+  enabled: true
 
 gatewayAPI:
   enabled: true
   enableAlpn: true
   enableAppProtocol: true
+
+# 🔥 ENTERPRISE PERFORMANCE - Bandwidth Manager + BBR Congestion Control
+# ========================================================================
+# Bandwidth Manager: Enables Fair Queue packet scheduling + optimal sysctl settings
+# BBR (Bottleneck Bandwidth and RTT): Google's congestion control algorithm
+#
+# PERFORMANCE IMPACT:
+# - BBR: Up to 2700x higher throughput vs loss-based algorithms (CUBIC)
+# - Bandwidth Manager: Reduces latency spikes, improves fairness
+# - Requires: Linux kernel 5.18+ for BBR on pods
+#
+# https://docs.cilium.io/en/stable/network/kubernetes/bandwidth-manager/
+bandwidthManager:
+  enabled: true
+  bbr: true  # Kernel 6.12 supports BBR
+
+# 🔥 ENTERPRISE PERFORMANCE - BIG TCP (DISABLED due to WireGuard)
+# ================================================================
+# BIG TCP: Allows up to 192KB GSO/GRO packets (vs 64KB default)
+#
+# PERFORMANCE IMPACT:
+# - Reduces CPU by 20-40% for high-throughput workloads
+# - Reduces # of times network stack is traversed
+#
+# ⚠️ INCOMPATIBLE WITH WIREGUARD ENCRYPTION!
+# BIG TCP requires: No tunneling, no encryption, kernel 6.3+, supported NICs (mlx4/mlx5/ice)
+#
+# CURRENT: Disabled (auto-disabled by Cilium due to WireGuard encryption)
+# TRADE-OFF: Security (WireGuard) > Performance (BIG TCP)
+#
+# To enable BIG TCP: Set encryption.enabled=false
+# https://docs.cilium.io/en/stable/operations/performance/tuning/
+enableIPv4BIGTCP: false  # Auto-disabled when WireGuard is enabled
+enableIPv6BIGTCP: false
+
+# 🔐 ENTERPRISE SECURITY - WireGuard Transparent Encryption
+# ===========================================================
+# Zero-Trust pod-to-pod encryption using WireGuard (Linux kernel native)
+#
+# SECURITY BENEFITS:
+# ✅ Pod-to-pod traffic encrypted at network layer (transparent to apps)
+# ✅ Compliance: GDPR, SOC2, PCI-DSS, HIPAA
+# ✅ Multi-tenant isolation (encrypted by default)
+# ✅ Production-grade: Used by Google GKE, AWS EKS
+#
+# PERFORMANCE IMPACT:
+# ❌ BIG TCP disabled (incompatible) → ~20-40% CPU overhead vs BIG TCP
+# ✅ WireGuard overhead: ~5-10% (minimal, hardware-accelerated on modern CPUs)
+# ✅ BBR compensates partially for BIG TCP loss
+#
+# NET IMPACT: ~10-15% performance trade-off for enterprise security
+#
+# 🔍 DECRYPTING TRAFFIC FOR DEBUGGING:
+# -------------------------------------
+# Option 1: Hubble (L7 visibility BEFORE encryption)
+#   kubectl port-forward -n kube-system svc/hubble-ui 12000:80
+#   # Hubble sees unencrypted HTTP/DNS metrics
+#
+# Option 2: tcpdump inside pod (BEFORE encryption)
+#   kubectl exec -it <pod> -- tcpdump -i any -nn port 80
+#
+# Option 3: Cilium Monitor (eBPF events, pre-encryption)
+#   kubectl exec -n kube-system ds/cilium -- cilium monitor --type drop --type trace
+#
+# Option 4: Disable encryption temporarily (NOT for production!)
+#   helm upgrade cilium --set encryption.enabled=false
+#
+# ⚠️ Wire-level tcpdump on nodes will show ENCRYPTED traffic (WireGuard ESP packets)
+#
+# https://docs.cilium.io/en/stable/security/network/encryption-wireguard/
+encryption:
+  enabled: true
+  type: wireguard
+  nodeEncryption: true  # Encrypt node-to-node traffic (beta feature)
+  strictMode:
+    enabled: true
+    cidr: 10.244.0.0/16  # Pod CIDR - only encrypt pod traffic
+    allowRemoteNodeIdentities: false
+
+# 🌐 ENTERPRISE NETWORKING - DNS Proxy
+# =====================================
+# DNS visibility + FQDN-based network policies
+# Enables DNS query logging in Hubble metrics
+dnsProxy:
+  enabled: true
+  enableDnsCompression: true
+
+# 🔍 ENTERPRISE OBSERVABILITY - L7 Proxy
+# =======================================
+# HTTP/gRPC protocol visibility via Envoy proxy
+# Required for: httpV2 metrics, L7 NetworkPolicies, API-level observability
+l7Proxy: true
 
 envoy:
   prometheus:
@@ -161,7 +254,9 @@ hubble:
     rollOutPods: true
 
 ingressController:
-  enabled: false
+  enabled: true   # Cilium native ingress controller
+  default: true   # Set as default IngressClass
+  loadbalancerMode: shared  # Share LB IPs across Ingresses
 
 authentication:
   enabled: false
@@ -205,4 +300,4 @@ cni:
   exclusive: false
 
 socketLB:
-  hostNamespaceOnly: true
+  hostNamespaceOnly: false  # Enable socket-based LB across all namespaces (fixes DNS resolution)
