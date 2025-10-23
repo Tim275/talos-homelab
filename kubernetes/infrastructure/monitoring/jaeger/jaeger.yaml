@@ -7,23 +7,36 @@ metadata:
     # Disable Prometheus auto-discovery for non-metrics endpoints
     prometheus.io/scrape: "false"
 spec:
-  strategy: allinone
-  storage:
-    type: memory
+  # 🏭 PRODUCTION DEPLOYMENT: HA with Elasticsearch storage
+  strategy: production
 
-  # 🔄 HYBRID SETUP: Support both OTLP and Jaeger Agent flows
+  storage:
+    # 🔍 Elasticsearch (Jaeger-recommended for production)
+    type: elasticsearch
+    options:
+      es:
+        server-urls: https://production-cluster-es-http.elastic-system.svc:9200
+        index-prefix: jaeger
+        tls:
+          ca: /etc/ssl/certs/tls.crt  # Elasticsearch CA cert (auto-mounted by operator)
+        username: elastic
+        password-file: /etc/elasticsearch/elastic  # Password from secret
+    secretName: production-cluster-es-elastic-user  # Elasticsearch credentials
+
+  # 📊 COLLECTOR: HA with 3 replicas
   collector:
-    maxReplicas: 1
+    maxReplicas: 3
+    autoscale: true
     resources:
       requests:
-        memory: 128Mi
-        cpu: 100m
+        memory: 256Mi
+        cpu: 200m
       limits:
-        memory: 512Mi
-        cpu: 500m
+        memory: 1Gi
+        cpu: 1000m
     options:
       # ✅ OTLP Protocol (Modern apps) - Standard ports
-      collector.otlp.enabled: true
+      collector.otlp.enabled: "true"
       collector.otlp.grpc.host-port: ":4317"
       collector.otlp.http.host-port: ":4318"
 
@@ -31,26 +44,20 @@ spec:
       collector.jaeger.grpc.host-port: ":14250"
       collector.jaeger.http.host-port: ":14268"
 
+  # 🔍 QUERY: HA with 2 replicas
   query:
-    replicas: 1
+    replicas: 2
     resources:
       requests:
-        memory: 128Mi
+        memory: 256Mi
         cpu: 100m
       limits:
-        memory: 256Mi
-        cpu: 300m
+        memory: 512Mi
+        cpu: 500m
 
-  # 🚀 AGENT AS SERVICE: No hostPort, Pod Security baseline compatible
-  agent:
-    strategy: Deployment  # Service instead of DaemonSet
+  # 📈 SAMPLING: Uber-style adaptive sampling
+  sampling:
     options:
-      # Agent sends to collector via service discovery
-      reporter.grpc.host-port: "jaeger-collector:14250"
-    resources:
-      requests:
-        memory: 64Mi
-        cpu: 50m
-      limits:
-        memory: 128Mi
-        cpu: 200m
+      # Default strategy: 10% baseline sampling
+      default_strategy.type: probabilistic
+      default_strategy.param: "0.1"
