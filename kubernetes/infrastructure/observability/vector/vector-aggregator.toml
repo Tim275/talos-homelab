@@ -19,19 +19,19 @@ type = "syslog"
 address = "0.0.0.0:5140"
 mode = "udp"
 
-# Direct Talos etcd logs from control plane
-[sources.talos_etcd_logs]
-type = "exec"
-mode = "scheduled"
-command = ["talosctl", "-n", "192.168.68.101", "logs", "etcd", "--tail"]
-scheduled.exec_interval_secs = 30
+# Direct Talos etcd logs from control plane - DISABLED (talosctl not available in container)
+# [sources.talos_etcd_logs]
+# type = "exec"
+# mode = "scheduled"
+# command = ["talosctl", "-n", "192.168.68.101", "logs", "etcd", "--tail"]
+# scheduled.exec_interval_secs = 30
 
-# Direct Talos kubelet logs from workers (sample from worker-1)
-[sources.talos_kubelet_logs]
-type = "exec"
-mode = "scheduled"
-command = ["talosctl", "-n", "192.168.68.103", "logs", "kubelet", "--tail"]
-scheduled.exec_interval_secs = 30
+# Direct Talos kubelet logs from workers (sample from worker-1) - DISABLED (talosctl not available in container)
+# [sources.talos_kubelet_logs]
+# type = "exec"
+# mode = "scheduled"
+# command = ["talosctl", "-n", "192.168.68.103", "logs", "kubelet", "--tail"]
+# scheduled.exec_interval_secs = 30
 
 # Process Proxmox logs and add metadata
 [transforms.process_proxmox_logs]
@@ -61,51 +61,51 @@ source = '''
 .namespace_suffix = .proxmox_hostname
 '''
 
-# Process Talos system logs from direct talosctl access
-[transforms.process_talos_system_logs]
-type = "remap"
-inputs = ["talos_etcd_logs", "talos_kubelet_logs"]
-source = '''
-.source = "talos-direct"
-.cluster = "talos-homelab"
-.environment = "production"
-
-# ═══════════════════════════════════════════════════════════════
-# ELASTIC BEST PRACTICE: Node role separation (control-plane vs workers)
-# ═══════════════════════════════════════════════════════════════
-# Detect node role based on IP address
-if exists(.node_ip) {
-  .node_ip = .node_ip
-} else {
-  .node_ip = "192.168.68.101"  # Default to control plane
-}
-
-# Determine node role from IP (control-plane: .101, workers: .103-.108)
-.node_role = if .node_ip == "192.168.68.101" {
-  "control-plane"
-} else if match(string!(.node_ip), r'^192\.168\.68\.10[3-8]$') {
-  "worker"
-} else {
-  "unknown"
-}
-
-# Detect log type and assign service name
-if contains(string!(.message), "etcd") || exists(.component) && .component == "etcd" {
-  .service_name = "etcd"
-} else if contains(string!(.message), "kubelet") {
-  .service_name = "kubelet"
-} else {
-  .service_name = "talos-system"
-}
-
-# Set namespace for data stream routing (node role differentiation)
-.namespace_suffix = .node_role
-'''
+# Process Talos system logs from direct talosctl access - DISABLED (talosctl not available in container)
+# [transforms.process_talos_system_logs]
+# type = "remap"
+# inputs = ["talos_etcd_logs", "talos_kubelet_logs"]
+# source = '''
+# .source = "talos-direct"
+# .cluster = "talos-homelab"
+# .environment = "production"
+#
+# # ═══════════════════════════════════════════════════════════════
+# # ELASTIC BEST PRACTICE: Node role separation (control-plane vs workers)
+# # ═══════════════════════════════════════════════════════════════
+# # Detect node role based on IP address
+# if exists(.node_ip) {
+#   .node_ip = .node_ip
+# } else {
+#   .node_ip = "192.168.68.101"  # Default to control plane
+# }
+#
+# # Determine node role from IP (control-plane: .101, workers: .103-.108)
+# .node_role = if .node_ip == "192.168.68.101" {
+#   "control-plane"
+# } else if match(string!(.node_ip), r'^192\.168\.68\.10[3-8]$') {
+#   "worker"
+# } else {
+#   "unknown"
+# }
+#
+# # Detect log type and assign service name
+# if contains(string!(.message), "etcd") || exists(.component) && .component == "etcd" {
+#   .service_name = "etcd"
+# } else if contains(string!(.message), "kubelet") {
+#   .service_name = "kubelet"
+# } else {
+#   .service_name = "talos-system"
+# }
+#
+# # Set namespace for data stream routing (node role differentiation)
+# .namespace_suffix = .node_role
+# '''
 
 # Parse and enrich all logs - ENTERPRISE SERVICE-BASED
 [transforms.enrich_logs]
 type = "remap"
-inputs = ["vector_agents", "process_proxmox_logs", "process_talos_system_logs"]
+inputs = ["vector_agents", "process_proxmox_logs"]
 source = '''
 # Set default namespace_suffix if not already set
 if !exists(.namespace_suffix) {
