@@ -93,11 +93,55 @@ customConfig:
         }
 
     # ──────────────────────────────────────────────────────────────────
+    # STEP 1.5: Flatten Kubernetes Labels (Fix Elasticsearch parsing)
+    # ──────────────────────────────────────────────────────────────────
+    flatten_k8s_labels:
+      type: "remap"
+      inputs: ["parse_k8s_metadata"]
+      source: |
+        # Flatten pod_labels (app.kubernetes.io/name → app_kubernetes_io_name)
+        if exists(.kubernetes.pod_labels) {
+          pod_labels = object!(.kubernetes.pod_labels)
+          new_labels = {}
+          for_each(pod_labels) -> |key, value| {
+            # Replace dots and slashes with underscores
+            safe_key = replace(string!(key), ".", "_")
+            safe_key = replace(safe_key, "/", "_")
+            new_labels = set!(new_labels, [safe_key], value)
+          }
+          .kubernetes.pod_labels = new_labels
+        }
+
+        # Flatten namespace_labels
+        if exists(.kubernetes.namespace_labels) {
+          ns_labels = object!(.kubernetes.namespace_labels)
+          new_labels = {}
+          for_each(ns_labels) -> |key, value| {
+            safe_key = replace(string!(key), ".", "_")
+            safe_key = replace(safe_key, "/", "_")
+            new_labels = set!(new_labels, [safe_key], value)
+          }
+          .kubernetes.namespace_labels = new_labels
+        }
+
+        # Flatten node_labels
+        if exists(.kubernetes.node_labels) {
+          node_labels = object!(.kubernetes.node_labels)
+          new_labels = {}
+          for_each(node_labels) -> |key, value| {
+            safe_key = replace(string!(key), ".", "_")
+            safe_key = replace(safe_key, "/", "_")
+            new_labels = set!(new_labels, [safe_key], value)
+          }
+          .kubernetes.node_labels = new_labels
+        }
+
+    # ──────────────────────────────────────────────────────────────────
     # STEP 2: Extract Log Level (Severity)
     # ──────────────────────────────────────────────────────────────────
     extract_log_level:
       type: "remap"
-      inputs: ["parse_k8s_metadata"]
+      inputs: ["flatten_k8s_labels"]
       source: |
         # Initialize log_level if not exists
         if exists(.level) {
