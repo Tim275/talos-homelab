@@ -93,11 +93,28 @@ customConfig:
         }
 
     # ──────────────────────────────────────────────────────────────────
+    # STEP 1.5: Remove problematic nested K8s labels (Elasticsearch fix)
+    # ──────────────────────────────────────────────────────────────────
+    remove_nested_labels:
+      type: "remap"
+      inputs: ["parse_k8s_metadata"]
+      source: |
+        # Remove nested label objects that cause Elasticsearch parsing errors
+        # These labels contain dots (app.kubernetes.io/name) which break ES keyword mapping
+        del(.kubernetes.pod_labels)
+        del(.kubernetes.namespace_labels)
+        del(.kubernetes.node_labels)
+        del(.kubernetes.pod_annotations)
+
+        # Keep critical K8s metadata for troubleshooting
+        # namespace, pod_name, container_name, node_name are already extracted above
+
+    # ──────────────────────────────────────────────────────────────────
     # STEP 2: Extract Log Level (Severity)
     # ──────────────────────────────────────────────────────────────────
     extract_log_level:
       type: "remap"
-      inputs: ["parse_k8s_metadata"]
+      inputs: ["remove_nested_labels"]
       source: |
         # Initialize log_level if not exists
         if exists(.level) {

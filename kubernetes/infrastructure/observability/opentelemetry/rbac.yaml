@@ -1,0 +1,46 @@
+# 🔐 RBAC for OpenTelemetry Collector - Node Stats Access
+# Allows otel-collector to read kubelet stats from all nodes
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-collector-kubeletstats
+  labels:
+    app.kubernetes.io/name: opentelemetry-collector
+    app.kubernetes.io/component: rbac
+rules:
+  # Access to node stats (required for kubeletstats receiver)
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - nodes/stats
+      - nodes/proxy
+    verbs:
+      - get
+      - list
+      - watch
+  # Access to pods (for resource detection)
+  - apiGroups: [""]
+    resources:
+      - pods
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector-kubeletstats
+  labels:
+    app.kubernetes.io/name: opentelemetry-collector
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-collector-kubeletstats
+subjects:
+  - kind: ServiceAccount
+    name: otel-collector-collector
+    namespace: opentelemetry

@@ -21,14 +21,35 @@ cluster:
   controllerManager:
     extraArgs:
       bind-address: 0.0.0.0
+    resources:
+      requests:
+        cpu: 50m       # Actual: 31m * 1.5 (keep default, enough for 3 masters)
+        memory: 256Mi  # Actual: 149Mi * 1.5
+      limits:
+        cpu: 500m      # 31m * 16 (generous burst headroom)
+        memory: 1Gi    # 149Mi * 7 (memory spike protection)
   scheduler:
     extraArgs:
       bind-address: 0.0.0.0
+    resources:
+      requests:
+        cpu: 10m       # Actual: 3m * 3 (keep default, very light)
+        memory: 64Mi   # Actual: 44Mi * 1.5 (keep default)
+      limits:
+        cpu: 200m      # 3m * 66 (very generous for rare bursts)
+        memory: 512Mi  # 44Mi * 12 (spike protection)
   apiServer:
     extraArgs:
       # API server stability fixes only
       max-requests-inflight: "400"
       max-mutating-requests-inflight: "200"
+    resources:
+      requests:
+        cpu: 600m      # Actual: 403m * 1.5 (single node, 3 masters = ~200m/node)
+        memory: 3Gi    # Actual: 2094Mi * 1.5 = 3141Mi (was UNDER-provisioned!)
+      limits:
+        cpu: 2000m     # 403m * 5 (request burst protection)
+        memory: 8Gi    # 2094Mi * 4 (memory spike protection)
   etcd:
     extraArgs:
       listen-metrics-urls: http://0.0.0.0:2381
