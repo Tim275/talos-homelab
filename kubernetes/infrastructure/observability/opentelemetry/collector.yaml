@@ -20,6 +20,12 @@ spec:
     limits:
       memory: 512Mi
       cpu: 500m
+  # 🌐 ENVIRONMENT: Node IP for kubelet access
+  env:
+    - name: K8S_NODE_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.hostIP
   config: |
     receivers:
       otlp:
@@ -37,16 +43,18 @@ spec:
           disk:
           filesystem:
           network:
-      kubeletstats:
-        collection_interval: 30s
-        auth_type: "serviceAccount"
-        endpoint: "${env:K8S_NODE_NAME}:10250"
-        insecure_skip_verify: true
+      # kubeletstats:  # DISABLED: Talos kubelet doesn't accept ServiceAccount tokens
+        #   # Duplicate data - we already have hostmetrics + kube-state-metrics via Prometheus
+        #   collection_interval: 30s
+        #   auth_type: "serviceAccount"
+        #   endpoint: "https://${env:K8S_NODE_IP}:10250"
+        #   insecure_skip_verify: true
 
     processors:
       batch:
-        timeout: 1s
-        send_batch_size: 1024
+        timeout: 10s           # Increased from 1s to reduce write pressure
+        send_batch_size: 512   # Reduced from 1024 to avoid overwhelming Prometheus
+        send_batch_max_size: 1024
       memory_limiter:
         limit_mib: 400
         check_interval: 1s
@@ -68,6 +76,13 @@ spec:
       # Metriken zu Prometheus (Grafana)
       prometheusremotewrite:
         endpoint: http://prometheus-operator-kube-p-prometheus.monitoring:9090/api/v1/write
+        # Fix timeouts: 6 DaemonSet pods writing simultaneously
+        timeout: 60s
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
 
     service:
       pipelines:
@@ -76,7 +91,7 @@ spec:
           processors: [memory_limiter, batch, resource]
           exporters: [otlp/jaeger]
         metrics:
-          receivers: [otlp, hostmetrics, kubeletstats]
+          receivers: [otlp, hostmetrics]  # kubeletstats disabled (Talos auth issue)
           processors: [memory_limiter, batch, resource]
           exporters: [prometheusremotewrite]
 
