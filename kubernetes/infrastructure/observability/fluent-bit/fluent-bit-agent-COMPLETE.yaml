@@ -1,0 +1,353 @@
+# Fluent Bit Agent - COMPLETE Translation from Vector
+# Includes ALL fixes from 2025-10-23:
+# - Label removal (pod_labels, namespace_labels, etc)
+# - Type-safe conversion with fallbacks
+# - Service-based routing (complete)
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config-complete
+  namespace: elastic-system
+  labels:
+    app: fluent-bit
+    version: complete
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush         5
+        Daemon        Off
+        Log_Level     info
+        Parsers_File  parsers.conf
+
+    # ═══════════════════════════════════════════════════════════════
+    # INPUTS - Kubernetes Container Logs
+    # ═══════════════════════════════════════════════════════════════
+
+    [INPUT]
+        Name              tail
+        Path              /var/log/containers/*.log
+        Parser            docker
+        Tag               kube.*
+        Refresh_Interval  5
+        Mem_Buf_Limit     5MB
+        Skip_Long_Lines   On
+
+    # ═══════════════════════════════════════════════════════════════
+    # FILTERS - Kubernetes Metadata Enrichment
+    # ═══════════════════════════════════════════════════════════════
+
+    [FILTER]
+        Name                kubernetes
+        Match               kube.*
+        Kube_URL            https://kubernetes.default.svc:443
+        Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
+        Kube_Tag_Prefix     kube.var.log.containers.
+        Merge_Log           On
+        Keep_Log            Off
+        K8S-Logging.Parser  On
+        K8S-Logging.Exclude On
+        Annotations         Off
+        # CRITICAL: Disable Labels to avoid nested label issues
+        Labels              Off
+
+    # ═══════════════════════════════════════════════════════════════
+    # FIX #1: Remove nested Kubernetes labels (ES parsing errors)
+    # ═══════════════════════════════════════════════════════════════
+
+    [FILTER]
+        Name    lua
+        Match   kube.*
+        Script  label_removal.lua
+        Call    remove_labels
+
+    # ═══════════════════════════════════════════════════════════════
+    # FIX #2: Type-safe conversion (level, namespace)
+    # ═══════════════════════════════════════════════════════════════
+
+    [FILTER]
+        Name    lua
+        Match   kube.*
+        Script  type_safety.lua
+        Call    safe_type_conversion
+
+    # ═══════════════════════════════════════════════════════════════
+    # FILTERS - Service-based routing + Severity mapping
+    # ═══════════════════════════════════════════════════════════════
+
+    [FILTER]
+        Name    lua
+        Match   kube.*
+        Script  service_routing.lua
+        Call    enrich_service_name
+
+    # ═══════════════════════════════════════════════════════════════
+    # FILTERS - ECS 8.17 Compliance
+    # ═══════════════════════════════════════════════════════════════
+
+    [FILTER]
+        Name    modify
+        Match   kube.*
+
+        # ECS version
+        Add     ecs.version 8.17
+
+        # Rename timestamp for ECS
+        Rename  time @timestamp
+
+        # Add cluster metadata
+        Add     cluster talos-homelab
+        Add     datacenter homelab
+        Add     environment production
+        Add     service.environment production
+
+        # Set default namespace_suffix
+        Add     namespace_suffix default
+
+    # ═══════════════════════════════════════════════════════════════
+    # OUTPUT - Elasticsearch Data Streams
+    # ═══════════════════════════════════════════════════════════════
+
+    [OUTPUT]
+        Name            es
+        Match           kube.*
+        Host            production-cluster-es-http.elastic-system.svc.cluster.local
+        Port            9200
+        HTTP_User       elastic
+        HTTP_Passwd     ${ELASTICSEARCH_PASSWORD}
+        TLS             On
+        TLS.Verify      Off
+
+        # DATA STREAMS (same as Vector)
+        Index           logs-${service_name}.${severity}-${namespace_suffix}
+        Type            _doc
+
+        # Buffering
+        Buffer_Size     10MB
+        Retry_Limit     3
+
+  parsers.conf: |
+    [PARSER]
+        Name        docker
+        Format      json
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%LZ
+
+  # ═══════════════════════════════════════════════════════════════
+  # LUA SCRIPT #1: Remove nested labels (Fix from today)
+  # ═══════════════════════════════════════════════════════════════
+  label_removal.lua: |
+    function remove_labels(tag, timestamp, record)
+        -- FIX: Remove nested Kubernetes labels that break Elasticsearch
+        -- Same as Vector: del(.kubernetes.pod_labels)
+        if record["kubernetes"] then
+            record["kubernetes"]["pod_labels"] = nil
+            record["kubernetes"]["namespace_labels"] = nil
+            record["kubernetes"]["node_labels"] = nil
+            record["kubernetes"]["pod_annotations"] = nil
+        end
+
+        return 2, timestamp, record
+    end
+
+  # ═══════════════════════════════════════════════════════════════
+  # LUA SCRIPT #2: Type-safe conversion (Fix from today)
+  # ═══════════════════════════════════════════════════════════════
+  type_safety.lua: |
+    function safe_type_conversion(tag, timestamp, record)
+        -- FIX: Safe type conversion for .level and .namespace
+        -- Same as Vector: .level = downcase(to_string(.level) ?? "info")
+
+        -- Safe level conversion
+        if record["level"] then
+            if type(record["level"]) == "string" then
+                record["level"] = string.lower(record["level"])
+            elseif type(record["level"]) == "number" then
+                record["level"] = string.lower(tostring(record["level"]))
+            else
+                record["level"] = "info"  -- Fallback
+            end
+        else
+            -- Parse from message if level missing
+            local message = tostring(record["message"] or "")
+            if string.match(message:lower(), "error") or
+               string.match(message:lower(), "fatal") or
+               string.match(message:lower(), "critical") then
+                record["level"] = "error"
+            elseif string.match(message:lower(), "warn") then
+                record["level"] = "warn"
+            else
+                record["level"] = "info"
+            end
+        end
+
+        -- Safe namespace conversion
+        if record["kubernetes"] and record["kubernetes"]["namespace_name"] then
+            local ns = record["kubernetes"]["namespace_name"]
+            if type(ns) == "string" then
+                record["namespace"] = ns
+            else
+                record["namespace"] = tostring(ns or "unknown")
+            end
+        else
+            record["namespace"] = "unknown"
+        end
+
+        return 2, timestamp, record
+    end
+
+  # ═══════════════════════════════════════════════════════════════
+  # LUA SCRIPT #3: Service-based routing (complete from Vector)
+  # ═══════════════════════════════════════════════════════════════
+  service_routing.lua: |
+    function enrich_service_name(tag, timestamp, record)
+        -- Get namespace (already set by type_safety.lua)
+        local namespace = record["namespace"] or "unknown"
+
+        -- Service-based routing logic (EXACT SAME as Vector)
+        local service_name = "unknown"
+
+        if namespace == "kube-system" then
+            service_name = "kube-system"
+        elseif namespace == "rook-ceph" then
+            service_name = "rook-ceph"
+        elseif namespace == "argocd" then
+            service_name = "argocd"
+        elseif namespace == "cert-manager" then
+            service_name = "cert-manager"
+        elseif namespace == "istio-system" then
+            service_name = "istio"
+        elseif namespace == "monitoring" then
+            service_name = "monitoring"
+        elseif namespace == "n8n-prod" then
+            service_name = "n8n-prod"
+        elseif namespace == "n8n-dev" then
+            service_name = "n8n-dev"
+        elseif namespace == "kafka" then
+            service_name = "kafka"
+        elseif namespace == "elastic-system" then
+            service_name = "elastic-system"
+        elseif namespace == "cnpg-system" then
+            service_name = "cloudnative-pg"
+        elseif string.match(namespace, "boutique") then
+            service_name = "boutique-" .. namespace
+        else
+            service_name = namespace
+        end
+
+        -- Severity mapping (EXACT SAME as Vector)
+        local level = record["level"] or "info"
+        local severity = "info"
+
+        if level == "error" or level == "fatal" or level == "critical" or level == "panic" then
+            severity = "critical"
+        elseif level == "warn" or level == "warning" then
+            severity = "warn"
+        elseif level == "debug" or level == "trace" then
+            severity = "debug"
+        else
+            severity = "info"
+        end
+
+        -- Add fields (ECS compliance)
+        record["service_name"] = service_name
+        record["severity"] = severity
+        record["service.name"] = service_name
+        record["log.level"] = level
+
+        return 2, timestamp, record
+    end
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fluent-bit
+  namespace: elastic-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fluent-bit-read
+rules:
+- apiGroups: [""]
+  resources:
+  - namespaces
+  - pods
+  - nodes
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fluent-bit-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: fluent-bit-read
+subjects:
+- kind: ServiceAccount
+  name: fluent-bit
+  namespace: elastic-system
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit-complete
+  namespace: elastic-system
+  labels:
+    app: fluent-bit
+    component: agent
+    version: complete
+spec:
+  selector:
+    matchLabels:
+      app: fluent-bit
+      component: agent
+  template:
+    metadata:
+      labels:
+        app: fluent-bit
+        component: agent
+    spec:
+      serviceAccountName: fluent-bit
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/control-plane
+        effect: NoSchedule
+      containers:
+      - name: fluent-bit
+        image: fluent/fluent-bit:3.2
+        env:
+        - name: ELASTICSEARCH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: production-cluster-es-elastic-user
+              key: elastic
+        resources:
+          requests:
+            memory: 128Mi
+            cpu: 100m
+          limits:
+            memory: 256Mi
+            cpu: 200m
+        volumeMounts:
+        - name: config
+          mountPath: /fluent-bit/etc/
+        - name: varlog
+          mountPath: /var/log
+          readOnly: true
+        - name: varlibdockercontainers
+          mountPath: /var/lib/docker/containers
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: fluent-bit-config-complete
+      - name: varlog
+        hostPath:
+          path: /var/log
+      - name: varlibdockercontainers
+        hostPath:
+          path: /var/lib/docker/containers
