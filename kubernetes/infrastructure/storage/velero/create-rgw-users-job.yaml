@@ -1,0 +1,126 @@
+---
+# 🔧 Manually Create RGW Users (Rook Bug Workaround)
+# ===================================================
+# Rook-Ceph is NOT creating RGW users despite CephObjectStoreUser being "Ready"
+# This Job manually creates the users using radosgw-admin with credentials from Secrets
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: create-rgw-users-manual
+  namespace: rook-ceph
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: create-rgw-users
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: rook-ceph-system
+      containers:
+        - name: create-users
+          image: rook/ceph:v1.16.2
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              echo "=== Creating RGW Users Manually ==="
+
+              # velero-cluster-backups
+              echo "Creating user: ceph-user-velero-cluster-backups"
+              radosgw-admin user create \
+                --uid=ceph-user-velero-cluster-backups \
+                --display-name="Velero Cluster Backups" \
+                --access-key="$VELERO_CLUSTER_ACCESS_KEY" \
+                --secret-key="$VELERO_CLUSTER_SECRET_KEY" || echo "User may already exist"
+
+              # velero-pv-backups
+              echo "Creating user: ceph-user-velero-pv-backups"
+              radosgw-admin user create \
+                --uid=ceph-user-velero-pv-backups \
+                --display-name="Velero PV Backups" \
+                --access-key="$VELERO_PV_ACCESS_KEY" \
+                --secret-key="$VELERO_PV_SECRET_KEY" || echo "User may already exist"
+
+              # n8n-prod-backups
+              echo "Creating user: ceph-user-n8n-prod-backups"
+              radosgw-admin user create \
+                --uid=ceph-user-n8n-prod-backups \
+                --display-name="N8N Production Backups" \
+                --access-key="$N8N_PROD_ACCESS_KEY" \
+                --secret-key="$N8N_PROD_SECRET_KEY" || echo "User may already exist"
+
+              # infisical-prod-backups
+              echo "Creating user: ceph-user-infisical-prod-backups"
+              radosgw-admin user create \
+                --uid=ceph-user-infisical-prod-backups \
+                --display-name="Infisical Production Backups" \
+                --access-key="$INFISICAL_PROD_ACCESS_KEY" \
+                --secret-key="$INFISICAL_PROD_SECRET_KEY" || echo "User may already exist"
+
+              echo "=== Verifying Users ==="
+              radosgw-admin user list
+
+              echo "=== Done! ==="
+          env:
+            - name: VELERO_CLUSTER_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-object-user-homelab-objectstore-velero-cluster-backups
+                  key: AccessKey
+            - name: VELERO_CLUSTER_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-object-user-homelab-objectstore-velero-cluster-backups
+                  key: SecretKey
+            - name: VELERO_PV_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-object-user-homelab-objectstore-velero-pv-backups
+                  key: AccessKey
+            - name: VELERO_PV_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-object-user-homelab-objectstore-velero-pv-backups
+                  key: SecretKey
+            - name: N8N_PROD_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-object-user-homelab-objectstore-n8n-prod-backups
+                  key: AccessKey
+            - name: N8N_PROD_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-object-user-homelab-objectstore-n8n-prod-backups
+                  key: SecretKey
+            - name: INFISICAL_PROD_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-object-user-homelab-objectstore-infisical-prod-backups
+                  key: AccessKey
+            - name: INFISICAL_PROD_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-object-user-homelab-objectstore-infisical-prod-backups
+                  key: SecretKey
+          volumeMounts:
+            - name: ceph-config
+              mountPath: /etc/ceph
+            - name: mon-endpoint-volume
+              mountPath: /etc/rook
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+      volumes:
+        - name: ceph-config
+          configMap:
+            name: rook-ceph-mon-endpoints
+        - name: mon-endpoint-volume
+          configMap:
+            name: rook-ceph-mon-endpoints
