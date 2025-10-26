@@ -1,0 +1,62 @@
+---
+# 🔐 Create infisical-prod-backups S3 Bucket
+# ===========================================
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: create-infisical-prod-backups-bucket
+  namespace: rook-ceph
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: create-bucket
+        bucket: infisical-prod-backups
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: rook-ceph-system
+      containers:
+        - name: create-bucket
+          image: amazon/aws-cli:2.15.17
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-object-user-homelab-objectstore-infisical-prod-backups
+                  key: AccessKey
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-object-user-homelab-objectstore-infisical-prod-backups
+                  key: SecretKey
+            - name: AWS_ENDPOINT
+              value: "http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80"
+            - name: BUCKET_NAME
+              value: "infisical-prod-backups"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              echo "Creating S3 bucket: ${BUCKET_NAME}"
+
+              # Create bucket
+              aws s3 mb s3://${BUCKET_NAME} \
+                --endpoint-url ${AWS_ENDPOINT} \
+                --region us-east-1
+
+              # Verify bucket creation
+              aws s3 ls s3://${BUCKET_NAME} \
+                --endpoint-url ${AWS_ENDPOINT} \
+                --region us-east-1
+
+              echo "Bucket ${BUCKET_NAME} created successfully!"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
