@@ -12,6 +12,7 @@ resources:
   # to avoid namespace override conflicts (they need rook-ceph namespace)
   - sealed-secret-s3.yaml    # Ceph RGW S3 credentials
   - velero-restic-credentials-sealedsecret.yaml  # Restic encryption key (client-side encryption)
+  - backup-schedules.yaml    # Automated backup schedules (Tier-0: 6h, Tier-1: daily, Tier-2: weekly)
 
 patches:
   - path: patches/upgrade-job-initcontainer-resources.yaml
@@ -46,9 +47,18 @@ helmCharts:
         features: "EnableCSI"
         defaultBackupTTL: 168h
         backupStorageLocation:
-          - name: default
+          - name: cluster-backups
             provider: aws
-            bucket: velero-backups
+            default: true
+            bucket: velero-cluster-backups
+            config:
+              region: us-east-1
+              s3ForcePathStyle: "true"
+              s3Url: http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
+              insecureSkipTLSVerify: "true"
+          - name: pv-backups
+            provider: aws
+            bucket: velero-pv-backups
             config:
               region: us-east-1
               s3ForcePathStyle: "true"

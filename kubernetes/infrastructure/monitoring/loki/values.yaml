@@ -5,7 +5,16 @@ loki:
   commonConfig:
     replication_factor: 1
   storage:
-    type: "filesystem"
+    type: "s3"  # ✅ Enterprise: Object Storage (Grafana Labs recommended)
+    bucketNames:
+      chunks: loki-logs
+      ruler: loki-logs
+      admin: loki-logs
+    s3:
+      endpoint: http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
+      region: us-east-1
+      s3ForcePathStyle: true
+      insecure: true  # HTTP endpoint (not HTTPS)
 
   # Retention configuration (prevents disk full)
   limits_config:
@@ -23,7 +32,7 @@ loki:
     retention_enabled: true
     retention_delete_delay: 2h
     retention_delete_worker_count: 150
-    delete_request_store: filesystem  # Required for retention in Loki v3+
+    delete_request_store: s3  # ✅ Enterprise: S3 backend for deletions
 
   schemaConfig:
     configs:
@@ -32,15 +41,13 @@ loki:
         index:
           prefix: loki_index_
           period: 24h
-        object_store: filesystem
+        object_store: s3  # ✅ Enterprise: S3 Object Storage
         schema: v13
 
 singleBinary:
   replicas: 1
   persistence:
-    enabled: true
-    storageClass: "rook-ceph-block-enterprise"
-    size: 50Gi  # Increased from 10Gi to support 30d retention
+    enabled: false  # ✅ Enterprise: Using S3, no local PVC needed
   resources:
     limits:
       cpu: 500m
@@ -48,6 +55,18 @@ singleBinary:
     requests:
       cpu: 100m
       memory: 256Mi
+  # S3 credentials from secret
+  extraEnv:
+    - name: AWS_ACCESS_KEY_ID
+      valueFrom:
+        secretKeyRef:
+          name: loki-s3-credentials
+          key: access_key_id
+    - name: AWS_SECRET_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: loki-s3-credentials
+          key: secret_access_key
 # nodeSelector:
 #   kubernetes.io/hostname: work-02
 
