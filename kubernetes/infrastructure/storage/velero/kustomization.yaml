@@ -47,6 +47,7 @@ helmCharts:
       configuration:
         features: "EnableCSI"
         defaultBackupTTL: 168h
+        uploaderType: restic  # Use Restic instead of Kopia (workaround for /udmrepo bug #8067)
         backupStorageLocation:
           - name: cluster-backups
             provider: aws
@@ -96,18 +97,10 @@ helmCharts:
             cpu: 500m
             memory: 512Mi
         podSecurityContext:
-          runAsUser: 0  # Must run as root for host path access and Kopia /udmrepo
+          runAsUser: 0  # Must run as root for host path access
         containerSecurityContext:
           privileged: false  # Not fully privileged
           allowPrivilegeEscalation: false
-        extraVolumes:
-          - name: udmrepo
-            hostPath:  # Host directory for Kopia repository cache (persists across pod restarts)
-              path: /var/lib/kubelet/velero/udmrepo
-              type: DirectoryOrCreate
-        extraVolumeMounts:
-          - name: udmrepo
-            mountPath: /udmrepo
       # 🔐 ENTERPRISE ENCRYPTION - Client-Side with Restic
       # Backups are encrypted BEFORE upload to S3!
       defaultVolumesToFsBackup: true  # Force Restic for all PVs
