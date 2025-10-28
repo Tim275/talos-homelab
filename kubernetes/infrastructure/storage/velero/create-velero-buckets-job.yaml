@@ -1,0 +1,56 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: create-ceph-s3-buckets
+  namespace: velero
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: aws-cli
+          image: amazon/aws-cli:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              value: "P93KPZRN166HLMX0CLJ8"
+            - name: AWS_SECRET_ACCESS_KEY
+              value: "BXoOZwWTIS3AthNB2cFW1IORxrqRmZRjkaSU5QF8"
+            - name: AWS_DEFAULT_REGION
+              value: "us-east-1"
+            - name: AWS_ENDPOINT_URL
+              value: "http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              echo "=== Creating velero-cluster-backups bucket ==="
+              aws s3 mb s3://velero-cluster-backups || echo "Bucket exists"
+
+              echo "=== Creating velero-pv-backups bucket ==="
+              aws s3 mb s3://velero-pv-backups || echo "Bucket exists"
+
+              echo "=== Creating n8n-prod-pg-backups bucket ==="
+              aws s3 mb s3://n8n-prod-pg-backups || echo "Bucket exists"
+
+              echo "=== Creating loki-logs bucket (Enterprise) ==="
+              aws s3 mb s3://loki-logs || echo "Bucket exists"
+
+              echo "=== Listing buckets ==="
+              aws s3 ls
+
+              echo "✅ All S3 buckets created successfully!"
