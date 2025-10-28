@@ -45,9 +45,9 @@ helmCharts:
           cpu: 100m
           memory: 256Mi
       configuration:
-        features: "EnableCSI"
+        features: ""  # CSI DISABLED - CSI plugin ignores uploaderType and always creates Kopia repos!
         defaultBackupTTL: 168h
-        uploaderType: restic  # Use Restic instead of Kopia (workaround for /udmrepo bug #8067)
+        uploaderType: restic  # Use Restic File System Backup (direct mount, no CSI)
         backupStorageLocation:
           - name: cluster-backups
             provider: aws
@@ -66,11 +66,7 @@ helmCharts:
               s3ForcePathStyle: "true"
               s3Url: http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
               insecureSkipTLSVerify: "true"
-        volumeSnapshotLocation:
-          - name: default
-            provider: csi
-            config: {}  # Empty config - CSI driver handles snapshot creation
-      snapshotsEnabled: true
+      snapshotsEnabled: false  # Disable CSI snapshots - use Restic FS backup only
       resources:
         limits:
           cpu: 1000m
@@ -103,8 +99,7 @@ helmCharts:
           allowPrivilegeEscalation: false
       # 🔐 ENTERPRISE ENCRYPTION - Client-Side with Restic
       # Backups are encrypted BEFORE upload to S3!
-      defaultVolumesToFsBackup: true  # Force Restic for all PVs
-      defaultSnapshotMoveData: true   # Move snapshots via Restic (encrypted)
+      defaultVolumesToFsBackup: true  # Force Restic FS backup for all PVs (no CSI snapshots)
       podSecurityContext:
         runAsNonRoot: true
         runAsUser: 1000
