@@ -16,6 +16,16 @@ loki:
       s3ForcePathStyle: true
       insecure: true  # HTTP endpoint (not HTTPS)
 
+  # ✅ Explicit common storage config (required for Helm chart v6.x)
+  common:
+    storage:
+      s3:
+        endpoint: http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
+        region: us-east-1
+        bucketnames: loki-logs
+        s3forcepathstyle: true
+        insecure: true
+
   # Retention configuration (prevents disk full)
   limits_config:
     retention_period: 30d  # 30 days retention (homelab standard)
@@ -47,7 +57,9 @@ loki:
 singleBinary:
   replicas: 1
   persistence:
-    enabled: false  # ✅ Enterprise: Using S3, no local PVC needed
+    enabled: true  # ✅ Hybrid: Local PVC for WAL + S3 for chunks (Enterprise pattern)
+    size: 10Gi     # Only for WAL - chunks go to S3
+    storageClass: rook-ceph-block-enterprise
   resources:
     limits:
       cpu: 500m
