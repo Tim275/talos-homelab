@@ -1,0 +1,68 @@
+---
+# Initialize Velero bucket prefixes
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: initialize-velero-prefixes
+  namespace: rook-ceph
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init-prefixes
+          image: amazon/aws-cli:2.15.17
+          env:
+            - name: ACCESS_KEY_CLUSTER
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-object-user-homelab-objectstore-velero-cluster-backups
+                  key: AccessKey
+            - name: SECRET_KEY_CLUSTER
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-object-user-homelab-objectstore-velero-cluster-backups
+                  key: SecretKey
+            - name: ACCESS_KEY_PV
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-object-user-homelab-objectstore-velero-pv-backups
+                  key: AccessKey
+            - name: SECRET_KEY_PV
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-object-user-homelab-objectstore-velero-pv-backups
+                  key: SecretKey
+            - name: ENDPOINT
+              value: "http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              echo "=== Initializing bucket prefixes ==="
+
+              # Initialize cluster-backups prefix
+              echo "1/2 velero-cluster-backups/cluster/"
+              export AWS_ACCESS_KEY_ID=$ACCESS_KEY_CLUSTER
+              export AWS_SECRET_ACCESS_KEY=$SECRET_KEY_CLUSTER
+              echo "" | aws s3 cp - s3://velero-cluster-backups/cluster/.velero \
+                --endpoint-url $ENDPOINT --region us-east-1
+
+              # Initialize pv-backups prefix
+              echo "2/2 velero-pv-backups/volumes/"
+              export AWS_ACCESS_KEY_ID=$ACCESS_KEY_PV
+              export AWS_SECRET_ACCESS_KEY=$SECRET_KEY_PV
+              echo "" | aws s3 cp - s3://velero-pv-backups/volumes/.velero \
+                --endpoint-url $ENDPOINT --region us-east-1
+
+              echo "Done! Prefixes initialized."
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
