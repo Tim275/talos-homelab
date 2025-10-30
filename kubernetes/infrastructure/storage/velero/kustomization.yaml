@@ -12,6 +12,7 @@ resources:
   # to avoid namespace override conflicts (they need rook-ceph namespace)
   - sealed-secret-s3.yaml    # Ceph RGW S3 credentials
   - velero-restic-credentials-sealedsecret.yaml  # Restic encryption key (client-side encryption)
+  # - sealed-secret-aws.yaml   # OPTIONAL: AWS S3 credentials for offsite DR (uncomment to activate)
   # Backup schedules moved to separate ArgoCD Application (Enterprise best practice)
   # See: kubernetes/infrastructure/storage/velero-schedules/
 
@@ -66,6 +67,24 @@ helmCharts:
               s3ForcePathStyle: "true"
               s3Url: http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
               insecureSkipTLSVerify: "true"
+          # OPTIONAL: AWS S3 Offsite Backup (Disaster Recovery)
+          # ACTIVATION STEPS:
+          # 1. Create AWS S3 bucket: timour-homelab-velero-dr
+          # 2. Create IAM user with S3 full access policy
+          # 3. Create sealed-secret-aws.yaml with AWS credentials (see template below)
+          # 4. Uncomment sealed-secret-aws.yaml in resources section
+          # 5. Uncomment this BackupStorageLocation
+          # 6. Uncomment AWS schedules in velero-schedules/backup-schedules-aws.yaml
+          # 7. kubectl apply -f infrastructure/storage/velero/
+          # Estimated cost: EUR 0.50/month for ~50GB (Glacier Instant Retrieval)
+          # - name: aws-s3-offsite
+          #   provider: aws
+          #   bucket: timour-homelab-velero-dr
+          #   credential:
+          #     name: velero-aws-credentials
+          #     key: cloud
+          #   config:
+          #     region: eu-central-1  # Frankfurt (closest to Germany)
       snapshotsEnabled: false  # Disable CSI snapshots - use Restic FS backup only
       resources:
         limits:
