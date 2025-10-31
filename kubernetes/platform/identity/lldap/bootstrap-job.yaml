@@ -45,6 +45,38 @@ spec:
             limits:
               cpu: 50m
               memory: 32Mi
+        # 🔐 Production Security: Inject random passwords for users without password field
+        - name: inject-passwords
+          image: alpine:3.21
+          command:
+            - /bin/sh
+            - -c
+            - |
+              apk add --no-cache openssl
+              /scripts/inject-passwords.sh
+          securityContext:
+            runAsNonRoot: false  # Need root to install openssl via apk
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false  # Need to write to emptyDir + install packages
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 50m
+              memory: 64Mi
+          volumeMounts:
+            - name: password-injector-script
+              mountPath: /scripts
+              readOnly: true
+            - name: users-original
+              mountPath: /bootstrap-input/user-configs
+              readOnly: true
+            - name: users-processed
+              mountPath: /bootstrap-output/user-configs
       containers:
         - name: lldap-bootstrap
           image: ghcr.io/lldap/lldap:2025-07-10-alpine-rootless  # v0.6+ for custom attributes
@@ -75,7 +107,7 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
-            - name: users
+            - name: users-processed  # Use processed users.json with injected passwords
               mountPath: /bootstrap/user-configs
               readOnly: true
             - name: groups
@@ -87,9 +119,16 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
-        - name: users
+        # 🔐 Production Security: Password injection volumes
+        - name: password-injector-script
+          configMap:
+            name: bootstrap-password-injector
+            defaultMode: 0555  # rx for all (read + execute)
+        - name: users-original  # Original users.json WITHOUT passwords
           configMap:
             name: bootstrap-users
+        - name: users-processed  # Processed users.json WITH random passwords
+          emptyDir: {}
         - name: groups
           configMap:
             name: bootstrap-groups
