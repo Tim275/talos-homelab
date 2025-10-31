@@ -1,0 +1,409 @@
+# ============================================================
+# CILIUM NETWORK POLICY - N8N PRODUCTION
+# ============================================================
+# Zero Trust Network Security for N8N Enterprise Queue Mode
+#
+# ARCHITECTURE:
+# - n8n-main (1 replica): UI/API server (webhooks disabled)
+# - n8n-webhook (2 replicas): Dedicated webhook processors (HA)
+# - n8n-worker (1 replica): Workflow execution workers
+#
+# SECURITY MODEL:
+# - Default-deny all ingress and egress
+# - Explicit allow rules based on Hubble service map analysis
+# - Layer 7 HTTP filtering for webhook ingress
+# - Layer 3/4 TCP rules for database and Redis (Cilium limitation)
+#
+# DATA SOURCES:
+# - Hubble UI service map showing actual traffic flows
+# - N8N deployment manifests (3 separate deployments)
+# - HTTPRoute configuration (Envoy Gateway ingress)
+# - ConfigMap (PostgreSQL + Redis endpoints)
+# ============================================================
+
+---
+# ============================================================
+# POLICY 1: N8N Main Process (UI/API)
+# ============================================================
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: n8n-main
+  namespace: n8n-prod
+  labels:
+    app: n8n
+    component: main
+    security.category: network-policies
+    managed-by: argocd
+spec:
+  description: "Zero Trust policy for N8N main process (UI/API)"
+  endpointSelector:
+    matchLabels:
+      app: n8n
+      component: main
+
+  # ==========================================
+  # INGRESS RULES
+  # ==========================================
+  ingress:
+    # Allow ingress from Envoy Gateway (external traffic)
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: gateway
+            app.kubernetes.io/name: envoy-gateway
+      toPorts:
+        - ports:
+            - port: "3008"
+              protocol: TCP
+          rules:
+            http:
+              - method: "GET"
+                path: "/.*"
+              - method: "POST"
+                path: "/.*"
+              - method: "PUT"
+                path: "/.*"
+              - method: "PATCH"
+                path: "/.*"
+              - method: "DELETE"
+                path: "/.*"
+
+    # Allow Prometheus metrics scraping (if enabled)
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: monitoring
+            app.kubernetes.io/name: prometheus
+      toPorts:
+        - ports:
+            - port: "3008"
+              protocol: TCP
+          rules:
+            http:
+              - method: "GET"
+                path: "/metrics"
+
+    # Allow health checks from Kubernetes
+    - fromEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "3008"
+              protocol: TCP
+          rules:
+            http:
+              - method: "GET"
+                path: "/healthz"
+
+  # ==========================================
+  # EGRESS RULES
+  # ==========================================
+  egress:
+    # Allow egress to PostgreSQL (CNPG cluster)
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: n8n-prod
+            cnpg.io/cluster: n8n-postgres
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+
+    # Allow egress to Redis (queue backend)
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: n8n-prod
+            app.kubernetes.io/name: redis
+      toPorts:
+        - ports:
+            - port: "6379"
+              protocol: TCP
+
+    # Allow DNS resolution (kube-dns / CoreDNS)
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+          rules:
+            dns:
+              - matchPattern: "*"
+
+    # Allow egress to kube-apiserver (for service discovery)
+    - toEntities:
+        - kube-apiserver
+
+    # Allow egress to external APIs (N8N workflows need to call external services)
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "80"
+              protocol: TCP
+
+---
+# ============================================================
+# POLICY 2: N8N Webhook Processors
+# ============================================================
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: n8n-webhook
+  namespace: n8n-prod
+  labels:
+    app: n8n
+    component: webhook
+    security.category: network-policies
+    managed-by: argocd
+spec:
+  description: "Zero Trust policy for N8N webhook processors (HA mode)"
+  endpointSelector:
+    matchLabels:
+      app: n8n
+      component: webhook
+
+  # ==========================================
+  # INGRESS RULES
+  # ==========================================
+  ingress:
+    # Allow webhook ingress from Envoy Gateway
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: gateway
+            app.kubernetes.io/name: envoy-gateway
+      toPorts:
+        - ports:
+            - port: "3008"
+              protocol: TCP
+          rules:
+            http:
+              - method: "POST"
+                path: "/webhook.*"
+              - method: "GET"
+                path: "/webhook.*"
+
+    # Allow Prometheus metrics scraping
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: monitoring
+            app.kubernetes.io/name: prometheus
+      toPorts:
+        - ports:
+            - port: "3008"
+              protocol: TCP
+          rules:
+            http:
+              - method: "GET"
+                path: "/metrics"
+
+    # Allow health checks from Kubernetes
+    - fromEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "3008"
+              protocol: TCP
+          rules:
+            http:
+              - method: "GET"
+                path: "/healthz"
+
+  # ==========================================
+  # EGRESS RULES
+  # ==========================================
+  egress:
+    # Allow egress to PostgreSQL
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: n8n-prod
+            cnpg.io/cluster: n8n-postgres
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+
+    # Allow egress to Redis (queue backend)
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: n8n-prod
+            app.kubernetes.io/name: redis
+      toPorts:
+        - ports:
+            - port: "6379"
+              protocol: TCP
+
+    # Allow DNS resolution
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+          rules:
+            dns:
+              - matchPattern: "*"
+
+    # Allow egress to kube-apiserver
+    - toEntities:
+        - kube-apiserver
+
+    # Allow egress to external APIs
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "80"
+              protocol: TCP
+
+---
+# ============================================================
+# POLICY 3: N8N Workers (Execution Engines)
+# ============================================================
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: n8n-worker
+  namespace: n8n-prod
+  labels:
+    app: n8n
+    component: worker
+    security.category: network-policies
+    managed-by: argocd
+spec:
+  description: "Zero Trust policy for N8N workers (queue-based execution)"
+  endpointSelector:
+    matchLabels:
+      app: n8n
+      component: worker
+
+  # ==========================================
+  # INGRESS RULES
+  # ==========================================
+  ingress:
+    # Allow health checks from Kubernetes
+    - fromEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "5678"
+              protocol: TCP
+
+    # Allow Prometheus metrics scraping (if exposed on worker)
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: monitoring
+            app.kubernetes.io/name: prometheus
+      toPorts:
+        - ports:
+            - port: "5678"
+              protocol: TCP
+
+  # ==========================================
+  # EGRESS RULES
+  # ==========================================
+  egress:
+    # Allow egress to PostgreSQL (read workflow definitions)
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: n8n-prod
+            cnpg.io/cluster: n8n-postgres
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+
+    # Allow egress to Redis (pull jobs from queue)
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: n8n-prod
+            app.kubernetes.io/name: redis
+      toPorts:
+        - ports:
+            - port: "6379"
+              protocol: TCP
+
+    # Allow DNS resolution
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+          rules:
+            dns:
+              - matchPattern: "*"
+
+    # Allow egress to kube-apiserver
+    - toEntities:
+        - kube-apiserver
+
+    # Allow egress to external APIs (workers execute workflow API calls)
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "80"
+              protocol: TCP
+
+---
+# ============================================================
+# POLICY 4: Inter-Pod Communication (N8N ↔ N8N)
+# ============================================================
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: n8n-inter-pod
+  namespace: n8n-prod
+  labels:
+    app: n8n
+    security.category: network-policies
+    managed-by: argocd
+spec:
+  description: "Allow N8N pods to communicate with each other (metrics, health checks)"
+  endpointSelector:
+    matchLabels:
+      app: n8n
+
+  # ==========================================
+  # INGRESS RULES
+  # ==========================================
+  ingress:
+    # Allow N8N pods to talk to each other
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: n8n-prod
+            app: n8n
+      toPorts:
+        - ports:
+            - port: "3008"
+              protocol: TCP
+            - port: "5678"
+              protocol: TCP
+
+  # ==========================================
+  # EGRESS RULES
+  # ==========================================
+  egress:
+    # Allow N8N pods to reach other N8N pods
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: n8n-prod
+            app: n8n
+      toPorts:
+        - ports:
+            - port: "3008"
+              protocol: TCP
+            - port: "5678"
+              protocol: TCP
