@@ -1,0 +1,146 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-mfa-setup
+  namespace: keycloak
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: keycloak-mfa-setup
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: setup
+          image: quay.io/keycloak/keycloak:26.0.7
+          env:
+            - name: KEYCLOAK_ADMIN
+              value: admin
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: password
+            - name: KEYCLOAK_URL
+              value: "http://keycloak:8080"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              echo "=== Logging in to Keycloak ==="
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --server "$KEYCLOAK_URL" \
+                --realm master \
+                --user "$KEYCLOAK_ADMIN" \
+                --password "$KEYCLOAK_ADMIN_PASSWORD"
+
+              echo "=== Step 1: Copy Browser Flow for MFA ==="
+              # Check if flow already exists
+              if /opt/keycloak/bin/kcadm.sh get authentication/flows -r kubernetes | grep -q "Browser with MFA"; then
+                echo "✅ Browser with MFA flow already exists, skipping creation"
+              else
+                # Get Browser flow ID
+                BROWSER_FLOW_ID=$(/opt/keycloak/bin/kcadm.sh get authentication/flows -r kubernetes \
+                  | grep -B 5 '"alias" : "browser"' | grep '"id"' | cut -d'"' -f4 | head -1)
+
+                # Copy Browser flow
+                /opt/keycloak/bin/kcadm.sh create authentication/flows/browser/copy -r kubernetes \
+                  -s newName="Browser with MFA"
+
+                echo "✅ Created 'Browser with MFA' flow"
+              fi
+
+              echo "=== Step 2: Add OTP Form to Browser with MFA Flow ==="
+              # Get flow ID
+              FLOW_ID=$(/opt/keycloak/bin/kcadm.sh get authentication/flows -r kubernetes \
+                | grep -B 5 '"alias" : "Browser with MFA"' | grep '"id"' | cut -d'"' -f4 | head -1)
+
+              # Check if OTP execution already exists
+              if /opt/keycloak/bin/kcadm.sh get "authentication/flows/$FLOW_ID/executions" -r kubernetes \
+                | grep -q "auth-otp-form"; then
+                echo "✅ OTP execution already configured"
+              else
+                # Add OTP execution to "Browser with MFA Forms" subflow
+                # First, get the Forms subflow ID
+                FORMS_SUBFLOW_ID=$(/opt/keycloak/bin/kcadm.sh get "authentication/flows/$FLOW_ID/executions" -r kubernetes \
+                  | grep -B 10 '"displayName" : "Browser with MFA Forms"' | grep '"id"' | cut -d'"' -f4 | head -1)
+
+                # Add OTP Form execution
+                /opt/keycloak/bin/kcadm.sh create "authentication/flows/$FORMS_SUBFLOW_ID/executions/execution" -r kubernetes \
+                  -s provider=auth-otp-form
+
+                echo "✅ Added OTP Form to flow"
+
+                # Set OTP as REQUIRED
+                OTP_EXECUTION_ID=$(/opt/keycloak/bin/kcadm.sh get "authentication/flows/$FLOW_ID/executions" -r kubernetes \
+                  | grep -B 5 '"providerId" : "auth-otp-form"' | grep '"id"' | cut -d'"' -f4 | head -1)
+
+                /opt/keycloak/bin/kcadm.sh update "authentication/flows/$FLOW_ID/executions" -r kubernetes \
+                  -s id="$OTP_EXECUTION_ID" \
+                  -s requirement=REQUIRED
+
+                echo "✅ Set OTP as REQUIRED"
+              fi
+
+              echo "=== Step 3: Set Browser with MFA as Default Browser Flow ==="
+              /opt/keycloak/bin/kcadm.sh update realms/kubernetes -r kubernetes \
+                -s 'browserFlow="Browser with MFA"'
+
+              echo "✅ Browser with MFA is now the default flow"
+
+              echo "=== Step 4: Enable OTP Required Action ==="
+              # Get OTP required action
+              OTP_ACTION=$(/opt/keycloak/bin/kcadm.sh get authentication/required-actions -r kubernetes \
+                | grep -B 10 '"alias" : "CONFIGURE_TOTP"' | grep '"alias" : "CONFIGURE_TOTP"' -A 10)
+
+              # Enable and set as default
+              /opt/keycloak/bin/kcadm.sh update authentication/required-actions/CONFIGURE_TOTP -r kubernetes \
+                -s enabled=true \
+                -s defaultAction=true
+
+              echo "✅ OTP Required Action enabled and set as default"
+
+              echo "=== Step 5: Configure OTP Policy (Security Settings) ==="
+              /opt/keycloak/bin/kcadm.sh update realms/kubernetes -r kubernetes \
+                -s 'otpPolicyType=totp' \
+                -s 'otpPolicyAlgorithm=HmacSHA1' \
+                -s 'otpPolicyDigits=6' \
+                -s 'otpPolicyPeriod=30' \
+                -s 'otpPolicyInitialCounter=0' \
+                -s 'otpPolicyLookAheadWindow=1'
+
+              echo "✅ OTP Policy configured (6 digits, 30s period)"
+
+              echo "=== Step 6: Configure Session Timeouts (Security Best Practice) ==="
+              /opt/keycloak/bin/kcadm.sh update realms/kubernetes -r kubernetes \
+                -s 'ssoSessionIdleTimeout=1800' \
+                -s 'ssoSessionMaxLifespan=36000' \
+                -s 'accessTokenLifespan=300' \
+                -s 'accessTokenLifespanForImplicitFlow=900'
+
+              echo "✅ Session timeouts configured:"
+              echo "  - SSO Session Idle: 30 minutes"
+              echo "  - SSO Session Max: 10 hours"
+              echo "  - Access Token: 5 minutes"
+
+              echo ""
+              echo "=========================================="
+              echo "🎉 MFA Setup Complete!"
+              echo "=========================================="
+              echo "✅ OTP (Google Authenticator) enabled"
+              echo "✅ Required for all users on next login"
+              echo "✅ Session timeouts configured"
+              echo ""
+              echo "Next login flow:"
+              echo "1. Username + Password"
+              echo "2. Scan QR code with Google Authenticator"
+              echo "3. Enter 6-digit code"
+              echo "4. Access granted! 🔐"
+              echo "=========================================="
