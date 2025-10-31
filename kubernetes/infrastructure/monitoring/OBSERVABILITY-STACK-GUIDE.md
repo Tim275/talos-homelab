@@ -1,88 +1,56 @@
-# Observability Master Guide - Talos Homelab Production Setup
+# Observability Stack Guide - The Three Pillars
 
-## 📖 Table of Contents
-
-1. [Executive Summary](#executive-summary)
-2. [Was ist Grafana?](#was-ist-grafana)
-3. [Grafana Operator vs Helm Chart](#grafana-operator-vs-helm-chart)
-4. [Was ist Prometheus?](#was-ist-prometheus)
-5. [Prometheus Operator Magie](#prometheus-operator-magie)
-6. [Was ist Loki?](#was-ist-loki)
-7. [Was ist Tempo?](#was-ist-tempo)
-8. [Was ist Thanos?](#was-ist-thanos)
-9. [Unser Production Setup](#unser-production-setup)
-10. [Complete Architecture](#complete-architecture)
-11. [ServiceMonitor → Dashboard (No Data Fix!)](#servicemonitor--dashboard-no-data-fix)
-12. [Grafana Dashboards Deep Dive](#grafana-dashboards-deep-dive)
-13. [Prometheus Metrics Pipeline](#prometheus-metrics-pipeline)
-14. [Loki Log Pipeline](#loki-log-pipeline)
-15. [Tempo Trace Pipeline](#tempo-trace-pipeline)
-16. [Thanos Long-term Storage](#thanos-long-term-storage)
-17. [Best Practices](#best-practices)
-18. [Daily Operations](#daily-operations)
-19. [Troubleshooting](#troubleshooting)
-20. [Performance Optimization](#performance-optimization)
-21. [Backup & Disaster Recovery](#backup--disaster-recovery)
-22. [Quick Reference](#quick-reference)
+**Cross-reference:** For Grafana setup and dashboard management, see [GRAFANA-SETUP-GUIDE.md](./GRAFANA-SETUP-GUIDE.md)
 
 ---
 
-## Executive Summary
+## 📖 Table of Contents
 
-### TL;DR - Was haben wir gebaut?
+1. [Executive Summary - The Three Pillars](#executive-summary---the-three-pillars)
+2. [Was ist Prometheus?](#was-ist-prometheus)
+3. [Prometheus Operator Magie](#prometheus-operator-magie)
+4. [Was ist Loki?](#was-ist-loki)
+5. [Was ist Tempo?](#was-ist-tempo)
+6. [OpenTelemetry - Das Universal-SDK](#opentelemetry---das-universal-sdk)
+7. [Was ist Thanos?](#was-ist-thanos)
+8. [Complete Architecture](#complete-architecture)
+9. [Tempo Trace Pipeline](#tempo-trace-pipeline)
+10. [Production Setup](#production-setup)
+11. [Quick Reference - All Tools](#quick-reference---all-tools)
+
+---
+
+## Executive Summary - The Three Pillars
+
+### TL;DR - Was sind die drei Säulen?
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ ENTERPRISE OBSERVABILITY STACK (100% IaC)                       │
-├─────────────────────────────────────────────────────────────────┤
-│ ✅ Grafana Operator - 68 Enterprise Dashboards (CRDs!)         │
-│ ✅ Prometheus Operator - Auto-Discovery via ServiceMonitors    │
-│ ✅ Loki - Log Aggregation (LogQL queries)                      │
-│ ✅ Tempo - Distributed Tracing (OTLP + Jaeger)                 │
-│ ✅ Jaeger - Trace Frontend (Tempo Backend)                     │
-│ ✅ Thanos - Unlimited Metrics Storage (Ceph S3)                │
-│ ✅ Alertmanager + Robusta AI - Dual Alerting                   │
-│ ✅ 100% GitOps (ArgoCD synced)                                 │
+│ THE THREE PILLARS OF OBSERVABILITY                              │
 └─────────────────────────────────────────────────────────────────┘
+
+📊 METRICS (Prometheus)
+├─ Was: CPU 80%, Requests/sec 100, Latency 500ms
+├─ Frage: "WAS passiert?"
+└─ Beispiel: CPU ist hoch! Aber warum?
+
+📝 LOGS (Loki)
+├─ Was: "Database connection timeout after 30s"
+├─ Frage: "WELCHER Error?"
+└─ Beispiel: Timeout Error! Aber wo im Request?
+
+🔍 TRACES (Tempo)
+├─ Was: Request Flow von Frontend → Backend → DB
+├─ Frage: "WO ist das Problem?"
+└─ Beispiel: DB Query dauert 8.5s! Problem gefunden! 🎉
 ```
 
-### 🎯 Was macht das Stack so gut?
-
-**IKEA-Analogie:** Du kaufst ein Regal (Grafana Operator), alle Schrauben sind dabei (CRDs), und es baut sich selbst zusammen (GitOps)! 🛠️
-
+**Zusammen:**
 ```
-┌────────────────────────────────────────────────┐
-│ Alte Methode (Helm Chart):                    │
-│ 1. helm install grafana                       │
-│ 2. Dashboard manuell via UI importieren       │
-│ 3. Bei Cluster-Neustart: Weg! 💥              │
-│ 4. Backup? Manuell! 😰                        │
-└────────────────────────────────────────────────┘
-
-┌────────────────────────────────────────────────┐
-│ Neue Methode (Grafana Operator + CRDs):       │
-│ 1. kubectl apply -f dashboard.yaml            │
-│ 2. Fertig! ✅                                 │
-│ 3. Bei Cluster-Neustart: Auto-restored! 🎉    │
-│ 4. Backup? Git commit! 🚀                     │
-└────────────────────────────────────────────────┘
+1. Metrics sagen: "Request Latency ist hoch!" (500ms avg)
+2. Logs sagen: "Database timeout errors!"
+3. Traces sagen: "Diese spezifische DB Query braucht 8.5s" → FIX IT!
 ```
-
-### Key Metrics
-
-| Metric | Value |
-|--------|-------|
-| **Grafana Dashboards** | 68 (als CRDs) |
-| **Prometheus Targets** | 150+ |
-| **Metrics Collected** | 500,000+ time-series |
-| **Loki Log Streams** | 50+ |
-| **Tempo Traces** | Production-ready (OTLP + Jaeger) |
-| **Tempo Retention** | 30 days (Ceph S3) |
-| **Prometheus Retention** | 30 days (local) |
-| **Thanos Retention** | Unlimited (Ceph S3) |
-| **Alert Rules** | 100+ (Tier 0-5) |
-| **Query Performance** | <100ms avg |
-| **Total Storage** | 500 GB (Prometheus + Loki + Tempo) |
 
 ### Tech Stack
 
@@ -109,299 +77,16 @@ App Pods (N8N, Kafka, PostgreSQL, etc.)
                                                Browser (User)
 ```
 
----
+### Key Metrics
 
-## Was ist Grafana?
-
-### Definition (IKEA-Style)
-
-**Grafana** = Dein **Fernseher** für Kubernetes 📺
-
-- Zeigt **Metriken** (Prometheus) = Live TV 📊
-- Zeigt **Logs** (Loki) = Untertitel 📝
-- Zeigt **Traces** (Jaeger) = Behind-the-Scenes 🎬
-- Macht **Alerts** (Alertmanager) = Notfall-SMS 🚨
-
-### Use Cases
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ WAS KANN GRAFANA?                                               │
-├─────────────────────────────────────────────────────────────────┤
-│ 1. Dashboards  → Charts, Graphs, Tables                        │
-│ 2. Alerts      → Slack, Email, PagerDuty                       │
-│ 3. Datasources → Prometheus, Loki, Elasticsearch               │
-│ 4. Folders     → Dashboard Organization                        │
-│ 5. Teams       → Multi-Tenancy (wenn du viele User hast)       │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Core Concepts
-
-#### 1. **Dashboard** - Deine Monitoring-Seite
-
-Ein Dashboard = Eine Webseite mit Charts
-
-**Beispiel:**
-```
-Dashboard: "Kubernetes Cluster Overview"
-├─ Panel 1: CPU Usage (Graph)
-├─ Panel 2: Memory Usage (Graph)
-├─ Panel 3: Pod Count (Stat)
-└─ Panel 4: Disk Usage (Gauge)
-```
-
-#### 2. **Datasource** - Woher kommen die Daten?
-
-Datasource = Datenquelle (Prometheus, Loki, etc.)
-
-**Unsere Datasources:**
-```
-├─ Prometheus (metrics)        → http://prometheus:9090
-├─ Loki (logs)                 → http://loki:3100
-├─ Alertmanager (alerts)       → http://alertmanager:9093
-└─ Jaeger (traces)             → http://jaeger:16686
-```
-
-#### 3. **Panel** - Ein einzelner Chart
-
-Panel = Ein Graph/Table/Stat auf dem Dashboard
-
-**Panel Types:**
-```
-├─ Graph      → Line chart (CPU over time)
-├─ Stat       → Single number (Pod count: 42)
-├─ Table      → Tabelle (Pod list)
-├─ Gauge      → Speedometer (Disk 75%)
-├─ Heatmap    → Latency distribution
-└─ Logs       → Log viewer (Loki)
-```
-
-#### 4. **Folder** - Dashboard Organization
-
-Folder = Ordner (wie in Windows Explorer)
-
-**Unsere Folder:**
-```
-Grafana UI
-├─ ArgoCD
-├─ Ceph Storage
-├─ Cert-Manager
-├─ Cilium
-├─ Elasticsearch
-├─ GPU & ML
-├─ Istio
-├─ Kafka
-├─ Kubernetes
-├─ Loki
-├─ OpenTelemetry
-├─ PostgreSQL
-├─ Prometheus
-├─ Redis
-├─ Security
-├─ SLO & Reliability
-├─ Tier 0 Executive
-└─ Velero
-```
-
----
-
-## Grafana Operator vs Helm Chart
-
-### ⚔️ Der große Vergleich
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ HELM CHART (Old Way)                                            │
-└─────────────────────────────────────────────────────────────────┘
-
-Step 1: Install Helm chart
-  helm install grafana grafana/grafana
-
-Step 2: Port-forward to UI
-  kubectl port-forward svc/grafana 3000:3000
-
-Step 3: Login to UI (manual)
-  http://localhost:3000
-  Username: admin
-  Password: (from secret)
-
-Step 4: Import dashboard (manual!)
-  - Click "Dashboards" → "Import"
-  - Paste JSON
-  - Click "Import"
-  - Repeat 68 times... 😱
-
-Step 5: Configure datasource (manual!)
-  - Click "Configuration" → "Data Sources"
-  - Add Prometheus
-  - Set URL: http://prometheus:9090
-  - Click "Save & Test"
-
-❌ Problems:
-  - Manual UI work
-  - Not in Git
-  - Lost on cluster restart
-  - No GitOps
-  - No validation
-  - No versioning
-```
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ GRAFANA OPERATOR (New Way) ✨                                   │
-└─────────────────────────────────────────────────────────────────┘
-
-Step 1: Install Grafana Operator
-  kubectl apply -k kubernetes/infrastructure/monitoring/grafana-operator/
-
-Step 2: Create Grafana CRD
-  kubectl apply -f grafana.yaml
-
-Step 3: Create Dashboard CRD
-  kubectl apply -f dashboard.yaml
-
-Step 4: Fertig! ✅
-
-✅ Benefits:
-  - Everything in Git
-  - Auto-applied on push
-  - Validated by Kubernetes
-  - Versioned via Git
-  - Type-safe (CRD schema)
-  - GitOps-ready
-```
-
-### 🎯 Warum Grafana Operator besser ist
-
-**IKEA-Analogie:**
-
-```
-┌────────────────────────────────────────────────────────────────┐
-│ Helm Chart = IKEA-Regal ohne Anleitung 📦                     │
-│ - Du musst jede Schraube selbst einsetzen                     │
-│ - Wenn du vergisst wo, ist es kaputt                          │
-│ - Bei Umzug: Alles neu aufbauen                               │
-└────────────────────────────────────────────────────────────────┘
-
-┌────────────────────────────────────────────────────────────────┐
-│ Grafana Operator = IKEA-Regal mit Auto-Aufbau 🤖              │
-│ - Du gibst Plan (YAML), Operator baut auf                     │
-│ - Wenn kaputt: Operator repariert automatisch                 │
-│ - Bei Umzug: Operator baut automatisch neu auf                │
-└────────────────────────────────────────────────────────────────┘
-```
-
-### Konkrete Vorteile
-
-#### 1. **Declarative Configuration (YAML = Plan)**
-
-**Helm (Imperative):**
-```bash
-# Du musst sagen WIE
-helm install grafana grafana/grafana --set admin.password=secret
-# → Operator weiß nicht was du willst, führt nur Befehl aus
-```
-
-**Operator (Declarative):**
-```yaml
-# Du sagst WAS du willst
-apiVersion: grafana.integreatly.org/v1beta1
-kind: Grafana
-metadata:
-  name: grafana
-spec:
-  config:
-    security:
-      admin_password: secret
-# → Operator versteht dein Ziel, baut es selbst
-```
-
-#### 2. **Self-Healing (Auto-Reparatur)**
-
-**Helm:**
-```
-Wenn Dashboard gelöscht wird:
-  → Weg, für immer 💥
-  → Du musst manuell re-importieren
-```
-
-**Operator:**
-```
-Wenn Dashboard gelöscht wird:
-  → Operator sieht: "Hey, dashboard.yaml sagt Dashboard soll da sein!"
-  → Operator erstellt Dashboard neu ✅
-  → Auto-Healing! 🎉
-```
-
-#### 3. **Type Safety (Kubernetes Validation)**
-
-**Helm:**
-```yaml
-# values.yaml
-dashbord: "my-dash"  # Typo! Aber Helm sagt nichts 😱
-```
-
-**Operator:**
-```yaml
-# dashboard.yaml
-apiVersion: grafana.integreatly.org/v1beta1
-kind: GrafanaDashboard
-metadata:
-  name: my-dash
-spec:
-  folder: "ArgoCD"
-  foldr: "Oops"  # ❌ Kubernetes sagt: "Field 'foldr' unknown!" ✅
-```
-
-#### 4. **GitOps (ArgoCD Auto-Sync)**
-
-**Helm:**
-```
-git commit → git push → kubectl apply manuell
-```
-
-**Operator:**
-```
-git commit → git push → ArgoCD sieht Änderung → Auto-Apply! 🚀
-```
-
-#### 5. **Backup = Git Commit!**
-
-**Helm:**
-```bash
-# Backup? Manuell...
-kubectl get configmap grafana-dashboards -o yaml > backup.yaml
-# Restore? Auch manuell...
-kubectl apply -f backup.yaml
-```
-
-**Operator:**
-```bash
-# Backup = Git!
-git commit -m "Add dashboard"
-git push
-
-# Restore = Git!
-git checkout old-commit
-kubectl apply -f dashboard.yaml
-```
-
-### 📊 Vergleichstabelle
-
-| Feature | Helm Chart | Grafana Operator |
-|---------|------------|------------------|
-| **Dashboard Import** | Manual UI | `kubectl apply -f` |
-| **Configuration** | values.yaml | GrafanaDashboard CRD |
-| **GitOps** | ⚠️ Schwer | ✅ Native |
-| **Type Safety** | ❌ Nein | ✅ Ja (CRD Schema) |
-| **Self-Healing** | ❌ Nein | ✅ Ja |
-| **Backup** | Manual export | Git commit |
-| **Validation** | ⚠️ Helm lint | ✅ Kubernetes API |
-| **Versioning** | Helm release | Git history |
-| **Multi-Dashboard** | 68x manual | 68x `kubectl apply` |
-
-**Winner:** Grafana Operator 🏆
+| Component | Purpose | Retention | Storage |
+|-----------|---------|-----------|---------|
+| **Prometheus** | Metrics (Time-Series) | 30 days | 100 GB (PVC) |
+| **Loki** | Logs (Label-based) | 7 days | 50 GB (PVC) |
+| **Tempo** | Traces (Distributed) | 30 days | Ceph S3 |
+| **Thanos** | Long-term Metrics | Unlimited | Ceph S3 |
+| **Alertmanager** | Alert Routing | N/A | ConfigMaps |
+| **Jaeger** | Trace Frontend | N/A | Uses Tempo |
 
 ---
 
@@ -814,7 +499,7 @@ Du schaust in Tempo Trace:
 Problem gefunden: Database Query dauert 8.5 Sekunden! 🎯
 ```
 
-### The Three Pillars of Observability
+### The Three Pillars Visualized
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -843,6 +528,224 @@ Problem gefunden: Database Query dauert 8.5 Sekunden! 🎯
 2. Logs sagen: "Database timeout errors!"
 3. Traces sagen: "Diese spezifische DB Query braucht 8.5s" → FIX IT!
 ```
+
+---
+
+## OpenTelemetry - Das Universal-SDK
+
+### Was ist OpenTelemetry?
+
+**OpenTelemetry (OTel)** = **CNCF-Standard** für Observability
+
+**Wichtig:** OpenTelemetry ist **KEIN Backend** (keine UI, keine Storage)!
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ OpenTelemetry = HOW you COLLECT data (SDK/Protocol)       │
+│                                                             │
+│ Tempo/Loki/Prometheus = WHERE you STORE data (Backend)    │
+└────────────────────────────────────────────────────────────┘
+```
+
+**OpenTelemetry ist:**
+- ✅ Ein **SDK** (sammelt Daten in deiner App)
+- ✅ Ein **Protokoll** (OTLP = wie Daten übertragen werden)
+- ✅ Ein **Format** (wie Daten strukturiert sind)
+
+**OpenTelemetry ist NICHT:**
+- ❌ Eine **Datenbank** (speichert keine Daten)
+- ❌ Eine **Query Engine** (kann keine Daten abfragen)
+- ❌ Ein **UI** (keine Dashboards, keine Visualisierung)
+
+**Analogie:**
+```
+OpenTelemetry = USB-Kabel (Universal Interface)
+Tempo/Loki/Prometheus = Festplatten (Storage)
+
+Du brauchst beides!
+```
+
+---
+
+### OpenTelemetry = Alle 3 Pillars mit EINEM SDK!
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│         OpenTelemetry Unified Framework                       │
+├──────────────────────────────────────────────────────────────┤
+│                                                               │
+│  📊 TRACES            📈 METRICS           📝 LOGS            │
+│  ✅ GA (Stable)       ✅ GA (Stable)       🟡 Beta            │
+│                                                               │
+│  • Distributed        • Counters          • Structured       │
+│    Tracing            • Gauges            • Context-aware    │
+│  • Spans              • Histograms        • Trace-linked     │
+│  • Service Graph      • Summary           • Log levels       │
+│  • Latency            • Exemplars         • Attributes       │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Ein SDK → Drei Datentypen → Drei spezialisierte Backends!**
+
+---
+
+### Die komplette Architektur
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ DEINE APP (z.B. N8N)                                    │
+│                                                          │
+│ OpenTelemetry SDK (ONE library!)                        │
+│ ├─ Traces:  tracer.startSpan()                         │
+│ ├─ Metrics: counter.add()                              │
+│ └─ Logs:    logger.emit()                              │
+│                                                          │
+│ Sendet alles via OTLP Protokoll ──────────────┐        │
+└───────────────────────────────────────────────┼─────────┘
+                                                │
+                                                ▼
+┌─────────────────────────────────────────────────────────┐
+│ OpenTelemetry Collector (Optional)                      │
+│ - Empfängt OTLP                                         │
+│ - Filtert, Sampelt, Batched                            │
+│ - Routed zu verschiedenen Backends                     │
+└────────────┬──────────────┬──────────────┬─────────────┘
+             │              │              │
+     Traces  │      Metrics │       Logs   │
+             ▼              ▼              ▼
+┌─────────────┐  ┌──────────────┐  ┌──────────────┐
+│   TEMPO     │  │  PROMETHEUS  │  │     LOKI     │
+│             │  │              │  │              │
+│ S3 Storage  │  │ TSDB Storage │  │ Chunk+Index  │
+│ Trace Query │  │ PromQL       │  │ LogQL        │
+└─────────────┘  └──────────────┘  └──────────────┘
+             │              │              │
+             └──────────────┴──────────────┘
+                          ▼
+              ┌───────────────────────┐
+              │   GRAFANA             │
+              │                       │
+              │ - Explore (Traces)    │
+              │ - Dashboards (Metrics)│
+              │ - Logs (Logs)         │
+              └───────────────────────┘
+```
+
+---
+
+### Warum spezialisierte Backends?
+
+**Problem:** Jeder Datentyp hat unterschiedliche Anforderungen!
+
+```
+┌──────────────────────────────────────────────────────────┐
+│ TRACES (Tempo/Jaeger)                                    │
+├──────────────────────────────────────────────────────────┤
+│ Charakteristik:                                          │
+│ - Große Objects (1 Trace = 100+ Spans)                  │
+│ - Seltene Queries (nur beim Debugging)                  │
+│ - Long-term Storage (30 Tage)                           │
+│                                                           │
+│ Optimale Storage: Object Storage (S3/Ceph)              │
+│ Query Pattern: "Find trace by ID"                       │
+└──────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────┐
+│ METRICS (Prometheus)                                     │
+├──────────────────────────────────────────────────────────┤
+│ Charakteristik:                                          │
+│ - Kleine Time-Series Daten (Zahlen!)                    │
+│ - SEHR häufige Queries (Dashboards, Alerts)             │
+│ - Range Queries (letzte 24h)                            │
+│                                                           │
+│ Optimale Storage: Time-Series DB (TSDB)                 │
+│ Query Pattern: "CPU usage last 24h"                     │
+└──────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────┐
+│ LOGS (Loki/Elasticsearch)                                │
+├──────────────────────────────────────────────────────────┤
+│ Charakteristik:                                          │
+│ - Text-basiert (Strings!)                               │
+│ - Full-Text Search nötig                                │
+│ - Label-basierte Queries                                │
+│                                                           │
+│ Optimale Storage: Index + Chunks                        │
+│ Query Pattern: "Find all errors containing 'timeout'"   │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Ein Backend für alles = suboptimal!**
+
+---
+
+### Zusammenspiel: OpenTelemetry + Jaeger + Tempo
+
+```
+Apps mit OpenTelemetry SDK
+    │
+    ├─ OTLP Traces ───────────┐
+    │                         ▼
+    │                    ┌─────────┐
+    │                    │  TEMPO  │ ← Storage Backend
+    │                    └────┬────┘
+    │                         │
+Legacy Apps mit Jaeger SDK   │
+    │                         │
+    └─ Jaeger Traces ─────────┤
+                              │
+                              ▼
+                        ┌──────────┐
+                        │ JAEGER   │ ← UI Frontend
+                        │ QUERY UI │
+                        └──────────┘
+                              │
+                              ▼
+                         Grafana Explore
+```
+
+**Dein Setup:**
+- ✅ **Tempo** = Trace Storage (S3 Backend)
+- ✅ **Jaeger UI** = Query Frontend (optional, Grafana kann das auch)
+- ✅ **OpenTelemetry SDK** = Universal Interface für Apps
+
+---
+
+### OpenTelemetry Vorteile
+
+**❌ OHNE OpenTelemetry (Vendor Lock-in):**
+```javascript
+// N8N App - 3 verschiedene Libraries
+const jaeger = require('jaeger-client');      // Traces
+const promClient = require('prom-client');    // Metrics
+const winston = require('winston');           // Logs
+
+// Wechsel zu Zipkin/Datadog = kompletter Code-Rewrite!
+```
+
+**✅ MIT OpenTelemetry (Vendor-neutral):**
+```javascript
+// N8N App - ONE Library!
+const { trace, metrics, logs } = require('@opentelemetry/api');
+
+// Wechsel Backend? Nur Config ändern, kein Code-Touch!
+```
+
+**Backend-Switch:**
+```yaml
+# Heute: Homelab
+exporters:
+  otlp/tempo:
+    endpoint: tempo-distributor.monitoring.svc:4317
+
+# Morgen: Grafana Cloud (kein Code-Change!)
+exporters:
+  otlp/grafana-cloud:
+    endpoint: otlp-gateway.grafana.net:443
+```
+
+---
 
 ### Core Concepts
 
@@ -1112,127 +1015,6 @@ Antwort: "Hier, aus S3!" 🎉
 | **Query Speed** | Fast | Fast (30d) + Slow (older) |
 | **HA** | ❌ Single Prometheus | ✅ Multiple Prometheus (deduplicated) |
 | **Backup** | Manual | Auto (S3 versioning) |
-
----
-
-## Unser Production Setup
-
-### Infrastructure Overview
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ KUBERNETES CLUSTER (Talos 1.10.6)                              │
-└─────────────────────────────────────────────────────────────────┘
-
-┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-│ ctrl-0           │  │ worker-1         │  │ worker-2         │
-│ (Control Plane)  │  │ (Worker)         │  │ (Worker)         │
-├──────────────────┤  ├──────────────────┤  ├──────────────────┤
-│ Prometheus       │  │ App Pods         │  │ App Pods         │
-│ Grafana          │  │ Promtail         │  │ Promtail         │
-│ Loki             │  │ Node Exporter    │  │ Node Exporter    │
-│ Alertmanager     │  │                  │  │                  │
-│ Thanos Query     │  │                  │  │                  │
-└──────────────────┘  └──────────────────┘  └──────────────────┘
-```
-
-### Deployed Components
-
-**Namespace: `monitoring`**
-
-```yaml
-Prometheus (StatefulSet):
-  - Replicas: 1
-  - Storage: 100 GB (Ceph RBD)
-  - Retention: 30 days
-  - Scrape Interval: 15s
-
-Grafana (Deployment):
-  - Replicas: 1
-  - Dashboards: 68 (as CRDs)
-  - Datasources: 4 (Prometheus, Loki, Alertmanager, Jaeger)
-
-Loki (StatefulSet):
-  - Replicas: 1
-  - Storage: 50 GB (Ceph RBD)
-  - Retention: 7 days
-
-Tempo (Distributed Architecture):
-  - Distributor (Deployment): Replicas 1, receives traces (OTLP/Jaeger)
-  - Ingester (StatefulSet): Replicas 1, buffers spans, 10 GB storage
-  - Compactor (Deployment): Replicas 1, uploads to S3
-  - Querier (Deployment): Replicas 1, queries Ingester + S3
-  - Query Frontend (Deployment): Replicas 1, caching + optimization
-  - Metrics Generator: Generates span metrics for Prometheus
-  - S3 Backend: Ceph RGW (tempo-traces bucket)
-  - Retention: 30 days
-  - Protocols: OTLP gRPC (4317), OTLP HTTP (4318), Jaeger gRPC (14250)
-
-Jaeger (Deployment):
-  - Replicas: 1
-  - Backend: Tempo (via grpc-plugin)
-  - UI: http://jaeger:16686
-  - Use Case: Professional trace visualization
-
-Alertmanager (StatefulSet):
-  - Replicas: 1
-  - Routes: Tier 0-5
-
-Thanos Sidecar (in Prometheus Pod):
-  - S3 Bucket: thanos
-  - Upload Interval: 2h
-
-Thanos Query (Deployment):
-  - Replicas: 1
-  - Queries: Prometheus + S3
-
-Node Exporter (DaemonSet):
-  - Pods: 6 (one per node)
-  - Metrics: System (CPU, RAM, Disk)
-
-Kube State Metrics (Deployment):
-  - Replicas: 1
-  - Metrics: Kubernetes Objects
-
-Promtail (DaemonSet):
-  - Pods: 6 (one per node)
-  - Logs: All pod logs → Loki
-```
-
-### Resource Allocation
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ RESOURCE USAGE (Monitoring Stack)                              │
-└─────────────────────────────────────────────────────────────────┘
-
-Prometheus:
-  Requests: 2 CPU, 4Gi RAM
-  Limits:   4 CPU, 8Gi RAM
-  Disk:     100 GB (PVC)
-
-Grafana:
-  Requests: 500m CPU, 1Gi RAM
-  Limits:   1 CPU, 2Gi RAM
-
-Loki:
-  Requests: 1 CPU, 2Gi RAM
-  Limits:   2 CPU, 4Gi RAM
-  Disk:     50 GB (PVC)
-
-Node Exporter (per node):
-  Requests: 100m CPU, 100Mi RAM
-  Limits:   200m CPU, 200Mi RAM
-
-Promtail (per node):
-  Requests: 100m CPU, 128Mi RAM
-  Limits:   200m CPU, 256Mi RAM
-
-TOTAL CLUSTER:
-  CPU:    ~10 cores
-  Memory: ~20 GB
-  Disk:   150 GB (Prometheus + Loki)
-```
 
 ---
 
@@ -1774,573 +1556,128 @@ tempo:
 
 ---
 
-## ServiceMonitor → Dashboard (No Data Fix!)
+## Production Setup
 
-### 🎯 Das wichtigste Kapitel!
-
-**Problem:** Du hast ein Dashboard, aber es zeigt **"No Data"** 😱
-
-**Lösung:** Schritt-für-Schritt Fix! (IKEA-Style)
-
-### IKEA-Anleitung: Von Service zu Dashboard
+### Infrastructure Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ SCHRITT 1: Service muss /metrics Endpoint haben                │
+│ KUBERNETES CLUSTER (Talos 1.10.6)                              │
 └─────────────────────────────────────────────────────────────────┘
 
-Deine App muss Metrics exposen!
-
-Beispiel: N8N
-├─ URL: http://n8n-prod:5678/metrics
-└─ Test: curl http://n8n-prod:5678/metrics
-
-Output:
-  # HELP http_requests_total Total HTTP requests
-  # TYPE http_requests_total counter
-  http_requests_total{method="GET",status="200"} 1000
-
-✅ Wenn du Metrics siehst → Weiter zu Schritt 2
-❌ Wenn "404 Not Found" → Deine App muss erst Metrics exposen!
+┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+│ ctrl-0           │  │ worker-1         │  │ worker-2         │
+│ (Control Plane)  │  │ (Worker)         │  │ (Worker)         │
+├──────────────────┤  ├──────────────────┤  ├──────────────────┤
+│ Prometheus       │  │ App Pods         │  │ App Pods         │
+│ Grafana          │  │ Promtail         │  │ Promtail         │
+│ Loki             │  │ Node Exporter    │  │ Node Exporter    │
+│ Alertmanager     │  │                  │  │                  │
+│ Thanos Query     │  │                  │  │                  │
+└──────────────────┘  └──────────────────┘  └──────────────────┘
 ```
+
+### Deployed Components
+
+**Namespace: `monitoring`**
+
+```yaml
+Prometheus (StatefulSet):
+  - Replicas: 1
+  - Storage: 100 GB (Ceph RBD)
+  - Retention: 30 days
+  - Scrape Interval: 15s
+
+Grafana (Deployment):
+  - Replicas: 1
+  - Dashboards: 68 (as CRDs)
+  - Datasources: 4 (Prometheus, Loki, Tempo, Alertmanager)
+
+Loki (StatefulSet):
+  - Replicas: 1
+  - Storage: 50 GB (Ceph RBD)
+  - Retention: 7 days
+
+Tempo (Distributed Architecture):
+  - Distributor (Deployment): Replicas 1, receives traces (OTLP/Jaeger)
+  - Ingester (StatefulSet): Replicas 1, buffers spans, 10 GB storage
+  - Compactor (Deployment): Replicas 1, uploads to S3
+  - Querier (Deployment): Replicas 1, queries Ingester + S3
+  - Query Frontend (Deployment): Replicas 1, caching + optimization
+  - Metrics Generator: Generates span metrics for Prometheus
+  - S3 Backend: Ceph RGW (tempo-traces bucket)
+  - Retention: 30 days
+  - Protocols: OTLP gRPC (4317), OTLP HTTP (4318), Jaeger gRPC (14250)
+
+Jaeger (Deployment):
+  - Replicas: 1
+  - Backend: Tempo (via grpc-plugin)
+  - UI: http://jaeger:16686
+  - Use Case: Professional trace visualization
+
+Alertmanager (StatefulSet):
+  - Replicas: 1
+  - Routes: Tier 0-5
+
+Thanos Sidecar (in Prometheus Pod):
+  - S3 Bucket: thanos
+  - Upload Interval: 2h
+
+Thanos Query (Deployment):
+  - Replicas: 1
+  - Queries: Prometheus + S3
+
+Node Exporter (DaemonSet):
+  - Pods: 6 (one per node)
+  - Metrics: System (CPU, RAM, Disk)
+
+Kube State Metrics (Deployment):
+  - Replicas: 1
+  - Metrics: Kubernetes Objects
+
+Promtail (DaemonSet):
+  - Pods: 6 (one per node)
+  - Logs: All pod logs → Loki
+```
+
+### Resource Allocation
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ SCHRITT 2: Service muss Port mit Name "metrics" haben          │
+│ RESOURCE USAGE (Monitoring Stack)                              │
 └─────────────────────────────────────────────────────────────────┘
 
-Dein Kubernetes Service braucht einen Port mit Name "metrics"!
+Prometheus:
+  Requests: 2 CPU, 4Gi RAM
+  Limits:   4 CPU, 8Gi RAM
+  Disk:     100 GB (PVC)
 
-❌ FALSCH (kein Port-Name):
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: n8n-prod
-spec:
-  selector:
-    app: n8n
-  ports:
-  - port: 5678        # ❌ Kein Name!
-    targetPort: 5678
-```
+Grafana:
+  Requests: 500m CPU, 1Gi RAM
+  Limits:   1 CPU, 2Gi RAM
 
-✅ RICHTIG (mit Port-Name):
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: n8n-prod
-  labels:             # ✅ Labels für ServiceMonitor!
-    app: n8n
-spec:
-  selector:
-    app: n8n
-  ports:
-  - name: http        # ✅ Name!
-    port: 5678
-    targetPort: 5678
-```
+Loki:
+  Requests: 1 CPU, 2Gi RAM
+  Limits:   2 CPU, 4Gi RAM
+  Disk:     50 GB (PVC)
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ SCHRITT 3: ServiceMonitor erstellen                            │
-└─────────────────────────────────────────────────────────────────┘
+Node Exporter (per node):
+  Requests: 100m CPU, 100Mi RAM
+  Limits:   200m CPU, 200Mi RAM
 
-Jetzt sagst du Prometheus: "Scrape alle Services mit Label app=n8n"
+Promtail (per node):
+  Requests: 100m CPU, 128Mi RAM
+  Limits:   200m CPU, 256Mi RAM
 
-Datei: servicemonitor-n8n.yaml
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: n8n-prod
-  namespace: monitoring        # ✅ ServiceMonitor IMMER in "monitoring"!
-  labels:
-    app: n8n
-spec:
-  # WELCHE Namespaces?
-  namespaceSelector:
-    matchNames:
-    - n8n-prod                 # ✅ Nur n8n-prod namespace
-
-  # WELCHE Services (via Labels)?
-  selector:
-    matchLabels:
-      app: n8n                 # ✅ Service muss Label "app: n8n" haben!
-
-  # WO ist /metrics?
-  endpoints:
-  - port: http                 # ✅ Port name aus Service!
-    path: /metrics             # ✅ URL path (Standard: /metrics)
-    interval: 30s              # ✅ Scrape alle 30 Sekunden
-```
-
-Apply it:
-```bash
-kubectl apply -f servicemonitor-n8n.yaml
-```
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ SCHRITT 4: Check ob Prometheus target findet                   │
-└─────────────────────────────────────────────────────────────────┘
-
-Gehe zu Prometheus UI:
-  kubectl port-forward -n monitoring svc/prometheus-operated 9090:9090
-  http://localhost:9090/targets
-
-Suche nach "n8n":
-  ✅ State: UP → Prometheus scraped erfolgreich!
-  ❌ State: DOWN → Siehe "Troubleshooting" unten
-
-```
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ SCHRITT 5: Check ob Metrics in Prometheus sind                 │
-└─────────────────────────────────────────────────────────────────┘
-
-Gehe zu Prometheus → Graph Tab
-
-Query:
-  http_requests_total{namespace="n8n-prod"}
-
-Result:
-  ✅ Metrics shown → Prometheus hat Daten!
-  ❌ "No data" → ServiceMonitor stimmt nicht
-
-```
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ SCHRITT 6: Dashboard mit richtiger Query                       │
-└─────────────────────────────────────────────────────────────────┘
-
-Jetzt erstelle Dashboard Panel mit korrekter PromQL Query
-
-❌ FALSCH (kein Namespace Filter):
-```promql
-rate(http_requests_total[5m])
-# → Zeigt ALLE Apps (N8N + Kafka + Redis + ...)
-```
-
-✅ RICHTIG (mit Namespace Filter):
-```promql
-rate(http_requests_total{namespace="n8n-prod"}[5m])
-# → Zeigt nur N8N!
-```
-
-Panel Config in Grafana Dashboard:
-```yaml
-panels:
-- title: "N8N Request Rate"
-  targets:
-  - expr: 'rate(http_requests_total{namespace="n8n-prod"}[5m])'
-    datasource: Prometheus
-```
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ SCHRITT 7: Refresh Grafana Dashboard                           │
-└─────────────────────────────────────────────────────────────────┘
-
-Open Dashboard → Refresh → Data appears! 🎉
-
-```
-
-### Häufige "No Data" Probleme
-
-#### Problem 1: ServiceMonitor im falschen Namespace
-
-❌ **FALSCH:**
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: n8n-prod
-  namespace: n8n-prod  # ❌ FALSCH! ServiceMonitor sollte in "monitoring" sein!
-```
-
-✅ **RICHTIG:**
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: n8n-prod
-  namespace: monitoring  # ✅ RICHTIG!
-spec:
-  namespaceSelector:
-    matchNames:
-    - n8n-prod  # ← Hier sagst du welche Namespaces gescraped werden
-```
-
-#### Problem 2: Falsche Labels
-
-Service hat:
-```yaml
-labels:
-  app.kubernetes.io/name: n8n  # ← Dieses Label
-```
-
-ServiceMonitor sucht:
-```yaml
-selector:
-  matchLabels:
-    app: n8n  # ← Aber sucht nach diesem Label! ❌ MISMATCH!
-```
-
-**Fix:**
-```yaml
-selector:
-  matchLabels:
-    app.kubernetes.io/name: n8n  # ✅ Muss übereinstimmen!
-```
-
-#### Problem 3: Port Name stimmt nicht
-
-Service:
-```yaml
-ports:
-- name: web  # ← Port heißt "web"
-  port: 5678
-```
-
-ServiceMonitor:
-```yaml
-endpoints:
-- port: metrics  # ← Aber sucht nach "metrics"! ❌ MISMATCH!
-```
-
-**Fix:**
-```yaml
-endpoints:
-- port: web  # ✅ Muss übereinstimmen!
-  path: /metrics
-```
-
-#### Problem 4: Falsche PromQL Query
-
-```promql
-# ❌ FALSCH: Sucht nach Metric die es nicht gibt
-my_custom_metric_that_doesnt_exist
-
-# ✅ RICHTIG: Check erst ob Metric existiert
-# Gehe zu Prometheus → Graph → Type "n8n" → Auto-complete zeigt verfügbare Metrics
-```
-
-### ServiceMonitor Troubleshooting Checklist
-
-**IKEA-Checklist** (Von oben nach unten abarbeiten):
-
-```
-☐ Step 1: App exposes /metrics?
-  → Test: curl http://service:port/metrics
-
-☐ Step 2: Service has port name?
-  → kubectl get svc n8n-prod -o yaml | grep "name:"
-
-☐ Step 3: Service has correct labels?
-  → kubectl get svc n8n-prod -o yaml | grep "labels:" -A 5
-
-☐ Step 4: ServiceMonitor in "monitoring" namespace?
-  → kubectl get servicemonitor -n monitoring
-
-☐ Step 5: ServiceMonitor labels match Service labels?
-  → Compare spec.selector.matchLabels
-
-☐ Step 6: Prometheus Target UP?
-  → http://localhost:9090/targets
-
-☐ Step 7: Metrics in Prometheus?
-  → Query: {namespace="n8n-prod"}
-
-☐ Step 8: Dashboard PromQL correct?
-  → Test query in Prometheus first
+TOTAL CLUSTER:
+  CPU:    ~10 cores
+  Memory: ~20 GB
+  Disk:   150 GB (Prometheus + Loki)
 ```
 
 ---
 
-## Grafana Dashboards Deep Dive
-
-### GrafanaDashboard CRD Structure
-
-```yaml
-apiVersion: grafana.integreatly.org/v1beta1
-kind: GrafanaDashboard
-metadata:
-  name: n8n-production-metrics
-  namespace: grafana
-  labels:
-    app.kubernetes.io/name: grafana
-    app.kubernetes.io/component: dashboard
-spec:
-  # WICHTIG: allowCrossNamespaceImport = true
-  # → Dashboard kann von Grafana in anderem Namespace geladen werden
-  allowCrossNamespaceImport: true
-
-  # Folder in Grafana UI
-  folder: "Applications"
-
-  # Grafana Instance Selector
-  instanceSelector:
-    matchLabels:
-      app: grafana
-
-  # Dashboard JSON (compressed)
-  json: |
-    {"title":"N8N Production","panels":[...]}
-```
-
-### Dashboard Organization Strategy
-
-**Unsere 68 Dashboards:**
-
-```
-Grafana UI
-├─ Tier 0 Executive (2 dashboards)
-│  ├─ Kubernetes Global View
-│  └─ Node System Overview
-│
-├─ ArgoCD (5 dashboards)
-│  ├─ ArgoCD GitOps
-│  ├─ ArgoCD Operational
-│  ├─ ArgoCD Application
-│  ├─ ArgoCD Notifications
-│  └─ ArgoCD Overview v3
-│
-├─ Ceph Storage (4 dashboards)
-│  ├─ Rook Ceph Storage
-│  ├─ Ceph Cluster
-│  ├─ Ceph Pools
-│  └─ Ceph OSD
-│
-├─ Kubernetes (11 dashboards)
-│  ├─ API Server
-│  ├─ CoreDNS
-│  ├─ Scheduler
-│  ├─ Controller Manager
-│  ├─ etcd
-│  ├─ Global View
-│  ├─ Namespaces View
-│  ├─ Nodes View
-│  ├─ Pods View
-│  ├─ Persistent Volumes
-│  └─ State Metrics v2
-│
-└─ ... (53 more dashboards)
-```
-
-### Dashboard Import vs CRD
-
-**Warum CRD besser ist:**
-
-| Feature | Dashboard Import (UI) | GrafanaDashboard CRD |
-|---------|----------------------|---------------------|
-| **Method** | Click "Import" in UI | `kubectl apply -f` |
-| **Storage** | Grafana Database | Git Repository |
-| **Versioning** | ❌ Nur in Grafana DB | ✅ Git History |
-| **Backup** | Manual DB Export | Git Commit |
-| **Restore** | Manual Re-Import | `kubectl apply -f` |
-| **GitOps** | ❌ Nein | ✅ ArgoCD Auto-Sync |
-| **Validation** | ❌ Nein | ✅ Kubernetes API |
-| **Team Sharing** | Export JSON, Email | Git Push |
-| **CI/CD** | ❌ Schwer | ✅ Easy |
-
-**Winner:** GrafanaDashboard CRD 🏆
-
----
-
-## Backup & Disaster Recovery
-
-### 🎯 Velero Backup - Backup ALLES!
-
-**Was kann Velero backupen?**
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ VELERO KANN BACKUPEN:                                           │
-├─────────────────────────────────────────────────────────────────┤
-│ ✅ Grafana Dashboards (als GrafanaDashboard CRDs!)             │
-│ ✅ Prometheus TSDB (PersistentVolumeClaim + Data)              │
-│ ✅ Loki Chunks (PersistentVolumeClaim + Data)                  │
-│ ✅ ServiceMonitors (alle ServiceMonitor CRDs)                  │
-│ ✅ PrometheusRules (alle Alert Rules)                          │
-│ ✅ ConfigMaps (Grafana Datasources, Alertmanager Config)       │
-│ ✅ Secrets (Grafana Admin Password, etc.)                      │
-│ ✅ Thanos Config (S3 credentials)                              │
-│ ✅ ALLES in Kubernetes! 🚀                                     │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Backup Strategy
-
-#### Daily Backup (Automatisch via Velero Schedule)
-
-```yaml
-# velero-schedule-monitoring-daily.yaml
-apiVersion: velero.io/v1
-kind: Schedule
-metadata:
-  name: monitoring-daily
-  namespace: velero
-spec:
-  schedule: "0 2 * * *"  # Jeden Tag um 2:00 AM
-  template:
-    includedNamespaces:
-    - monitoring
-    - grafana
-    includeClusterResources: true
-    storageLocation: default
-    volumeSnapshotLocations:
-    - default
-    ttl: 720h  # Keep for 30 days
-```
-
-**Apply:**
-```bash
-kubectl apply -f velero-schedule-monitoring-daily.yaml
-```
-
-**Was wird gebackuped:**
-- Prometheus PVC (100 GB TSDB data)
-- Loki PVC (50 GB logs)
-- Alle Grafana Dashboards (68 CRDs)
-- Alle ServiceMonitors
-- Alle PrometheusRules
-- ConfigMaps & Secrets
-
-#### Manual Backup (On-Demand)
-
-```bash
-# Backup kompletter Monitoring Stack
-velero backup create monitoring-stack-$(date +%Y%m%d-%H%M%S) \
-  --include-namespaces monitoring,grafana \
-  --include-cluster-resources \
-  --storage-location default
-
-# Backup nur Grafana Dashboards (schnell!)
-velero backup create grafana-dashboards-$(date +%Y%m%d-%H%M%S) \
-  --include-namespaces grafana \
-  --include-resources grafanadashboards
-
-# Backup nur ServiceMonitors + Rules
-velero backup create prometheus-configs-$(date +%Y%m%d-%H%M%S) \
-  --include-namespaces monitoring \
-  --include-resources servicemonitors,prometheusrules
-```
-
-### Restore Procedure
-
-#### Disaster Recovery (Kompletter Cluster Restore)
-
-**Scenario:** Dein Cluster ist komplett weg! 💥
-
-**IKEA-Style Recovery:**
-
-```
-SCHRITT 1: Neuer Kubernetes Cluster
-  ├─ Fresh Talos install
-  └─ kubectl get nodes → All Ready
-
-SCHRITT 2: Velero installieren
-  helm install velero vmware-tanzu/velero \
-    --namespace velero \
-    --set configuration.backupStorageLocation.bucket=velero \
-    --set configuration.backupStorageLocation.config.s3Url=http://rook-ceph-rgw.rook-ceph.svc
-
-SCHRITT 3: Check Backups
-  velero backup get
-  # Output: monitoring-daily-20250120-020000
-
-SCHRITT 4: Restore Monitoring Stack
-  velero restore create --from-backup monitoring-daily-20250120-020000
-
-SCHRITT 5: Wait for Restore
-  kubectl get pods -n monitoring --watch
-  # Warte bis alle Pods Running
-
-SCHRITT 6: Check Grafana
-  kubectl port-forward -n grafana svc/grafana 3000:3000
-  http://localhost:3000
-  # → Alle 68 Dashboards sind wieder da! 🎉
-
-SCHRITT 7: Check Prometheus
-  http://localhost:9090
-  # → Alle Metrics sind wieder da!
-  # → Historical data from PVC restored!
-```
-
-#### Partial Restore (Nur Dashboards)
-
-**Scenario:** Du hast versehentlich ein Dashboard gelöscht
-
-```bash
-# Restore nur Grafana Dashboards
-velero restore create grafana-dashboards-restore \
-  --from-backup grafana-dashboards-20250120-020000 \
-  --include-namespaces grafana \
-  --include-resources grafanadashboards
-
-# Check restore
-kubectl get grafanadashboards -n grafana
-```
-
-### Git Backup (Zusätzlich!)
-
-**Best Practice:** Doppelte Absicherung!
-
-```
-┌────────────────────────────────────────────────────────────────┐
-│ BACKUP STRATEGY (2-fach)                                       │
-├────────────────────────────────────────────────────────────────┤
-│ 1. Velero Backup (automatisch)                                │
-│    └─ Speichert PVCs + CRDs in Ceph S3                        │
-│                                                                │
-│ 2. Git Backup (automatisch via ArgoCD)                        │
-│    └─ Alle YAMLs in Git Repository                            │
-│                                                                │
-│ Vorteil: Wenn Velero kaputt ist → Git restore!                │
-│          Wenn Git kaputt ist → Velero restore!                │
-└────────────────────────────────────────────────────────────────┘
-```
-
-**Git Backup Struktur:**
-```
-kubernetes/infrastructure/monitoring/
-├─ grafana/
-│  ├─ kustomization.yaml
-│  ├─ grafana.yaml
-│  └─ enterprise-dashboards/
-│     ├─ argocd/
-│     │  ├─ argocd-gitops.yaml
-│     │  └─ ... (68 dashboards)
-│     └─ ...
-│
-├─ servicemonitors/
-│  ├─ servicemonitor-n8n.yaml
-│  ├─ servicemonitor-kafka.yaml
-│  └─ ... (alle ServiceMonitors)
-│
-└─ alertmanager/
-   ├─ alertmanagerconfig-tier0.yaml
-   └─ ... (alle Alert Configs)
-```
-
-**Restore from Git:**
-```bash
-# Clone repo
-git clone https://github.com/Tim275/talos-homelab.git
-
-# Apply all monitoring YAMLs
-kubectl apply -k kubernetes/infrastructure/monitoring/
-
-# Fertig! Alles wieder da! 🎉
-```
-
----
-
-## Quick Reference
+## Quick Reference - All Tools
 
 ### Essential Commands
 
@@ -2361,21 +1698,6 @@ kubectl get servicemonitors -A
 
 # Check PrometheusRules
 kubectl get prometheusrules -A
-
-# ══════════════════════════════════════════════════════════════
-# GRAFANA
-# ══════════════════════════════════════════════════════════════
-
-# Port-forward to Grafana UI
-kubectl port-forward -n grafana svc/grafana 3000:3000
-# → http://localhost:3000
-
-# List all Grafana Dashboards
-kubectl get grafanadashboards -n grafana
-
-# Get Grafana admin password
-kubectl get secret -n grafana grafana-admin-credentials \
-  -o jsonpath='{.data.GF_SECURITY_ADMIN_PASSWORD}' | base64 -d
 
 # ══════════════════════════════════════════════════════════════
 # LOKI
@@ -2552,11 +1874,11 @@ topk(10, count_over_time({level="error"}[1h]))
 
 ```
 ✅ Enterprise Observability Stack (100% IaC)
-✅ Grafana Operator (68 Dashboards as CRDs)
-✅ Prometheus Operator (Auto-Discovery)
-✅ ServiceMonitor Magic (No Manual Config!)
-✅ Loki Log Aggregation
+✅ Prometheus Operator (Auto-Discovery via ServiceMonitors)
+✅ Loki Log Aggregation (LogQL queries)
+✅ Tempo Distributed Tracing (OTLP + Jaeger)
 ✅ Thanos Unlimited Storage (Ceph S3)
+✅ OpenTelemetry (Universal SDK for all 3 pillars)
 ✅ Velero Backup (Everything!)
 ✅ GitOps-Ready (ArgoCD Synced)
 ```
@@ -2565,36 +1887,36 @@ topk(10, count_over_time({level="error"}[1h]))
 
 | Feature | Benefit |
 |---------|---------|
-| **CRDs** | Git-based, Type-safe, Self-healing |
+| **Three Pillars** | Metrics + Logs + Traces = Full visibility |
 | **ServiceMonitor** | Auto-discovery, No manual config |
 | **Thanos** | Unlimited retention, S3 storage |
 | **Loki** | Fast log queries, Low cost |
-| **Velero** | Disaster recovery in minutes |
+| **Tempo** | Distributed tracing, S3 storage |
+| **OpenTelemetry** | Vendor-neutral, Universal SDK |
 | **GitOps** | Everything in Git, ArgoCD synced |
 
 ### Files Reference
 
 ```
 kubernetes/infrastructure/monitoring/
-├─ OBSERVABILITY-MASTER-GUIDE.md          ← YOU ARE HERE
-├─ grafana/
-│  ├─ kustomization.yaml                  ← 68 dashboards
-│  └─ enterprise-dashboards/
+├─ OBSERVABILITY-STACK-GUIDE.md          ← YOU ARE HERE
+├─ GRAFANA-SETUP-GUIDE.md                ← Grafana setup guide
 ├─ servicemonitors/
-│  ├─ servicemonitor-n8n.yaml             ← Example ServiceMonitor
+│  ├─ servicemonitor-n8n.yaml            ← Example ServiceMonitor
 │  └─ ... (all ServiceMonitors)
 ├─ kube-prometheus-stack/
-│  └─ values.yaml                         ← Prometheus config
+│  └─ values.yaml                        ← Prometheus config
 └─ velero/
-   └─ schedule-monitoring-daily.yaml      ← Daily backup
+   └─ schedule-monitoring-daily.yaml     ← Daily backup
 ```
 
 ---
 
 **Created for:** Talos Homelab Production
-**Last Updated:** 2025-10-21
-**Grafana Operator:** v5.19.1
+**Last Updated:** 2025-10-31
 **Prometheus Operator:** v0.77.0
 **Loki:** v2.9.0
+**Tempo:** v2.3.0
 **Thanos:** v0.35.0
+**OpenTelemetry Collector:** v0.92.0
 **Velero:** v1.13.0

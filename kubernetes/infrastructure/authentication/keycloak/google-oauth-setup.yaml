@@ -1,0 +1,173 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-google-oauth-setup
+  namespace: keycloak
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: keycloak-google-oauth-setup
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: setup
+          image: quay.io/keycloak/keycloak:26.0.7
+          env:
+            - name: KEYCLOAK_ADMIN
+              value: admin
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: password
+            - name: KEYCLOAK_URL
+              value: "http://keycloak:8080"
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-google-oauth
+                  key: client-id
+                  optional: true
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-google-oauth
+                  key: client-secret
+                  optional: true
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              echo "=== Logging in to Keycloak ==="
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --server "$KEYCLOAK_URL" \
+                --realm master \
+                --user "$KEYCLOAK_ADMIN" \
+                --password "$KEYCLOAK_ADMIN_PASSWORD"
+
+              echo "=== Checking Google OAuth Credentials ==="
+              if [ -z "$GOOGLE_CLIENT_ID" ] || [ -z "$GOOGLE_CLIENT_SECRET" ]; then
+                echo "⚠️  Google OAuth credentials not found in keycloak-google-oauth secret"
+                echo "⚠️  Skipping Google Identity Provider setup"
+                echo ""
+                echo "To enable Google OAuth login:"
+                echo "1. Create Google Cloud OAuth Client at: https://console.cloud.google.com"
+                echo "2. Set redirect URI: https://iam.timourhomelab.org/realms/kubernetes/broker/google/endpoint"
+                echo "3. Create SealedSecret:"
+                echo "   kubectl create secret generic keycloak-google-oauth \\"
+                echo "     --from-literal=client-id='YOUR_CLIENT_ID' \\"
+                echo "     --from-literal=client-secret='YOUR_CLIENT_SECRET' \\"
+                echo "     --namespace keycloak --dry-run=client -o yaml | \\"
+                echo "   kubeseal -o yaml > google-oauth-sealed.yaml"
+                echo "4. Deploy: kubectl apply -f google-oauth-sealed.yaml"
+                echo "5. Re-run this job: kubectl delete job keycloak-google-oauth-setup -n keycloak"
+                exit 0
+              fi
+
+              echo "✅ Google OAuth credentials found!"
+
+              echo "=== Checking if Google Identity Provider already exists ==="
+              if /opt/keycloak/bin/kcadm.sh get identity-provider/instances/google -r kubernetes 2>/dev/null; then
+                echo "✅ Google Identity Provider already configured, updating..."
+
+                # Update existing provider
+                /opt/keycloak/bin/kcadm.sh update identity-provider/instances/google -r kubernetes \
+                  -s enabled=true \
+                  -s trustEmail=true \
+                  -s storeToken=false \
+                  -s addReadTokenRoleOnCreate=false \
+                  -s 'config.syncMode="IMPORT"' \
+                  -s 'config.clientId="'$GOOGLE_CLIENT_ID'"' \
+                  -s 'config.clientSecret="'$GOOGLE_CLIENT_SECRET'"' \
+                  -s 'config.defaultScope="openid profile email"' \
+                  -s 'config.useJwksUrl="true"' \
+                  -s 'config.hideOnLoginPage="false"'
+
+                echo "✅ Google Identity Provider updated"
+              else
+                echo "Creating new Google Identity Provider..."
+
+                # Create new provider
+                /opt/keycloak/bin/kcadm.sh create identity-provider/instances -r kubernetes \
+                  -s alias=google \
+                  -s providerId=google \
+                  -s enabled=true \
+                  -s trustEmail=true \
+                  -s storeToken=false \
+                  -s addReadTokenRoleOnCreate=false \
+                  -s 'config.syncMode=IMPORT' \
+                  -s 'config.clientId='$GOOGLE_CLIENT_ID \
+                  -s 'config.clientSecret='$GOOGLE_CLIENT_SECRET \
+                  -s 'config.defaultScope=openid profile email' \
+                  -s 'config.useJwksUrl=true' \
+                  -s 'config.hideOnLoginPage=false'
+
+                echo "✅ Google Identity Provider created"
+              fi
+
+              echo "=== Configuring Google Identity Provider Mappers ==="
+
+              # Create email mapper (if not exists)
+              if ! /opt/keycloak/bin/kcadm.sh get identity-provider/instances/google/mappers -r kubernetes \
+                | grep -q '"name" : "email"'; then
+                /opt/keycloak/bin/kcadm.sh create identity-provider/instances/google/mappers -r kubernetes \
+                  -s name=email \
+                  -s identityProviderAlias=google \
+                  -s identityProviderMapper=oidc-user-attribute-idp-mapper \
+                  -s 'config."claim"=email' \
+                  -s 'config."user.attribute"=email'
+                echo "✅ Email mapper created"
+              fi
+
+              # Create firstName mapper (if not exists)
+              if ! /opt/keycloak/bin/kcadm.sh get identity-provider/instances/google/mappers -r kubernetes \
+                | grep -q '"name" : "firstName"'; then
+                /opt/keycloak/bin/kcadm.sh create identity-provider/instances/google/mappers -r kubernetes \
+                  -s name=firstName \
+                  -s identityProviderAlias=google \
+                  -s identityProviderMapper=oidc-user-attribute-idp-mapper \
+                  -s 'config."claim"=given_name' \
+                  -s 'config."user.attribute"=firstName'
+                echo "✅ firstName mapper created"
+              fi
+
+              # Create lastName mapper (if not exists)
+              if ! /opt/keycloak/bin/kcadm.sh get identity-provider/instances/google/mappers -r kubernetes \
+                | grep -q '"name" : "lastName"'; then
+                /opt/keycloak/bin/kcadm.sh create identity-provider/instances/google/mappers -r kubernetes \
+                  -s name=lastName \
+                  -s identityProviderAlias=google \
+                  -s identityProviderMapper=oidc-user-attribute-idp-mapper \
+                  -s 'config."claim"=family_name' \
+                  -s 'config."user.attribute"=lastName'
+                echo "✅ lastName mapper created"
+              fi
+
+              echo ""
+              echo "=========================================="
+              echo "🎉 Google OAuth Setup Complete!"
+              echo "=========================================="
+              echo "✅ Google Identity Provider configured"
+              echo "✅ Email, firstName, lastName mappers created"
+              echo "✅ Users can now login via Google"
+              echo ""
+              echo "Login Flow:"
+              echo "1. Go to: https://iam.timourhomelab.org/realms/kubernetes/account/"
+              echo "2. Click 'Sign in with Google' button"
+              echo "3. Select Google account"
+              echo "4. Grant permissions"
+              echo "5. User automatically created in Keycloak!"
+              echo ""
+              echo "Add Google user to cluster-admins:"
+              echo "1. Keycloak Admin Console → Users"
+              echo "2. Find Google user (by email)"
+              echo "3. Groups tab → Join Group → cluster-admins"
+              echo "=========================================="
