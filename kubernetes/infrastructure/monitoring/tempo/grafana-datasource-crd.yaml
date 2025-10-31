@@ -1,0 +1,52 @@
+# Grafana Operator Datasource for Tempo
+# Enables distributed tracing with correlation to logs (Loki) and metrics (Prometheus)
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: tempo
+  namespace: grafana
+  labels:
+    app: grafana
+    datasource: tempo
+spec:
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  datasource:
+    name: Tempo
+    type: tempo
+    access: proxy  # Server-side access (Grafana pod makes requests, not browser)
+    url: http://tempo-query-frontend.monitoring.svc:3100
+    isDefault: false
+    editable: true
+    jsonData:
+      # Enable trace-to-logs correlation
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: '-1h'
+        spanEndTimeShift: '1h'
+        tags:
+          - key: service.name
+            value: service_name
+        filterByTraceID: true
+        filterBySpanID: false
+      # Enable trace-to-metrics correlation
+      tracesToMetrics:
+        datasourceUid: prometheus
+        spanStartTimeShift: '-1h'
+        spanEndTimeShift: '1h'
+        tags:
+          - key: service.name
+            value: service_name
+      # Enable service map/graph from Prometheus metrics
+      serviceMap:
+        datasourceUid: prometheus
+      # Enable trace node graph visualization
+      nodeGraph:
+        enabled: true
+      # Enable trace search UI
+      search:
+        hide: false
+      # Enable Loki-based trace search
+      lokiSearch:
+        datasourceUid: loki
