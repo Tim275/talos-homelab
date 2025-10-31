@@ -273,9 +273,9 @@ Databases, messaging platforms, and identity management:
         <td>Event streaming platform with Connect and Schema Registry (Confluent Operator)</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://www.authelia.com/images/branding/logo-cropped.png"></td>
-        <td><a href="https://www.authelia.com/">Authelia</a></td>
-        <td>Single Sign-On and Multi-Factor authentication portal with OIDC provider</td>
+        <td><img width="32" src="https://avatars.githubusercontent.com/u/4921466?s=200&v=4"></td>
+        <td><a href="https://www.keycloak.org/">Keycloak</a></td>
+        <td>Enterprise identity and access management with OIDC and SAML provider</td>
     </tr>
     <tr>
         <td><img width="32" src="https://avatars.githubusercontent.com/u/103038211?s=200&v=4"></td>
@@ -305,3 +305,268 @@ Zero Trust foundation and policy enforcement:
         <td>Kubernetes controller for one-way encrypted secrets in Git</td>
     </tr>
 </table>
+
+---
+
+## 🎯 Cluster Resilience & 99.9% Uptime
+
+### Current Resilience Status
+
+**Estimated Uptime:** ~95-96% (current configuration)
+
+**Target:** 99.9% (43.8 minutes downtime/month, 8.76 hours/year)
+
+### Uptime SLA Reference
+
+| SLA Level | Downtime/Year | Downtime/Month | Downtime/Week | Status |
+|-----------|---------------|----------------|---------------|--------|
+| 99%       | 3.65 days     | 7.2 hours      | 1.68 hours    | Basic |
+| 99.5%     | 1.83 days     | 3.6 hours      | 50.4 minutes  | Standard |
+| **99.9%** | **8.76 hours** | **43.8 minutes** | **10.1 minutes** | **Production Target** |
+| 99.95%    | 4.38 hours    | 21.9 minutes   | 5.04 minutes  | Enterprise |
+| 99.99%    | 52.6 minutes  | 4.38 minutes   | 1.01 minutes  | Mission Critical |
+
+### Infrastructure Health Dashboard
+
+```
+Cluster Configuration:
+├── Control Plane: 1 node (ctrl-0)          [SINGLE POINT OF FAILURE]
+├── Worker Nodes:  6 nodes (worker-1 to 6)  [RESILIENT]
+├── Total Nodes:   7 nodes
+└── Kubernetes:    v1.33.2 on Talos v1.10.6
+```
+
+### Storage Resilience
+
+```
+Ceph Storage:
+├── OSDs:           6 active (across 6 workers)
+├── Replication:    3x (triple redundancy)
+├── Failure Domain: host-level
+├── Monitors:       3x (worker-1, worker-3, worker-6) [HA]
+├── CephFS:         3x metadata pool replicas
+├── Object Store:   3x replicas (S3-compatible)
+└── Status:         HEALTHY - Can survive 2 OSD failures
+```
+
+### High Availability Analysis
+
+#### Components with HA (Resilient)
+
+| Component | Replicas | Anti-Affinity | PDB | Backup | Status |
+|-----------|----------|---------------|-----|--------|--------|
+| Istio Control Plane | 3 | Yes | Yes | N/A | RESILIENT |
+| Ceph Monitors | 3 | Yes | Yes | N/A | RESILIENT |
+| Ceph OSDs | 6 (3x replication) | Host-level | Yes | N/A | RESILIENT |
+| ArgoCD Redis HA | 3 HAProxy + 3 Redis | Yes | No | Redis AOF | RESILIENT |
+| N8N PostgreSQL | 2 instances | Default | Yes | FAILED | PARTIAL |
+| N8N Webhook | 2 replicas | No | No | N/A | RESILIENT |
+| Elasticsearch | 3 data nodes | Default | Yes | Snapshots | RESILIENT |
+| Kafka | 3 brokers | Zone | Yes | N/A | RESILIENT |
+
+#### Single Points of Failure (CRITICAL)
+
+| Component | Current | Required | Impact | Priority |
+|-----------|---------|----------|--------|----------|
+| Control Plane | 1 node | 3 nodes | Complete cluster failure | P0 |
+| Envoy Gateway | 1 replica | 2+ replicas | No ingress traffic | P0 |
+| ArgoCD Server | 1 replica | 2+ replicas | No GitOps UI/API | P1 |
+| ArgoCD Repo Server | 1 replica | 2+ replicas | No Git sync | P1 |
+| Prometheus | 1 replica | 2+ replicas | No metrics collection | P1 |
+| Alertmanager | 1 replica | 3+ replicas | No alert routing | P1 |
+| Velero | 1 replica | 2+ replicas | No cluster backups | P1 |
+| N8N Main | 1 replica | 2+ replicas | No workflow UI | P2 |
+| N8N Worker | 1 replica | 2+ replicas | No workflow execution | P2 |
+
+### Backup & Disaster Recovery
+
+#### Current Backup Status
+
+| Workload | Backup Method | Schedule | Retention | Last Backup | Status |
+|----------|---------------|----------|-----------|-------------|--------|
+| N8N PostgreSQL | CloudNativePG Barman | Daily 04:00 | 7 days | Failed | BROKEN |
+| Velero Cluster | None | None | N/A | Never | NOT CONFIGURED |
+| Ceph RGW | Manual | None | N/A | N/A | MANUAL ONLY |
+| ArgoCD Config | GitOps | Continuous | Infinite | Git | PROTECTED |
+| Grafana Dashboards | GrafanaDashboard CRDs | Continuous | Infinite | Git | PROTECTED |
+
+#### Critical Issues
+
+1. N8N PostgreSQL Backups Failing (3+ days)
+   - Error: "no barmanObjectStore section defined"
+   - Impact: NO DATABASE BACKUPS - Data loss risk!
+   - Fix Required: Configure Ceph RGW S3 backend
+
+2. Velero Not Configured
+   - No cluster-level backup schedules
+   - No disaster recovery capability
+   - Fix Required: Create Velero schedules for all namespaces
+
+### Roadmap to 99.9% Uptime
+
+#### Phase 1: Eliminate Critical SPOFs (P0)
+
+1. **Expand Control Plane to 3 Nodes**
+   ```bash
+   # Add ctrl-1 and ctrl-2 via Terraform
+   # Estimated downtime: 0 minutes (rolling)
+   # Cost: 2 additional VMs
+   ```
+   - Current: 1 node (SPOF)
+   - Target: 3 nodes (etcd quorum, can survive 1 failure)
+   - Impact: Prevents complete cluster failure
+
+2. **Scale Envoy Gateway to 2+ Replicas**
+   ```bash
+   kubectl scale deployment envoy-gateway -n envoy-gateway-system --replicas=2
+   # Add podAntiAffinity to ensure node distribution
+   ```
+   - Current: 1 replica (SPOF)
+   - Target: 2-3 replicas with anti-affinity
+   - Impact: Zero-downtime ingress during node failures
+
+#### Phase 2: High Availability for Core Services (P1)
+
+3. **Scale ArgoCD Components**
+   ```bash
+   # Update ArgoCD Helm values:
+   server.replicas: 2
+   repoServer.replicas: 2
+   # Already HA: Redis (3 HAProxy + 3 Redis)
+   ```
+   - Target: 2 replicas for server and repo-server
+   - Impact: GitOps continues during node failures
+
+4. **Enable Prometheus HA**
+   ```bash
+   # Update kube-prometheus-stack Helm values:
+   prometheus.prometheusSpec.replicas: 2
+   prometheus.prometheusSpec.retention: 30d
+   alertmanager.alertmanagerSpec.replicas: 3
+   ```
+   - Target: 2 Prometheus replicas, 3 Alertmanager replicas
+   - Impact: Continuous metrics and alerting
+
+5. **Configure Velero Backups**
+   ```bash
+   # Create Velero schedules:
+   - Daily full cluster backup (retain 7 days)
+   - Weekly full cluster backup (retain 4 weeks)
+   - Monthly full cluster backup (retain 12 months)
+   ```
+   - Target: Automated cluster backups to Ceph RGW
+   - Impact: Disaster recovery capability (RTO: 1 hour, RPO: 24 hours)
+
+#### Phase 3: Application-Level Resilience (P2)
+
+6. **Fix N8N PostgreSQL Backups**
+   ```bash
+   # Configure barmanObjectStore in CloudNativePG Cluster
+   # Point to Ceph RGW S3 endpoint
+   # Enable continuous WAL archiving
+   ```
+   - Target: Daily backups + continuous WAL archiving
+   - Impact: Point-in-time recovery (PITR)
+
+7. **Scale N8N Components**
+   ```bash
+   # Scale N8N main and worker:
+   kubectl scale deployment n8n-main -n n8n-prod --replicas=2
+   kubectl scale deployment n8n-worker -n n8n-prod --replicas=2
+   ```
+   - Target: 2 replicas for main and worker
+   - Impact: Zero-downtime workflow execution
+
+8. **Add Pod Disruption Budgets**
+   ```yaml
+   # Create PDBs for all critical workloads
+   minAvailable: 1  # For 2-replica deployments
+   minAvailable: 2  # For 3+ replica deployments
+   ```
+   - Target: PDBs for all deployments with 2+ replicas
+   - Impact: Prevents simultaneous pod evictions
+
+#### Phase 4: Advanced Resilience Features
+
+9. **Topology Spread Constraints**
+   ```yaml
+   topologySpreadConstraints:
+     - maxSkew: 1
+       topologyKey: kubernetes.io/hostname
+       whenUnsatisfiable: DoNotSchedule
+   ```
+   - Target: Even pod distribution across nodes
+   - Impact: Better fault tolerance
+
+10. **Health Checks for All Workloads**
+    ```yaml
+    livenessProbe:  # Auto-restart unhealthy pods
+    readinessProbe: # Route traffic only to ready pods
+    startupProbe:   # Allow slow-starting apps
+    ```
+    - Current: 112 pods without liveness probes
+    - Target: All pods have proper health checks
+    - Impact: Automatic failure detection and recovery
+
+11. **Resource Requests and Limits**
+    ```yaml
+    resources:
+      requests: # Guaranteed resources
+        cpu: 100m
+        memory: 128Mi
+      limits: # Maximum resources
+        cpu: 500m
+        memory: 512Mi
+    ```
+    - Target: All pods have requests/limits
+    - Impact: Prevents resource contention, enables HPA
+
+### Monitoring & Alerting
+
+#### Critical Alerts Configured
+
+- AllNodesNotReady
+- ArgoCDApplicationOutOfSync
+- ArgoCDSyncFailed
+- CNPGLastFailedArchiveTime
+- CertificateExpiresIn24Hours
+- CephClusterErrorState
+- PrometheusTargetDown
+
+#### Alert Routing
+
+- Slack Integration: BROKEN (webhook 404)
+- Fix Required: Regenerate Slack webhook and update sealed secret
+
+### Expected Uptime After Full Implementation
+
+| Phase | Estimated Uptime | Downtime/Month | Notes |
+|-------|------------------|----------------|-------|
+| Current (Phase 0) | 95-96% | ~30 hours | Multiple SPOFs present |
+| Phase 1 Complete | 99.5% | ~3.6 hours | Critical SPOFs eliminated |
+| Phase 2 Complete | 99.9% | ~43 minutes | Core services HA |
+| Phase 3 Complete | 99.95% | ~22 minutes | Application-level resilience |
+| Phase 4 Complete | 99.99% | ~4 minutes | Enterprise-grade (theoretical max for single DC) |
+
+### Implementation Timeline
+
+| Phase | Effort | Risk | Downtime | Priority |
+|-------|--------|------|----------|----------|
+| Phase 1 | 2-4 hours | Medium | 0 min (rolling) | P0 - Critical |
+| Phase 2 | 4-6 hours | Low | 0 min (rolling) | P1 - High |
+| Phase 3 | 2-3 hours | Low | 0 min | P2 - Medium |
+| Phase 4 | 8-12 hours | Low | 0 min | P3 - Nice to have |
+| **Total** | **16-25 hours** | - | **0 min** | - |
+
+### Cost Analysis
+
+| Change | Hardware Cost | Operational Impact |
+|--------|---------------|-------------------|
+| Add 2 control plane nodes | 2x VMs (~same as worker) | +30% CPU/memory for etcd |
+| Scale Envoy Gateway (2x) | $0 | +50 MB memory |
+| Scale ArgoCD (2x) | $0 | +200 MB memory |
+| Scale Prometheus (2x) | $0 | +4 GB memory (metrics storage) |
+| Scale N8N (2x) | $0 | +500 MB memory |
+| Total | 2x VMs | +5-6 GB cluster memory |
+
+---
