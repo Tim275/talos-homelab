@@ -1,0 +1,137 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: lldap-bootstrap
+  namespace: lldap
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: wait-for-lldap
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for LLDAP service to be ready..."
+              until nc -z lldap 17170; do
+                echo "LLDAP not ready yet, waiting 5s..."
+                sleep 5
+              done
+              echo "LLDAP is ready!"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+        # 🔐 Production Security: Inject random passwords for users without password field
+        - name: inject-passwords
+          image: alpine:3.21
+          command:
+            - /bin/sh
+            - -c
+            - |
+              apk add --no-cache openssl
+              /scripts/inject-passwords.sh
+          securityContext:
+            runAsNonRoot: false  # Need root to install openssl via apk
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false  # Need to write to emptyDir + install packages
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 50m
+              memory: 64Mi
+          volumeMounts:
+            - name: password-injector-script
+              mountPath: /scripts
+              readOnly: true
+            - name: users-original
+              mountPath: /bootstrap-input/user-configs
+              readOnly: true
+            - name: users-processed
+              mountPath: /bootstrap-output/user-configs
+      containers:
+        - name: lldap-bootstrap
+          image: ghcr.io/lldap/lldap:2025-07-10-alpine-rootless  # v0.6+ for custom attributes
+          command: ["/app/bootstrap.sh"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          envFrom:
+            - configMapRef:
+                name: bootstrap-env
+          env:
+            - name: LLDAP_ADMIN_USERNAME
+              value: "admin"
+            - name: LLDAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: lldap-secrets
+                  key: admin-password
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: users-processed  # Use processed users.json with injected passwords
+              mountPath: /bootstrap/user-configs
+              readOnly: true
+            - name: groups
+              mountPath: /bootstrap/group-configs
+              readOnly: true
+            - name: user-schemas
+              mountPath: /bootstrap/user-schemas
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        # 🔐 Production Security: Password injection volumes
+        - name: password-injector-script
+          configMap:
+            name: bootstrap-password-injector
+            defaultMode: 0555  # rx for all (read + execute)
+        - name: users-original  # Original users.json WITHOUT passwords
+          configMap:
+            name: bootstrap-users
+        - name: users-processed  # Processed users.json WITH random passwords
+          emptyDir: {}
+        - name: groups
+          configMap:
+            name: bootstrap-groups
+        - name: user-schemas
+          configMap:
+            name: bootstrap-user-schemas

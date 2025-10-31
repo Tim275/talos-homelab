@@ -1,0 +1,90 @@
+apiVersion: elasticsearch.k8s.elastic.co/v1
+kind: Elasticsearch
+metadata:
+  name: production-cluster
+  namespace: elastic-system
+spec:
+  version: 8.16.1
+
+  # S3 Snapshot Repository Credentials (Ceph RGW)
+  # These credentials are injected into Elasticsearch keystore
+  # Created by: kubernetes/infrastructure/observability/elasticsearch/snapshots/create-s3-credentials-job.yaml
+  secureSettings:
+    - secretName: elasticsearch-s3-credentials
+
+  # 3-node production cluster
+  nodeSets:
+    - name: master-data
+      count: 3
+      config:
+        # Master + Data + Ingest roles
+        node.roles: ["master", "data", "ingest"]
+        # CRITICAL FIX: Allow ALL indices for logging pipeline
+        # Previously was "+fluent*,-*" which blocked logstash*
+        # indices - this was the ROOT CAUSE of the EFK stack
+        # failure. FluentBit -> Fluentd -> Elasticsearch
+        # requires logstash format
+        action.auto_create_index: "true"
+        # Note: cluster.initial_master_nodes and xpack.security.enabled
+        # are managed by ECK Operator automatically
+      podTemplate:
+        metadata:
+          labels:
+            app.kubernetes.io/component: elasticsearch
+        spec:
+          # Install S3 repository plugin for Rook Ceph snapshots
+          initContainers:
+            - name: install-plugins
+              command:
+                - sh
+                - -c
+                - |
+                  bin/elasticsearch-plugin install --batch repository-s3
+          # 🏭 PRODUCTION SPECS: Small Cluster (1-3 nodes)
+          # Memory: 4GB per node, Heap: 2GB (50%), CPU: 2 cores
+          containers:
+            - name: elasticsearch
+              resources:
+                requests:
+                  memory: 4Gi
+                  cpu: 1000m
+                limits:
+                  memory: 4Gi
+                  cpu: 2000m
+              env:
+                - name: ES_JAVA_OPTS
+                  # 50% of container memory (4GB → 2GB heap)
+                  value: "-Xms2g -Xmx2g"
+          # Affinity - spread across nodes
+          affinity:
+            podAntiAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  podAffinityTerm:
+                    labelSelector:
+                      matchLabels:
+                        elasticsearch.k8s.elastic.co/cluster-name: production-cluster
+                    topologyKey: kubernetes.io/hostname
+      # Storage mit Rook-Ceph
+      volumeClaimTemplates:
+        - metadata:
+            name: elasticsearch-data
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            storageClassName: rook-ceph-block-enterprise
+            resources:
+              requests:
+                storage: 10Gi
+  # HTTP service configuration
+  http:
+    service:
+      spec:
+        type: ClusterIP
+        ports:
+          - name: https
+            port: 9200
+            targetPort: 9200
+    tls:
+      selfSignedCertificate:
+        disabled: false

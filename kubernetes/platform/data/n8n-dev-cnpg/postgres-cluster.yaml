@@ -1,0 +1,58 @@
+# n8n Development PostgreSQL Cluster
+# Lightweight PostgreSQL database for n8n development and testing
+
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: n8n-postgres
+  namespace: n8n-dev
+  labels:
+    app.kubernetes.io/name: n8n-postgres
+    app.kubernetes.io/component: database
+    environment: development
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"  # After operator (wave 2)
+spec:
+  # Single instance for development
+  instances: 1
+
+  # PostgreSQL version (same as prod for consistency)
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.1
+
+  # Resource allocation (reduced for dev)
+  resources:
+    requests:
+      memory: "128Mi"      # Reduced from 256Mi
+      cpu: "100m"          # Reduced from 200m
+    limits:
+      memory: "256Mi"      # Reduced from 512Mi
+      cpu: "250m"          # Reduced from 500m
+
+  # Storage configuration (smaller for dev)
+  storage:
+    size: 2Gi             # Reduced from 8Gi
+    storageClass: rook-ceph-block-enterprise
+
+  # Bootstrap new development database
+  bootstrap:
+    initdb:
+      database: n8n
+      owner: n8n
+      secret:
+        name: n8n-postgres-credentials
+
+---
+# n8n development database user credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: n8n-postgres-credentials
+  namespace: n8n-dev
+  labels:
+    environment: development
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"  # Same as operator, before cluster
+type: kubernetes.io/basic-auth
+stringData:
+  username: n8n
+  password: n8nDevPassword123  # Different password for dev

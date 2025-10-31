@@ -1,0 +1,412 @@
+# yamllint disable rule:line-length
+# https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml
+prometheus:
+  prometheusSpec:
+    # Retention configuration (prevents disk full)
+    retention: 15d           # 15 days retention (homelab standard)
+    retentionSize: "18GB"    # 90% of 20GB PVC (prevents disk full)
+
+    podMonitorNamespaceSelector: {}
+    podMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    # nodeSelector:
+    #   topology.kubernetes.io/zone: abel
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: rook-ceph-block-enterprise  # Use your correct storage class
+          # volumeName: pv-prometheus  # Let Kubernetes auto-provision
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 20G
+          # selector:  # Remove specific PV selector, let Kubernetes handle it
+          #   matchLabels:
+          #     app: prometheus
+
+# https://github.com/siderolabs/talos/discussions/7214
+kubeControllerManager:
+  enabled: true
+  serviceMonitor:
+    relabelings:
+      - sourceLabels: [ __meta_kubernetes_pod_node_name ]
+        separator: ;
+        regex: ^(.*)$
+        targetLabel: nodename
+        replacement: $1
+        action: replace
+    metricRelabelings:
+      - action: labeldrop
+        regex: pod
+
+kubeEtcd:
+  enabled: true
+  service:
+    selector:
+      # etcd doesn't run as a container,
+      # but most probably runs on the same nodes that host a controller
+      k8s-app: kube-controller-manager
+  serviceMonitor:
+    relabelings:
+      - sourceLabels: [ __meta_kubernetes_pod_node_name ]
+        separator: ;
+        regex: ^(.*)$
+        targetLabel: nodename
+        replacement: $1
+        action: replace
+    metricRelabelings:
+      - action: labeldrop
+        regex: pod
+
+kubeProxy:
+  # Cilium replaces Kube Proxy
+  enabled: false
+
+kubeScheduler:
+  enabled: true
+  serviceMonitor:
+    relabelings:
+      - sourceLabels: [ __meta_kubernetes_pod_node_name ]
+        separator: ;
+        regex: ^(.*)$
+        targetLabel: nodename
+        replacement: $1
+        action: replace
+    metricRelabelings:
+      - action: labeldrop
+        regex: pod
+
+nodeExporter:
+  enabled: true
+
+grafana:
+  enabled: false
+  forceDeployDatasources: false
+  forceDeployDashboards: false
+  defaultDashboardsEnabled: false
+  defaultDashboardsTimezone: Europe/Berlin  # Fixed timezone for Germany
+  operator:
+    dashboardsConfigMapRefEnabled: true
+    matchLabels:
+      app: grafana
+    folder: Kubernetes
+
+# Disable all default Prometheus rules - we use custom enterprise rules
+defaultRules:
+  create: false
+  rules:
+    alertmanager: false
+    etcd: false
+    configReloaders: false
+    general: false
+    k8s: false
+    kubeApiserverAvailability: false
+    kubeApiserverBurnrate: false
+    kubeApiserverHistogram: false
+    kubeApiserverSlos: false
+    kubeControllerManager: false
+    kubelet: false
+    kubeProxy: false
+    kubePrometheusGeneral: false
+    kubePrometheusNodeRecording: false
+    kubernetesApps: false
+    kubernetesResources: false
+    kubernetesStorage: false
+    kubernetesSystem: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    kubeStateMetrics: false
+    network: false
+    node: false
+    nodeExporterAlerting: false
+    nodeExporterRecording: false
+    prometheus: false
+    prometheusOperator: false
+    windows: false
+
+prometheusOperator:
+  admissionWebhooks:
+    enabled: false  # Disable admission webhooks completely
+    patch:
+      enabled: false
+    certManager:
+      enabled: false
+  # Disable TLS completely to avoid cert mount issues
+  tls:
+    enabled: false
+  # 🛡️ Homelab Stability: Resource limits for Prometheus Operator
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m     # 10x burst for CRD operations
+      memory: 1Gi    # 4x headroom for operator
+
+# 🛡️ Homelab Stability: Resource limits for Kube State Metrics
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 50m       # Actual: ~7m CPU
+      memory: 64Mi   # Actual: ~27Mi memory
+    limits:
+      cpu: 500m      # 10x burst for metrics collection
+      memory: 512Mi  # ~20x headroom for cluster growth
+
+  # 🔧 Fix CrashLoopBackOff: Increase probe delays (was 5s, now 30s)
+  # Root cause: kube-state-metrics needs time to start and expose health endpoints
+  livenessProbe:
+    initialDelaySeconds: 30  # Changed from default 5s to prevent premature probe failures
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    initialDelaySeconds: 30  # Changed from default 5s to allow full startup
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+# 🚨 ENTERPRISE ALERTMANAGER CONFIG - Production Grade
+# Based on your real production alerting system
+# Priority Levels: P1 (Critical) → P2 (High) → P3 (Warning) → P5 (Info)
+
+alertmanager:
+  alertmanagerSpec:
+    secrets:
+      - alertmanager-slack-webhooks
+  config:
+    global:
+      resolve_timeout: 5m
+      slack_api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
+
+    # 📋 ROUTE CONFIGURATION - Priority-based Routing
+    route:
+      receiver: 'p3-warning'  # Default to P3 for alerts without priority/severity labels
+      group_by: ['alertname', 'cluster', 'namespace', 'service']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+
+      routes:
+        # ====== P1: DRINGEND/CRITICAL (RED 🔴) ======
+        # Response SLA: 5 minutes
+        - matchers:
+            - priority="P1"
+          receiver: 'p1-critical'
+          group_wait: 0s          # INSTANT notification
+          group_interval: 1m
+          repeat_interval: 5m     # Re-notify every 5 min
+          continue: false         # Only send to Slack
+
+        # ====== P2: WICHTIG/HIGH (ORANGE 🟠) ======
+        # Response SLA: 15 minutes
+        - matchers:
+            - priority="P2"
+          receiver: 'p2-high'
+          group_wait: 10s
+          group_interval: 2m
+          repeat_interval: 15m
+          continue: false         # Only send to Slack
+
+        # ====== P3: WARNING (YELLOW 🟡) ======
+        # Response SLA: 1 hour
+        - matchers:
+            - priority="P3"
+          receiver: 'p3-warning'
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 1h
+          continue: false         # Only send to Slack
+
+        # ====== P5: INFO (BLUE 🔵) ======
+        # Response SLA: 4 hours
+        - matchers:
+            - priority="P5"
+          receiver: 'p5-info'
+          group_wait: 2m
+          group_interval: 10m
+          repeat_interval: 4h
+          continue: false         # Only send to Slack
+
+        # Fallback for alerts without priority
+        - matchers:
+            - severity="critical"
+          receiver: 'p1-critical'
+          group_wait: 10s
+          repeat_interval: 15m
+
+        - matchers:
+            - severity="warning"
+          receiver: 'p3-warning'
+
+    # 📨 RECEIVERS - Enterprise Slack Templates
+    receivers:
+      # ====== P1: DRINGEND 🔴 ======
+      - name: 'p1-critical'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
+            channel: '#alerts'
+            username: 'Homelab Monitoring'
+            icon_emoji: ':rotating_light:'
+            title: |-
+              🔴 P1 ALERT - {{ .GroupLabels.alertname }}
+            title_link: '{{ template "__alertmanagerURL" . }}'
+            color: 'danger'
+            text: |-
+              📊 *Alert Summary*
+              {{ range .Alerts }}
+              *Instanz:* `{{ .Labels.instance }}{{ if .Labels.pod }}{{ .Labels.pod }}{{ end }}`
+              *Problem:* {{ .Annotations.summary }}
+              *Zeit:* {{ .StartsAt.Format "02.01.2006, 15:04:05" }} UTC
+              *Alert ID:* #{{ .Labels.alertname }}-{{ .Labels.namespace }}
+
+              🔍 *Details*
+              *Service:* {{ .Labels.job }}{{ if .Labels.namespace }} (Namespace: {{ .Labels.namespace }}){{ end }}
+              *Status:* {{ .Status | toUpper }}{{ if eq .Status "firing" }} - CRITICAL{{ end }}
+              {{ if .Annotations.description }}
+              *Description:* {{ .Annotations.description }}{{ end }}
+              {{ if .Labels.tier }}*Tier:* {{ .Labels.tier }}{{ end }}
+
+              📈 *System Metriken*
+              {{ if .Annotations.current_value }}⚠️ Current Value: `{{ .Annotations.current_value }}`{{ end }}
+              {{ if .Annotations.threshold }}⚠️ Threshold: `{{ .Annotations.threshold }}`{{ end }}
+
+              🔗 *Links*
+              <{{ .GeneratorURL }}|Prometheus Query> | <{{ .Annotations.dashboard_url }}|Dashboard>{{ if .Annotations.runbook_url }} | <{{ .Annotations.runbook_url }}|Runbook>{{ end }}
+
+              ⚡ *Action Required*
+              Team: @Sysadmins - Immediate investigation required!
+              {{ end }}
+            actions:
+              - type: button
+                text: ':chart_with_upwards_trend: Prometheus'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: ':bar_chart: Dashboard'
+                url: '{{ (index .Alerts 0).Annotations.dashboard_url }}'
+              - type: button
+                text: ':green_book: Runbook'
+                url: '{{ (index .Alerts 0).Annotations.runbook_url }}'
+              - type: button
+                text: ':no_bell: Silence'
+                url: '{{ .ExternalURL }}/#/silences'
+            send_resolved: true
+
+      # ====== P2: WICHTIG 🟠 ======
+      - name: 'p2-high'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
+            channel: '#alerts'
+            username: 'Homelab Monitoring'
+            icon_emoji: ':warning:'
+            title: |-
+              {{ if eq .Status "firing" }}⚠️ [FIRING:{{ len .Alerts.Firing }}]{{ else }}✅ [RESOLVED]{{ end }} {{ .GroupLabels.alertname }}
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else }}warning{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              {{ if eq .Status "firing" }}⚠️{{ else }}✅{{ end }} *{{ .Labels.alertname }}* - {{ .Labels.severity | toUpper }}
+              *Summary:* {{ .Annotations.summary }}
+              {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
+
+              *Details:*
+              {{ if .Labels.namespace }}• Namespace: `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.job }}• Job: `{{ .Labels.job }}`{{ end }}
+              {{ if .Labels.instance }}• Instance: `{{ .Labels.instance }}`{{ end }}
+              {{ if eq .Status "firing" }}• Started: {{ .StartsAt.Format "2006-01-02 15:04:05" }}{{ else }}• Resolved: {{ .EndsAt.Format "2006-01-02 15:04:05" }}{{ end }}
+
+              *Status    Priority*
+              {{ .Status | toUpper }}    P2
+              {{ end }}
+            actions:
+              - type: button
+                text: ':chart: Query'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: ':book: Runbook'
+                url: '{{ (index .Alerts 0).Annotations.runbook_url }}'
+            send_resolved: true
+
+      # ====== P3: WARNING 🟡 ======
+      - name: 'p3-warning'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
+            channel: '#alerts'
+            username: 'Homelab Monitoring'
+            icon_emoji: ':prometheus:'
+            title: |-
+              {{ if eq .Status "firing" }}⚠️ [FIRING:{{ len .Alerts.Firing }}]{{ else }}✅ [RESOLVED]{{ end }} {{ .GroupLabels.alertname }}
+            color: 'warning'
+            text: |-
+              {{ range .Alerts }}
+              {{ if eq .Status "firing" }}⚠️{{ else }}✅{{ end }} *{{ .Labels.alertname }}* - WARNING
+              *Summary:* {{ .Annotations.summary }}
+              {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
+              *Details:* {{ if .Labels.namespace }}Namespace: `{{ .Labels.namespace }}`{{ end }}{{ if .Labels.job }}, Job: `{{ .Labels.job }}`{{ end }}
+
+              *Status    Priority*
+              {{ .Status | toUpper }}    P3
+              {{ end }}
+            send_resolved: true
+
+      # ====== P5: INFO 🔵 ======
+      - name: 'p5-info'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
+            channel: '#alerts'
+            username: 'Homelab Monitoring'
+            icon_emoji: ':information_source:'
+            title: |-
+              {{ if eq .Status "firing" }}ℹ️ [INFO]{{ else }}✅ [RESOLVED]{{ end }} {{ .GroupLabels.alertname }}
+            color: '#439FE0'
+            text: |-
+              {{ range .Alerts }}
+              ℹ️ *{{ .Labels.alertname }}*
+              {{ .Annotations.summary }}
+
+              *Status    Priority*
+              {{ .Status | toUpper }}    P5
+              {{ end }}
+            send_resolved: true
+
+      # ====== DEFAULT RECEIVER ======
+      - name: 'default'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
+            channel: '#alerts'
+            username: 'AlertManager'
+            icon_emoji: ':prometheus:'
+            title: '[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
+            text: |-
+              {{ range .Alerts }}
+              *{{ .Labels.alertname }}*
+              {{ .Annotations.summary }}
+              {{ end }}
+            send_resolved: true
+
+    # 🚫 INHIBIT RULES - Prevent Alert Spam
+    inhibit_rules:
+      # Critical alerts suppress warnings for same target
+      - source_matchers:
+          - severity="critical"
+        target_matchers:
+          - severity="warning"
+        equal: ['namespace', 'alertname', 'instance']
+
+      # P1 suppresses P2/P3 for same service
+      - source_matchers:
+          - priority="P1"
+        target_matchers:
+          - priority=~"P2|P3"
+        equal: ['namespace', 'job']
+
+      # Node down suppresses pod alerts on that node
+      - source_matchers:
+          - alertname="NodeDown"
+        target_matchers:
+          - alertname=~"Pod.*|Container.*"
+        equal: ['node']

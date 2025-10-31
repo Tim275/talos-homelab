@@ -1,0 +1,74 @@
+# n8n PostgreSQL Cluster
+# Dedicated PostgreSQL database for n8n workflow automation
+
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: n8n-postgres
+  namespace: n8n-prod
+  labels:
+    app.kubernetes.io/name: n8n-postgres
+    app.kubernetes.io/component: database
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"  # After operator (wave 2)
+spec:
+  # HA: 1 Primary + 1 Replica for production
+  instances: 2
+
+  # PostgreSQL version
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.1
+
+  # Resource allocation (n8n optimized)
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  # Storage configuration
+  storage:
+    size: 8Gi
+    storageClass: rook-ceph-block-enterprise
+
+  # High Availability Configuration
+  minSyncReplicas: 0  # Optional sync replication (async for better performance)
+  maxSyncReplicas: 0  # With 2 instances, we have 1 replica (async replication)
+
+  # Pod Anti-Affinity (distribute across nodes)
+  affinity:
+    podAntiAffinityType: required  # Force different nodes
+
+  # Pod Disruption Budget (prevent accidental downtime)
+  enablePDB: true
+
+  # ❌ Barman Backup DISABLED due to Ceph RGW multipart upload issues
+  # Alternative: Velero CSI volume snapshots (daily at 4 AM via daily-pv-backup schedule)
+  # Future: Re-enable when Ceph RGW multipart uploads are fixed or switch to external S3
+  # backup:
+  #   barmanObjectStore:
+  #     destinationPath: s3://n8n-prod-pg-backups/
+  #     endpointURL: http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
+  #     s3Credentials:
+  #       accessKeyId:
+  #         name: n8n-postgres-backup-s3
+  #         key: ACCESS_KEY_ID
+  #       secretAccessKey:
+  #         name: n8n-postgres-backup-s3
+  #         key: ACCESS_SECRET_KEY
+  #     data:
+  #       compression: gzip
+  #       encryption: AES256
+  #       jobs: 2
+  #     serverName: n8n-postgres
+  #   retentionPolicy: "30d"
+  #   target: prefer-standby
+
+  # Bootstrap from existing cluster or create new
+  bootstrap:
+    initdb:
+      database: n8n
+      owner: n8n
+      secret:
+        name: n8n-postgres-credentials

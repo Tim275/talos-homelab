@@ -1,0 +1,93 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: security
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/part-of: timour-homelab
+    app.kubernetes.io/layer: security
+    team: timour
+spec:
+  description: "🔐 Enterprise Security Foundation - Zero Trust Architecture"
+
+  # Security policies can deploy to any namespace
+  destinations:
+    - namespace: '*'
+      server: https://kubernetes.default.svc
+
+  # Security layer resources
+  sourceRepos:
+    - 'https://github.com/Tim275/talos-homelab'
+
+  # Security resource permissions
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+
+  # Security sync policies
+  syncWindows:
+    - kind: allow
+      schedule: '* * * * *'
+      duration: 24h
+      applications:
+        - '*'
+
+  # Security RBAC
+  roles:
+    - name: security-admin
+      description: "Full access to security policies"
+      policies:
+        - p, proj:security:security-admin, applications, *, security/*, allow
+        - p, proj:security:security-admin, exec, *, security/*, allow
+      groups:
+        - timour:security-admins
+
+    - name: security-operator
+      description: "Operational access to security policies"
+      policies:
+        - p, proj:security:security-operator, applications, get, security/*, allow
+        - p, proj:security:security-operator, applications, sync, security/*, allow
+      groups:
+        - timour:security-operators
+
+  # 🔧 ORPHANED RESOURCES: Enterprise cleanup policy (2025 Best Practice)
+  orphanedResources:
+    warn: false  # Disable warnings - resources managed via excludes
+    ignore:
+      # Helm chart resources that commonly appear as orphaned
+      - kind: Secret
+        name: sh.helm.release.v1.*
+      - kind: ConfigMap
+        name: sh.helm.release.v1.*
+      # Security policy engine resources
+      - kind: Secret
+        name: "*-kyverno-*"
+      - kind: ConfigMap
+        name: "*-kyverno-*"
+      - kind: Pod
+        name: "*-kyverno-*"
+      # Falco security monitoring
+      - kind: Secret
+        name: "*-falco-*"
+      - kind: ConfigMap
+        name: "*-falco-*"
+      # OPA Gatekeeper resources
+      - kind: Secret
+        name: "*-gatekeeper-*"
+      - kind: ConfigMap
+        name: "*-gatekeeper-*"
+      # Security scanning resources
+      - kind: Secret
+        name: "*-trivy-*"
+      - kind: ConfigMap
+        name: "*-trivy-*"
+      # Pod Security Standards resources
+      - kind: Secret
+        name: "*-pss-*"
+      - kind: ConfigMap
+        name: "*-pss-*"

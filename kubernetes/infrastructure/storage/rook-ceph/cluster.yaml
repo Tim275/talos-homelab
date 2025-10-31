@@ -1,0 +1,204 @@
+apiVersion: ceph.rook.io/v1
+kind: CephCluster
+metadata:
+  name: rook-ceph
+  namespace: rook-ceph
+  labels:
+    app.kubernetes.io/name: rook-ceph
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/part-of: storage-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  cephVersion:
+    image: quay.io/ceph/ceph:v19.2.3  # Squid - Latest stable version
+    allowUnsupported: false
+
+  # 🔐 ENTERPRISE SECURITY UPGRADES (Optional - for Production/Finance/Healthcare):
+  # security:
+  #   kms:  # Key Management Service integration (for encryption at rest)
+  #     connectionDetails:
+  #       KMS_PROVIDER: "vault"  # HashiCorp Vault integration
+  #   keyRotation:
+  #     enabled: true
+  #     schedule: "@monthly"  # Rotate keys monthly
+
+  dataDirHostPath: /var/lib/rook
+
+  # IMPORTANT: Clean up previous data if cluster was deleted
+  cleanupPolicy:
+    confirmation: ""  # Set to "yes-really-destroy-data" for complete cleanup
+    sanitizeDisks:
+      method: quick  # quick|complete
+      dataSource: zero  # zero|random
+      iteration: 1
+
+  # Google SRE practices: Conservative upgrade settings
+  upgradeOSDRequiresHealthyPGs: true
+  skipUpgradeChecks: false
+  continueUpgradeAfterChecksEvenIfNotHealthy: false
+  waitTimeoutForHealthyOSDInMinutes: 10
+
+  # Google pattern: Odd number for consensus, minimal viable cluster
+  mon:
+    count: 3
+    allowMultiplePerNode: false
+
+  # Google pattern: Active-standby for management
+  mgr:
+    count: 2
+    allowMultiplePerNode: false
+    modules:
+      - name: pg_autoscaler
+        enabled: true  # Re-enabled after fixing overlapping CRUSH roots
+      - name: balancer
+        enabled: true
+      - name: prometheus
+        enabled: true
+      - name: telemetry
+        enabled: true  # Advanced cluster insights and health analytics
+
+  # Production-grade dashboard with SSL
+  dashboard:
+    enabled: true
+    ssl: true  # HTTPS enabled for secure web access
+
+  # Essential monitoring only
+  monitoring:
+    enabled: true
+
+  # Google pattern: Simple, reliable networking
+  network:
+    provider: host
+    # 🔐 ENTERPRISE SECURITY - Wire Encryption enabled for Production
+    connections:
+      encryption:
+        enabled: true  # msgr2 secure mode - encrypts all inter-daemon communication
+      compression:
+        enabled: false  # Disabled for security (avoid compression side-channels)
+
+  # Essential services only
+  crashCollector:
+    disable: false
+
+  # Homelab: Memory optimization - MGR needs more for dashboard/modules
+  resources:
+    mgr:
+      limits:
+        cpu: "500m"        # Increased for dashboard responsiveness
+        memory: "2Gi"      # Increased - MGR loads many Python modules!
+      requests:
+        cpu: "100m"        # Increased for baseline performance
+        memory: "1Gi"      # Increased - prevent OOMKills
+    mon:
+      limits:
+        cpu: "300m"        # Reduced from 500m
+        memory: "512Mi"    # Reduced from 1Gi - MAJOR SAVINGS!
+      requests:
+        cpu: "30m"         # Reduced from 50m
+        memory: "128Mi"    # Reduced from 256Mi
+    osd:
+      limits:
+        cpu: "1500m"       # Increased from 1000m to fix BLUESTORE_SLOW_OP_ALERT
+        memory: "3Gi"      # 2GB osd_memory_target + 1GB overhead (Ceph recommended minimum)
+      requests:
+        cpu: "300m"        # Increased from 250m for better baseline performance
+        memory: "1.5Gi"    # 50% of limit - prevents OOM kills while allowing scheduling
+
+  removeOSDsIfOutAndSafeToRemove: true
+
+  # Optimized storage: 6 workers with dedicated 50GB block devices
+  storage:
+    useAllNodes: false
+    useAllDevices: false  # Use specific block devices (scsi1 = /dev/sdb)
+    nodes:
+      - name: "worker-1"  # nipogi - 32GB RAM, stateful workloads
+        config:
+          storeType: bluestore
+        devices:
+          - name: "/dev/sdb"  # 50GB dedicated storage disk (scsi1)
+      - name: "worker-2"  # nipogi - 32GB RAM, stateful workloads
+        config:
+          storeType: bluestore
+        devices:
+          - name: "/dev/sdb"  # 50GB dedicated storage disk (scsi1)
+      - name: "worker-3"  # msa2proxmox - 20GB RAM, compute workloads
+        config:
+          storeType: bluestore
+        devices:
+          - name: "/dev/sdb"  # 50GB dedicated storage disk (scsi1)
+      - name: "worker-4"  # msa2proxmox - 20GB RAM, compute workloads
+        config:
+          storeType: bluestore
+        devices:
+          - name: "/dev/sdb"  # 50GB dedicated storage disk (scsi1)
+      - name: "worker-5"  # msa2proxmox - 20GB RAM, compute workloads
+        config:
+          storeType: bluestore
+        devices:
+          - name: "/dev/sdb"  # 50GB dedicated storage disk (scsi1)
+      - name: "worker-6"  # msa2proxmox - 20GB RAM, compute workloads
+        config:
+          storeType: bluestore
+        devices:
+          - name: "/dev/sdb"  # 50GB dedicated storage disk (scsi1)
+
+  # Google pattern: Simple health checks
+  healthCheck:
+    daemonHealth:
+      mon:
+        disabled: false
+        interval: 45s
+      osd:
+        disabled: false
+        interval: 60s
+      status:
+        disabled: false
+        interval: 60s
+
+  # Google pattern: Graceful disruption management
+  disruptionManagement:
+    managePodBudgets: true
+    osdMaintenanceTimeout: 30
+    pgHealthCheckTimeout: 0
+
+  # Google pattern: Simple, effective anti-affinity
+  placement:
+    all:
+      tolerations:
+        - effect: NoSchedule
+          operator: Exists
+        - effect: NoExecute
+          operator: Exists
+    mon:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: rook-ceph-mon
+            topologyKey: kubernetes.io/hostname
+    mgr:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: rook-ceph-mgr
+              topologyKey: kubernetes.io/hostname
+    osd:
+      nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+                - key: node-role.kubernetes.io/worker
+                  operator: Exists
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: rook-ceph-osd
+              topologyKey: kubernetes.io/hostname

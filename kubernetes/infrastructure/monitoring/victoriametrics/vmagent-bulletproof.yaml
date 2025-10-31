@@ -1,0 +1,328 @@
+# 🎯 BULLETPROOF VMAGENT - Enterprise Monitoring Architecture
+# Single source of truth for ALL monitoring in the cluster
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAgent
+metadata:
+  name: vm-agent-bulletproof
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+  labels:
+    app.kubernetes.io/name: vm-agent-bulletproof
+    app.kubernetes.io/part-of: victoriametrics
+spec:
+  # 🎯 RESOURCE ALLOCATION
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+  # 📡 REMOTE WRITE CONFIGURATION
+  remoteWrite:
+    - url: "http://vminsert-vm-cluster.monitoring.svc.cluster.local:8480/insert/0/prometheus/"
+
+  # 🔧 AGENT CONFIGURATION
+  scrapeInterval: "30s"
+  scrapeTimeout: "15s"
+
+  # 🏷️ EXTERNAL LABELS
+  externalLabels:
+    cluster: "homelab"
+    environment: "production"
+
+  # ⚡ PERFORMANCE TUNING
+  extraArgs:
+    promscrape.maxScrapeSize: "32MB"
+    remoteWrite.maxBlockSize: "16MB"
+    memory.allowedPercent: "70"
+    promscrape.maxConcurrentRequests: "500"
+
+  # 🎯 COMPREHENSIVE MONITORING CONFIGURATION
+  # NO VMServiceScrapes, NO VMPodScrapes - pure centralized control
+  selectAllByDefault: false  # Disable automatic ServiceMonitor discovery
+  serviceScrapeNamespaceSelector: {}  # Disable VMServiceScrape discovery
+  podScrapeNamespaceSelector: {}      # Disable VMPodScrape discovery
+
+  inlineScrapeConfig: |
+    global:
+      scrape_interval: 30s
+      scrape_timeout: 15s
+      evaluation_interval: 30s
+
+    scrape_configs:
+      # ================================================================================
+      # TIER 1: KUBERNETES INFRASTRUCTURE (Critical - Always Monitor)
+      # ================================================================================
+
+      # Kubernetes API Server
+      - job_name: 'kubernetes-apiservers'
+        kubernetes_sd_configs:
+          - role: endpoints
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: default;kubernetes;https
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_service_name]
+            target_label: job
+            replacement: kubernetes-apiservers
+
+      # Kubelet Metrics (Node health)
+      - job_name: 'kubernetes-nodes-kubelet'
+        kubernetes_sd_configs:
+          - role: node
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/$1/proxy/metrics
+
+      # cAdvisor (Container metrics)
+      - job_name: 'kubernetes-cadvisor'
+        kubernetes_sd_configs:
+          - role: node
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/$1/proxy/metrics/cadvisor
+
+      # Node Exporter (System metrics)
+      - job_name: 'node-exporter'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names: ['monitoring']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: 'node-exporter'
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: 'metrics'
+
+      # ================================================================================
+      # TIER 2: PLATFORM SERVICES (Critical Infrastructure)
+      # ================================================================================
+
+      # VictoriaMetrics Self-Monitoring
+      - job_name: 'victoriametrics-cluster'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names: ['monitoring']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: '(vmselect|vminsert|vmstorage)-vm-cluster'
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: 'http'
+
+      # ArgoCD (GitOps Platform)
+      - job_name: 'argocd'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names: ['argocd']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: 'argocd-(server|application-controller|applicationset-controller)'
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: 'metrics'
+
+      # Cert-Manager (Certificate Management)
+      - job_name: 'cert-manager'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names: ['cert-manager']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: 'cert-manager(-controller|-webhook)?'
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: 'tcp-prometheus-servicemonitor'
+
+      # Cilium (CNI Network)
+      - job_name: 'cilium'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names: ['kube-system']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: 'cilium-(agent|operator)'
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: 'prometheus'
+
+      # Rook Ceph (Storage)
+      - job_name: 'rook-ceph'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names: ['rook-ceph']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: 'rook-ceph-(mgr|exporter)'
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: 'http-metrics'
+
+      # ================================================================================
+      # TIER 3: APPLICATION SERVICES (Business Logic)
+      # ================================================================================
+
+      # Kafka (Messaging)
+      - job_name: 'kafka'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names: ['kafka']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: '.*kafka.*'
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: 'tcp-prometheus'
+
+      # Elasticsearch (Search & Analytics)
+      - job_name: 'elasticsearch'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names: ['elastic-system']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: '.*elasticsearch.*'
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: 'https'
+        scheme: https
+        tls_config:
+          insecure_skip_verify: true
+
+      # PostgreSQL (Database)
+      - job_name: 'postgresql'
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: '.*postgres.*'
+
+      # ================================================================================
+      # TIER 4: CUSTOM APPLICATIONS (prometheus.io annotations)
+      # ================================================================================
+
+      # Service Discovery via Annotations
+      - job_name: 'kubernetes-service-endpoints-annotated'
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          # Only scrape services with prometheus.io/scrape=true
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          # Use custom scheme if specified
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scheme]
+            action: replace
+            target_label: __scheme__
+            regex: (https?)
+          # Use custom path if specified
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          # Use custom port if specified
+          - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          # Add service labels
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            action: replace
+            target_label: kubernetes_service_name
+
+      # Pod Discovery via Annotations (for special cases)
+      - job_name: 'kubernetes-pods-annotated'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          # Only scrape pods with prometheus.io/scrape=true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          # Only scrape if pod is running
+          - source_labels: [__meta_kubernetes_pod_phase]
+            action: keep
+            regex: Running
+          # Use custom scheme if specified
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scheme]
+            action: replace
+            target_label: __scheme__
+            regex: (https?)
+          # Use custom path if specified
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          # Use custom port if specified
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          # Add pod labels
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name

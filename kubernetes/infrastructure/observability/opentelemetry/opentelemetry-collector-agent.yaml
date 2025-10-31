@@ -1,0 +1,119 @@
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: otel-agent
+  namespace: jaeger
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"
+  labels:
+    app.kubernetes.io/name: opentelemetry-collector
+    app.kubernetes.io/component: agent
+    app.kubernetes.io/part-of: jaeger-observability
+spec:
+  # 🔒 SECURE: DaemonSet without hostPort - Pod Security baseline compliant
+  mode: daemonset
+
+  # 🛡️ ENTERPRISE SECURITY: Pod Security Standards compliant
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    fsGroup: 65534
+    seccompProfile:
+      type: RuntimeDefault
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+
+  # 📊 RESOURCE MANAGEMENT: Production-ready limits
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+
+  # 🔧 OTEL CONFIGURATION: Jaeger-compatible trace collection
+  config: |
+    receivers:
+      # 🎯 OTLP Protocol (Modern applications)
+      otlp:
+        protocols:
+          grpc:
+            endpoint: ${env:MY_POD_IP}:4317
+          http:
+            endpoint: ${env:MY_POD_IP}:4318
+
+      # 🔄 Jaeger Protocol (Legacy applications)
+      jaeger:
+        protocols:
+          grpc:
+            endpoint: ${env:MY_POD_IP}:14250
+          thrift_http:
+            endpoint: ${env:MY_POD_IP}:14268
+          thrift_compact:
+            endpoint: ${env:MY_POD_IP}:6831
+          thrift_binary:
+            endpoint: ${env:MY_POD_IP}:6832
+
+    processors:
+      # 📦 BATCH: Efficient trace batching
+      batch:
+        timeout: 1s
+        send_batch_size: 1024
+        send_batch_max_size: 2048
+
+      # 🏷️ RESOURCE: Add node/pod metadata
+      resourcedetection:
+        detectors: [env, system, k8snode, k8spod]
+        timeout: 5s
+        override: false
+
+    exporters:
+      # 🎯 JAEGER: Send to Jaeger Collector
+      jaeger:
+        endpoint: jaeger-collector.jaeger.svc.cluster.local:14250
+        tls:
+          insecure: true
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp, jaeger]
+          processors: [resourcedetection, batch]
+          exporters: [jaeger]
+
+      # 🔍 OBSERVABILITY: Self-monitoring
+      telemetry:
+        logs:
+          level: "info"
+        metrics:
+          address: ${env:MY_POD_IP}:8888
+
+  # 🌐 ENVIRONMENT: Pod networking
+  env:
+    - name: MY_POD_IP
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: status.podIP
+    - name: K8S_NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+    - name: K8S_POD_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.name
+
+  # 🏷️ NODE SELECTOR: Deploy on all nodes
+  nodeSelector:
+    kubernetes.io/os: linux
+
+  # 📝 TOLERATIONS: Run on all nodes including masters
+  tolerations:
+    - operator: Exists

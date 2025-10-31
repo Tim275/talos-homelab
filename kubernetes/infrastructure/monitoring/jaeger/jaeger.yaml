@@ -1,0 +1,59 @@
+apiVersion: jaegertracing.io/v1
+kind: Jaeger
+metadata:
+  name: jaeger
+  namespace: jaeger
+  annotations:
+    # Disable Prometheus auto-discovery for non-metrics endpoints
+    prometheus.io/scrape: "false"
+spec:
+  # 🔧 Simple in-memory storage (lightweight, no persistence)
+  strategy: allInOne
+
+  storage:
+    type: memory
+    options:
+      memory.max-traces: 10000
+
+  # 📊 COLLECTOR: HA with 3 replicas
+  collector:
+    maxReplicas: 3
+    autoscale: true
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 200m
+      limits:
+        memory: 1Gi
+        cpu: 1000m
+    options:
+      # ✅ OTLP Protocol (Modern apps) - Standard ports
+      collector.otlp.enabled: "true"
+      collector.otlp.grpc.host-port: ":4317"
+      collector.otlp.http.host-port: ":4318"
+
+      # ✅ Jaeger Protocol (Legacy apps) - Standard ports
+      collector.jaeger.grpc.host-port: ":14250"
+      collector.jaeger.http.host-port: ":14268"
+
+  # 🔍 QUERY: HA with 2 replicas
+  query:
+    replicas: 2
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 512Mi
+        cpu: 500m
+    options:
+      query.http-server.host-port: ":16686"  # Query UI port
+      query.grpc-server.host-port: ":16685"  # gRPC query port
+      admin.http.host-port: ":14269"         # Admin/metrics port (Prometheus)
+
+  # 📈 SAMPLING: Uber-style adaptive sampling
+  sampling:
+    options:
+      # Default strategy: 10% baseline sampling
+      default_strategy.type: probabilistic
+      default_strategy.param: "0.1"

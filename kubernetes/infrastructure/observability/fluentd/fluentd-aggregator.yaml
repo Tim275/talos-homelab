@@ -1,0 +1,214 @@
+# Fluentd Aggregator Configuration
+# Alternative zu Vector - gleiche Data Stream Logik
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluentd-aggregator-config
+  namespace: elastic-system
+data:
+  fluent.conf: |
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # FLUENTD AGGREGATOR - ELASTIC DATA STREAMS + ECS 8.17
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    # ═══════════════════════════════════════════════════════════════
+    # SOURCES
+    # ═══════════════════════════════════════════════════════════════
+
+    # Receive from Fluentd Agents (Kubernetes pods)
+    <source>
+      @type forward
+      port 24224
+      bind 0.0.0.0
+    </source>
+
+    # Proxmox syslog input
+    <source>
+      @type syslog
+      port 5140
+      bind 0.0.0.0
+      protocol_type udp
+      tag proxmox.syslog
+      <parse>
+        @type syslog
+        with_priority true
+      </parse>
+    </source>
+
+    # ═══════════════════════════════════════════════════════════════
+    # FILTERS - PROXMOX ENRICHMENT
+    # ═══════════════════════════════════════════════════════════════
+
+    <filter proxmox.syslog>
+      @type record_modifier
+      <record>
+        source proxmox
+        cluster talos-homelab
+        datacenter homelab
+        node_type hypervisor
+
+        # Extract hostname for namespace differentiation
+        proxmox_hostname ${record['host']}
+        namespace_suffix ${record['host']}
+      </record>
+    </filter>
+
+    # ═══════════════════════════════════════════════════════════════
+    # FILTERS - KUBERNETES LOG ENRICHMENT
+    # ═══════════════════════════════════════════════════════════════
+
+    <filter kubernetes.**>
+      @type record_modifier
+      <record>
+        # Set default namespace_suffix
+        namespace_suffix ${record['namespace_suffix'] || 'default'}
+
+        # ECS version
+        ecs.version 8.17
+
+        # Service-based routing
+        service_name ${record['kubernetes']['namespace_name']}
+
+        # Severity mapping
+        severity ${record['level'] == 'error' || record['level'] == 'fatal' ? 'critical' : (record['level'] == 'warn' ? 'warn' : 'info')}
+
+        # ECS compliance
+        @timestamp ${time}
+        log.level ${record['level'] || 'info'}
+        service.name ${record['kubernetes']['namespace_name']}
+        service.environment production
+
+        # Cluster metadata
+        cluster talos-homelab
+        datacenter homelab
+        environment production
+      </record>
+    </filter>
+
+    # ═══════════════════════════════════════════════════════════════
+    # OUTPUT - ELASTICSEARCH DATA STREAMS
+    # ═══════════════════════════════════════════════════════════════
+
+    <match **>
+      @type elasticsearch
+      host production-cluster-es-http.elastic-system.svc.cluster.local
+      port 9200
+      scheme https
+      ssl_verify false
+
+      # Authentication
+      user elastic
+      password "#{ENV['ELASTICSEARCH_PASSWORD']}"
+
+      # DATA STREAMS MODE
+      data_stream_name logs-${service_name}.${severity}-${namespace_suffix}
+
+      # Buffer configuration
+      <buffer>
+        @type file
+        path /var/log/fluentd-buffers/elasticsearch.buffer
+        flush_mode interval
+        flush_interval 10s
+        chunk_limit_size 10M
+        total_limit_size 256M
+        overflow_action drop_oldest_chunk
+      </buffer>
+
+      # Performance
+      bulk_message_request_threshold 10M
+      request_timeout 60s
+    </match>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluentd-aggregator
+  namespace: elastic-system
+  labels:
+    app: fluentd
+    component: aggregator
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: fluentd
+      component: aggregator
+  template:
+    metadata:
+      labels:
+        app: fluentd
+        component: aggregator
+    spec:
+      containers:
+      - name: fluentd
+        image: fluent/fluentd-kubernetes-daemonset:v1.17-debian-elasticsearch8-1
+        env:
+        - name: ELASTICSEARCH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: production-cluster-es-elastic-user
+              key: elastic
+        resources:
+          requests:
+            memory: 256Mi
+            cpu: 200m
+          limits:
+            memory: 1Gi
+            cpu: 500m
+        ports:
+        - containerPort: 24224
+          name: forward
+          protocol: TCP
+        - containerPort: 5140
+          name: syslog
+          protocol: UDP
+        volumeMounts:
+        - name: config
+          mountPath: /fluentd/etc
+          readOnly: true
+        - name: buffer
+          mountPath: /var/log/fluentd-buffers
+      volumes:
+      - name: config
+        configMap:
+          name: fluentd-aggregator-config
+      - name: buffer
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluentd-aggregator
+  namespace: elastic-system
+spec:
+  type: ClusterIP
+  selector:
+    app: fluentd
+    component: aggregator
+  ports:
+  - name: forward
+    port: 24224
+    targetPort: 24224
+    protocol: TCP
+  - name: syslog
+    port: 5140
+    targetPort: 5140
+    protocol: UDP
+---
+# LoadBalancer for Proxmox syslog
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluentd-syslog-lb
+  namespace: elastic-system
+spec:
+  type: LoadBalancer
+  selector:
+    app: fluentd
+    component: aggregator
+  ports:
+  - name: syslog
+    port: 514
+    targetPort: 5140
+    protocol: UDP

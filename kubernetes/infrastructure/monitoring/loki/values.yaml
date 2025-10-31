@@ -1,0 +1,110 @@
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+
+  # ✅ Storage config MUST be under loki: section (Loki Helm v6.10.0)
+  storage:
+    type: s3
+    bucketNames:
+      chunks: loki-logs
+      ruler: loki-logs
+      admin: loki-logs
+    s3:
+      endpoint: http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
+      region: us-east-1
+      s3ForcePathStyle: true
+      insecure: true  # HTTP endpoint (not HTTPS)
+
+  # Retention configuration (prevents disk full)
+  limits_config:
+    retention_period: 30d  # 30 days retention (homelab standard)
+    # Rate limits (prevents ingestion overload)
+    ingestion_rate_mb: 10        # 10MB/s per stream
+    ingestion_burst_size_mb: 20  # 20MB burst
+    max_line_size: 256kb         # Reject logs >256KB
+    max_streams_per_user: 10000  # Max 10k unique label combinations
+    # Label cardinality limits (prevent label explosion)
+    max_label_names_per_series: 30  # Increased from default 15 (rook-ceph has 20 labels!)
+
+  # Enable compactor for retention cleanup
+  compactor:
+    retention_enabled: true
+    retention_delete_delay: 2h
+    retention_delete_worker_count: 150
+    delete_request_store: s3  # ✅ Enterprise: S3 backend for deletions
+
+  schemaConfig:
+    configs:
+      - from: "2024-01-01"
+        store: tsdb
+        index:
+          prefix: loki_index_
+          period: 24h
+        object_store: s3  # ✅ Enterprise: S3 Object Storage
+        schema: v13
+
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true  # ✅ Hybrid: Local PVC for WAL + S3 for chunks (Enterprise pattern)
+    size: 10Gi     # Only for WAL - chunks go to S3
+    storageClass: rook-ceph-block-enterprise
+  resources:
+    limits:
+      cpu: 500m
+      memory: 1Gi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  # S3 credentials from secret
+  extraEnv:
+    - name: AWS_ACCESS_KEY_ID
+      valueFrom:
+        secretKeyRef:
+          name: loki-s3-credentials
+          key: access_key_id
+    - name: AWS_SECRET_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: loki-s3-credentials
+          key: secret_access_key
+# nodeSelector:
+#   kubernetes.io/hostname: work-02
+
+# Andere Komponenten ausschalten (SingleBinary)
+read:
+  replicas: 0
+backend:
+  replicas: 0
+write:
+  replicas: 0
+
+monitoring:
+  selfMonitoring:
+    enabled: false
+  serviceMonitor:
+    enabled: true
+    labels:
+      release: kube-prometheus-stack  # Required for Prometheus Operator discovery
+    interval: 30s
+    scrapeTimeout: 10s
+
+# Reduce cache sizes for homelab (500MB wie requested)
+chunksCache:
+  allocatedMemory: 500   # 500MB wie gewünscht
+resultsCache:
+  allocatedMemory: 200   # 200MB für results
+
+# 🛡️ Homelab Stability: Resource limits for Loki Gateway (nginx)
+gateway:
+  enabled: true
+  resources:
+    requests:
+      cpu: 25m       # Actual: ~7m CPU (nginx proxy)
+      memory: 32Mi   # Actual: ~11Mi memory
+    limits:
+      cpu: 250m      # 10x burst for query spikes
+      memory: 256Mi  # ~23x headroom for nginx buffering

@@ -1,0 +1,110 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-kubernetes-realm-setup
+  namespace: keycloak
+spec:
+  ttlSecondsAfterFinished: 3600  # Cleanup after 1 hour
+  template:
+    metadata:
+      labels:
+        app: keycloak-setup
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: setup
+          image: quay.io/keycloak/keycloak:26.0.7
+          env:
+            - name: KEYCLOAK_ADMIN
+              value: admin
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: password
+            - name: KEYCLOAK_URL
+              value: "http://keycloak:8080"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              echo "=== Logging in to Keycloak ==="
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --server "$KEYCLOAK_URL" \
+                --realm master \
+                --user "$KEYCLOAK_ADMIN" \
+                --password "$KEYCLOAK_ADMIN_PASSWORD"
+
+              echo "=== Checking if kubernetes realm exists ==="
+          if /opt/keycloak/bin/kcadm.sh get realms/kubernetes 2>/dev/null; then
+            echo "Realm already exists, deleting it first..."
+            /opt/keycloak/bin/kcadm.sh delete realms/kubernetes
+          fi
+
+          echo "=== Creating kubernetes realm ==="
+          /opt/keycloak/bin/kcadm.sh create realms \
+            -s realm=kubernetes \
+            -s enabled=true
+
+          echo "=== Creating kubectl PUBLIC client ==="
+          CLIENT_ID=$(/opt/keycloak/bin/kcadm.sh create clients -r kubernetes \
+            -s clientId=kubectl \
+            -s protocol=openid-connect \
+            -s publicClient=true \
+            -s 'redirectUris=["http://localhost:8000","http://localhost:18000"]' \
+            -s standardFlowEnabled=true \
+            -s directAccessGrantsEnabled=false \
+            -i)
+
+          echo "=== Creating groups client scope ==="
+          GROUPS_SCOPE_ID=$(/opt/keycloak/bin/kcadm.sh create client-scopes -r kubernetes \
+            -s name=groups \
+            -s protocol=openid-connect \
+            -i)
+
+          echo "=== Adding Group Membership mapper to groups scope ==="
+          /opt/keycloak/bin/kcadm.sh create "client-scopes/$GROUPS_SCOPE_ID/protocol-mappers/models" -r kubernetes \
+            -s name=groups \
+            -s protocol=openid-connect \
+            -s protocolMapper=oidc-group-membership-mapper \
+            -s 'config."claim.name"=groups' \
+            -s 'config."full.path"=false' \
+            -s 'config."id.token.claim"=true' \
+            -s 'config."access.token.claim"=true' \
+            -s 'config."userinfo.token.claim"=true'
+
+          echo "=== Adding groups scope to kubectl client ==="
+          /opt/keycloak/bin/kcadm.sh update "clients/$CLIENT_ID/default-client-scopes/$GROUPS_SCOPE_ID" -r kubernetes
+
+          echo "=== Creating cluster-admins group ==="
+          GROUP_ID=$(/opt/keycloak/bin/kcadm.sh create groups -r kubernetes \
+            -s name=cluster-admins \
+            -i)
+
+          echo "=== Creating user timour ==="
+          USER_ID=$(/opt/keycloak/bin/kcadm.sh create users -r kubernetes \
+            -s username=timour \
+            -s email=timour@timourhomelab.org \
+            -s firstName=Timour \
+            -s lastName=Homelab \
+            -s enabled=true \
+            -s emailVerified=true \
+            -i)
+
+          echo "=== Setting password for user ==="
+          /opt/keycloak/bin/kcadm.sh update "users/$USER_ID/reset-password" -r kubernetes \
+            -s type=password \
+            -s value=test123 \
+            -s temporary=false \
+            -n
+
+          echo "=== Adding user to cluster-admins group ==="
+          /opt/keycloak/bin/kcadm.sh update "users/$USER_ID/groups/$GROUP_ID" -r kubernetes \
+            -s realm=kubernetes \
+            -s userId="$USER_ID" \
+            -s groupId="$GROUP_ID" \
+            -n
+
+          echo "=== Keycloak kubernetes realm setup complete! ==="

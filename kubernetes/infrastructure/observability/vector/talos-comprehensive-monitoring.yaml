@@ -1,0 +1,317 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: talos-comprehensive-monitoring
+  namespace: elastic-system
+data:
+  comprehensive-monitor.sh: |
+    #!/bin/bash
+    # Comprehensive Talos Monitoring Script
+    # Collects ALL system metrics and logs for complete observability
+
+    VECTOR_ENDPOINT="http://vector-aggregator.elastic-system.svc.cluster.local:6000"
+
+    # Your Talos Node Configuration
+    CONTROL_PLANE_NODES=("192.168.68.101")
+    WORKER_NODES=(
+      "192.168.68.103"
+      "192.168.68.104"
+      "192.168.68.105"
+      "192.168.68.107"
+      "192.168.68.108"
+      "192.168.68.109"
+    )
+
+    # Function to send metrics to Vector
+    send_metric() {
+      local service="$1"
+      local node_ip="$2"
+      local node_role="$3"
+      local metric_name="$4"
+      local metric_value="$5"
+      local message="$6"
+
+      curl -X POST "$VECTOR_ENDPOINT" \
+           -H "Content-Type: application/json" \
+           -d "{
+             \"@timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\",
+             \"message\": \"$message\",
+             \"source\": \"talos-system-monitoring\",
+             \"service\": \"$service\",
+             \"node_ip\": \"$node_ip\",
+             \"node_role\": \"$node_role\",
+             \"metric_name\": \"$metric_name\",
+             \"metric_value\": $metric_value,
+             \"cluster\": \"talos-homelab\",
+             \"environment\": \"production\",
+             \"index_name\": \"talos-${service}-${node_role}\"
+           }" 2>/dev/null
+    }
+
+    # Function to monitor node services
+    monitor_services() {
+      local node_ip="$1"
+      local node_role="$2"
+
+      echo "Monitoring services on $node_ip ($node_role)..."
+
+      # Get service status
+      talosctl -n "$node_ip" services 2>/dev/null | while read -r line; do
+        if [[ $line =~ ^[0-9.]+ ]]; then
+          # Parse service line: NODE SERVICE STATE HEALTH LAST_CHANGE LAST_EVENT
+          read -r node service state health last_change last_event <<< "$line"
+
+          # Convert health status to numeric
+          health_status=0
+          case "$health" in
+            "OK") health_status=1 ;;
+            "?") health_status=0.5 ;;
+            *) health_status=0 ;;
+          esac
+
+          send_metric "$service" "$node_ip" "$node_role" "service_health" "$health_status" \
+                     "Service $service is $state with health $health"
+        fi
+      done
+    }
+
+    # Function to monitor system resources
+    monitor_resources() {
+      local node_ip="$1"
+      local node_role="$2"
+
+      echo "Monitoring resources on $node_ip ($node_role)..."
+
+      # Memory monitoring
+      memory_info=$(talosctl -n "$node_ip" read /proc/meminfo 2>/dev/null)
+      if [[ -n "$memory_info" ]]; then
+        mem_total=$(echo "$memory_info" | grep MemTotal | awk '{print $2}')
+        mem_free=$(echo "$memory_info" | grep MemFree | awk '{print $2}')
+        mem_available=$(echo "$memory_info" | grep MemAvailable | awk '{print $2}')
+
+        # Calculate memory usage percentage
+        if [[ -n "$mem_total" && -n "$mem_available" ]]; then
+          mem_used_pct=$(( (mem_total - mem_available) * 100 / mem_total ))
+          send_metric "system" "$node_ip" "$node_role" "memory_usage_percent" "$mem_used_pct" \
+                     "Memory usage: ${mem_used_pct}% (${mem_available}KB available of ${mem_total}KB total)"
+        fi
+      fi
+
+      # CPU load monitoring
+      cpu_info=$(talosctl -n "$node_ip" read /proc/loadavg 2>/dev/null)
+      if [[ -n "$cpu_info" ]]; then
+        load_1min=$(echo "$cpu_info" | awk '{print $1}')
+        load_5min=$(echo "$cpu_info" | awk '{print $2}')
+        load_15min=$(echo "$cpu_info" | awk '{print $3}')
+
+        send_metric "system" "$node_ip" "$node_role" "cpu_load_1min" "$load_1min" \
+                   "CPU load: 1min=$load_1min, 5min=$load_5min, 15min=$load_15min"
+      fi
+
+      # Disk usage monitoring (simplified)
+      disk_info=$(talosctl -n "$node_ip" usage 2>/dev/null | grep -E "^$node_ip.*\.$" | head -1)
+      if [[ -n "$disk_info" ]]; then
+        disk_usage=$(echo "$disk_info" | awk '{print $2}')
+        # Convert bytes to GB
+        disk_usage_gb=$(( disk_usage / 1024 / 1024 / 1024 ))
+        send_metric "system" "$node_ip" "$node_role" "disk_usage_gb" "$disk_usage_gb" \
+                   "Total disk usage: ${disk_usage_gb}GB"
+      fi
+    }
+
+    # Function to collect critical logs
+    collect_logs() {
+      local node_ip="$1"
+      local node_role="$2"
+
+      echo "Collecting logs from $node_ip ($node_role)..."
+
+      # etcd logs (control plane only)
+      if [[ "$node_role" == "control-plane" ]]; then
+        echo "Collecting etcd logs from control plane..."
+        talosctl -n "$node_ip" logs etcd --tail 3 2>/dev/null | while read -r line; do
+          if [[ -n "$line" && ! "$line" =~ ^"$node_ip:" ]]; then
+            clean_line=$(echo "$line" | sed "s/^$node_ip: //")
+            send_metric "etcd" "$node_ip" "$node_role" "log_event" "1" "$clean_line"
+          fi
+        done
+      fi
+
+      # kubelet logs (all nodes)
+      echo "Collecting kubelet logs..."
+      talosctl -n "$node_ip" logs kubelet --tail 2 2>/dev/null | while read -r line; do
+        if [[ -n "$line" && ! "$line" =~ ^"$node_ip:" ]]; then
+          clean_line=$(echo "$line" | sed "s/^$node_ip: //")
+          # Only collect error/warning logs to reduce noise
+          if [[ "$clean_line" =~ (error|Error|ERROR|warn|Warn|WARN|failed|Failed|FAILED) ]]; then
+            send_metric "kubelet" "$node_ip" "$node_role" "log_event" "1" "$clean_line"
+          fi
+        fi
+      done
+
+      # containerd logs (sample)
+      echo "Collecting containerd logs..."
+      talosctl -n "$node_ip" logs containerd --tail 1 2>/dev/null | while read -r line; do
+        if [[ -n "$line" && ! "$line" =~ ^"$node_ip:" ]]; then
+          clean_line=$(echo "$line" | sed "s/^$node_ip: //")
+          if [[ "$clean_line" =~ (error|Error|ERROR|warn|Warn|WARN) ]]; then
+            send_metric "containerd" "$node_ip" "$node_role" "log_event" "1" "$clean_line"
+          fi
+        fi
+      done
+    }
+
+    echo "Starting comprehensive Talos monitoring..."
+
+    # Monitor control plane nodes
+    for node in "${CONTROL_PLANE_NODES[@]}"; do
+      monitor_services "$node" "control-plane" &
+      monitor_resources "$node" "control-plane" &
+      collect_logs "$node" "control-plane" &
+    done
+
+    # Monitor worker nodes
+    for node in "${WORKER_NODES[@]}"; do
+      monitor_services "$node" "worker" &
+      monitor_resources "$node" "worker" &
+      collect_logs "$node" "worker" &
+    done
+
+    # Wait for all background jobs
+    wait
+
+    echo "Comprehensive Talos monitoring completed"
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: talos-comprehensive-monitor
+  namespace: elastic-system
+  labels:
+    app: talos-monitor
+    component: system-monitoring
+spec:
+  schedule: "*/5 * * * *"  # Every 5 minutes
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: talos-monitor
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: vector
+          containers:
+          - name: talos-monitor
+            image: alpine:latest
+            command:
+            - /bin/sh
+            - -c
+            - |
+              # Install required tools
+              apk add --no-cache curl bash
+
+              # Download and install talosctl
+              curl -Lo /usr/local/bin/talosctl https://github.com/siderolabs/talos/releases/latest/download/talosctl-linux-amd64
+              chmod +x /usr/local/bin/talosctl
+
+              # Run monitoring script
+              /scripts/comprehensive-monitor.sh
+            env:
+            - name: TALOSCONFIG
+              value: "/var/run/secrets/talos/talosconfig"
+            resources:
+              requests:
+                memory: 128Mi
+                cpu: 100m
+              limits:
+                memory: 256Mi
+                cpu: 200m
+            volumeMounts:
+            - name: monitor-script
+              mountPath: /scripts
+              readOnly: true
+            - name: talos-config
+              mountPath: /var/run/secrets/talos
+              readOnly: true
+          volumes:
+          - name: monitor-script
+            configMap:
+              name: talos-comprehensive-monitoring
+              defaultMode: 0755
+          - name: talos-config
+            secret:
+              secretName: talos-config
+              optional: true
+
+---
+# Service Health Dashboard ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: talos-service-definitions
+  namespace: elastic-system
+data:
+  services.yaml: |
+    # Critical Talos Services and their expected behavior
+    services:
+      etcd:
+        importance: critical
+        description: "Kubernetes state database"
+        expected_health: "OK"
+        alert_on_failure: true
+
+      kubelet:
+        importance: critical
+        description: "Pod lifecycle management"
+        expected_health: "OK"
+        alert_on_failure: true
+
+      containerd:
+        importance: critical
+        description: "Container runtime"
+        expected_health: "OK"
+        alert_on_failure: true
+
+      apid:
+        importance: high
+        description: "Talos API server"
+        expected_health: "OK"
+        alert_on_failure: true
+
+      machined:
+        importance: high
+        description: "System management daemon"
+        expected_health: "OK"
+        alert_on_failure: false
+
+      trustd:
+        importance: medium
+        description: "Certificate management"
+        expected_health: "OK"
+        alert_on_failure: false
+
+      auditd:
+        importance: medium
+        description: "Security audit logging"
+        expected_health: "OK"
+        alert_on_failure: false
+
+      syslogd:
+        importance: medium
+        description: "System log daemon"
+        expected_health: "OK"
+        alert_on_failure: false
+
+      udevd:
+        importance: low
+        description: "Device management"
+        expected_health: "OK"
+        alert_on_failure: false
+
+      dashboard:
+        importance: low
+        description: "Talos dashboard"
+        expected_health: "?"
+        alert_on_failure: false

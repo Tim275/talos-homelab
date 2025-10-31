@@ -1,0 +1,217 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: argocd-enhanced-alerts
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+    app: argocd
+    prometheus: kube-prometheus-stack
+spec:
+  groups:
+    - name: argocd.rules
+      interval: 30s
+      rules:
+        # P1: API Server Down
+        - alert: ArgoCDAPIServerDown
+          expr: |
+            absent(up{job="argocd-server-metrics"}) == 1
+            or
+            up{job="argocd-server-metrics"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            component: argocd
+            tier: platform
+          annotations:
+            summary: "ArgoCD API Server is down"
+            description: |
+              ArgoCD API Server (Web UI, CLI, gRPC) is unreachable.
+              This blocks all GitOps operations and UI access.
+              Check pod status: kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-server
+
+        # P1: Application Controller Down
+        - alert: ArgoCDControllerDown
+          expr: |
+            absent(up{job="argocd-application-controller-metrics"}) == 1
+            or
+            up{job="argocd-application-controller-metrics"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            component: argocd
+            tier: platform
+          annotations:
+            summary: "ArgoCD Application Controller is down"
+            description: |
+              ArgoCD Application Controller is unreachable.
+              This stops all application sync and reconciliation.
+              Check pod status: kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-application-controller
+
+        # P1: Repo Server Down
+        - alert: ArgoCDRepoServerDown
+          expr: |
+            absent(up{job="argocd-repo-server-metrics"}) == 1
+            or
+            up{job="argocd-repo-server-metrics"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            component: argocd
+            tier: platform
+          annotations:
+            summary: "ArgoCD Repo Server is down"
+            description: |
+              ArgoCD Repo Server is unreachable.
+              This blocks Git operations and manifest generation.
+              Check pod status: kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-repo-server
+
+        # P1: Git Fetch Failures
+        - alert: ArgoCDGitFetchFailures
+          expr: |
+            rate(argocd_git_request_total{request_type="fetch", status="error"}[5m]) > 0.1
+          for: 5m
+          labels:
+            severity: critical
+            component: argocd
+            tier: platform
+          annotations:
+            summary: "High rate of ArgoCD Git fetch failures"
+            description: |
+              ArgoCD is experiencing {{ $value }} Git fetch errors per second for repo {{ $labels.repo }}.
+              This prevents syncing applications from Git repository.
+              Check ArgoCD logs: kubectl logs -n argocd -l app.kubernetes.io/name=argocd-repo-server
+
+        # P2: Webhook Delivery Failures (FIXES SLACK ALERT ISSUE!)
+        - alert: ArgoCDWebhookDeliveryFailure
+          expr: |
+            rate(argocd_notification_deliveries_total{succeeded="false"}[5m]) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+            component: argocd
+            tier: platform
+          annotations:
+            summary: "ArgoCD webhook delivery failures detected"
+            description: |
+              ArgoCD is failing to deliver {{ $labels.service_type }} notifications.
+              Notification service: {{ $labels.service_type }}
+              This is why alerts may not reach Slack/Teams/etc.
+              Check notification config: kubectl get secret -n argocd argocd-notifications-secret
+
+        # P2: ApplicationSet Reconcile Failures
+        - alert: ArgoCDApplicationSetReconcileFailing
+          expr: |
+            rate(argocd_applicationset_reconcile_total{result="error"}[5m]) > 0.1
+          for: 5m
+          labels:
+            severity: warning
+            component: argocd
+            tier: platform
+          annotations:
+            summary: "ArgoCD ApplicationSet reconciliation failing"
+            description: |
+              ApplicationSet {{ $labels.name }} in namespace {{ $labels.namespace }} is failing reconciliation.
+              Error rate: {{ $value }} errors/sec
+              Check ApplicationSet status: kubectl get applicationset -n argocd {{ $labels.name }} -o yaml
+
+        # P2: Repo Lock Contention
+        - alert: ArgoCDRepoServerPendingRequests
+          expr: |
+            argocd_repo_server_pending_requests > 10
+          for: 5m
+          labels:
+            severity: warning
+            component: argocd
+            tier: platform
+          annotations:
+            summary: "High pending requests in ArgoCD Repo Server"
+            description: |
+              ArgoCD Repo Server has {{ $value }} pending requests.
+              This indicates repository lock contention or performance issues.
+              Consider scaling Repo Server: kubectl scale -n argocd deployment argocd-repo-server --replicas=3
+
+        # P2: High Application Sync Failures
+        - alert: ArgoCDApplicationSyncFailures
+          expr: |
+            rate(argocd_app_sync_total{phase="Failed"}[10m]) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+            component: argocd
+            tier: platform
+          annotations:
+            summary: "High ArgoCD application sync failure rate"
+            description: |
+              ArgoCD application {{ $labels.name }} in namespace {{ $labels.namespace }} is failing syncs.
+              Failure rate: {{ $value }} failures/sec
+              Check app status: kubectl get application -n argocd {{ $labels.name }}
+
+        # P3: Application Out of Sync (Drift Detection)
+        - alert: ArgoCDApplicationOutOfSync
+          expr: |
+            argocd_app_info{sync_status="OutOfSync"} == 1
+          for: 15m
+          labels:
+            severity: info
+            component: argocd
+            tier: platform
+          annotations:
+            summary: "ArgoCD application is out of sync"
+            description: |
+              Application {{ $labels.name }} in namespace {{ $labels.namespace }} is out of sync for >15 minutes.
+              Git drift detected - manual intervention may be required.
+              View details: https://argocd.timourhomelab.org/applications/{{ $labels.name }}
+
+        # P2: High Repo Server CPU Usage
+        - alert: ArgoCDRepoServerHighCPU
+          expr: |
+            rate(process_cpu_seconds_total{job="argocd-repo-server-metrics"}[5m]) > 0.8
+          for: 10m
+          labels:
+            severity: warning
+            component: argocd
+            tier: platform
+          annotations:
+            summary: "ArgoCD Repo Server high CPU usage"
+            description: |
+              ArgoCD Repo Server CPU usage is {{ $value | humanizePercentage }}.
+              This can slow down Git operations and manifest generation.
+              Consider scaling horizontally or increasing CPU limits.
+
+        # P2: High Controller Memory Usage
+        - alert: ArgoCDControllerHighMemory
+          expr: |
+            (
+              process_resident_memory_bytes{job="argocd-application-controller-metrics"}
+              /
+              container_spec_memory_limit_bytes{pod=~"argocd-application-controller.*", namespace="argocd"}
+            ) > 0.9
+          for: 10m
+          labels:
+            severity: warning
+            component: argocd
+            tier: platform
+          annotations:
+            summary: "ArgoCD Application Controller high memory usage"
+            description: |
+              ArgoCD Application Controller memory usage is {{ $value | humanizePercentage }}.
+              Risk of OOMKill and cluster-wide GitOps disruption.
+              Consider increasing memory limits or reducing application count per controller.
+
+        # P3: Application Health Degraded
+        - alert: ArgoCDApplicationHealthDegraded
+          expr: |
+            argocd_app_info{health_status=~"Degraded|Unknown"} == 1
+          for: 15m
+          labels:
+            severity: info
+            component: argocd
+            tier: platform
+          annotations:
+            summary: "ArgoCD application health is degraded"
+            description: |
+              Application {{ $labels.name }} in namespace {{ $labels.namespace }}
+              is in {{ $labels.health_status }} state.
+              This indicates underlying resource issues (pods crashing, etc.).
+              Investigate application resources: kubectl get all -n {{ $labels.dest_namespace }}

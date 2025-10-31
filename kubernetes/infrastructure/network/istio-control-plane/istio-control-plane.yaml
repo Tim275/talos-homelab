@@ -1,0 +1,66 @@
+# Istio Control Plane managed by Sail Operator
+# This replaces the traditional IstioOperator CR
+apiVersion: sailoperator.io/v1
+kind: Istio
+metadata:
+  name: default
+  namespace: istio-system
+spec:
+  # REQUIRED: Target namespace for Istio installation
+  namespace: istio-system
+
+  # Istio Version to deploy
+  version: v1.27.1
+
+  # Update Strategy - RevisionBased for zero-downtime updates
+  updateStrategy:
+    type: RevisionBased
+
+  # Istio Configuration (Helm values)
+  values:
+    global:
+      meshID: mesh1
+      network: network1
+
+      # Proxy configuration (Envoy sidecar)
+      proxy:
+        resources:
+          limits:
+            cpu: 500m      # Increased for burst traffic (was 100m)
+            memory: 512Mi  # Prevents OOMKill under load (was 128Mi)
+          requests:
+            cpu: 50m       # Higher baseline (was 10m)
+            memory: 128Mi  # Reasonable request (was 40Mi)
+
+    pilot:
+      # Resource configuration for Istiod
+      resources:
+        limits:
+          cpu: 500m
+          memory: 2048Mi
+        requests:
+          cpu: 100m
+          memory: 128Mi
+
+      # High Availability - 3 replicas minimum
+      replicaCount: 3
+
+      # Autoscaling (HPA) - Enterprise production settings
+      autoscaleEnabled: true  # Enable HPA for production
+      autoscaleMin: 3         # Minimum 3 replicas for HA
+      autoscaleMax: 5         # Maximum 5 replicas for bursting
+
+      # Environment-specific settings
+      env:
+        PILOT_TRACE_SAMPLING: "0.01"     # 1% sampling (was 100%)
+        PILOT_ENABLE_AMBIENT: "true"     # Ambient mesh support
+        PILOT_ENABLE_CROSS_CLUSTER_WORKLOAD_ENTRY: "true"  # Multi-cluster support
+
+    # Security settings
+    meshConfig:
+      defaultConfig:
+        proxyStatsMatcher:
+          inclusionRegexps:
+            - ".*circuit_breakers.*"
+            - ".*upstream_rq_retry.*"
+            - ".*_cx_.*"

@@ -1,0 +1,123 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  namespace: elastic-system
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Daemon          false
+        Flush           1
+        Log_Level       info
+        Parsers_File    /fluent-bit/etc/parsers.conf
+        HTTP_Server     On
+        HTTP_Listen     0.0.0.0
+        HTTP_Port       2020
+        Health_Check    On
+        storage.path    /var/log/fluentbit/storage
+        storage.sync    full
+        storage.checksum    on
+        storage.backlog.mem_limit    5M
+    
+    # INPUT 1: Kubernetes pod/container logs
+    [INPUT]
+        Name            tail
+        Path            /var/log/containers/*.log
+        Path_Key        filename
+        multiline.parser    cri
+        Tag             kube.*
+        DB              /var/log/fluentbit/tail-db/flb_kube.db
+        storage.type    filesystem
+        Skip_Long_Lines On
+    
+    # INPUT 2: Talos host system logs (existing files only)
+    [INPUT]
+        Name            tail
+        Path            /host/var/log/*.log
+        Path_Key        source_file
+        Tag             host.talos.system
+        DB              /var/log/fluentbit/tail-db/flb_talos_system.db
+        storage.type    filesystem
+        Skip_Long_Lines On
+    
+    # FILTER: Add Kubernetes metadata to pod logs (Enterprise: Labels disabled to prevent Elasticsearch conflicts)
+    [FILTER]
+        Name            kubernetes
+        Match           kube.*
+        Buffer_Size     512k
+        Kube_Tag_Prefix kube.var.log.containers.
+        Merge_Log       Off
+        K8S-Logging.Parser  On
+        K8S-Logging.Exclude On
+        Labels          Off
+        Annotations     Off
+    
+    # FILTER: Enterprise label sanitization - Remove labels object entirely to prevent Elasticsearch conflicts
+    # TEMPORARILY DISABLED: [FILTER]
+    #     Name        lua
+    #     Match       kube.*
+    #     script      /fluent-bit/etc/remove_labels.lua
+    #     call        remove_kubernetes_labels
+    
+    # FILTER: Simplify Kubernetes field names
+    [FILTER]
+        Name        modify
+        Match       kube.*
+        Rename      kubernetes_pod_name pod
+        Rename      kubernetes_namespace_name namespace
+        Rename      kubernetes_container_name container
+        Rename      kubernetes_host host
+        Remove_wildcard kubernetes_
+        Remove      _p
+        Add         log_source pod_container
+    
+    # Add source identification for Talos logs
+    [FILTER]
+        Name        modify
+        Match       host.*
+        Add         log_source talos
+        Add         log_type host
+    
+    # OUTPUT: Forward everything to Fluentd
+    [OUTPUT]
+        Name        forward
+        Match       *
+        Host        fluentd.elastic-system.svc.cluster.local
+        Port        24224
+        storage.total_limit_size    5M
+        Retry_Limit 3
+  
+  parsers.conf: |
+    [PARSER]
+        Name        syslog-rfc3164-nopri
+        Format      regex
+        Regex       ^(?<time>[^ ]* {1,2}[^ ]* [^ ]*) (?<host>[^ ]*) (?<ident>[a-zA-Z0-9_/.\-]*)(?:\[(?<pid>[0-9]+)\])?(?:[^:]*)? *(?<log>.*)$
+        Time_Key    time
+        Time_Format %b %d %H:%M:%S
+        Time_Keep   Off
+        
+    [PARSER]
+        Name        kmsg
+        Format      regex
+        Regex       ^<(?<priority>[0-9]+)>(?<time>[^\]]+)\] (?<log>.*)$
+        Time_Key    time
+        Time_Format %Y-%m-%d %H:%M:%S
+        Time_Keep   Off
+        
+    [PARSER]
+        Name        json
+        Format      json
+        Time_Key    timestamp
+        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
+        Time_Keep   On
+  
+  remove_labels.lua: |
+    function remove_kubernetes_labels(tag, timestamp, record)
+        -- Remove the entire kubernetes.labels object to prevent Elasticsearch field mapping conflicts
+        if record["kubernetes"] and record["kubernetes"]["labels"] then
+            record["kubernetes"]["labels"] = nil
+            record["labels_removed"] = "enterprise_sanitization_lua"
+            record["sanitization_reason"] = "elasticsearch_field_mapping_conflicts"
+        end
+        return 1, timestamp, record
+    end

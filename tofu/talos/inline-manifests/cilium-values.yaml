@@ -1,0 +1,149 @@
+# https://github.com/cilium/cilium/blob/main/install/kubernetes/cilium/values.yaml
+cluster:
+  name: homelab-k8s
+  id: 1
+
+kubeProxyReplacement: true
+
+# Talos specific
+k8sServiceHost: localhost
+k8sServicePort: 7445
+securityContext:
+  capabilities:
+    ciliumAgent: [ CHOWN, KILL, NET_ADMIN, NET_RAW, IPC_LOCK, SYS_ADMIN, SYS_RESOURCE, DAC_OVERRIDE, FOWNER, SETGID, SETUID ]
+    cleanCiliumState: [ NET_ADMIN, SYS_ADMIN, SYS_RESOURCE ]
+
+cgroup:
+  autoMount:
+    enabled: false
+  hostRoot: /sys/fs/cgroup
+
+# https://docs.cilium.io/en/stable/operations/performance/tuning/#ebpf-host-routing
+bpf:
+  hostLegacyRouting: true
+
+# https://docs.cilium.io/en/stable/network/concepts/ipam/
+ipam:
+  mode: kubernetes
+
+operator:
+  rollOutPods: true
+  resources:
+    limits:
+      cpu: 1000m        # Increased for Gateway API controller
+      memory: 512Mi     # Increased for Gateway API controller
+    requests:
+      cpu: 100m         # Increased from 50m
+      memory: 256Mi     # Increased from 128Mi
+  prometheus:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      labels:
+        release: kube-prometheus-stack
+
+# Roll out cilium agent pods automatically when ConfigMap is updated.
+rollOutCiliumPods: true
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 200m
+    memory: 512Mi
+
+# Increase rate limit when doing L2 announcements and Gateway API operations
+k8sClientRateLimit:
+  qps: 50     # Increased from 20 for Gateway API controller
+  burst: 200  # Increased from 100 for Gateway API controller
+
+l2announcements:
+  enabled: true
+
+externalIPs:
+  enabled: true
+
+loadBalancer:
+  algorithm: maglev
+  enabled: true
+
+gatewayAPI:
+  enabled: true
+  enableAlpn: true              # Enable ALPN support for better HTTP/2 performance
+  enableAppProtocol: true       # Enable application protocol detection (GEP-1911)
+  gatewayClass:
+    create: "true"
+
+# Fix for DNS resolution issues - ensure socketLB works across all namespaces
+socketLB:
+  hostNamespaceOnly: false
+
+# DNS Proxy for DNS visibility and FQDN-based policies
+dnsProxy:
+  enabled: true
+  enableDnsCompression: true
+
+# L7 Proxy for HTTP/gRPC protocol visibility
+l7Proxy: true
+
+# 🔥 PHASE 1: PERFORMANCE - Bandwidth Manager + BBR (30-40% throughput boost)
+bandwidthManager:
+  enabled: true
+  bbr: true  # Kernel 6.12 supports BBR congestion control
+
+# 🔥 PHASE 1: PERFORMANCE - BIG TCP (reduce CPU 20-40%, max throughput)
+enableIPv4BIGTCP: true
+
+# 🔐 PHASE 2: SECURITY - WireGuard Encryption (zero-trust pod-to-pod)
+encryption:
+  enabled: true
+  type: wireguard
+  nodeEncryption: true
+  strictMode:
+    enabled: true
+    cidr: 10.244.0.0/16  # Pod CIDR
+    allowRemoteNodeIdentities: false
+
+envoy:
+  enabled: true
+  securityContext:
+    capabilities:
+      keepCapNetBindService: true
+      envoy: [ NET_ADMIN, PERFMON, BPF ]
+
+ingressController:
+  enabled: true
+  default: true
+  loadbalancerMode: shared
+
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+    rollOutPods: true
+  ui:
+    enabled: true
+    rollOutPods: true
+  metrics:
+    enabled:
+      - dns:query;ignoreAAAA
+      - drop
+      - tcp
+      - flow
+      - port-distribution
+      - icmp
+      - http
+      - httpV2:exemplars=true;labelsContext=source_namespace,source_workload,destination_namespace,destination_workload
+    enableOpenMetrics: true
+    serviceMonitor:
+      enabled: true
+      labels:
+        release: kube-prometheus-stack
+
+# Prometheus metrics for Cilium Agent
+prometheus:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    labels:
+      release: kube-prometheus-stack

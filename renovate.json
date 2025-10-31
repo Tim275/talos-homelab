@@ -1,0 +1,190 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":rebaseStalePrs",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":enablePreCommit",
+    "docker:enableMajor",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "Renovate Dashboard 🤖",
+  "schedule": ["at any time"],
+  "timezone": "Europe/Berlin",
+  "prConcurrentLimit": 100,
+  "prHourlyLimit": 100,
+  "terraform": {
+    "managerFilePatterns": [
+      "/\\.tf$/",
+      "/\\.tofu$/"
+    ]
+  },
+  "kubernetes": {
+    "fileMatch": [
+      "\\.yaml$",
+      "\\.yml$"
+    ]
+  },
+  "kustomize": {
+    "managerFilePatterns": [
+      "/(^|/)kustomization\\.ya?ml(\\.j2)?$/"
+    ]
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/\\.tf$/",
+        "/\\.tofu$/",
+        "/\\.tftpl$/",
+        "/\\.yaml$/",
+        "/\\.sh$/",
+        "/\\.tfvars/"
+      ],
+      "matchStrings": [
+        "(?<currentValue>[\\w+\\.\\-]*)['\",;]*\\s*#\\s?renovate: (?<datasource>\\S+)=(?<depName>\\S+)\\s?(registry=(?<registryUrl>\\S+))?\\s?(versioning=(?<versioning>\\S+))?"
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": "Update Talos versions in tfvars files",
+      "fileMatch": [
+        "\\.tfvars$"
+      ],
+      "matchStrings": [
+        "version\\s*=\\s*\"(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)\"",
+        "talos_machine_config_version\\s*=\\s*\"(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "siderolabs/talos"
+    },
+    {
+      "customType": "regex",
+      "description": "Update Kubernetes versions in tfvars files",
+      "fileMatch": [
+        "\\.tfvars$"
+      ],
+      "matchStrings": [
+        "kubernetes_version\\s*=\\s*\"(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "kubernetes/kubernetes"
+    },
+    {
+      "customType": "regex",
+      "description": "Update Gateway API versions in tfvars files",
+      "fileMatch": [
+        "\\.tfvars$"
+      ],
+      "matchStrings": [
+        "gateway_api_version\\s*=\\s*\"(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "kubernetes-sigs/gateway-api"
+    }
+  ],
+  "packageRules": [
+    {
+      "groupName": "Talos System",
+      "matchPackageNames": [
+        "siderolabs/talos"
+      ]
+    },
+    {
+      "groupName": "Kubernetes Core",
+      "matchPackageNames": [
+        "kubernetes/kubernetes",
+        "kubernetes-sigs/gateway-api"
+      ]
+    },
+    {
+      "groupName": "Cilium",
+      "matchPackageNames": [
+        "cilium/**"
+      ]
+    },
+    {
+      "groupName": "Monitoring Stack",
+      "matchPackageNames": [
+        "prometheus-community/**",
+        "grafana/**"
+      ]
+    },
+    {
+      "groupName": "Storage & Backup",
+      "matchPackageNames": [
+        "**/rook**",
+        "**/velero**"
+      ]
+    },
+    {
+      "groupName": "ArgoCD Ecosystem",
+      "matchPackageNames": [
+        "argoproj/**",
+        "**/argo-rollouts**"
+      ]
+    },
+    {
+      "groupName": "Istio Service Mesh",
+      "matchPackageNames": [
+        "**/istio**",
+        "istio/**"
+      ]
+    },
+    {
+      "groupName": "Security Tools",
+      "matchPackageNames": [
+        "jetstack/**",
+        "**/cert-manager**",
+        "bitnami-labs/**",
+        "**/sealed-secrets**",
+        "**/kyverno**"
+      ]
+    },
+    {
+      "groupName": "Database & Platform",
+      "matchPackageNames": [
+        "**/mongodb**",
+        "**/postgresql**",
+        "**/cloudnative-pg**",
+        "**/kafka**",
+        "**/strimzi**",
+        "**/n8n**"
+      ]
+    },
+    {
+      "matchManagers": [
+        "terraform"
+      ],
+      "matchDepTypes": [
+        "provider",
+        "required_provider"
+      ]
+    },
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "GitHub Actions",
+      "groupSlug": "github-actions"
+    },
+    {
+      "description": "Minor and patch updates for infrastructure",
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchPackagePatterns": [
+        "cilium",
+        "prometheus-community",
+        "grafana"
+      ],
+      "automerge": false
+    },
+    {
+      "description": "Hold major updates for manual review",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": false,
+      "automerge": false
+    }
+  ]
+}
