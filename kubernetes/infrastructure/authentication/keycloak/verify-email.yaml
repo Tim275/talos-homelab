@@ -1,0 +1,73 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-verify-email
+  namespace: keycloak
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: keycloak-verify-email
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: verify
+          image: quay.io/keycloak/keycloak:26.0.7
+          env:
+            - name: KEYCLOAK_ADMIN
+              value: admin
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: password
+            - name: KEYCLOAK_URL
+              value: "http://keycloak:8080"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              echo "=== Logging in to Keycloak ==="
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --server "$KEYCLOAK_URL" \
+                --realm master \
+                --user "$KEYCLOAK_ADMIN" \
+                --password "$KEYCLOAK_ADMIN_PASSWORD"
+
+              echo "=== Getting timour user ID ==="
+              USER_ID=$(/opt/keycloak/bin/kcadm.sh get users -r kubernetes \
+                -q username=timour \
+                --fields id \
+                --format csv \
+                --noquotes)
+
+              if [ -z "$USER_ID" ]; then
+                echo "❌ User 'timour' not found!"
+                exit 1
+              fi
+
+              echo "Found user ID: $USER_ID"
+
+              echo "=== Verifying email for user timour ==="
+              /opt/keycloak/bin/kcadm.sh update users/$USER_ID -r kubernetes \
+                -s emailVerified=true
+
+              echo ""
+              echo "==========================================="
+              echo "✅ Email Verified for user: timour"
+              echo "==========================================="
+              echo ""
+              echo "Next steps:"
+              echo "1. Clear kubectl OIDC cache:"
+              echo "   rm -rf ~/.kube/cache/oidc-login/"
+              echo ""
+              echo "2. Login again with kubectl:"
+              echo "   export KUBECONFIG=.../kube-config-oidc.yaml"
+              echo "   kubectl get nodes"
+              echo ""
+              echo "3. You should now have cluster-admin access!"
+              echo "==========================================="

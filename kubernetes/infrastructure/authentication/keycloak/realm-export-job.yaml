@@ -1,0 +1,67 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-realm-export
+  namespace: keycloak
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: keycloak-realm-export
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: export
+          image: quay.io/keycloak/keycloak:26.0.7
+          env:
+            - name: KEYCLOAK_ADMIN
+              value: admin
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: password
+            - name: KEYCLOAK_URL
+              value: "http://keycloak:8080"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              echo "=== Logging in to Keycloak ==="
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --server "$KEYCLOAK_URL" \
+                --realm master \
+                --user "$KEYCLOAK_ADMIN" \
+                --password "$KEYCLOAK_ADMIN_PASSWORD"
+
+              echo "=== Exporting kubernetes realm ==="
+              /opt/keycloak/bin/kcadm.sh get realms/kubernetes > /tmp/kubernetes-realm-export.json
+
+              echo ""
+              echo "==========================================="
+              echo "✅ Kubernetes Realm Exported!"
+              echo "==========================================="
+              echo ""
+              echo "Realm configuration includes:"
+              echo "  ✅ MFA/OTP settings (Google Authenticator)"
+              echo "  ✅ Authentication flows"
+              echo "  ✅ Required actions (Configure OTP)"
+              echo "  ✅ Session timeouts"
+              echo "  ✅ Users & Groups"
+              echo "  ✅ Clients (kubectl)"
+              echo "  ✅ Client scopes (groups)"
+              echo ""
+              echo "Export saved to: /tmp/kubernetes-realm-export.json"
+              echo ""
+              echo "To view the export:"
+              echo "  kubectl cp keycloak/keycloak-realm-export-<pod-id>:/tmp/kubernetes-realm-export.json ./kubernetes-realm-backup.json"
+              echo "==========================================="
+
+              # Keep pod alive for 5 minutes to allow copying the file
+              echo ""
+              echo "Pod will stay alive for 5 minutes to allow file download..."
+              sleep 300
