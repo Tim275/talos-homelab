@@ -1,0 +1,192 @@
+# Grafana Tempo Configuration
+# Distributed Tracing Backend with S3 (Ceph RGW) storage
+# Complements Loki (logs) + Prometheus (metrics) = Full Observability
+
+# Enable metrics generation for Prometheus scraping
+metricsGenerator:
+  enabled: true
+  remoteWriteUrl: "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/write"
+
+# Tempo storage configuration (S3 via Ceph RGW)
+tempo:
+  storage:
+    trace:
+      backend: s3
+      s3:
+        bucket: tempo-traces
+        endpoint: rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
+        access_key: ${AWS_ACCESS_KEY_ID}
+        secret_key: ${AWS_SECRET_ACCESS_KEY}
+        insecure: true  # HTTP endpoint (not HTTPS)
+        forcepathstyle: true  # Required for Ceph RGW
+
+  # Receivers - Accept traces from multiple sources
+  receivers:
+    jaeger:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:14250
+        thrift_http:
+          endpoint: 0.0.0.0:14268
+        thrift_compact:
+          endpoint: 0.0.0.0:6831
+        thrift_binary:
+          endpoint: 0.0.0.0:6832
+    zipkin:
+      endpoint: 0.0.0.0:9411
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+    opencensus:
+      endpoint: 0.0.0.0:55678
+
+  # Retention & Compaction (Production settings)
+  retention: 720h  # 30 days (same as Loki)
+  compactor:
+    compaction:
+      block_retention: 720h  # 30 days
+
+  # Query frontend configuration (caching)
+  query_frontend:
+    search:
+      max_duration: 0  # No limit on trace search duration
+
+  # Overrides for rate limiting
+  overrides:
+    metrics_generator_processors:
+      - service-graphs
+      - span-metrics
+
+# Distributor - Ingests traces and forwards to ingesters
+distributor:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  # S3 credentials from secret
+  extraEnv:
+    - name: AWS_ACCESS_KEY_ID
+      valueFrom:
+        secretKeyRef:
+          name: tempo-s3-credentials
+          key: access_key_id
+    - name: AWS_SECRET_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: tempo-s3-credentials
+          key: secret_access_key
+
+# Ingester - Receives traces from distributor and writes to S3
+ingester:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: rook-ceph-block-enterprise
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+  # S3 credentials from secret
+  extraEnv:
+    - name: AWS_ACCESS_KEY_ID
+      valueFrom:
+        secretKeyRef:
+          name: tempo-s3-credentials
+          key: access_key_id
+    - name: AWS_SECRET_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: tempo-s3-credentials
+          key: secret_access_key
+
+# Compactor - Compacts and cleans up old traces
+compactor:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  # S3 credentials from secret
+  extraEnv:
+    - name: AWS_ACCESS_KEY_ID
+      valueFrom:
+        secretKeyRef:
+          name: tempo-s3-credentials
+          key: access_key_id
+    - name: AWS_SECRET_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: tempo-s3-credentials
+          key: secret_access_key
+
+# Querier - Reads traces from S3 and serves queries
+querier:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+  # S3 credentials from secret
+  extraEnv:
+    - name: AWS_ACCESS_KEY_ID
+      valueFrom:
+        secretKeyRef:
+          name: tempo-s3-credentials
+          key: access_key_id
+    - name: AWS_SECRET_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: tempo-s3-credentials
+          key: secret_access_key
+
+# Query Frontend - Caches and optimizes queries
+queryFrontend:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# Gateway (nginx) - Reverse proxy for Tempo
+gateway:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+# Service Monitor for Prometheus
+serviceMonitor:
+  enabled: true
+  labels:
+    release: kube-prometheus-stack  # Required for Prometheus Operator discovery
+  interval: 30s
+  scrapeTimeout: 10s
+
+# Global settings
+global:
+  clusterDomain: cluster.local
