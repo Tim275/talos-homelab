@@ -273,9 +273,9 @@ Databases, messaging platforms, and identity management:
         <td>Event streaming platform with Connect and Schema Registry (Confluent Operator)</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://www.authelia.com/images/branding/logo-cropped.png"></td>
-        <td><a href="https://www.authelia.com/">Authelia</a></td>
-        <td>Single Sign-On and Multi-Factor authentication portal with OIDC provider</td>
+        <td><img width="32" src="https://avatars.githubusercontent.com/u/4921466?s=200&v=4"></td>
+        <td><a href="https://www.keycloak.org/">Keycloak</a></td>
+        <td>Enterprise identity and access management with OIDC and SAML provider</td>
     </tr>
     <tr>
         <td><img width="32" src="https://avatars.githubusercontent.com/u/103038211?s=200&v=4"></td>
@@ -305,3 +305,27 @@ Zero Trust foundation and policy enforcement:
         <td>Kubernetes controller for one-way encrypted secrets in Git</td>
     </tr>
 </table>
+
+---
+
+## 📚 Documentation
+
+### 🎯 Cluster Resilience & Build Guide
+
+Complete guide for achieving 99.9% uptime and building this cluster from scratch:
+
+**[→ CLUSTER-RESILIENCE-GUIDE.md](./CLUSTER-RESILIENCE-GUIDE.md)**
+
+**What's inside:**
+- Current cluster resilience status (~95-96% uptime)
+- Detailed analysis of HA components and Single Points of Failure
+- 4-phase roadmap to 99.9% uptime (16-25 hours implementation)
+- Complete build-from-scratch guide (8-12 hours)
+- 13 step-by-step phases with code examples
+- Best practices, common pitfalls, and solutions
+
+**Quick Stats:**
+- Current Uptime: ~95-96% (~30 hours downtime/month)
+- Target Uptime: 99.9% (~43 minutes downtime/month)
+
+---
