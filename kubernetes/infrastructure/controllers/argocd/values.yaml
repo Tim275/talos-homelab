@@ -22,6 +22,18 @@ configs:
     url: https://argo.timourhomelab.org
     # Enable Helm support in Kustomize for all applications
     kustomize.buildOptions: --enable-helm
+
+    # 🔐 KEYCLOAK OIDC AUTHENTICATION - PRODUCTION SSO
+    # ================================================
+    oidc.config: |
+      name: Keycloak
+      issuer: https://iam.timourhomelab.org/realms/kubernetes
+      clientID: argocd
+      clientSecret: aSpJ894rBErtY5wS6dgTGGEOH0lzuwV7
+      requestedScopes: ["openid", "profile", "email", "groups"]
+      requestedIDTokenClaims:
+        groups:
+          essential: true
     # 🚀 PERFORMANCE: Optimized timeout and reconciliation settings
     timeout.reconciliation: "360s"        # Extended from 180s default
     timeout.reconciliation.jitter: "30s"   # Add jitter to prevent thundering herd
@@ -163,6 +175,34 @@ configs:
     reposerver.cache.disable.on.deletion: "true"         # Disable cache during deletion
     controller.refresh.after.deletion: "true"            # Force refresh after delete
     application.sync.retry.limit: "0"                    # No retry during deletion
+
+  # 🔐 RBAC CONFIGURATION - KEYCLOAK GROUP MAPPING
+  # ===============================================
+  rbac:
+    create: true
+    policy.default: role:readonly
+    policy.csv: |
+      # 🔐 KEYCLOAK GROUP-BASED RBAC - PRODUCTION SECURITY
+      # ===================================================
+
+      # cluster-admins: Full admin access to everything
+      g, cluster-admins, role:admin
+
+      # developers: Can deploy and manage applications
+      p, role:developers, applications, *, */*, allow
+      p, role:developers, clusters, get, *, allow
+      p, role:developers, repositories, get, *, allow
+      p, role:developers, projects, get, *, allow
+      g, developers, role:developers
+
+      # viewers: Read-only access to all resources
+      p, role:viewers, applications, get, */*, allow
+      p, role:viewers, clusters, get, *, allow
+      p, role:viewers, repositories, get, *, allow
+      p, role:viewers, projects, get, *, allow
+      g, viewers, role:viewers
+
+    scopes: '[groups, email]'
 
 crds:
   install: true
