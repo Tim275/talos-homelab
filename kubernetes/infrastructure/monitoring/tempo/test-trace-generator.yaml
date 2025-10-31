@@ -1,0 +1,52 @@
+# OpenTelemetry Trace Generator - Test Job
+# Sends OTLP traces to Tempo distributor to verify trace ingestion pipeline
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: telemetrygen-traces
+  namespace: monitoring
+  labels:
+    app: telemetrygen
+    test: tempo-ingestion
+spec:
+  ttlSecondsAfterFinished: 300  # Auto-cleanup after 5 minutes
+  template:
+    metadata:
+      labels:
+        app: telemetrygen
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: telemetrygen
+          image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:latest
+          args:
+            - traces
+            - --otlp-insecure
+            - --otlp-endpoint=tempo-distributor.monitoring.svc.cluster.local:4317
+            - --duration=30s
+            - --rate=10
+            - --child-spans=5
+            - --service=test-service
+            - --status-code=Ok
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 65534
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            limits:
+              cpu: 100m
+              memory: 128Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
