@@ -1,0 +1,49 @@
+# Grafana Datasource for Tempo
+# Enables trace querying and correlation with logs (Loki) and metrics (Prometheus)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasource-tempo
+  namespace: monitoring
+  labels:
+    grafana_datasource: "1"  # Auto-discovered by Grafana
+data:
+  tempo-datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Tempo
+        type: tempo
+        access: proxy
+        url: http://tempo-query-frontend.monitoring.svc:3100
+        jsonData:
+          tracesToLogsV2:
+            # Correlate traces with Loki logs
+            datasourceUid: loki
+            spanStartTimeShift: '-1h'
+            spanEndTimeShift: '1h'
+            tags:
+              - key: service.name
+                value: service_name
+            filterByTraceID: true
+            filterBySpanID: false
+          tracesToMetrics:
+            # Correlate traces with Prometheus metrics
+            datasourceUid: prometheus
+            spanStartTimeShift: '-1h'
+            spanEndTimeShift: '1h'
+            tags:
+              - key: service.name
+                value: service_name
+          serviceMap:
+            # Enable service graph/map
+            datasourceUid: prometheus
+          nodeGraph:
+            # Enable trace node graph
+            enabled: true
+          search:
+            # Enable trace search
+            hide: false
+          lokiSearch:
+            # Enable Loki trace search
+            datasourceUid: loki
+        editable: true
