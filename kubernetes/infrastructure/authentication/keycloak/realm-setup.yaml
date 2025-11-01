@@ -1,0 +1,157 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-realm-setup
+  namespace: keycloak
+spec:
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: keycloak-setup
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: setup
+          image: quay.io/keycloak/keycloak:26.0.7
+          env:
+            - name: KEYCLOAK_ADMIN
+              value: admin
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: password
+            - name: KEYCLOAK_URL
+              value: "http://keycloak:8080"
+            - name: ARGOCD_CLIENT_SECRET
+              value: "xMkH6QRqgntm1BTq3ah5xWAlUJUZJfbN"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              echo "=== Logging in to Keycloak ==="
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --server "$KEYCLOAK_URL" \
+                --realm master \
+                --user "$KEYCLOAK_ADMIN" \
+                --password "$KEYCLOAK_ADMIN_PASSWORD"
+
+              echo "=== Checking if kubernetes realm exists ==="
+              if /opt/keycloak/bin/kcadm.sh get realms/kubernetes 2>/dev/null; then
+                echo "Realm already exists, skipping creation"
+              else
+                echo "=== Creating kubernetes realm ==="
+                /opt/keycloak/bin/kcadm.sh create realms \
+                  -s realm=kubernetes \
+                  -s enabled=true \
+                  -s displayName="Kubernetes Homelab" \
+                  -s loginTheme=keycloak \
+                  -s accountTheme=keycloak
+              fi
+
+              echo "=== Creating groups client scope ==="
+              GROUPS_SCOPE_ID=$(/opt/keycloak/bin/kcadm.sh create client-scopes -r kubernetes \
+                -s name=groups \
+                -s protocol=openid-connect \
+                -s 'attributes."include.in.token.scope"=true' \
+                -s 'attributes."display.on.consent.screen"=true' \
+                -i 2>/dev/null || /opt/keycloak/bin/kcadm.sh get client-scopes -r kubernetes --fields id,name | grep -A1 '"name" : "groups"' | grep '"id"' | cut -d'"' -f4)
+
+              echo "=== Adding Group Membership mapper to groups scope ==="
+              /opt/keycloak/bin/kcadm.sh create "client-scopes/$GROUPS_SCOPE_ID/protocol-mappers/models" -r kubernetes \
+                -s name=groups \
+                -s protocol=openid-connect \
+                -s protocolMapper=oidc-group-membership-mapper \
+                -s 'config."claim.name"=groups' \
+                -s 'config."full.path"=false' \
+                -s 'config."id.token.claim"=true' \
+                -s 'config."access.token.claim"=true' \
+                -s 'config."userinfo.token.claim"=true' 2>/dev/null || echo "Mapper already exists"
+
+              echo "=== Creating ArgoCD OIDC client ==="
+              ARGOCD_CLIENT_ID=$(/opt/keycloak/bin/kcadm.sh create clients -r kubernetes \
+                -s clientId=argocd \
+                -s protocol=openid-connect \
+                -s publicClient=false \
+                -s secret="$ARGOCD_CLIENT_SECRET" \
+                -s 'redirectUris=["https://argo.timourhomelab.org/auth/callback","https://argo.timourhomelab.org/*"]' \
+                -s 'webOrigins=["https://argo.timourhomelab.org"]' \
+                -s baseUrl="https://argo.timourhomelab.org" \
+                -s standardFlowEnabled=true \
+                -s directAccessGrantsEnabled=false \
+                -s serviceAccountsEnabled=false \
+                -s enabled=true \
+                -i 2>/dev/null || /opt/keycloak/bin/kcadm.sh get clients -r kubernetes --fields id,clientId | grep -B1 '"clientId" : "argocd"' | grep '"id"' | cut -d'"' -f4)
+
+              if [ -z "$ARGOCD_CLIENT_ID" ]; then
+                echo "ERROR: Failed to create/get ArgoCD client"
+                exit 1
+              fi
+
+              echo "=== Adding groups scope to ArgoCD client ==="
+              /opt/keycloak/bin/kcadm.sh update "clients/$ARGOCD_CLIENT_ID/default-client-scopes/$GROUPS_SCOPE_ID" -r kubernetes 2>/dev/null || echo "Scope already added"
+
+              echo "=== Creating kubectl PUBLIC client ==="
+              KUBECTL_CLIENT_ID=$(/opt/keycloak/bin/kcadm.sh create clients -r kubernetes \
+                -s clientId=kubectl \
+                -s protocol=openid-connect \
+                -s publicClient=true \
+                -s 'redirectUris=["http://localhost:8000","http://localhost:18000"]' \
+                -s standardFlowEnabled=true \
+                -s directAccessGrantsEnabled=false \
+                -i 2>/dev/null || /opt/keycloak/bin/kcadm.sh get clients -r kubernetes --fields id,clientId | grep -B1 '"clientId" : "kubectl"' | grep '"id"' | cut -d'"' -f4)
+
+              echo "=== Adding groups scope to kubectl client ==="
+              /opt/keycloak/bin/kcadm.sh update "clients/$KUBECTL_CLIENT_ID/default-client-scopes/$GROUPS_SCOPE_ID" -r kubernetes 2>/dev/null || echo "Scope already added"
+
+              echo "=== Creating cluster-admins group ==="
+              ADMIN_GROUP_ID=$(/opt/keycloak/bin/kcadm.sh create groups -r kubernetes \
+                -s name=cluster-admins \
+                -i 2>/dev/null || /opt/keycloak/bin/kcadm.sh get groups -r kubernetes --fields id,name | grep -B1 '"name" : "cluster-admins"' | grep '"id"' | cut -d'"' -f4)
+
+              echo "=== Creating developers group ==="
+              DEV_GROUP_ID=$(/opt/keycloak/bin/kcadm.sh create groups -r kubernetes \
+                -s name=developers \
+                -i 2>/dev/null || /opt/keycloak/bin/kcadm.sh get groups -r kubernetes --fields id,name | grep -B1 '"name" : "developers"' | grep '"id"' | cut -d'"' -f4)
+
+              echo "=== Creating viewers group ==="
+              VIEWER_GROUP_ID=$(/opt/keycloak/bin/kcadm.sh create groups -r kubernetes \
+                -s name=viewers \
+                -i 2>/dev/null || /opt/keycloak/bin/kcadm.sh get groups -r kubernetes --fields id,name | grep -B1 '"name" : "viewers"' | grep '"id"' | cut -d'"' -f4)
+
+              echo "=== Creating user timour ==="
+              USER_ID=$(/opt/keycloak/bin/kcadm.sh create users -r kubernetes \
+                -s username=timour \
+                -s email=timour@timourhomelab.org \
+                -s firstName=Timour \
+                -s lastName=Homelab \
+                -s enabled=true \
+                -s emailVerified=true \
+                -i 2>/dev/null || /opt/keycloak/bin/kcadm.sh get users -r kubernetes -q username=timour --fields id | grep '"id"' | cut -d'"' -f4)
+
+              echo "=== Setting password for user timour ==="
+              /opt/keycloak/bin/kcadm.sh update "users/$USER_ID/reset-password" -r kubernetes \
+                -s type=password \
+                -s value=test123 \
+                -s temporary=false \
+                -n 2>/dev/null || echo "Password already set"
+
+              echo "=== Adding user to cluster-admins group ==="
+              /opt/keycloak/bin/kcadm.sh update "users/$USER_ID/groups/$ADMIN_GROUP_ID" -r kubernetes \
+                -s realm=kubernetes \
+                -s userId="$USER_ID" \
+                -s groupId="$ADMIN_GROUP_ID" \
+                -n 2>/dev/null || echo "User already in group"
+
+              echo "=== Keycloak kubernetes realm setup complete! ==="
+              echo "=== Summary ==="
+              echo "Realm: kubernetes"
+              echo "ArgoCD Client ID: argocd"
+              echo "Kubectl Client ID: kubectl"
+              echo "User: timour (password: test123)"
+              echo "Groups: cluster-admins, developers, viewers"
+              echo "ArgoCD URL: https://argo.timourhomelab.org"
+              echo "Keycloak OIDC: https://iam.timourhomelab.org/realms/kubernetes"
