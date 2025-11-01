@@ -115,8 +115,8 @@ Enterprise operators managing lifecycle, scaling, and HA for complex stateful wo
     </tr>
     <tr>
         <td><img width="32" src="https://www.vectorlogo.zone/logos/apache_kafka/apache_kafka-icon.svg"></td>
-        <td><a href="https://docs.confluent.io/operator/current/overview.html">Confluent Operator</a></td>
-        <td>Kafka enterprise operator managing clusters, Connect and Schema Registry</td>
+        <td><a href="https://strimzi.io/">Strimzi Operator</a></td>
+        <td>Kafka operator for managing Kafka clusters, topics and users on Kubernetes</td>
     </tr>
     <tr>
         <td><img width="32" src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/redis/redis-original.svg"></td>
@@ -166,6 +166,16 @@ Core cluster services including GitOps, networking, storage, backup, and observa
         <td>Zero-Trust secure tunnel for external access without port forwarding</td>
     </tr>
     <tr>
+        <td><img width="32" src="https://avatars.githubusercontent.com/u/23534644?s=200&v=4"></td>
+        <td><a href="https://istio.io/">Istio</a></td>
+        <td>Service mesh with mTLS, traffic management and advanced observability (Sail Operator)</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://cdn.jsdelivr.net/gh/cilium/cilium/Documentation/images/logo-solo.svg"></td>
+        <td><a href="https://github.com/cilium/hubble">Hubble UI</a></td>
+        <td>Network observability interface for visualizing service dependencies and network flows</td>
+    </tr>
+    <tr>
         <td><img width="32" src="https://ceph.io/assets/favicons/favicon-32x32.png"></td>
         <td><a href="https://rook.io/">Rook-Ceph</a></td>
         <td>Distributed storage with block, object and file storage (Rook Operator)</td>
@@ -209,6 +219,11 @@ Core cluster services including GitOps, networking, storage, backup, and observa
         <td><img width="32" src="https://raw.githubusercontent.com/fluent/fluent-bit/master/fluentbit_logo.png"></td>
         <td><a href="https://fluentbit.io/">Fluent Bit</a></td>
         <td>Lightweight log processor optimized for containerized environments</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://grafana.com/static/assets/img/tempo.svg"></td>
+        <td><a href="https://grafana.com/oss/tempo/">Tempo</a></td>
+        <td>High-scale distributed tracing backend with cost-efficient object storage</td>
     </tr>
     <tr>
         <td><img width="32" src="https://www.jaegertracing.io/img/jaeger-icon-color.png"></td>
@@ -269,8 +284,8 @@ Databases, messaging platforms, and identity management:
     </tr>
     <tr>
         <td><img width="32" src="https://www.vectorlogo.zone/logos/apache_kafka/apache_kafka-icon.svg"></td>
-        <td><a href="https://docs.confluent.io/operator/current/overview.html">Kafka</a></td>
-        <td>Event streaming platform with Connect and Schema Registry (Confluent Operator)</td>
+        <td><a href="https://strimzi.io/">Kafka</a></td>
+        <td>Event streaming platform with KRaft mode and cluster operators (Strimzi)</td>
     </tr>
     <tr>
         <td><img width="32" src="https://avatars.githubusercontent.com/u/4921466?s=200&v=4"></td>
