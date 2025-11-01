@@ -1,0 +1,30 @@
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: keycloak-daily
+  namespace: velero
+spec:
+  schedule: "0 3 * * *"
+  template:
+    includedNamespaces:
+      - keycloak
+    storageLocation: default
+    ttl: 168h0m0s
+    snapshotVolumes: true
+    includeClusterResources: false
+    hooks:
+      resources:
+        - name: keycloak-postgres-backup-hook
+          includedNamespaces:
+            - keycloak
+          labelSelector:
+            matchLabels:
+              cnpg.io/cluster: keycloak-db
+          pre:
+            - exec:
+                container: postgres
+                command:
+                  - /bin/bash
+                  - -c
+                  - pg_dump -Fc -f /tmp/keycloak-backup.dump
+                timeout: 10m
