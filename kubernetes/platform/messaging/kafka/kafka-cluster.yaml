@@ -6,7 +6,7 @@ metadata:
   labels:
     strimzi.io/cluster: my-cluster
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-wave: "12"
 spec:
   replicas: 3
   roles:
@@ -17,10 +17,35 @@ spec:
     volumes:
       - id: 0
         type: persistent-claim
-        size: 5Gi
+        size: 15Gi
         class: rook-ceph-block-enterprise
-        deleteClaim: false
+        deleteClaim: true
         kraftMetadata: shared
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+  template:
+    pod:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    strimzi.io/cluster: my-cluster
+                    strimzi.io/pool-name: dual-role
+                topologyKey: kubernetes.io/hostname
 ---
 apiVersion: kafka.strimzi.io/v1beta2
 kind: Kafka
@@ -29,7 +54,7 @@ metadata:
   annotations:
     strimzi.io/node-pools: enabled
     strimzi.io/kraft: enabled
-    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-wave: "12"
 spec:
   kafka:
     version: 4.0.0
