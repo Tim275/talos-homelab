@@ -1,0 +1,57 @@
+# ============================================================
+# CEPH RGW MULTISITE CONFIGURATION - REALM, ZONEGROUP, ZONE
+# ============================================================
+# These resources define the RGW multisite topology structure.
+# Even for single-site deployments, these are REQUIRED when
+# CephObjectStore references a zone.
+#
+# HIERARCHY:
+# - CephObjectRealm (top-level namespace for multisite)
+#   └─ CephObjectZoneGroup (group of zones that replicate)
+#      └─ CephObjectZone (single site/location)
+#
+# SYNC-WAVE: 3 (must exist BEFORE CephObjectStore in wave 4)
+# ============================================================
+
+---
+apiVersion: ceph.rook.io/v1
+kind: CephObjectRealm
+metadata:
+  name: homelab-realm
+  namespace: rook-ceph
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  # Realm is the top-level container for multisite configuration
+  # For single-site deployments, this is still required when using zones
+
+---
+apiVersion: ceph.rook.io/v1
+kind: CephObjectZoneGroup
+metadata:
+  name: homelab-zonegroup
+  namespace: rook-ceph
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  realm: homelab-realm
+
+---
+apiVersion: ceph.rook.io/v1
+kind: CephObjectZone
+metadata:
+  name: homelab
+  namespace: rook-ceph
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  zoneGroup: homelab-zonegroup
+  metadataPool:
+    replicated:
+      size: 3
+      requireSafeReplicaSize: true
+  dataPool:
+    replicated:
+      size: 3
+      requireSafeReplicaSize: true
+  # CustomEndpoints are optional - RGW service will be auto-discovered
