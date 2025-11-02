@@ -7,15 +7,22 @@ metadata:
     # Disable Prometheus auto-discovery for non-metrics endpoints
     prometheus.io/scrape: "false"
 spec:
-  # 🔧 Simple in-memory storage (lightweight, no persistence)
+  # PRODUCTION: Elasticsearch backend for persistent trace storage
   strategy: allInOne
 
   storage:
-    type: memory
+    type: elasticsearch
     options:
-      memory.max-traces: 10000
+      es.server-urls: https://production-cluster-es-http.elastic-system.svc.cluster.local:9200
+      es.username: elastic
+      es.password: 9ry0V5G4h72NUi02rjIP50yI
+      es.tls.enabled: "true"
+      es.tls.skip-host-verify: "true"
+      es.index-prefix: jaeger
+      es.num-shards: 3
+      es.num-replicas: 1
 
-  # 📊 COLLECTOR: HA with 3 replicas
+  # COLLECTOR: HA with 3 replicas
   collector:
     maxReplicas: 3
     autoscale: true
@@ -27,16 +34,16 @@ spec:
         memory: 1Gi
         cpu: 1000m
     options:
-      # ✅ OTLP Protocol (Modern apps) - Standard ports
+      # OTLP Protocol (Modern apps) - Standard ports
       collector.otlp.enabled: "true"
       collector.otlp.grpc.host-port: ":4317"
       collector.otlp.http.host-port: ":4318"
 
-      # ✅ Jaeger Protocol (Legacy apps) - Standard ports
+      # Jaeger Protocol (Legacy apps) - Standard ports
       collector.jaeger.grpc.host-port: ":14250"
       collector.jaeger.http.host-port: ":14268"
 
-  # 🔍 QUERY: HA with 2 replicas
+  # QUERY: HA with 2 replicas
   query:
     replicas: 2
     resources:
@@ -51,7 +58,7 @@ spec:
       query.grpc-server.host-port: ":16685"  # gRPC query port
       admin.http.host-port: ":14269"         # Admin/metrics port (Prometheus)
 
-  # 📈 SAMPLING: Uber-style adaptive sampling
+  # SAMPLING: Uber-style adaptive sampling
   sampling:
     options:
       # Default strategy: 10% baseline sampling
