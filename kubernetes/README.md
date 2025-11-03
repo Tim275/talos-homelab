@@ -1,42 +1,65 @@
-# Kubernetes Homelab GitOps
+# Kubernetes Homelab
 
-## Quick Start
+## Bootstrap
 
 ```bash
 export KUBECONFIG="../tofu/output/kube-config.yaml"
 
-# Deploy complete stack
 kubectl apply -k bootstrap/
-
-# Monitor deployment
 kubectl get applications -n argocd -w
 ```
 
-## ArgoCD Access
+## ArgoCD
 
 ```bash
-# Get admin password
+# Password
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
 
-# Port-forward
+# UI
 kubectl port-forward svc/argocd-server -n argocd 8080:80
+# http://localhost:8080
 ```
 
-## Operations
+## Infrastructure
+
+**Layer 1 - Security (Wave 0)**
+- Sealed Secrets
+- Cert Manager
+- Kyverno
+
+**Layer 2 - Foundation (Wave 1-6)**
+- Cilium CNI
+- Rook Ceph Storage
+- Istio Service Mesh
+- PostgreSQL Operator (CNPG)
+
+**Layer 3 - Observability (Wave 6-10)**
+- Prometheus + Grafana
+- Jaeger Tracing
+- Alertmanager
+- Elasticsearch + Kibana
+- Velero Backups
+
+**Layer 4 - Platform (Wave 15-18)**
+- Authelia (SSO)
+- Keycloak (Identity)
+- LLDAP (LDAP)
+- Kafka
+- N8N Workflows
+- Infisical Secrets
+
+## Useful Commands
 
 ```bash
-# Check all applications
+# Application status
 kubectl get applications -n argocd
 
-# Sync status
-kubectl get applications -n argocd -o custom-columns="NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status"
+# Sync application
+kubectl patch application <app> -n argocd --type='merge' -p='{"operation":{"sync":{"revision":"HEAD"}}}'
 
-# Force sync
-kubectl patch application <app-name> -n argocd --type='merge' -p='{"operation":{"sync":{"revision":"HEAD"}}}'
+# Check all pods
+kubectl get pods -A
 
-# ArgoCD logs
-kubectl logs -n argocd deployment/argocd-server
-
-# Application details
-kubectl describe application <app-name> -n argocd
+# Logs
+kubectl logs -n <namespace> <pod>
 ```
