@@ -3,10 +3,10 @@ kind: Namespace
 metadata:
   name: jaeger
   labels:
-    # 🛡️ POD SECURITY: Baseline security (no privileged containers needed)
-    pod-security.kubernetes.io/enforce: baseline
-    pod-security.kubernetes.io/audit: baseline
-    pod-security.kubernetes.io/warn: baseline
+    # 🛡️ POD SECURITY: Privileged (required for Agent DaemonSet hostPort)
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged
 
     # 🏷️ ENTERPRISE LABELS
     app.kubernetes.io/name: jaeger
@@ -14,18 +14,21 @@ metadata:
     app.kubernetes.io/managed-by: argocd
 
     # 📋 DOCUMENTATION
-    homelab.security: "baseline-compliant"
-    homelab.reason: "jaeger-allinone-no-hostport"
-    homelab.security-review: "2025-09-28"
+    homelab.security: "privileged-required"
+    homelab.reason: "jaeger-agent-daemonset-hostport"
+    homelab.security-review: "2025-11-03"
   annotations:
     argocd.argoproj.io/sync-wave: "1"
 
     # 📝 SECURITY DOCUMENTATION
     security.homelab.local/policy: |
-      SECURITY: Pod Security Baseline Compliant
-      REASON: Jaeger Agent DaemonSet removed - no hostPort usage
-      IMPACT: Secure containers only, no privileged access
-      TRACE-COLLECTION: Direct to jaeger-collector:14268 or OTLP
-      ALTERNATIVES: OpenTelemetry Collector available for complex scenarios
-      REVIEW-DATE: 2025-09-28
+      SECURITY: Pod Security Privileged Policy
+      REASON: Jaeger Agent DaemonSet requires hostPort access
+      COMPONENT: jaeger-agent-daemonset uses hostPorts (5775, 5778, 6831, 6832, 14271)
+      ARCHITECTURE: Production strategy with distributed tracing
+      JUSTIFICATION: Agent pods run on each node to collect traces locally
+      IMPACT: Required for Jaeger production deployment pattern
+      TRACE-COLLECTION: Apps send traces to localhost agent via UDP/TCP
+      ALTERNATIVES: Can remove agents and use direct-to-collector (less efficient)
+      REVIEW-DATE: 2025-11-03
       APPROVED-BY: homelab-admin
