@@ -322,25 +322,3 @@ Zero Trust foundation and policy enforcement:
 </table>
 
 ---
-
-## 📚 Documentation
-
-### 🎯 Cluster Resilience & Build Guide
-
-Complete guide for achieving 99.9% uptime and building this cluster from scratch:
-
-**[→ CLUSTER-RESILIENCE-GUIDE.md](./CLUSTER-RESILIENCE-GUIDE.md)**
-
-**What's inside:**
-- Current cluster resilience status (~95-96% uptime)
-- Detailed analysis of HA components and Single Points of Failure
-- 4-phase roadmap to 99.9% uptime (16-25 hours implementation)
-- Complete build-from-scratch guide (8-12 hours)
-- 13 step-by-step phases with code examples
-- Best practices, common pitfalls, and solutions
-
-**Quick Stats:**
-- Current Uptime: ~95-96% (~30 hours downtime/month)
-- Target Uptime: 99.9% (~43 minutes downtime/month)
-
----
