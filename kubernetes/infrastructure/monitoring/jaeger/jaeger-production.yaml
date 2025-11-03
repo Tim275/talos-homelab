@@ -1,0 +1,153 @@
+apiVersion: jaegertracing.io/v1
+kind: Jaeger
+metadata:
+  name: jaeger
+  namespace: jaeger
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "14269"
+spec:
+  # PRODUCTION: Distributed architecture with HA
+  strategy: production
+
+  # AGENT: DaemonSet on every node for local span collection
+  agent:
+    strategy: DaemonSet
+    resources:
+      requests:
+        memory: 128Mi
+        cpu: 100m
+      limits:
+        memory: 256Mi
+        cpu: 200m
+    options:
+      log-level: info
+
+  # COLLECTOR: HA with 3 replicas + autoscaling
+  collector:
+    replicas: 3
+    maxReplicas: 5
+    autoscale: true
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 200m
+      limits:
+        memory: 2Gi
+        cpu: 1000m
+    options:
+      # OTLP Protocol (Modern apps)
+      collector.otlp.enabled: "true"
+      collector.otlp.grpc.host-port: ":4317"
+      collector.otlp.http.host-port: ":4318"
+
+      # Jaeger Protocol (Legacy apps)
+      collector.jaeger.grpc.host-port: ":14250"
+      collector.jaeger.http.host-port: ":14268"
+
+      # Performance tuning
+      collector.queue-size: "2000"
+      collector.num-workers: "50"
+      log-level: info
+    volumeMounts:
+      - name: elasticsearch-secret
+        mountPath: /etc/elasticsearch
+        readOnly: true
+      - name: elasticsearch-ca
+        mountPath: /etc/ssl/elasticsearch
+        readOnly: true
+    volumes:
+      - name: elasticsearch-secret
+        secret:
+          secretName: jaeger-elasticsearch
+      - name: elasticsearch-ca
+        secret:
+          secretName: production-cluster-es-http-certs-public
+
+  # QUERY: HA with 2 replicas for UI/API
+  query:
+    replicas: 2
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 1Gi
+        cpu: 500m
+    options:
+      query.http-server.host-port: ":16686"
+      query.grpc-server.host-port: ":16685"
+      admin.http.host-port: ":14269"
+      log-level: info
+      # UI Configuration
+      query.base-path: /
+      query.ui-config: /etc/config/ui.json
+    volumeMounts:
+      - name: elasticsearch-secret
+        mountPath: /etc/elasticsearch
+        readOnly: true
+      - name: elasticsearch-ca
+        mountPath: /etc/ssl/elasticsearch
+        readOnly: true
+    volumes:
+      - name: elasticsearch-secret
+        secret:
+          secretName: jaeger-elasticsearch
+      - name: elasticsearch-ca
+        secret:
+          secretName: production-cluster-es-http-certs-public
+
+  # STORAGE: Elasticsearch with proper TLS
+  storage:
+    type: elasticsearch
+    secretName: jaeger-elasticsearch
+    options:
+      es.server-urls: https://production-cluster-es-http.elastic-system.svc.cluster.local:9200
+      es.username: elastic
+      # Password from SealedSecret (mounted as file)
+      es.tls.enabled: "true"
+      es.tls.ca: /etc/ssl/elasticsearch/tls.crt
+      es.tls.skip-host-verify: "false"  # ✅ Production: Verify TLS
+
+      # Index configuration
+      es.index-prefix: jaeger
+      es.num-shards: 3
+      es.num-replicas: 1
+
+      # Performance tuning
+      es.bulk.size: "5000000"  # 5MB bulk size
+      es.bulk.workers: "10"
+      es.bulk.flush-interval: "200ms"
+
+      # Timeouts
+      es.timeout: "15s"
+      es.max-span-age: "72h"  # 3 days retention
+
+  # SAMPLING: Adaptive sampling strategy
+  sampling:
+    options:
+      # Default: 10% sampling for all services
+      default_strategy.type: probabilistic
+      default_strategy.param: "0.1"
+
+      # Adaptive sampling per endpoint
+      sampling.strategies-file: /etc/jaeger/sampling/sampling.json
+
+  # UI CONFIGURATION
+  ui:
+    options:
+      dependencies.menuEnabled: "true"
+      tracking.gaID: "UA-000000-2"
+      linkPatterns:
+        - type: logs
+          key: customer_id
+          url: /search?service={{ .service }}&tags=customer_id:{{ .value }}
+          text: "View logs for customer {{ .value }}"
+
+  # INGESTER: For Kafka-based deployments (optional, disabled here)
+  ingester:
+    enabled: false
+
+  # RESOURCE ANNOTATIONS
+  annotations:
+    sidecar.istio.io/inject: "false"  # Disable service mesh for Jaeger
