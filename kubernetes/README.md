@@ -1,12 +1,74 @@
 # Kubernetes Homelab
 
+## Structure
+
+```
+kubernetes/
+├── bootstrap/
+│   ├── kustomization.yaml       # LAYER 1: Bootstrap entry point
+│   ├── security.yaml
+│   ├── infrastructure.yaml
+│   ├── platform.yaml
+│   └── apps.yaml
+│
+├── security/
+│   └── kustomization.yaml       # LAYER 2: Security ApplicationSets
+│
+├── infrastructure/
+│   ├── kustomization.yaml       # LAYER 2: Infrastructure ApplicationSets
+│   ├── monitoring-app.yaml
+│   ├── network-app.yaml
+│   ├── storage-app.yaml
+│   │
+│   ├── monitoring/
+│   │   ├── kustomization.yaml   # LAYER 3: Service selector
+│   │   ├── prometheus/
+│   │   │   └── kustomization.yaml
+│   │   └── grafana/
+│   │       └── kustomization.yaml
+│   │
+│   └── network/
+│       ├── kustomization.yaml
+│       └── cilium/
+│           └── kustomization.yaml
+│
+├── platform/
+│   └── kustomization.yaml       # LAYER 2: Platform ApplicationSets
+│
+└── apps/
+    └── kustomization.yaml       # LAYER 2: Apps ApplicationSets
+```
+
 ## Bootstrap
 
+**Option 1: ArgoCD**
 ```bash
 export KUBECONFIG="../tofu/output/kube-config.yaml"
 
 kubectl apply -k bootstrap/
 kubectl get applications -n argocd -w
+```
+
+**Option 2: Layer-by-Layer**
+```bash
+export KUBECONFIG="../tofu/output/kube-config.yaml"
+
+kubectl apply -k security/           # Wave 0: Security ApplicationSets
+kubectl apply -k infrastructure/     # Wave 1: Infrastructure ApplicationSets
+kubectl apply -k platform/          # Wave 15: Platform ApplicationSets
+kubectl apply -k apps/              # Wave 25: Apps ApplicationSets
+```
+
+**Option 3: Manual Core**
+```bash
+export KUBECONFIG="../tofu/output/kube-config.yaml"
+
+kubectl kustomize --enable-helm infrastructure/network/cilium | kubectl apply -f -
+kubectl kustomize --enable-helm infrastructure/controllers/sealed-secrets | kubectl apply -f -
+kubectl kustomize --enable-helm infrastructure/storage/rook-ceph | kubectl apply -f -
+kubectl kustomize --enable-helm infrastructure/network/sail-operator | kubectl apply -f -
+kubectl kustomize --enable-helm infrastructure/network/istio-control-plane | kubectl apply -f -
+kubectl kustomize --enable-helm infrastructure/controllers/argocd | kubectl apply -f -
 ```
 
 ## ArgoCD
@@ -15,51 +77,6 @@ kubectl get applications -n argocd -w
 # Password
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
 
-# UI
+# Port-forward
 kubectl port-forward svc/argocd-server -n argocd 8080:80
-# http://localhost:8080
-```
-
-## Infrastructure
-
-**Layer 1 - Security (Wave 0)**
-- Sealed Secrets
-- Cert Manager
-- Kyverno
-
-**Layer 2 - Foundation (Wave 1-6)**
-- Cilium CNI
-- Rook Ceph Storage
-- Istio Service Mesh
-- PostgreSQL Operator (CNPG)
-
-**Layer 3 - Observability (Wave 6-10)**
-- Prometheus + Grafana
-- Jaeger Tracing
-- Alertmanager
-- Elasticsearch + Kibana
-- Velero Backups
-
-**Layer 4 - Platform (Wave 15-18)**
-- Authelia (SSO)
-- Keycloak (Identity)
-- LLDAP (LDAP)
-- Kafka
-- N8N Workflows
-- Infisical Secrets
-
-## Useful Commands
-
-```bash
-# Application status
-kubectl get applications -n argocd
-
-# Sync application
-kubectl patch application <app> -n argocd --type='merge' -p='{"operation":{"sync":{"revision":"HEAD"}}}'
-
-# Check all pods
-kubectl get pods -A
-
-# Logs
-kubectl logs -n <namespace> <pod>
 ```
