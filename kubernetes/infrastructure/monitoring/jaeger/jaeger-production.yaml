@@ -7,10 +7,9 @@ metadata:
     prometheus.io/scrape: "true"
     prometheus.io/port: "14269"
 spec:
-  # PRODUCTION: Distributed architecture with HA
+
   strategy: production
 
-  # AGENT: DaemonSet on every node for local span collection
   agent:
     strategy: DaemonSet
     resources:
@@ -23,7 +22,6 @@ spec:
     options:
       log-level: info
 
-  # COLLECTOR: HA with 3 replicas + autoscaling
   collector:
     replicas: 3
     maxReplicas: 5
@@ -36,16 +34,14 @@ spec:
         memory: 2Gi
         cpu: 1000m
     options:
-      # OTLP Protocol (Modern apps)
+
       collector.otlp.enabled: "true"
       collector.otlp.grpc.host-port: ":4317"
       collector.otlp.http.host-port: ":4318"
 
-      # Jaeger Protocol (Legacy apps) - v1.65+ flag names
       collector.grpc-server.host-port: ":14250"
       collector.http-server.host-port: ":14268"
 
-      # Performance tuning
       collector.queue-size: "2000"
       collector.num-workers: "50"
       log-level: info
@@ -64,7 +60,6 @@ spec:
         secret:
           secretName: production-cluster-es-http-certs-public
 
-  # QUERY: HA with 2 replicas for UI/API
   query:
     replicas: 2
     resources:
@@ -79,7 +74,7 @@ spec:
       query.grpc-server.host-port: ":16685"
       admin.http.host-port: ":14269"
       log-level: info
-      # UI Configuration
+
       query.base-path: /
       query.ui-config: /etc/config/ui.json
     volumeMounts:
@@ -97,7 +92,6 @@ spec:
         secret:
           secretName: production-cluster-es-http-certs-public
 
-  # STORAGE: Elasticsearch with proper TLS
   storage:
     type: elasticsearch
     secretName: jaeger-elasticsearch
@@ -107,31 +101,22 @@ spec:
       es.password-file: /etc/elasticsearch/elastic
       es.tls.enabled: "true"
       es.tls.ca: /etc/ssl/elasticsearch/tls.crt
-      # ⚠️ Changed: Skip TLS verify (OK for internal cluster communication, fixes index-cleaner)
       es.tls.skip-host-verify: "true"
-
-      # Index configuration
       es.index-prefix: jaeger
       es.num-shards: 3
       es.num-replicas: 1
-
-      # Performance tuning
-      es.bulk.size: "5000000"  # 5MB bulk size
+      es.bulk.size: "5000000"
       es.bulk.workers: "10"
       es.bulk.flush-interval: "200ms"
-
-      # Timeouts
       es.timeout: "15s"
-      es.max-span-age: "72h"  # 3 days retention
+      es.max-span-age: "72h"
 
-  # SAMPLING: Adaptive sampling strategy
   sampling:
     options:
-      # Default: 10% sampling for all services
+
       default_strategy.type: probabilistic
       default_strategy.param: "0.1"
 
-  # UI CONFIGURATION
   ui:
     options:
       dependencies.menuEnabled: "true"
@@ -142,6 +127,5 @@ spec:
           url: /search?service={{ .service }}&tags=customer_id:{{ .value }}
           text: "View logs for customer {{ .value }}"
 
-  # RESOURCE ANNOTATIONS
   annotations:
-    sidecar.istio.io/inject: "false"  # Disable service mesh for Jaeger
+    sidecar.istio.io/inject: "false"
