@@ -1,0 +1,89 @@
+# Multi-Tenant Isolation with Istio
+# Each tenant gets their own namespace with isolated network policies
+
+# Tenant A - Order Management
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tenant-a-orders
+  labels:
+    istio-injection: enabled  # Auto-inject Istio sidecar
+    tenant: tenant-a
+    app-type: order-management
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: tenant-a-strict-mtls
+  namespace: tenant-a-orders
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: tenant-a-isolation
+  namespace: tenant-a-orders
+spec:
+  action: DENY
+  rules:
+    # Deny access from other tenants
+    - from:
+        - source:
+            notNamespaces: ["tenant-a-orders", "istio-system", "monitoring"]
+---
+# Allow only specific services within tenant
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: tenant-a-allow-internal
+  namespace: tenant-a-orders
+spec:
+  action: ALLOW
+  rules:
+    # Allow services within same tenant
+    - from:
+        - source:
+            namespaces: ["tenant-a-orders"]
+    # Allow monitoring/tracing
+    - from:
+        - source:
+            namespaces: ["monitoring", "jaeger"]
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/metrics", "/health", "/ready"]
+
+# Tenant B - Order Management (Isolated)
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tenant-b-orders
+  labels:
+    istio-injection: enabled
+    tenant: tenant-b
+    app-type: order-management
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: tenant-b-strict-mtls
+  namespace: tenant-b-orders
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: tenant-b-isolation
+  namespace: tenant-b-orders
+spec:
+  action: DENY
+  rules:
+    - from:
+        - source:
+            notNamespaces: ["tenant-b-orders", "istio-system", "monitoring"]
