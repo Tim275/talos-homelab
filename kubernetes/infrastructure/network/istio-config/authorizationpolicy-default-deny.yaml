@@ -1,0 +1,43 @@
+# Default Deny Policy - Zero Trust Security
+# By default, NO service can talk to any other service
+# You must explicitly allow communication with AuthorizationPolicies
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all
+  namespace: istio-system
+spec:
+  {} # Empty spec = deny all by default
+---
+# Example: Allow order-service to call payment-service
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-order-to-payment
+  namespace: order-management
+spec:
+  selector:
+    matchLabels:
+      app: payment-service
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/order-management/sa/order-service"]
+      to:
+        - operation:
+            methods: ["POST"]
+            paths: ["/api/v1/payments/*"]
+---
+# Allow health checks from Kubernetes probes
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-health-checks
+  namespace: order-management
+spec:
+  action: ALLOW
+  rules:
+    - to:
+        - operation:
+            paths: ["/health", "/ready", "/live"]
