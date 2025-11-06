@@ -1,0 +1,75 @@
+# Retry and Timeout Policies for Microservices
+# Automatic retries for transient failures
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: payment-service-retry
+  namespace: order-management
+spec:
+  hosts:
+    - payment-service.order-management.svc.cluster.local
+  http:
+    - match:
+        - uri:
+            prefix: /api/v1/payments
+      retries:
+        attempts: 3
+        perTryTimeout: 2s
+        retryOn: 5xx,reset,connect-failure,refused-stream
+      timeout: 10s
+      fault:
+        delay:
+          # Optional: Inject delays for chaos testing
+          percentage:
+            value: 0  # 0% = disabled in production
+          fixedDelay: 100ms
+      route:
+        - destination:
+            host: payment-service.order-management.svc.cluster.local
+            port:
+              number: 8080
+---
+# Order Service with Canary Deployment Support
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: order-service-canary
+  namespace: order-management
+spec:
+  hosts:
+    - order-service.order-management.svc.cluster.local
+  http:
+    - match:
+        - headers:
+            x-canary:
+              exact: "true"
+      route:
+        - destination:
+            host: order-service.order-management.svc.cluster.local
+            subset: canary
+          weight: 100
+    - route:
+        - destination:
+            host: order-service.order-management.svc.cluster.local
+            subset: stable
+          weight: 90
+        - destination:
+            host: order-service.order-management.svc.cluster.local
+            subset: canary
+          weight: 10
+---
+# DestinationRule for Canary Subsets
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: order-service-subsets
+  namespace: order-management
+spec:
+  host: order-service.order-management.svc.cluster.local
+  subsets:
+    - name: stable
+      labels:
+        version: stable
+    - name: canary
+      labels:
+        version: canary

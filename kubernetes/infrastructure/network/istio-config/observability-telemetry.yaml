@@ -1,0 +1,83 @@
+# Istio Telemetry Configuration for Order Management
+# Distributed Tracing, Metrics, and Access Logs
+
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-telemetry
+  namespace: istio-system
+spec:
+  # Distributed Tracing to Jaeger
+  tracing:
+    - providers:
+        - name: jaeger
+      randomSamplingPercentage: 1.0  # 1% sampling in production
+      customTags:
+        tenant:
+          literal:
+            value: "default"
+        environment:
+          literal:
+            value: "production"
+  # Access Logs
+  accessLogging:
+    - providers:
+        - name: envoy
+      filter:
+        expression: response.code >= 400  # Only log errors
+---
+# Per-Namespace Telemetry for Order Management
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: order-management-telemetry
+  namespace: order-management
+spec:
+  tracing:
+    - providers:
+        - name: jaeger
+      randomSamplingPercentage: 10.0  # 10% sampling for order services
+      customTags:
+        tenant:
+          literal:
+            value: "tenant-a"
+        service_type:
+          literal:
+            value: "order-management"
+        order_id:
+          header:
+            name: x-order-id
+  metrics:
+    - providers:
+        - name: prometheus
+      overrides:
+        - match:
+            metric: REQUEST_COUNT
+          tagOverrides:
+            destination_service:
+              value: destination.service.name
+            response_code:
+              value: response.code
+---
+# Jaeger Provider Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: istio-jaeger-config
+  namespace: istio-system
+data:
+  mesh: |
+    defaultConfig:
+      tracing:
+        zipkin:
+          address: jaeger-collector.jaeger.svc.cluster.local:9411
+        sampling: 1.0
+        custom_tags:
+          my_tag:
+            literal:
+              value: "my_value"
+    extensionProviders:
+      - name: jaeger
+        zipkin:
+          service: jaeger-collector.jaeger.svc.cluster.local
+          port: 9411
