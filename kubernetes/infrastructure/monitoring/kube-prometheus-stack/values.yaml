@@ -179,6 +179,7 @@ alertmanager:
     secrets:
       - alertmanager-slack-webhooks
       - pagerduty-integration-key
+      - argocd-slack-webhook
   config:
     global:
       resolve_timeout: 5m
@@ -193,6 +194,33 @@ alertmanager:
       repeat_interval: 4h
 
       routes:
+        # ====== ARGOCD GITOPS ALERTS ======
+        - matchers:
+            - component="argocd"
+            - priority="P1"
+          receiver: 'argocd-critical'
+          group_wait: 0s
+          group_interval: 1m
+          repeat_interval: 5m
+          continue: false
+
+        - matchers:
+            - component="argocd"
+            - priority="P2"
+          receiver: 'argocd-critical'
+          group_wait: 10s
+          group_interval: 2m
+          repeat_interval: 15m
+          continue: false
+
+        - matchers:
+            - component="argocd"
+          receiver: 'argocd-info'
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 1h
+          continue: false
+
         # ====== P1: DRINGEND/CRITICAL (RED 🔴) ======
         # Response SLA: 5 minutes
         - matchers:
@@ -395,6 +423,59 @@ alertmanager:
 
               *Status    Priority*
               {{ .Status | toUpper }}    P5
+              {{ end }}
+            send_resolved: true
+
+      # ====== ARGOCD CRITICAL (P1/P2) 🔴 ======
+      - name: 'argocd-critical'
+        pagerduty_configs:
+          - routing_key_file: /etc/alertmanager/secrets/pagerduty-integration-key/integration-key
+            send_resolved: true
+            description: '{{ .CommonAnnotations.summary }}'
+            severity: critical
+            details:
+              firing: '{{ .Alerts.Firing | len }}'
+              resolved: '{{ .Alerts.Resolved | len }}'
+              description: '{{ .CommonAnnotations.description }}'
+              namespace: '{{ .CommonLabels.namespace }}'
+              application: '{{ .CommonLabels.name }}'
+              action: '{{ .CommonAnnotations.action }}'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/argocd-slack-webhook/webhook-url
+            channel: '#argocd-deployments'
+            username: 'ArgoCD Monitoring'
+            icon_emoji: ':argocd:'
+            title: |-
+              🔴 CRITICAL - {{ .GroupLabels.alertname }}
+            color: 'danger'
+            text: |-
+              {{ range .Alerts }}
+              *Application:* {{ .Labels.name }}
+              *Project:* {{ .Labels.project }}
+              *Status:* {{ .Labels.sync_status }} / {{ .Labels.health_status }}
+
+              *Problem:* {{ .Annotations.summary }}
+              {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
+
+              *Action:* {{ .Annotations.action }}
+              {{ end }}
+            send_resolved: true
+
+      # ====== ARGOCD INFO (P3+) ℹ️ ======
+      - name: 'argocd-info'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/argocd-slack-webhook/webhook-url
+            channel: '#argocd-deployments'
+            username: 'ArgoCD Monitoring'
+            icon_emoji: ':information_source:'
+            title: |-
+              ℹ️ WARNING - {{ .GroupLabels.alertname }}
+            color: 'warning'
+            text: |-
+              {{ range .Alerts }}
+              *Application:* {{ .Labels.name }}
+              *Status:* {{ .Labels.sync_status }} / {{ .Labels.health_status }}
+              *Summary:* {{ .Annotations.summary }}
               {{ end }}
             send_resolved: true
 
