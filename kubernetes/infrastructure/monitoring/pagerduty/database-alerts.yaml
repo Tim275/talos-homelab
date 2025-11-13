@@ -1,0 +1,150 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: database-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+    role: alert-rules
+spec:
+  groups:
+  - name: postgresql-database
+    interval: 30s
+    rules:
+    - alert: PostgreSQLPrimaryDown
+      expr: |
+        cnpg_pg_postmaster_up{job="cnpg-clusters"} == 0
+      for: 2m
+      labels:
+        severity: critical
+        priority: P1
+        component: database
+        tier: tier-1
+      annotations:
+        summary: "PostgreSQL Primary is DOWN - Service outage!"
+        description: "PostgreSQL primary instance {{ $labels.pod }} is not responding. Applications cannot write to database."
+        action: "kubectl get pods -n {{ $labels.namespace }} -l cnpg.io/cluster={{ $labels.cnpg_cluster }} && kubectl logs -n {{ $labels.namespace }} {{ $labels.pod }}"
+        dashboard_url: "https://grafana.homelab.local/d/postgresql-overview"
+
+    - alert: PostgreSQLReplicationLag
+      expr: |
+        cnpg_pg_replication_lag{job="cnpg-clusters"} > 30
+      for: 5m
+      labels:
+        severity: critical
+        priority: P1
+        component: database
+        tier: tier-1
+      annotations:
+        summary: "PostgreSQL replication lag is {{ $value }}s - Data loss risk!"
+        description: "Replication lag on {{ $labels.pod }} exceeds 30 seconds. Failover may result in data loss."
+        action: "kubectl exec -n {{ $labels.namespace }} {{ $labels.pod }} -- psql -U postgres -c 'SELECT * FROM pg_stat_replication;'"
+        current_value: "{{ $value }}s"
+        threshold: "30s"
+
+    - alert: PostgreSQLConnectionPoolExhausted
+      expr: |
+        sum(cnpg_backends_total{job="cnpg-clusters"}) by (cnpg_cluster, namespace) / sum(cnpg_pg_settings_max_connections{job="cnpg-clusters"}) by (cnpg_cluster, namespace) > 0.9
+      for: 5m
+      labels:
+        severity: critical
+        priority: P1
+        component: database
+        tier: tier-1
+      annotations:
+        summary: "PostgreSQL connection pool {{ $value | humanizePercentage }} full - Apps failing!"
+        description: "Database connection pool is above 90%. New connections will be rejected. Check for connection leaks in applications."
+        action: "kubectl exec -n {{ $labels.namespace }} -l cnpg.io/cluster={{ $labels.cnpg_cluster }} -- psql -U postgres -c 'SELECT count(*), state FROM pg_stat_activity GROUP BY state;'"
+        current_value: "{{ $value | humanizePercentage }}"
+        threshold: "90%"
+
+    - alert: PostgreSQLHighQueryLatency
+      expr: |
+        histogram_quantile(0.95, sum(rate(cnpg_pg_stat_database_blks_read_time_seconds[5m])) by (le, cnpg_cluster)) > 0.5
+      for: 10m
+      labels:
+        severity: warning
+        priority: P2
+        component: database
+        tier: tier-1
+      annotations:
+        summary: "PostgreSQL query latency p95 is {{ $value }}s - Performance degraded"
+        description: "95th percentile query latency exceeds 500ms. Application performance is impacted."
+        action: "kubectl exec -n cloudnative-pg -l cnpg.io/cluster={{ $labels.cnpg_cluster }} -- psql -U postgres -c 'SELECT query, mean_exec_time FROM pg_stat_statements ORDER BY mean_exec_time DESC LIMIT 10;'"
+        current_value: "{{ $value }}s"
+        threshold: "0.5s"
+
+    - alert: PostgreSQLBackupFailed
+      expr: |
+        cnpg_pg_backup_last_failed_time > cnpg_pg_backup_last_successful_time
+      for: 5m
+      labels:
+        severity: critical
+        priority: P1
+        component: database
+        tier: tier-1
+      annotations:
+        summary: "PostgreSQL backup FAILED - No disaster recovery!"
+        description: "Last backup attempt for cluster {{ $labels.cnpg_cluster }} failed. Database has no recent backup for disaster recovery."
+        action: "kubectl get backup -n {{ $labels.namespace }} && kubectl describe backup -n {{ $labels.namespace }} -l cnpg.io/cluster={{ $labels.cnpg_cluster }}"
+        dashboard_url: "https://grafana.homelab.local/d/postgresql-overview"
+
+    - alert: PostgreSQLNoRecentBackup
+      expr: |
+        time() - cnpg_pg_backup_last_successful_time > 86400
+      for: 10m
+      labels:
+        severity: critical
+        priority: P1
+        component: database
+        tier: tier-1
+      annotations:
+        summary: "PostgreSQL backup >24h old - Backup SLA breach!"
+        description: "No successful backup for {{ $labels.cnpg_cluster }} in last 24 hours. RPO violated."
+        action: "kubectl get backup -n {{ $labels.namespace }} -l cnpg.io/cluster={{ $labels.cnpg_cluster }} && kubectl logs -n {{ $labels.namespace }} -l cnpg.io/cluster={{ $labels.cnpg_cluster }}"
+
+  - name: velero-backups
+    interval: 60s
+    rules:
+    - alert: VeleroBackupFailed
+      expr: |
+        increase(velero_backup_failure_total[1h]) > 0
+      for: 5m
+      labels:
+        severity: critical
+        priority: P1
+        component: backup
+        tier: tier-0
+      annotations:
+        summary: "Velero backup FAILED - Cluster backups broken!"
+        description: "{{ $value }} Velero backup failures in last hour. Kubernetes resources and volumes are not being backed up."
+        action: "kubectl get backup -n velero && kubectl describe backup -n velero $(kubectl get backup -n velero --sort-by=.metadata.creationTimestamp -o name | tail -1)"
+        current_value: "{{ $value }} failures"
+
+    - alert: VeleroNoRecentBackup
+      expr: |
+        time() - velero_backup_last_successful_timestamp > 86400
+      for: 10m
+      labels:
+        severity: critical
+        priority: P1
+        component: backup
+        tier: tier-0
+      annotations:
+        summary: "Velero backup >24h old - Disaster recovery at risk!"
+        description: "Last successful Velero backup is more than 24 hours old. Cluster cannot be restored to recent state."
+        action: "kubectl get backup -n velero --sort-by=.metadata.creationTimestamp && kubectl get schedule -n velero"
+
+    - alert: VeleroRestoreTestFailed
+      expr: |
+        increase(velero_restore_failed_total[24h]) > 0
+      for: 5m
+      labels:
+        severity: warning
+        priority: P2
+        component: backup
+        tier: tier-0
+      annotations:
+        summary: "Velero restore test FAILED - Backups may be corrupted!"
+        description: "Restore test failed. Backups exist but cannot be restored. Test restore integrity."
+        action: "kubectl get restore -n velero && kubectl describe restore -n velero $(kubectl get restore -n velero --sort-by=.metadata.creationTimestamp -o name | tail -1)"

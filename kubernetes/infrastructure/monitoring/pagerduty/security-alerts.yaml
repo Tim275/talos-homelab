@@ -1,0 +1,128 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: security-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+    role: alert-rules
+spec:
+  groups:
+  - name: certificate-management
+    interval: 60s
+    rules:
+    - alert: CertificateExpiringSoon
+      expr: |
+        certmanager_certificate_expiration_timestamp_seconds - time() < 604800
+      for: 10m
+      labels:
+        severity: critical
+        priority: P1
+        component: security
+        tier: tier-0
+      annotations:
+        summary: "Certificate {{ $labels.name }} expires in <7 days - Outage imminent!"
+        description: "TLS certificate for {{ $labels.name }} in namespace {{ $labels.namespace }} expires in less than 7 days. Service will be unavailable after expiry."
+        action: "kubectl describe certificate {{ $labels.name }} -n {{ $labels.namespace }} && kubectl describe certificaterequest -n {{ $labels.namespace }}"
+        current_value: "{{ $value | humanizeDuration }}"
+        threshold: "7 days"
+        dashboard_url: "https://grafana.homelab.local/d/cert-manager"
+
+    - alert: CertManagerRenewalFailed
+      expr: |
+        certmanager_certificate_ready_status{condition="False"} == 1
+      for: 5m
+      labels:
+        severity: critical
+        priority: P1
+        component: security
+        tier: tier-0
+      annotations:
+        summary: "Certificate {{ $labels.name }} renewal FAILED - Auto-renewal broken!"
+        description: "Cert-Manager failed to renew certificate {{ $labels.name }}. Manual intervention required to prevent service outage."
+        action: "kubectl describe certificate {{ $labels.name }} -n {{ $labels.namespace }} && kubectl get events -n {{ $labels.namespace }} --field-selector involvedObject.name={{ $labels.name }}"
+        dashboard_url: "https://grafana.homelab.local/d/cert-manager"
+
+  - name: authentication-security
+    interval: 30s
+    rules:
+    - alert: HighFailedAuthAttempts
+      expr: |
+        increase(apiserver_audit_event_total{verb="create",objectRef_resource="tokenreviews",responseStatus_code=~"4.."}[5m]) > 10
+      for: 5m
+      labels:
+        severity: warning
+        priority: P2
+        component: security
+        tier: tier-0
+      annotations:
+        summary: "{{ $value }} failed API auth attempts in 5min - Attack detected!"
+        description: "High rate of failed authentication attempts to Kubernetes API server. Potential brute force or credential stuffing attack."
+        action: "kubectl get events --all-namespaces --field-selector reason=FailedAuthentication && kubectl logs -n kube-system -l component=kube-apiserver --tail=100 | grep -i auth"
+        current_value: "{{ $value }} failures"
+        threshold: "10 failures"
+
+    - alert: UnauthorizedAPIAccess
+      expr: |
+        increase(apiserver_audit_event_total{verb!="get",verb!="list",verb!="watch",responseStatus_code="403"}[10m]) > 5
+      for: 5m
+      labels:
+        severity: warning
+        priority: P2
+        component: security
+        tier: tier-0
+      annotations:
+        summary: "{{ $value }} unauthorized API access attempts - RBAC breach!"
+        description: "Multiple unauthorized API access attempts detected. Check for misconfigured service accounts or compromised credentials."
+        action: "kubectl get events --all-namespaces --field-selector reason=Forbidden"
+        current_value: "{{ $value }} attempts"
+
+  - name: policy-enforcement
+    interval: 30s
+    rules:
+    - alert: KyvernoPolicyViolationSpike
+      expr: |
+        increase(kyverno_policy_results_total{policy_validation_mode="enforce",policy_result="fail"}[10m]) > 10
+      for: 5m
+      labels:
+        severity: warning
+        priority: P3
+        component: security
+        tier: tier-0
+      annotations:
+        summary: "{{ $value }} Kyverno policy violations in 10min - Security policy breaches!"
+        description: "High rate of security policy violations detected. Review deployment practices and policy configurations."
+        action: "kubectl get policyreport --all-namespaces && kubectl get clusterpolicyreport"
+        current_value: "{{ $value }} violations"
+        threshold: "10 violations"
+
+    - alert: ContainerRunningAsRoot
+      expr: |
+        count(kube_pod_container_status_running{} * on(namespace, pod) group_left(uid) kube_pod_container_info{container_id!="",run_as_user="0"}) > 0
+      for: 10m
+      labels:
+        severity: warning
+        priority: P3
+        component: security
+        tier: tier-0
+      annotations:
+        summary: "{{ $value }} containers running as root - Security risk!"
+        description: "Containers running with root privileges detected. This violates security best practices and increases attack surface."
+        action: "kubectl get pods --all-namespaces -o json | jq -r '.items[] | select(.spec.containers[].securityContext.runAsUser == 0 or .spec.containers[].securityContext.runAsUser == null) | .metadata.namespace + \"/\" + .metadata.name'"
+        current_value: "{{ $value }} containers"
+
+    - alert: ContainerWithoutResourceLimits
+      expr: |
+        count(kube_pod_container_resource_limits{resource="memory"} == 0 or kube_pod_container_resource_limits{resource="cpu"} == 0) > 10
+      for: 30m
+      labels:
+        severity: info
+        priority: P3
+        component: security
+        tier: tier-0
+      annotations:
+        summary: "{{ $value }} containers without resource limits - Noisy neighbor risk!"
+        description: "Containers without CPU/memory limits can monopolize node resources and impact other workloads."
+        action: "kubectl get pods --all-namespaces -o json | jq -r '.items[].spec.containers[] | select(.resources.limits == null) | .name'"
+        current_value: "{{ $value }} containers"
+        threshold: "0 containers"
