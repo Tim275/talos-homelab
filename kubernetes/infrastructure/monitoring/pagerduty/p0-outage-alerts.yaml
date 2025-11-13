@@ -109,3 +109,21 @@ spec:
         description: "ALL ArgoCD components (controller, server, repo-server) are down. Complete GitOps outage - no deployments possible. This is a P0 OUTAGE!"
         action: "kubectl get pods -n argocd && kubectl logs -n argocd -l app.kubernetes.io/part-of=argocd"
         impact: "Complete GitOps outage - no deployments, syncs, or application management possible"
+
+    - alert: ElasticsearchCompleteOutage
+      expr: |
+        absent(up{namespace="elastic-system",app="elasticsearch-exporter"}) or
+        count(up{namespace="elastic-system",app="elasticsearch-exporter"} == 1) == 0 or
+        (elasticsearch_cluster_health_status == 2 and elasticsearch_cluster_health_number_of_nodes == 0)
+      for: 2m
+      labels:
+        severity: outage
+        priority: P0
+        component: logging
+        tier: tier-1
+      annotations:
+        summary: "🚨 COMPLETE OUTAGE - Elasticsearch Cluster DEAD - ALL HANDS!"
+        description: "ALL Elasticsearch nodes are down or unreachable. Complete logging/observability outage. No logs can be indexed or queried. This is a P0 OUTAGE!"
+        action: "kubectl get pods -n elastic-system -l common.k8s.elastic.co/type=elasticsearch && kubectl logs -n elastic-system -l common.k8s.elastic.co/type=elasticsearch --tail=100"
+        impact: "Complete logging outage - no log ingestion, Kibana unavailable, Jaeger traces lost"
+        runbook_url: "https://www.elastic.co/guide/en/elasticsearch/reference/current/cluster-health.html"
