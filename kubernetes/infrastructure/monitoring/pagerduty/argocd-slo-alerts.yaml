@@ -1,0 +1,130 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: argocd-slo-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+    role: alert-rules
+spec:
+  groups:
+  - name: argocd-slo
+    interval: 30s
+    rules:
+    - alert: ArgoCDApplicationOutOfSyncCritical
+      expr: |
+        (
+          argocd_app_info{sync_status="OutOfSync"}
+          and on(name, namespace, dest_server, project)
+          (time() - argocd_app_reconcile_bucket{namespace="argocd"} > 600)
+        )
+      for: 10m
+      labels:
+        severity: critical
+        priority: P1
+        component: argocd
+        tier: platform
+      annotations:
+        summary: "ArgoCD Application {{ $labels.name }} OutOfSync >10min"
+        description: "Application {{ $labels.name }} in project {{ $labels.project }} has been OutOfSync for more than 10 minutes. This is an SLA breach."
+        action: "kubectl get application {{ $labels.name }} -n argocd -o yaml"
+        dashboard_url: "https://argocd.homelab.local/applications/{{ $labels.name }}"
+        runbook_url: "https://github.com/argoproj/argo-cd/issues"
+
+    - alert: ArgoCDApplicationUnhealthy
+      expr: |
+        argocd_app_info{health_status!~"Healthy|Progressing"}
+      for: 5m
+      labels:
+        severity: warning
+        priority: P2
+        component: argocd
+        tier: platform
+      annotations:
+        summary: "ArgoCD Application {{ $labels.name }} is {{ $labels.health_status }}"
+        description: "Application {{ $labels.name }} health status is {{ $labels.health_status }} for more than 5 minutes."
+        action: "kubectl describe application {{ $labels.name }} -n argocd"
+
+    - alert: ArgoCDSyncFailureSpike
+      expr: |
+        sum(increase(argocd_app_sync_total{phase="Error"}[1h])) by (name, project) > 5
+      for: 5m
+      labels:
+        severity: critical
+        priority: P1
+        component: argocd
+        tier: platform
+      annotations:
+        summary: "ArgoCD Application {{ $labels.name }} has >5 sync failures in 1 hour"
+        description: "Application {{ $labels.name }} in project {{ $labels.project }} has {{ $value }} failed syncs in the last hour. This indicates a critical issue."
+        action: "kubectl logs -n argocd -l app.kubernetes.io/name=argocd-application-controller --tail=100"
+
+    - alert: ArgoCDControllerDown
+      expr: |
+        absent(up{job="argocd-application-controller-metrics"} == 1)
+      for: 2m
+      labels:
+        severity: critical
+        priority: P1
+        component: argocd
+        tier: platform
+      annotations:
+        summary: "ArgoCD Application Controller is DOWN"
+        description: "ArgoCD Application Controller is not running. GitOps pipeline is broken!"
+        action: "kubectl get pods -n argocd | grep application-controller"
+
+    - alert: ArgoCDRepoServerDown
+      expr: |
+        absent(up{job="argocd-repo-server-metrics"} == 1)
+      for: 2m
+      labels:
+        severity: critical
+        priority: P1
+        component: argocd
+        tier: platform
+      annotations:
+        summary: "ArgoCD Repo Server is DOWN"
+        description: "ArgoCD Repo Server is not running. Git syncs will fail!"
+        action: "kubectl get pods -n argocd | grep repo-server"
+
+    - alert: ArgoCDAPIServerHighLatency
+      expr: |
+        histogram_quantile(0.95, sum(rate(argocd_server_http_request_duration_seconds_bucket[5m])) by (le)) > 5
+      for: 5m
+      labels:
+        severity: warning
+        priority: P2
+        component: argocd
+        tier: platform
+      annotations:
+        summary: "ArgoCD API Server high latency (p95 > 5s)"
+        description: "ArgoCD API Server p95 latency is {{ $value }}s. Performance degraded."
+        action: "kubectl top pod -n argocd -l app.kubernetes.io/name=argocd-server"
+
+    - alert: ArgoCDGitConnectionFailed
+      expr: |
+        increase(argocd_git_request_total{request_type="ls-remote", status!="success"}[5m]) > 5
+      for: 2m
+      labels:
+        severity: critical
+        priority: P1
+        component: argocd
+        tier: platform
+      annotations:
+        summary: "ArgoCD Git connection failures detected"
+        description: "ArgoCD has {{ $value }} failed Git ls-remote requests in 5 minutes. Git repository might be unreachable."
+        action: "kubectl logs -n argocd -l app.kubernetes.io/name=argocd-repo-server --tail=50 | grep -i git"
+
+    - alert: ArgoCDReconciliationSlow
+      expr: |
+        histogram_quantile(0.95, sum(rate(argocd_app_reconcile_bucket[10m])) by (le)) > 300
+      for: 10m
+      labels:
+        severity: warning
+        priority: P3
+        component: argocd
+        tier: platform
+      annotations:
+        summary: "ArgoCD reconciliation is slow (p95 > 5min)"
+        description: "ArgoCD application reconciliation p95 time is {{ $value }}s. This may impact deployment speed."
+        action: "kubectl top pod -n argocd -l app.kubernetes.io/name=argocd-application-controller"
