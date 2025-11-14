@@ -197,6 +197,16 @@ alertmanager:
       repeat_interval: 4h
 
       routes:
+        # ====== P0: COMPLETE OUTAGE (ALL HANDS 🚨🚨) ======
+        # Response SLA: IMMEDIATE - Page EVERYONE
+        - matchers:
+            - priority="P0"
+          receiver: 'p0-outage'
+          group_wait: 0s          # INSTANT broadcast
+          group_interval: 30s
+          repeat_interval: 2m     # Re-notify every 2 min
+          continue: false         # Highest priority
+
         # ====== STORAGE ALERTS (Ceph) ======
         - matchers:
             - component="storage"
@@ -289,11 +299,11 @@ alertmanager:
           repeat_interval: 1h
           continue: false         # Only send to Slack
 
-        # ====== P5: INFO (BLUE 🔵) ======
-        # Response SLA: 4 hours
+        # ====== P4: LOW/INFO (BLUE 🔵) ======
+        # Response SLA: 1 week (backlog)
         - matchers:
-            - priority="P5"
-          receiver: 'p5-info'
+            - priority="P4"
+          receiver: 'p4-info'
           group_wait: 2m
           group_interval: 10m
           repeat_interval: 4h
@@ -431,7 +441,8 @@ alertmanager:
             icon_emoji: ':prometheus:'
             title: |-
               {{ if eq .Status "firing" }}⚠️ [FIRING:{{ len .Alerts.Firing }}]{{ else }}✅ [RESOLVED]{{ end }} {{ .GroupLabels.alertname }}
-            color: 'warning'
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else }}warning{{ end }}
             text: |-
               {{ range .Alerts }}
               {{ if eq .Status "firing" }}⚠️{{ else }}✅{{ end }} *{{ .Labels.alertname }}* - WARNING
@@ -444,8 +455,8 @@ alertmanager:
               {{ end }}
             send_resolved: true
 
-      # ====== P5: INFO 🔵 ======
-      - name: 'p5-info'
+      # ====== P4: LOW/INFO 🔵 ======
+      - name: 'p4-info'
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
             channel: '#alerts'
@@ -453,14 +464,128 @@ alertmanager:
             icon_emoji: ':information_source:'
             title: |-
               {{ if eq .Status "firing" }}ℹ️ [INFO]{{ else }}✅ [RESOLVED]{{ end }} {{ .GroupLabels.alertname }}
-            color: '#439FE0'
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else }}#439FE0{{ end }}
             text: |-
               {{ range .Alerts }}
               ℹ️ *{{ .Labels.alertname }}*
               {{ .Annotations.summary }}
 
               *Status    Priority*
-              {{ .Status | toUpper }}    P5
+              {{ .Status | toUpper }}    P4 - Backlog
+              {{ end }}
+            send_resolved: true
+
+      # ====== P0: COMPLETE OUTAGE 🚨🚨 (BROADCAST ALL CHANNELS) ======
+      - name: 'p0-outage'
+        pagerduty_configs:
+          - routing_key_file: /etc/alertmanager/secrets/pagerduty-integration-key/integration-key
+            send_resolved: true
+            description: '{{ .CommonAnnotations.summary }}'
+            severity: critical
+            details:
+              firing: '{{ .Alerts.Firing | len }}'
+              resolved: '{{ .Alerts.Resolved | len }}'
+              description: '{{ .CommonAnnotations.description }}'
+              impact: '{{ .CommonAnnotations.impact }}'
+              action: '{{ .CommonAnnotations.action }}'
+              runbook_url: '{{ .CommonAnnotations.runbook_url }}'
+        slack_configs:
+          # Broadcast to #alerts
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
+            channel: '#alerts'
+            username: 'P0 OUTAGE - ALL HANDS'
+            icon_emoji: ':rotating_light:'
+            title: |-
+              {{ if eq .Status "firing" }}🚨🚨 [P0 OUTAGE] {{ .GroupLabels.alertname }}{{ else }}✅ [P0 RESOLVED] {{ .GroupLabels.alertname }}{{ end }}
+            title_link: '{{ template "__alertmanagerURL" . }}'
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else }}#FF0000{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              {{ if eq .Status "firing" }}🚨🚨 *P0 COMPLETE OUTAGE - ALL HANDS ON DECK*{{ else }}✅ *P0 OUTAGE RESOLVED*{{ end }}
+
+              🔥 *CRITICAL SYSTEM FAILURE*
+              {{ .Annotations.summary }}
+
+              💥 *Impact to Users*
+              {{ .Annotations.impact }}
+
+              📋 *Problem Details*
+              {{ .Annotations.description }}
+
+              🛠️ *IMMEDIATE ACTION REQUIRED*
+              {{ .Annotations.action }}
+
+              ⚡ *Priority:* P0 - COMPLETE OUTAGE
+              {{ if .Annotations.runbook_url }}📖 *Runbook:* {{ .Annotations.runbook_url }}{{ end }}
+              {{ end }}
+            actions:
+              - type: button
+                text: ':chart_with_upwards_trend: Prometheus'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: ':book: Runbook'
+                url: '{{ (index .Alerts 0).Annotations.runbook_url }}'
+            send_resolved: true
+          # Broadcast to #argocd-deployments
+          - api_url_file: /etc/alertmanager/secrets/argocd-slack-webhook/webhook-url
+            channel: '#argocd-deployments'
+            username: 'P0 OUTAGE - ALL HANDS'
+            icon_emoji: ':rotating_light:'
+            title: |-
+              {{ if eq .Status "firing" }}🚨🚨 [P0 OUTAGE] {{ .GroupLabels.alertname }}{{ else }}✅ [P0 RESOLVED] {{ .GroupLabels.alertname }}{{ end }}
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else }}#FF0000{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              🚨🚨 *P0 COMPLETE OUTAGE* - {{ .Annotations.summary }}
+              💥 *Impact:* {{ .Annotations.impact }}
+              {{ end }}
+            send_resolved: true
+          # Broadcast to #storage-alerts
+          - api_url_file: /etc/alertmanager/secrets/storage-slack-webhook/webhook-url
+            channel: '#storage-alerts'
+            username: 'P0 OUTAGE - ALL HANDS'
+            icon_emoji: ':rotating_light:'
+            title: |-
+              {{ if eq .Status "firing" }}🚨🚨 [P0 OUTAGE] {{ .GroupLabels.alertname }}{{ else }}✅ [P0 RESOLVED] {{ .GroupLabels.alertname }}{{ end }}
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else }}#FF0000{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              🚨🚨 *P0 COMPLETE OUTAGE* - {{ .Annotations.summary }}
+              💥 *Impact:* {{ .Annotations.impact }}
+              {{ end }}
+            send_resolved: true
+          # Broadcast to #database-alerts
+          - api_url_file: /etc/alertmanager/secrets/database-slack-webhook/webhook-url
+            channel: '#database-alerts'
+            username: 'P0 OUTAGE - ALL HANDS'
+            icon_emoji: ':rotating_light:'
+            title: |-
+              {{ if eq .Status "firing" }}🚨🚨 [P0 OUTAGE] {{ .GroupLabels.alertname }}{{ else }}✅ [P0 RESOLVED] {{ .GroupLabels.alertname }}{{ end }}
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else }}#FF0000{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              🚨🚨 *P0 COMPLETE OUTAGE* - {{ .Annotations.summary }}
+              💥 *Impact:* {{ .Annotations.impact }}
+              {{ end }}
+            send_resolved: true
+          # Broadcast to #security-alerts
+          - api_url_file: /etc/alertmanager/secrets/security-slack-webhook/webhook-url
+            channel: '#security-alerts'
+            username: 'P0 OUTAGE - ALL HANDS'
+            icon_emoji: ':rotating_light:'
+            title: |-
+              {{ if eq .Status "firing" }}🚨🚨 [P0 OUTAGE] {{ .GroupLabels.alertname }}{{ else }}✅ [P0 RESOLVED] {{ .GroupLabels.alertname }}{{ end }}
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else }}#FF0000{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              🚨🚨 *P0 COMPLETE OUTAGE* - {{ .Annotations.summary }}
+              💥 *Impact:* {{ .Annotations.impact }}
               {{ end }}
             send_resolved: true
 
