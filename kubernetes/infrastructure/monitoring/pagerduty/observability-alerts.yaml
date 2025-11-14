@@ -1,0 +1,282 @@
+## Observability Stack Alerts - Jaeger, Loki, Tempo, Kafka
+## P0: Complete outage, P1: Critical degradation, P2: Performance issues
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: observability-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+    role: alert-rules
+spec:
+  groups:
+  - name: jaeger-tracing
+    interval: 30s
+    rules:
+    - alert: JaegerCompleteOutage
+      expr: |
+        (absent(up{namespace="jaeger",job=~"jaeger-collector.*"}) or count(up{namespace="jaeger",job=~"jaeger-collector.*"} == 1) == 0) and
+        (absent(up{namespace="jaeger",job=~"jaeger-query.*"}) or count(up{namespace="jaeger",job=~"jaeger-query.*"} == 1) == 0)
+      for: 2m
+      labels:
+        severity: outage
+        priority: P0
+        component: tracing
+        tier: tier-1
+      annotations:
+        summary: "🚨 COMPLETE OUTAGE - Jaeger Tracing DEAD - ALL HANDS!"
+        description: "ALL Jaeger collector and query instances are down. Complete distributed tracing outage. No traces can be collected or queried."
+        action: "kubectl get pods -n jaeger && kubectl logs -n jaeger -l app.kubernetes.io/instance=jaeger --tail=100"
+        impact: "Complete tracing outage - debugging production issues impossible"
+        runbook_url: "https://www.jaegertracing.io/docs/latest/troubleshooting/"
+
+    - alert: JaegerCollectorDown
+      expr: |
+        absent(up{namespace="jaeger",job=~"jaeger-collector.*"}) or count(up{namespace="jaeger",job=~"jaeger-collector.*"} == 1) == 0
+      for: 2m
+      labels:
+        severity: critical
+        priority: P1
+        component: tracing
+        tier: tier-1
+      annotations:
+        summary: "Jaeger Collector DOWN - Traces not being ingested"
+        description: "All Jaeger collectors are down. Traces from applications cannot be ingested."
+        action: "kubectl get pods -n jaeger -l app=jaeger-collector && kubectl describe pods -n jaeger -l app=jaeger-collector"
+        current_value: "{{ $value }} collectors up"
+
+    - alert: JaegerQueryDown
+      expr: |
+        absent(up{namespace="jaeger",job=~"jaeger-query.*"}) or count(up{namespace="jaeger",job=~"jaeger-query.*"} == 1) == 0
+      for: 2m
+      labels:
+        severity: critical
+        priority: P1
+        component: tracing
+        tier: tier-1
+      annotations:
+        summary: "Jaeger Query DOWN - Cannot view traces"
+        description: "All Jaeger query instances are down. Stored traces cannot be queried or viewed in UI."
+        action: "kubectl get pods -n jaeger -l app=jaeger-query && kubectl logs -n jaeger -l app=jaeger-query --tail=50"
+
+    - alert: JaegerHighSpanDropRate
+      expr: |
+        rate(jaeger_collector_spans_dropped_total[5m]) > 100
+      for: 5m
+      labels:
+        severity: warning
+        priority: P2
+        component: tracing
+        tier: tier-1
+      annotations:
+        summary: "Jaeger dropping {{ $value }} spans/sec - Data loss!"
+        description: "Jaeger collector is dropping spans due to queue full or processing errors. Trace data is being lost."
+        action: "kubectl top pods -n jaeger && kubectl describe pods -n jaeger -l app=jaeger-collector"
+        current_value: "{{ $value }} spans/sec"
+
+  - name: loki-logging
+    interval: 30s
+    rules:
+    - alert: LokiCompleteOutage
+      expr: |
+        absent(up{namespace="monitoring",job="loki"}) or count(up{namespace="monitoring",job="loki"} == 1) == 0
+      for: 2m
+      labels:
+        severity: outage
+        priority: P0
+        component: logging
+        tier: tier-1
+      annotations:
+        summary: "🚨 COMPLETE OUTAGE - Loki Logging DEAD - ALL HANDS!"
+        description: "ALL Loki instances are down. Complete log aggregation outage. No logs can be ingested or queried."
+        action: "kubectl get pods -n monitoring -l app=loki && kubectl logs -n monitoring -l app=loki --tail=100"
+        impact: "Complete logging outage - no log queries possible, log data being lost"
+
+    - alert: LokiDown
+      expr: |
+        up{namespace="monitoring",job="loki"} == 0
+      for: 2m
+      labels:
+        severity: critical
+        priority: P1
+        component: logging
+        tier: tier-1
+      annotations:
+        summary: "Loki instance {{ $labels.pod }} DOWN - Log ingestion degraded"
+        description: "Loki pod is down. Log ingestion may be degraded or failing."
+        action: "kubectl get pods -n monitoring {{ $labels.pod }} && kubectl describe pod -n monitoring {{ $labels.pod }}"
+
+    - alert: LokiHighIngestionRate
+      expr: |
+        rate(loki_ingester_streams_created_total[5m]) > 1000
+      for: 10m
+      labels:
+        severity: warning
+        priority: P2
+        component: logging
+        tier: tier-1
+      annotations:
+        summary: "Loki creating {{ $value }} streams/sec - Cardinality explosion"
+        description: "Extremely high log stream creation rate. May indicate label cardinality issues causing memory/disk problems."
+        action: "kubectl exec -n monitoring loki-0 -- promtool query instant http://localhost:3100/metrics loki_ingester_streams_created_total"
+        current_value: "{{ $value }} streams/sec"
+
+  - name: kafka-streaming
+    interval: 30s
+    rules:
+    - alert: KafkaCompleteOutage
+      expr: |
+        absent(kafka_server_replicamanager_leadercount) or count(kafka_server_replicamanager_leadercount) == 0
+      for: 2m
+      labels:
+        severity: outage
+        priority: P0
+        component: streaming
+        tier: tier-1
+      annotations:
+        summary: "🚨 COMPLETE OUTAGE - Kafka Cluster DEAD - ALL HANDS!"
+        description: "ALL Kafka brokers are down or unreachable. Complete streaming platform outage. No messages can be produced or consumed."
+        action: "kubectl get pods -n kafka -l strimzi.io/kind=Kafka && kubectl logs -n kafka -l strimzi.io/kind=Kafka --tail=100"
+        impact: "Complete streaming outage - all message-driven workloads broken"
+        runbook_url: "https://strimzi.io/docs/operators/latest/deploying.html#assembly-kafka-cluster-str"
+
+    - alert: KafkaBrokerDown
+      expr: |
+        kafka_server_replicamanager_leadercount == 0
+      for: 2m
+      labels:
+        severity: critical
+        priority: P1
+        component: streaming
+        tier: tier-1
+      annotations:
+        summary: "Kafka broker {{ $labels.pod }} DOWN - Cluster degraded"
+        description: "Kafka broker is down. Cluster operating with reduced capacity. Partitions may be under-replicated."
+        action: "kubectl get pods -n kafka {{ $labels.pod }} && kubectl describe pod -n kafka {{ $labels.pod }}"
+        current_value: "{{ $value }} leaders"
+
+    - alert: KafkaUnderReplicatedPartitions
+      expr: |
+        kafka_server_replicamanager_underreplicatedpartitions > 0
+      for: 5m
+      labels:
+        severity: warning
+        priority: P2
+        component: streaming
+        tier: tier-1
+      annotations:
+        summary: "Kafka has {{ $value }} under-replicated partitions - Data loss risk"
+        description: "Partitions do not have enough in-sync replicas. Risk of data loss if broker fails."
+        action: "kubectl exec -n kafka my-cluster-dual-role-0 -- bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe --under-replicated-partitions"
+        current_value: "{{ $value }} partitions"
+
+    - alert: KafkaOfflinePartitions
+      expr: |
+        kafka_controller_kafkacontroller_offlinepartitionscount > 0
+      for: 1m
+      labels:
+        severity: critical
+        priority: P1
+        component: streaming
+        tier: tier-1
+      annotations:
+        summary: "Kafka has {{ $value }} OFFLINE partitions - Data unavailable!"
+        description: "Partitions have no leader. Producers and consumers cannot access these partitions."
+        action: "kubectl exec -n kafka my-cluster-dual-role-0 -- bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe --unavailable-partitions"
+        current_value: "{{ $value }} partitions offline"
+
+  - name: tempo-tracing
+    interval: 30s
+    rules:
+    - alert: TempoIngesterDown
+      expr: |
+        absent(up{namespace="monitoring",job="tempo-ingester"}) or count(up{namespace="monitoring",job="tempo-ingester"} == 1) == 0
+      for: 2m
+      labels:
+        severity: critical
+        priority: P1
+        component: tracing
+        tier: tier-1
+      annotations:
+        summary: "Tempo Ingester DOWN - Trace storage failing"
+        description: "All Tempo ingesters are down. Traces cannot be written to storage."
+        action: "kubectl get pods -n monitoring -l app.kubernetes.io/component=ingester && kubectl logs -n monitoring -l app.kubernetes.io/component=ingester --tail=50"
+
+    - alert: TempoCompactorDown
+      expr: |
+        absent(up{namespace="monitoring",job="tempo-compactor"}) or count(up{namespace="monitoring",job="tempo-compactor"} == 1) == 0
+      for: 10m
+      labels:
+        severity: warning
+        priority: P2
+        component: tracing
+        tier: tier-1
+      annotations:
+        summary: "Tempo Compactor DOWN - Storage bloat risk"
+        description: "Tempo compactor is down. Trace storage will not be compacted, leading to disk space issues."
+        action: "kubectl get pods -n monitoring -l app.kubernetes.io/component=compactor"
+
+  - name: keycloak-auth
+    interval: 30s
+    rules:
+    - alert: KeycloakDown
+      expr: |
+        absent(up{namespace="keycloak",job="keycloak"}) or count(up{namespace="keycloak",job="keycloak"} == 1) == 0
+      for: 2m
+      labels:
+        severity: critical
+        priority: P1
+        component: authentication
+        tier: tier-0
+      annotations:
+        summary: "Keycloak DOWN - Authentication unavailable!"
+        description: "Keycloak authentication service is down. Users cannot login to applications using SSO."
+        action: "kubectl get pods -n keycloak && kubectl logs -n keycloak -l app=keycloak --tail=100"
+        impact: "Authentication outage - users cannot login"
+
+    - alert: KeycloakDatabaseDown
+      expr: |
+        absent(up{namespace="keycloak",job="keycloak-db"}) or count(up{namespace="keycloak",job="keycloak-db"} == 1) == 0
+      for: 2m
+      labels:
+        severity: critical
+        priority: P1
+        component: authentication
+        tier: tier-0
+      annotations:
+        summary: "Keycloak Database DOWN - Auth service failing"
+        description: "Keycloak database is down. Authentication service cannot operate."
+        action: "kubectl get pods -n keycloak -l app=keycloak-db && kubectl logs -n keycloak keycloak-db-1 --tail=100"
+
+  - name: redis-cache
+    interval: 30s
+    rules:
+    - alert: RedisDown
+      expr: |
+        redis_up{namespace=~"n8n-prod|infisical"} == 0
+      for: 2m
+      labels:
+        severity: critical
+        priority: P1
+        component: cache
+        tier: tier-1
+      annotations:
+        summary: "Redis {{ $labels.namespace }}/{{ $labels.pod }} DOWN - Cache unavailable"
+        description: "Redis instance is down. Applications using this cache will experience degraded performance."
+        action: "kubectl get pods -n {{ $labels.namespace }} {{ $labels.pod }} && kubectl describe pod -n {{ $labels.namespace }} {{ $labels.pod }}"
+
+    - alert: RedisHighMemory
+      expr: |
+        redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+      for: 5m
+      labels:
+        severity: warning
+        priority: P2
+        component: cache
+        tier: tier-1
+      annotations:
+        summary: "Redis {{ $labels.namespace }} memory {{ $value | humanizePercentage }} full"
+        description: "Redis is approaching memory limit. May start evicting keys or rejecting writes."
+        action: "kubectl exec -n {{ $labels.namespace }} {{ $labels.pod }} -- redis-cli INFO MEMORY"
+        current_value: "{{ $value | humanizePercentage }}"
+        threshold: "90%"
