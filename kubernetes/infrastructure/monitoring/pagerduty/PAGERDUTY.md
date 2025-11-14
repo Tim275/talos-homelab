@@ -222,6 +222,302 @@ Action: SSH to control plane nodes && systemctl status kubelet
 
 ---
 
+## Team Onboarding: Adding New Members to PagerDuty
+
+### Step 1: Create PagerDuty User Account
+
+1. **Go to PagerDuty:** https://[your-account].pagerduty.com
+2. **Navigate:** Configuration → Users → Add User
+3. **Enter Details:**
+   ```
+   Name: New Team Member Name
+   Email: member@company.com
+   Role: Responder (for on-call) or Observer (view-only)
+   Time Zone: Europe/Berlin (or their timezone)
+   ```
+4. **Click "Add User"** → They will receive invitation email
+
+### Step 2: Configure Notification Rules (CRITICAL!)
+
+**The new user MUST configure these themselves after accepting the invite:**
+
+1. **Login to PagerDuty** → Click user icon (top right) → **My Profile**
+
+2. **Go to: Notification Rules → Edit**
+
+3. **Configure High Urgency Notifications (P0/P1 alerts):**
+   ```
+   High Urgency Notifications:
+
+   ☎️ Phone Call    - Contact me immediately (0 minutes)
+   📱 SMS           - Contact me immediately (0 minutes)
+   📧 Email         - Contact me immediately (0 minutes)
+   📲 Push          - Contact me immediately (0 minutes)
+   ```
+
+4. **Configure Low Urgency Notifications (P2 alerts):**
+   ```
+   Low Urgency Notifications:
+
+   📲 Push          - Contact me immediately (0 minutes)
+   📧 Email         - Contact me after 5 minutes
+   ```
+
+5. **Add Contact Methods** (if not done):
+   - **Phone Number:** User Profile → Contact Information → Add Phone Number
+   - **Email:** Already added during account creation
+   - **Mobile App:** Download PagerDuty app on iOS/Android → Login → Auto-configured
+
+**⚠️ CRITICAL: Without Phone Number configured, user will NOT receive phone calls for P0/P1!**
+
+### Step 3: Add to Escalation Policy
+
+1. **Go to:** Configuration → Escalation Policies
+2. **Select:** "Default" (or your custom policy)
+3. **Edit Escalation Levels:**
+
+   **For P0 (Complete Outage):**
+   ```
+   Level 1: ALL team members simultaneously
+   Escalate after: 0 minutes
+   Notify: [✓] All existing users [✓] New team member
+   ```
+
+   **For P1 (Critical):**
+   ```
+   Level 1: Primary On-Call
+   Escalate after: 15 minutes
+
+   Level 2: Secondary On-Call + New Team Member
+   Escalate after: 15 minutes
+
+   Level 3: Manager/Team Lead
+   Escalate after: 15 minutes
+   ```
+
+4. **Click "Save"**
+
+### Step 4: Add to On-Call Schedule (Optional)
+
+**If the new member will take on-call shifts:**
+
+1. **Go to:** Configuration → Schedules
+2. **Select:** Your on-call schedule (e.g., "Primary On-Call")
+3. **Click:** "Edit Schedule"
+4. **Add Participant:**
+   ```
+   User: New Team Member
+   Shift: Weekly rotation (e.g., Mon 9:00 AM - Mon 9:00 AM next week)
+   Start Date: [when they should start]
+   ```
+5. **Click "Save Schedule"**
+
+**Typical Schedule Structure:**
+```
+Week 1: Team Member A (Mon 9:00 - Mon 9:00)
+Week 2: Team Member B (Mon 9:00 - Mon 9:00)
+Week 3: New Team Member (Mon 9:00 - Mon 9:00)
+Week 4: Team Member C (Mon 9:00 - Mon 9:00)
+```
+
+### Step 5: Test Notifications
+
+**IMPORTANT: Test BEFORE they go on-call!**
+
+1. **Trigger Test Alert:**
+   ```bash
+   # From kubectl (admin only)
+   curl -X POST https://events.pagerduty.com/v2/enqueue \
+     -H 'Content-Type: application/json' \
+     -d '{
+       "routing_key": "YOUR_INTEGRATION_KEY",
+       "event_action": "trigger",
+       "payload": {
+         "summary": "🧪 TEST - Onboarding for [New Member Name]",
+         "severity": "critical",
+         "source": "onboarding-test"
+       }
+     }'
+   ```
+
+2. **Verify they receive:**
+   - ☎️ **Phone Call** (within 1-2 minutes)
+   - 📱 **SMS** (within 1-2 minutes)
+   - 📧 **Email** (within 1-2 minutes)
+   - 📲 **Push Notification** (if app installed)
+   - 💬 **Slack Message** in #alerts channel
+
+3. **Have them acknowledge:**
+   - In PagerDuty mobile app OR
+   - By replying to SMS with "ack" OR
+   - In PagerDuty web UI
+
+4. **Resolve test incident:**
+   ```bash
+   # Only after they successfully acknowledged
+   curl -X POST https://events.pagerduty.com/v2/enqueue \
+     -H 'Content-Type: application/json' \
+     -d '{
+       "routing_key": "YOUR_INTEGRATION_KEY",
+       "event_action": "resolve",
+       "dedup_key": "[dedup_key from incident]"
+     }'
+   ```
+
+### Step 6: Slack Integration
+
+**Add to Slack channels:**
+
+1. **Invite to channels:**
+   - `#alerts` - All infrastructure alerts
+   - `#argocd-deployments` - GitOps alerts
+   - `#storage-alerts` - Ceph storage alerts
+   - `#database-alerts` - PostgreSQL alerts
+   - `#security-alerts` - Security/cert alerts
+
+2. **Configure Slack notifications:**
+   - User Preferences → Notifications → Customize per channel
+   - Recommended: Desktop + Mobile for all alert channels
+
+### Step 7: Provide Access to Tools
+
+**Give access to:**
+
+1. **Grafana:**
+   - URL: https://grafana.homelab.local
+   - Role: Editor (can view + create dashboards)
+   - OIDC/SSO: Auto-provisioned via Authelia
+
+2. **ArgoCD:**
+   - URL: https://argocd.homelab.local
+   - Role: Read-Only (or Admin if needed)
+   - OIDC/SSO: Auto-provisioned via Authelia
+
+3. **Prometheus:**
+   - URL: https://prometheus.homelab.local
+   - Access via Grafana Explore
+
+4. **kubectl Access:**
+   ```bash
+   # Create kubeconfig for new member
+   # Or add to existing LDAP/OIDC group
+   ```
+
+### Step 8: Training & Runbooks
+
+**Mandatory training:**
+
+1. **Read Documentation:**
+   - `PAGERDUTY.md` (this file)
+   - `RUNBOOKS.md` (if exists)
+   - Alert playbooks for each service
+
+2. **Shadow On-Call Shift:**
+   - New member shadows experienced on-call for 1 week
+   - Observes incident response
+   - Learns runbooks and escalation procedures
+
+3. **Test Incident Simulation:**
+   - Simulate P1 alert during business hours
+   - New member responds with senior support
+   - Validates response time and procedure knowledge
+
+### Step 9: Verify Everything Works
+
+**Checklist before going on-call:**
+
+- [x] PagerDuty account created and activated
+- [x] Phone number added and verified
+- [x] Notification rules configured (Phone + SMS + Email + Push)
+- [x] Added to escalation policy
+- [x] Added to on-call schedule (if applicable)
+- [x] **Test alert sent and received (Phone Call + SMS + Email)**
+- [x] Successfully acknowledged test alert
+- [x] Added to all Slack alert channels
+- [x] Access to Grafana, ArgoCD, kubectl
+- [x] Completed shadow on-call shift
+- [x] Read all runbooks
+
+**Test Command (Admin only):**
+```bash
+# Send test P1 alert to verify everything works
+kubectl apply -f - <<EOF
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: onboarding-test-[member-name]
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+    prometheus: kube-prometheus-stack
+    role: alert-rules
+spec:
+  groups:
+  - name: onboarding-test
+    interval: 10s
+    rules:
+    - alert: OnboardingTest[MemberName]
+      expr: vector(1) > 0
+      for: 30s
+      labels:
+        severity: critical
+        priority: P1
+        component: test
+      annotations:
+        summary: "🧪 Onboarding Test for [Member Name]"
+        description: "This is a test to verify PagerDuty notifications work correctly"
+        action: "Acknowledge this alert and then delete: kubectl delete prometheusrule onboarding-test-[member-name] -n monitoring"
+EOF
+
+# Wait 1 minute, verify they received alert, then delete:
+kubectl delete prometheusrule onboarding-test-[member-name] -n monitoring
+```
+
+---
+
+## Common Issues & Troubleshooting
+
+### Issue: Not receiving phone calls
+
+**Check:**
+1. Phone number format correct? Must include country code (e.g., +49 for Germany)
+2. Phone number verified in PagerDuty?
+3. Notification rules configured for "High Urgency"?
+4. Do Not Disturb mode on phone? (PagerDuty calls will override DND on most phones)
+
+**Fix:**
+```
+PagerDuty → My Profile → Contact Information → Verify Phone Number
+PagerDuty → My Profile → Notification Rules → Add Phone Call for High Urgency
+```
+
+### Issue: Only receiving emails, not phone/SMS
+
+**Cause:** Notification rules not configured correctly
+
+**Fix:**
+```
+PagerDuty → My Profile → Notification Rules → Edit
+HIGH Urgency: Add Phone Call + SMS (both set to 0 minutes)
+LOW Urgency: Add Push + Email
+```
+
+### Issue: Receiving alerts but wrong urgency
+
+**Cause:** Alert priority doesn't match PagerDuty urgency mapping
+
+**Check Alert Config:**
+```bash
+kubectl get prometheusrule -n monitoring [rule-name] -o yaml | grep -A 5 "priority:"
+```
+
+**PagerDuty Urgency Mapping:**
+- P0/P1 alerts → **High Urgency** → Phone Call + SMS
+- P2 alerts → **Low Urgency** → Push + Email only
+- P3/P4 → Slack only (no PagerDuty)
+
+---
+
 ## TODO: Future Email Alerting Enhancement
 
 ### Current Status: PagerDuty Phone/SMS + Slack (Sufficient)
