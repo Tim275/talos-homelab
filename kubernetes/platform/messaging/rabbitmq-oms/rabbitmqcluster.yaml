@@ -1,0 +1,51 @@
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata:
+  name: rabbitmq
+  namespace: oms
+  labels:
+    app: rabbitmq
+    app.kubernetes.io/name: rabbitmq
+    app.kubernetes.io/part-of: oms
+    app.kubernetes.io/component: messaging
+    platform.homelab/tenant: oms
+spec:
+  replicas: 1
+  image: rabbitmq:3.13-management-alpine
+
+  service:
+    type: ClusterIP
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  persistence:
+    storageClassName: rook-ceph-block-enterprise
+    storage: 2Gi
+
+  rabbitmq:
+    additionalPlugins:
+      - rabbitmq_management
+      - rabbitmq_prometheus
+    additionalConfig: |
+      cluster_partition_handling = pause_minority
+      vm_memory_high_watermark.relative = 0.6
+      disk_free_limit.absolute = 2GB
+    envConfig: |
+      RABBITMQ_DEFAULT_USER=guest
+      RABBITMQ_DEFAULT_PASS=guest
+      RABBITMQ_DEFAULT_VHOST=/
+
+  override:
+    statefulSet:
+      spec:
+        template:
+          metadata:
+            labels:
+              app: rabbitmq
+              platform.homelab/tenant: oms
