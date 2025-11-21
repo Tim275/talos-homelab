@@ -1,32 +1,29 @@
 # 🔐 Production-Grade Backend TLS Configuration for Ceph Dashboard
 #
-# Industry Best Practice: End-to-End Encryption with Self-Signed Certificate Handling
+# CRITICAL: Public-facing service without VPN or Authentication layer
+# MUST have end-to-end TLS encryption
 #
-# Pattern: TLS Everywhere (Google SRE, AWS, CNCF Standard)
-# - Client → Cloudflared: TLS (Let's Encrypt)
+# Security Architecture:
+# - Client → Cloudflared Tunnel: TLS (Let's Encrypt)
 # - Cloudflared → Envoy Gateway: TLS
-# - Envoy Gateway → Ceph Dashboard: TLS (Self-Signed)
+# - Envoy Gateway → Ceph Dashboard: TLS (Self-Signed) ← THIS CONFIG
 #
-# Security Context:
-# - Network Layer: Tailscale VPN (already secured)
-# - Identity Layer: Authelia OIDC + 2FA
-# - Transport Layer: End-to-end TLS encryption
-#
-# InsecureSkipVerify Justification:
-# - Acceptable for internal services with self-signed certs
-# - Network already secured by Tailscale VPN
-# - Authentication enforced by Authelia
-# - Alternative would require managing CA certificates in secrets
+# Using BackendTLSPolicy with wellKnownCACertificates
+# Accepts system-trusted CAs for backend validation
 
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: Backend
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
 metadata:
-  name: ceph-dashboard-backend
+  name: ceph-dashboard-tls
   namespace: rook-ceph
 spec:
-  endpoints:
-    - fqdn:
-        hostname: rook-ceph-mgr-dashboard.rook-ceph.svc.cluster.local
-        port: 8443
-  tls:
-    insecureSkipVerify: true  # Accept self-signed certificate from Ceph
+  targetRefs:
+    - group: ''
+      kind: Service
+      name: rook-ceph-mgr-dashboard
+  validation:
+    caCertificateRefs:
+      - name: ceph-dashboard-ca
+        kind: Secret
+        group: ''
+    hostname: ceph-dashboard
