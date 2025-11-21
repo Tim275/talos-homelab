@@ -10,7 +10,6 @@ commonAnnotations:
 resources:
   - ns.yaml
   - https://github.com/envoyproxy/gateway/releases/download/v1.6.0/install.yaml
-  - envoy-gateway-config.yaml
   - sealed-cloudflare-api-token.yaml
   - cloudflare-issuer.yaml
   - certificate-timourhomelab.yaml
@@ -41,3 +40,24 @@ patches:
     patch: |-
       - op: remove
         path: /metadata/annotations/controller-gen.kubebuilder.io~1version
+
+  # Enable Backend API for production-grade TLS
+  - target:
+      kind: ConfigMap
+      name: envoy-gateway-config
+      namespace: envoy-gateway-system
+    patch: |-
+      - op: add
+        path: /data/envoy-gateway.yaml
+        value: |
+          apiVersion: gateway.envoyproxy.io/v1alpha1
+          kind: EnvoyGateway
+          gateway:
+            controllerName: gateway.envoyproxy.io/gatewayclass-controller
+          logging:
+            level:
+              default: info
+          extensionApis:
+            enableBackend: true
+          provider:
+            type: Kubernetes
