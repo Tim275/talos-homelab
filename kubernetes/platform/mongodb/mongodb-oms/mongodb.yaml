@@ -1,0 +1,74 @@
+apiVersion: psmdb.percona.com/v1
+kind: PerconaServerMongoDB
+metadata:
+  name: mongodb-oms
+  namespace: oms
+spec:
+  crVersion: 1.21.2
+  image: percona/percona-server-mongodb:7.0.18-11
+  imagePullPolicy: IfNotPresent
+
+  secrets:
+    users: mongodb-oms-secrets
+
+  upgradeOptions:
+    versionServiceEndpoint: https://check.percona.com
+    apply: disabled
+    schedule: "0 2 * * *"
+
+  replsets:
+  - name: rs0
+    size: 3
+    antiAffinityTopologyKey: "kubernetes.io/hostname"
+
+    podDisruptionBudget:
+      maxUnavailable: 1
+
+    resources:
+      limits:
+        cpu: "1000m"
+        memory: "2Gi"
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+
+    volumeSpec:
+      persistentVolumeClaim:
+        storageClassName: rook-ceph-block-enterprise
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
+
+    expose:
+      enabled: false
+      exposeType: ClusterIP
+
+  backup:
+    enabled: true
+    restartOnFailure: true
+
+    image: percona/percona-backup-mongodb:2.9.0
+
+    tasks:
+    - name: daily-backup
+      enabled: true
+      schedule: "0 3 * * *"
+      keep: 7
+      storageName: s3-rook-ceph
+      compressionType: gzip
+      compressionLevel: 6
+
+    storages:
+      s3-rook-ceph:
+        type: s3
+        s3:
+          bucket: mongodb-backups
+          credentialsSecret: rook-ceph-s3-credentials
+          region: us-east-1
+          endpointUrl: http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc:80
+          insecureSkipTLSVerify: true
+
+  sharding:
+    enabled: false
