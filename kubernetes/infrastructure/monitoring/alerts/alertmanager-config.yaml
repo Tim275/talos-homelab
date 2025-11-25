@@ -69,10 +69,39 @@ stringData:
     receivers:
       - name: 'default'
         slack_configs:
-          - channel: '#alerts'
+          - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
+            channel: '#alerts'
             send_resolved: true
-            title: 'Alert: {{ .CommonLabels.alertname }}'
-            text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+            title: |-
+              [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }}
+            text: |-
+              {{ range .Alerts }}
+              *Alert:* {{ .Labels.alertname }}
+              *Severity:* {{ .Labels.severity | toUpper }}
+              {{ if .Labels.namespace }}*Namespace:* `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.pod }}*Pod:* `{{ .Labels.pod }}`{{ end }}
+              {{ if .Labels.container }}*Container:* `{{ .Labels.container }}`{{ end }}
+              {{ if .Labels.node }}*Node:* `{{ .Labels.node }}`{{ end }}
+              {{ if .Labels.job }}*Job:* `{{ .Labels.job }}`{{ end }}
+              *Summary:* {{ .Annotations.summary }}
+              {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
+              {{ if .Annotations.impact }}*Impact:* {{ .Annotations.impact }}{{ end }}
+              {{ if .Annotations.runbook_url }}*Runbook:* {{ .Annotations.runbook_url }}{{ end }}
+              {{ end }}
+            color: |-
+              {{ if eq .Status "firing" }}
+                {{ if eq .CommonLabels.severity "critical" }}danger{{ else if eq .CommonLabels.severity "warning" }}warning{{ else }}#439FE0{{ end }}
+              {{ else }}good{{ end }}
+            actions:
+              - type: button
+                text: '📊 Prometheus'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: '📈 Grafana'
+                url: 'https://grafana.timourhomelab.org'
+              - type: button
+                text: '🔕 Silence'
+                url: '{{ .ExternalURL }}/#/silences/new'
 
       - name: 'pagerduty-critical'
         pagerduty_configs:
@@ -107,61 +136,144 @@ stringData:
           - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
             channel: '#alerts-critical'
             send_resolved: true
-            color: 'danger'
-            title: ':rotating_light: P0 CRITICAL: {{ .CommonLabels.alertname }}'
-            text: |
-              *Summary:* {{ .CommonAnnotations.summary }}
-              *Description:* {{ .CommonAnnotations.description }}
-              *Impact:* {{ .CommonAnnotations.impact }}
-              *Namespace:* {{ .CommonLabels.namespace }}
-              *Component:* {{ .CommonLabels.component }}
+            title: |-
+              [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] 🚨 P0 CRITICAL: {{ .CommonLabels.alertname }}
+            text: |-
+              {{ range .Alerts }}
+              *Priority:* P0 - CRITICAL OUTAGE
+              *Severity:* {{ .Labels.severity | toUpper }}
+              {{ if .Labels.namespace }}*Namespace:* `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.pod }}*Pod:* `{{ .Labels.pod }}`{{ end }}
+              {{ if .Labels.container }}*Container:* `{{ .Labels.container }}`{{ end }}
+              {{ if .Labels.node }}*Node:* `{{ .Labels.node }}`{{ end }}
+              {{ if .Labels.component }}*Component:* {{ .Labels.component }}{{ end }}
+
+              *Summary:* {{ .Annotations.summary }}
+              {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
+              {{ if .Annotations.impact }}*Impact:* {{ .Annotations.impact }}{{ end }}
+              {{ if .Annotations.runbook_url }}*Runbook:* {{ .Annotations.runbook_url }}{{ end }}
+              {{ end }}
+            color: |-
+              {{ if eq .Status "firing" }}danger{{ else }}good{{ end }}
             actions:
               - type: button
-                text: ':chart_with_upwards_trend: Prometheus'
+                text: '📊 Prometheus'
                 url: '{{ (index .Alerts 0).GeneratorURL }}'
               - type: button
-                text: ':no_bell: Silence'
-                url: '{{ .ExternalURL }}/#/silences/new?filter=%7B'
+                text: '📈 Grafana'
+                url: 'https://grafana.timourhomelab.org'
+              - type: button
+                text: '🔕 Silence'
+                url: '{{ .ExternalURL }}/#/silences/new'
 
       - name: 'slack-high'
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
             channel: '#alerts-high'
             send_resolved: true
-            color: 'warning'
-            title: ':warning: P1 HIGH: {{ .CommonLabels.alertname }}'
-            text: |
-              *Summary:* {{ .CommonAnnotations.summary }}
-              *Namespace:* {{ .CommonLabels.namespace }}
+            title: |-
+              [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] ⚠️ P1 HIGH: {{ .CommonLabels.alertname }}
+            text: |-
+              {{ range .Alerts }}
+              *Priority:* P1 - HIGH (Immediate Action Required)
+              *Severity:* {{ .Labels.severity | toUpper }}
+              {{ if .Labels.namespace }}*Namespace:* `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.pod }}*Pod:* `{{ .Labels.pod }}`{{ end }}
+              {{ if .Labels.container }}*Container:* `{{ .Labels.container }}`{{ end }}
+              {{ if .Labels.node }}*Node:* `{{ .Labels.node }}`{{ end }}
+              {{ if .Labels.component }}*Component:* {{ .Labels.component }}{{ end }}
+
+              *Summary:* {{ .Annotations.summary }}
+              {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
+              {{ if .Annotations.impact }}*Impact:* {{ .Annotations.impact }}{{ end }}
+              {{ end }}
+            color: |-
+              {{ if eq .Status "firing" }}warning{{ else }}good{{ end }}
+            actions:
+              - type: button
+                text: '📊 Prometheus'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: '📈 Grafana'
+                url: 'https://grafana.timourhomelab.org'
+              - type: button
+                text: '🔕 Silence'
+                url: '{{ .ExternalURL }}/#/silences/new'
 
       - name: 'slack-medium'
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
             channel: '#alerts-medium'
             send_resolved: true
-            color: '#439FE0'
-            title: ':information_source: P2: {{ .CommonLabels.alertname }}'
-            text: '{{ .CommonAnnotations.summary }}'
+            title: |-
+              [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] ℹ️ P2 MEDIUM: {{ .CommonLabels.alertname }}
+            text: |-
+              {{ range .Alerts }}
+              *Priority:* P2 - MEDIUM (Schedule Investigation)
+              {{ if .Labels.namespace }}*Namespace:* `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.pod }}*Pod:* `{{ .Labels.pod }}`{{ end }}
+              {{ if .Labels.node }}*Node:* `{{ .Labels.node }}`{{ end }}
+
+              *Summary:* {{ .Annotations.summary }}
+              {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
+              {{ end }}
+            color: |-
+              {{ if eq .Status "firing" }}#439FE0{{ else }}good{{ end }}
+            actions:
+              - type: button
+                text: '📊 Prometheus'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: '📈 Grafana'
+                url: 'https://grafana.timourhomelab.org'
 
       - name: 'slack-info'
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
             channel: '#alerts-info'
             send_resolved: false
-            color: 'good'
-            title: ':memo: P3: {{ .CommonLabels.alertname }}'
-            text: '{{ .CommonAnnotations.summary }}'
+            title: |-
+              [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] 📝 P3 INFO: {{ .CommonLabels.alertname }}
+            text: |-
+              {{ range .Alerts }}
+              *Priority:* P3 - INFORMATIONAL
+              {{ if .Labels.namespace }}*Namespace:* `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.pod }}*Pod:* `{{ .Labels.pod }}`{{ end }}
+
+              *Summary:* {{ .Annotations.summary }}
+              {{ end }}
+            color: |-
+              {{ if eq .Status "firing" }}good{{ else }}#CCCCCC{{ end }}
+            actions:
+              - type: button
+                text: '📊 View Details'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
 
       - name: 'slack-argocd-gitops'
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
             channel: '#argocd-deployments'
             send_resolved: true
-            color: '#5B9BD5'
-            title: ':git: ArgoCD: {{ .CommonLabels.alertname }}'
-            text: |
-              *Application:* {{ .CommonAnnotations.application }}
-              *Project:* {{ .CommonAnnotations.project }}
-              *Summary:* {{ .CommonAnnotations.summary }}
-              *Status:* {{ .CommonAnnotations.sync_status }}{{ .CommonAnnotations.health_status }}{{ .CommonAnnotations.phase }}
-              *Impact:* {{ .CommonAnnotations.impact }}
+            title: |-
+              [{{ .Status | toUpper }}] 🔄 GitOps: {{ .CommonLabels.alertname }}
+            text: |-
+              {{ range .Alerts }}
+              *Type:* ArgoCD GitOps Alert
+              {{ if .Annotations.application }}*Application:* `{{ .Annotations.application }}`{{ end }}
+              {{ if .Annotations.project }}*Project:* {{ .Annotations.project }}{{ end }}
+              {{ if .Labels.namespace }}*Namespace:* `{{ .Labels.namespace }}`{{ end }}
+
+              *Summary:* {{ .Annotations.summary }}
+              {{ if .Annotations.sync_status }}*Sync Status:* {{ .Annotations.sync_status }}{{ end }}
+              {{ if .Annotations.health_status }}*Health:* {{ .Annotations.health_status }}{{ end }}
+              {{ if .Annotations.impact }}*Impact:* {{ .Annotations.impact }}{{ end }}
+              {{ end }}
+            color: |-
+              {{ if eq .Status "firing" }}#5B9BD5{{ else }}good{{ end }}
+            actions:
+              - type: button
+                text: '🚀 ArgoCD UI'
+                url: 'https://argo.timourhomelab.org'
+              - type: button
+                text: '📊 Prometheus'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
