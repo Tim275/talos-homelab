@@ -1,0 +1,149 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-config
+  namespace: monitoring
+type: Opaque
+stringData:
+  alertmanager.yaml: |
+    global:
+      resolve_timeout: 5m
+      pagerduty_url: https://events.pagerduty.com/v2/enqueue
+
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 12h
+      receiver: 'default'
+      routes:
+        - matchers:
+            - priority="p0"
+          receiver: 'pagerduty-critical'
+          continue: true
+
+        - matchers:
+            - priority="p0"
+          receiver: 'slack-critical'
+
+        - matchers:
+            - priority="p1"
+          receiver: 'pagerduty-high'
+          continue: true
+
+        - matchers:
+            - priority="p1"
+          receiver: 'slack-high'
+
+        - matchers:
+            - priority="p2"
+          receiver: 'slack-medium'
+
+        - matchers:
+            - priority="p3"
+          receiver: 'slack-info'
+
+    inhibit_rules:
+      - source_matchers:
+          - severity="critical"
+        target_matchers:
+          - severity="warning"
+        equal: ['alertname', 'namespace', 'instance']
+
+      - source_matchers:
+          - priority="p0"
+        target_matchers:
+          - priority=~"p1|p2|p3"
+        equal: ['job', 'namespace']
+
+      - source_matchers:
+          - alertname="NodeDown"
+        target_matchers:
+          - alertname=~"Pod.*|Container.*"
+        equal: ['node']
+
+    receivers:
+      - name: 'default'
+        slack_configs:
+          - channel: '#alerts'
+            send_resolved: true
+            title: 'Alert: {{ .CommonLabels.alertname }}'
+            text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+
+      - name: 'pagerduty-critical'
+        pagerduty_configs:
+          - routing_key_file: /etc/alertmanager/secrets/pagerduty-integration-key/integration-key
+            severity: critical
+            description: '{{ .CommonAnnotations.summary }}'
+            details:
+              firing: '{{ .Alerts.Firing | len }}'
+              resolved: '{{ .Alerts.Resolved | len }}'
+              alertname: '{{ .CommonLabels.alertname }}'
+              namespace: '{{ .CommonLabels.namespace }}'
+              priority: '{{ .CommonLabels.priority }}'
+              component: '{{ .CommonLabels.component }}'
+              impact: '{{ .CommonAnnotations.impact }}'
+            send_resolved: true
+
+      - name: 'pagerduty-high'
+        pagerduty_configs:
+          - routing_key_file: /etc/alertmanager/secrets/pagerduty-integration-key/integration-key
+            severity: warning
+            description: '{{ .CommonAnnotations.summary }}'
+            details:
+              firing: '{{ .Alerts.Firing | len }}'
+              resolved: '{{ .Alerts.Resolved | len }}'
+              alertname: '{{ .CommonLabels.alertname }}'
+              namespace: '{{ .CommonLabels.namespace }}'
+              priority: '{{ .CommonLabels.priority }}'
+            send_resolved: true
+
+      - name: 'slack-critical'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
+            channel: '#alerts-critical'
+            send_resolved: true
+            color: 'danger'
+            title: ':rotating_light: P0 CRITICAL: {{ .CommonLabels.alertname }}'
+            text: |
+              *Summary:* {{ .CommonAnnotations.summary }}
+              *Description:* {{ .CommonAnnotations.description }}
+              *Impact:* {{ .CommonAnnotations.impact }}
+              *Namespace:* {{ .CommonLabels.namespace }}
+              *Component:* {{ .CommonLabels.component }}
+            actions:
+              - type: button
+                text: ':chart_with_upwards_trend: Prometheus'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: ':no_bell: Silence'
+                url: '{{ .ExternalURL }}/#/silences/new?filter=%7B'
+
+      - name: 'slack-high'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
+            channel: '#alerts-high'
+            send_resolved: true
+            color: 'warning'
+            title: ':warning: P1 HIGH: {{ .CommonLabels.alertname }}'
+            text: |
+              *Summary:* {{ .CommonAnnotations.summary }}
+              *Namespace:* {{ .CommonLabels.namespace }}
+
+      - name: 'slack-medium'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
+            channel: '#alerts-medium'
+            send_resolved: true
+            color: '#439FE0'
+            title: ':information_source: P2: {{ .CommonLabels.alertname }}'
+            text: '{{ .CommonAnnotations.summary }}'
+
+      - name: 'slack-info'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
+            channel: '#alerts-info'
+            send_resolved: false
+            color: 'good'
+            title: ':memo: P3: {{ .CommonLabels.alertname }}'
+            text: '{{ .CommonAnnotations.summary }}'

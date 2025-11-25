@@ -1,0 +1,205 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: p1-infrastructure-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack-prometheus
+    role: alert-rules
+    severity: warning
+    priority: p1
+spec:
+  groups:
+    - name: p1.nodes.warning
+      interval: 60s
+      rules:
+        - alert: NodeNotReady
+          expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: infrastructure
+            pagerduty_severity: warning
+          annotations:
+            summary: "Node {{ $labels.node }} is NotReady"
+            description: "Node {{ $labels.node }} has been NotReady for 5+ minutes"
+            impact: "Reduced capacity, pods may be evicted"
+
+        - alert: NodeMemoryPressure
+          expr: kube_node_status_condition{condition="MemoryPressure",status="true"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: infrastructure
+            pagerduty_severity: warning
+          annotations:
+            summary: "Node {{ $labels.node }} has memory pressure"
+            description: "Node {{ $labels.node }} is under memory pressure"
+            impact: "Pods may be evicted"
+
+        - alert: NodeDiskPressure
+          expr: kube_node_status_condition{condition="DiskPressure",status="true"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: infrastructure
+            pagerduty_severity: warning
+          annotations:
+            summary: "Node {{ $labels.node }} has disk pressure"
+            description: "Node {{ $labels.node }} is under disk pressure"
+            impact: "Pods may be evicted"
+
+        - alert: NodeHighCPU
+          expr: (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) by (instance)) > 0.80
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: infrastructure
+            pagerduty_severity: warning
+          annotations:
+            summary: "Node {{ $labels.instance }} has high CPU usage"
+            description: "Node CPU usage is {{ $value | humanizePercentage }} for 10+ minutes"
+            impact: "Performance degradation"
+
+        - alert: NodeHighMemory
+          expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 0.85
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: infrastructure
+            pagerduty_severity: warning
+          annotations:
+            summary: "Node {{ $labels.instance }} has high memory usage"
+            description: "Node memory usage is {{ $value | humanizePercentage }} for 10+ minutes"
+            impact: "Risk of OOM kills"
+
+    - name: p1.pods.warning
+      interval: 60s
+      rules:
+        - alert: PodCrashLooping
+          expr: rate(kube_pod_container_status_restarts_total[15m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: application
+            pagerduty_severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+            description: "Pod has restarted {{ $value }} times in 15 minutes"
+            impact: "Service degradation"
+
+        - alert: PodNotReady
+          expr: kube_pod_status_phase{phase!~"Running|Succeeded"} == 1
+          for: 15m
+          labels:
+            severity: warning
+            priority: p1
+            component: application
+            pagerduty_severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} not ready"
+            description: "Pod in phase {{ $labels.phase }} for 15+ minutes"
+            impact: "Service degradation"
+
+        - alert: PodOOMKilled
+          expr: kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
+          for: 1m
+          labels:
+            severity: warning
+            priority: p1
+            component: application
+            pagerduty_severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} was OOMKilled"
+            description: "Container {{ $labels.container }} killed due to out of memory"
+            impact: "Insufficient memory limits"
+
+    - name: p1.storage.warning
+      interval: 60s
+      rules:
+        - alert: PVCWarningFull
+          expr: (kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes) < 0.20
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: storage
+            pagerduty_severity: warning
+          annotations:
+            summary: "PVC {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full"
+            description: "PVC {{ $labels.persistentvolumeclaim }} in {{ $labels.namespace }} has less than 20% free"
+            impact: "Will hit critical threshold soon"
+
+        - alert: CephWarning
+          expr: ceph_health_status == 1
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: storage
+            pagerduty_severity: warning
+          annotations:
+            summary: "Ceph cluster is in HEALTH_WARN state"
+            description: "Ceph cluster has warnings - investigate"
+            impact: "Degraded storage performance"
+
+        - alert: CephOSDDown
+          expr: ceph_osd_up == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: storage
+            pagerduty_severity: warning
+          annotations:
+            summary: "Ceph OSD {{ $labels.ceph_daemon }} is down"
+            description: "OSD {{ $labels.ceph_daemon }} has been down for 5+ minutes"
+            impact: "Reduced storage redundancy"
+
+    - name: p1.controlplane.warning
+      interval: 60s
+      rules:
+        - alert: KubeAPIServerHighLatency
+          expr: histogram_quantile(0.99, sum(rate(apiserver_request_duration_seconds_bucket{verb!="WATCH"}[5m])) by (verb, le)) > 1
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: control-plane
+            pagerduty_severity: warning
+          annotations:
+            summary: "Kubernetes API Server has high latency"
+            description: "99th percentile API latency is {{ $value }}s for {{ $labels.verb }} requests"
+            impact: "Slow cluster operations"
+
+        - alert: EtcdHighLatency
+          expr: histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m])) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: control-plane
+            pagerduty_severity: warning
+          annotations:
+            summary: "etcd has high disk latency"
+            description: "99th percentile etcd fsync is {{ $value }}s"
+            impact: "Slow state persistence"
+
+        - alert: EtcdNoLeader
+          expr: etcd_server_has_leader == 0
+          for: 1m
+          labels:
+            severity: warning
+            priority: p1
+            component: control-plane
+            pagerduty_severity: warning
+          annotations:
+            summary: "etcd cluster has no leader"
+            description: "etcd is performing leader election"
+            impact: "Temporary unavailability"
