@@ -234,7 +234,7 @@ spec:
         # ====== P3: MEDIUM - Pod Crash Looping ======
         - alert: PodCrashLooping
           expr: |
-            rate(kube_pod_container_status_restarts_total[15m]) * 60 * 15 > 5
+            rate(kube_pod_container_status_restarts_total[15m]) * 60 * 15 > 2
           for: 5m
           labels:
             severity: info
@@ -245,10 +245,31 @@ spec:
           annotations:
             summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} crash looping"
             description: |
-              Pod {{ $labels.namespace }}/{{ $labels.pod }} has restarted >5 times
+              Pod {{ $labels.namespace }}/{{ $labels.pod }} has restarted >2 times
               in 15 minutes.
 
               Container: {{ $labels.container }}
               Restarts: {{ $value | printf "%.0f" }}
 
               Action: Check pod logs for errors
+
+        # ====== P2: HIGH - Pod OOMKilled ======
+        - alert: PodOOMKilled
+          expr: |
+            kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
+          for: 1m
+          labels:
+            severity: warning
+            priority: P2
+            component: pod
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} was OOMKilled"
+            description: |
+              Container {{ $labels.container }} in pod {{ $labels.namespace }}/{{ $labels.pod }}
+              was killed due to out of memory.
+
+              This indicates insufficient memory limits or a memory leak.
+
+              Action: Check pod memory limits and application memory usage
