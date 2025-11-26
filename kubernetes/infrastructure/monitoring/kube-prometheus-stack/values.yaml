@@ -178,12 +178,10 @@ kube-state-metrics:
 alertmanager:
   alertmanagerSpec:
     secrets:
-      - pagerduty-integration-key
       - slack-webhook-url
   config:
     global:
       resolve_timeout: 5m
-      pagerduty_url: https://events.pagerduty.com/v2/enqueue
 
     route:
       group_by: ['alertname', 'cluster', 'service']
@@ -194,17 +192,7 @@ alertmanager:
       routes:
         - matchers:
             - priority="p0"
-          receiver: 'pagerduty-critical'
-          continue: true
-
-        - matchers:
-            - priority="p0"
           receiver: 'slack-critical'
-
-        - matchers:
-            - priority="p1"
-          receiver: 'pagerduty-high'
-          continue: true
 
         - matchers:
             - priority="p1"
@@ -267,34 +255,6 @@ alertmanager:
               {{ if eq .Status "firing" }}
                 {{ if eq .CommonLabels.severity "critical" }}danger{{ else if eq .CommonLabels.severity "warning" }}warning{{ else }}#439FE0{{ end }}
               {{ else }}good{{ end }}
-
-      - name: 'pagerduty-critical'
-        pagerduty_configs:
-          - routing_key_file: /etc/alertmanager/secrets/pagerduty-integration-key/integration-key
-            severity: critical
-            description: '{{ .CommonAnnotations.summary }}'
-            details:
-              firing: '{{ .Alerts.Firing | len }}'
-              resolved: '{{ .Alerts.Resolved | len }}'
-              alertname: '{{ .CommonLabels.alertname }}'
-              namespace: '{{ .CommonLabels.namespace }}'
-              priority: '{{ .CommonLabels.priority }}'
-              component: '{{ .CommonLabels.component }}'
-              impact: '{{ .CommonAnnotations.impact }}'
-            send_resolved: true
-
-      - name: 'pagerduty-high'
-        pagerduty_configs:
-          - routing_key_file: /etc/alertmanager/secrets/pagerduty-integration-key/integration-key
-            severity: warning
-            description: '{{ .CommonAnnotations.summary }}'
-            details:
-              firing: '{{ .Alerts.Firing | len }}'
-              resolved: '{{ .Alerts.Resolved | len }}'
-              alertname: '{{ .CommonLabels.alertname }}'
-              namespace: '{{ .CommonLabels.namespace }}'
-              priority: '{{ .CommonLabels.priority }}'
-            send_resolved: true
 
       - name: 'slack-critical'
         slack_configs:
