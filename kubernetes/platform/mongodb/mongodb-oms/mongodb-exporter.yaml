@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb-exporter
+  namespace: oms
+  labels:
+    app: mongodb-exporter
+    app.kubernetes.io/name: mongodb-exporter
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/part-of: mongodb-oms
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb-exporter
+  template:
+    metadata:
+      labels:
+        app: mongodb-exporter
+        app.kubernetes.io/name: mongodb-exporter
+        app.kubernetes.io/component: metrics
+    spec:
+      containers:
+      - name: mongodb-exporter
+        image: percona/mongodb_exporter:2.41.2
+        ports:
+        - containerPort: 9216
+          name: metrics
+          protocol: TCP
+        env:
+        - name: MONGODB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mongodb-oms-secrets
+              key: MONGODB_CLUSTER_MONITOR_USER
+        - name: MONGODB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mongodb-oms-secrets
+              key: MONGODB_CLUSTER_MONITOR_PASSWORD
+        - name: MONGODB_URI
+          value: "mongodb://$(MONGODB_USER):$(MONGODB_PASSWORD)@mongodb-oms-rs0:27017"
+        args:
+        - --mongodb.uri=$(MONGODB_URI)
+        - --mongodb.collstats-colls=
+        - --mongodb.indexstats-colls=
+        - --collector.diagnosticdata
+        - --collector.replicasetstatus
+        - --collector.dbstats
+        - --collector.topmetrics
+        - --collector.currentopmetrics
+        - --web.listen-address=:9216
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 9216
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 9216
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 65534
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-exporter
+  namespace: oms
+  labels:
+    app: mongodb-exporter
+    app.kubernetes.io/name: mongodb-exporter
+    app.kubernetes.io/component: metrics
+spec:
+  type: ClusterIP
+  ports:
+  - name: metrics
+    port: 9216
+    targetPort: 9216
+    protocol: TCP
+  selector:
+    app: mongodb-exporter
