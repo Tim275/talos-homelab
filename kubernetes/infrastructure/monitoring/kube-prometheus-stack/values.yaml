@@ -247,8 +247,26 @@ alertmanager:
           - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
             channel: '#alerts'
             send_resolved: true
-            title: 'Alert: {{ .CommonLabels.alertname }}'
-            text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+            title: |-
+              [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }}
+            text: |-
+              {{ range .Alerts }}
+              *Alert:* {{ .Labels.alertname }}
+              *Severity:* {{ .Labels.severity | toUpper }}
+              {{ if .Labels.namespace }}*Namespace:* `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.pod }}*Pod:* `{{ .Labels.pod }}`{{ end }}
+              {{ if .Labels.container }}*Container:* `{{ .Labels.container }}`{{ end }}
+              {{ if .Labels.node }}*Node:* `{{ .Labels.node }}`{{ end }}
+              {{ if .Labels.job }}*Job:* `{{ .Labels.job }}`{{ end }}
+              *Summary:* {{ .Annotations.summary }}
+              {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
+              {{ if .Annotations.impact }}*Impact:* {{ .Annotations.impact }}{{ end }}
+              {{ if .Annotations.runbook_url }}*Runbook:* {{ .Annotations.runbook_url }}{{ end }}
+              {{ end }}
+            color: |-
+              {{ if eq .Status "firing" }}
+                {{ if eq .CommonLabels.severity "critical" }}danger{{ else if eq .CommonLabels.severity "warning" }}warning{{ else }}#439FE0{{ end }}
+              {{ else }}good{{ end }}
 
       - name: 'pagerduty-critical'
         pagerduty_configs:
