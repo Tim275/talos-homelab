@@ -1,29 +1,104 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# 🎯 DATABASE & APPLICATION OPERATORS - KUSTOMIZE CONTROL
-# ========================================================
-# Comment/Uncomment lines to enable/disable operators
-# Uncommented = ✅ DEPLOYED | Commented = ❌ DISABLED
+# 🏢 ENTERPRISE OPERATOR PATTERN - RedHat/CNCF Best Practice 2025
+# ================================================================
+# Single Application deploying ALL operators together at Wave 0
+# Source: https://www.redhat.com/en/blog/operator-installation-with-argo-cd/gitops
+#
+# Pattern:
+#   Wave 0: Install ALL operators (this file)
+#   Wave 1: Verification Job (optional)
+#   Wave 2+: Deploy CRs (Custom Resources)
+
+# 🌊 Sync Wave 0: ALL Operators deploy together (infrastructure dependencies)
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "0"
 
 commonLabels:
   app.kubernetes.io/managed-by: argocd
   infrastructure.domain: operators
+  service-tier: infrastructure
 
-commonAnnotations:
-  argocd.argoproj.io/sync-wave: "0"
+# 📦 ALL OPERATOR HELM CHARTS - Deployed together as single unit
+helmCharts:
+  # 🗄️ Database Operators
+  - name: cloudnative-pg
+    repo: https://cloudnative-pg.github.io/charts
+    version: "0.24.1"
+    releaseName: cloudnative-pg
+    namespace: cnpg-system
+    includeCRDs: true
 
-resources:
-  # 🎯 CHILD APPLICATIONS - APPEAR IN ARGOCD UI
-  # ===========================================
-  - cloudnative-pg/application.yaml       # ✅ PostgreSQL HA Operator
-  - confluent-operator/application.yaml   # ✅ Confluent for Kubernetes Operator
-  - elasticsearch-operator/application.yaml # ✅ Elasticsearch ECK Operator
-  - grafana-operator/application.yaml     # ✅ Grafana Dashboard Operator
-  - opentelemetry-operator/application.yaml # ✅ OpenTelemetry Observability Operator
-  - percona-mongodb/application.yaml      # MongoDB Operator (Percona)
-  - rabbitmq-operator/application.yaml    # ✅ RabbitMQ Cluster Operator
-  - redis-operator/application.yaml       # ✅ Redis HA Operator
-  - sail-operator/application.yaml        # ✅ Istio Service Mesh Operator (Sail)
-  - strimzi-kafka-operator/application.yaml # ✅ Kafka Messaging Operator
-  - tailscale-operator/application.yaml   # ✅ Tailscale VPN Operator
+  - name: psmdb-operator
+    repo: https://percona.github.io/percona-helm-charts
+    version: "1.18.0"
+    releaseName: psmdb-operator
+    namespace: psmdb-operator
+    includeCRDs: true
+
+  - name: eck-operator
+    repo: https://helm.elastic.co
+    version: "3.1.0"
+    releaseName: eck-operator
+    namespace: elastic-system
+    includeCRDs: true
+
+  # 📨 Messaging Operators
+  - name: strimzi-kafka-operator
+    repo: https://strimzi.io/charts
+    version: "0.45.0"
+    releaseName: strimzi-kafka-operator
+    namespace: kafka
+    includeCRDs: true
+
+  - name: confluent-for-kubernetes
+    repo: https://packages.confluent.io/helm
+    version: "0.921.20"
+    releaseName: confluent-operator
+    namespace: confluent
+    includeCRDs: true
+
+  - name: rabbitmq-cluster-operator
+    repo: https://charts.bitnami.com/bitnami
+    version: "5.0.0"
+    releaseName: rabbitmq-operator
+    namespace: rabbitmq-system
+    includeCRDs: true
+
+  - name: redis-operator
+    repo: https://spotahome.github.io/redis-operator
+    version: "3.2.9"
+    releaseName: redis-operator
+    namespace: redis-operator-system
+    includeCRDs: true
+
+  # 🔍 Observability Operators
+  - name: grafana-operator
+    repo: oci://ghcr.io/grafana/helm-charts
+    version: v5.19.1
+    releaseName: grafana-operator
+    namespace: grafana
+    includeCRDs: true
+
+  - name: opentelemetry-operator
+    repo: https://open-telemetry.github.io/opentelemetry-helm-charts
+    version: "0.99.1"
+    releaseName: opentelemetry-operator
+    namespace: opentelemetry
+    includeCRDs: true
+
+  # 🌐 Network Operators
+  - name: sail-operator
+    repo: https://istio-ecosystem.github.io/sail-operator
+    version: "1.27.1"
+    releaseName: sail-operator
+    namespace: istio-system
+    includeCRDs: true
+
+  - name: operator
+    repo: https://pkgs.tailscale.com/helmcharts
+    version: "1.84.0"
+    releaseName: tailscale-operator
+    namespace: tailscale
+    includeCRDs: true
