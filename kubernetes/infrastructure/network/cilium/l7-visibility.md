@@ -208,6 +208,152 @@ kubectl exec -n kube-system <cilium-pod> -- hubble observe -n n8n-prod -t l7
 
 ---
 
+## Policy Audit Mode - Policies testen ohne zu blocken
+
+### Was ist Audit Mode?
+
+Audit Mode erlaubt dir, Policies zu testen **ohne Traffic zu blockieren**. Statt `DENIED` wird Traffic nur **geloggt**.
+
+### Aktivierung via Helm Values
+
+```yaml
+# cilium/values.yaml
+policyAuditMode: true  # Global für alle Policies
+```
+
+### Aktivierung pro Policy (Empfohlen)
+
+```yaml
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: my-app-audit
+  namespace: my-namespace
+  annotations:
+    # Policy im Audit Mode - loggt nur, blockt nicht
+    io.cilium.policy.audit-mode: "true"
+spec:
+  endpointSelector:
+    matchLabels:
+      app: my-app
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            app: database
+      toPorts:
+        - ports:
+            - port: "5432"
+```
+
+### Audit Logs prüfen
+
+```bash
+# Zeigt was geblockt WÜRDE (aber nicht wird)
+hubble observe --verdict AUDIT
+
+# Oder via Cilium Agent
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type policy-verdict
+```
+
+### Workflow: Policy sicher einführen
+
+```
+1. Policy mit audit-mode: "true" deployen
+2. Hubble/Grafana beobachten (1-2 Tage)
+3. Prüfen: Welcher Traffic würde geblockt?
+4. Policy anpassen falls nötig
+5. Annotation entfernen → Policy aktiv
+```
+
+### Grafana Dashboard
+
+Das **official-hubble** Dashboard zeigt:
+- `hubble_flows_processed_total{verdict="AUDIT"}` - Was geblockt würde
+
+---
+
+## BGP Peering vs. L2 Announcements
+
+### Was ist das?
+
+| Feature | L2 Announcements | BGP Peering |
+|---------|------------------|-------------|
+| **Protokoll** | ARP (Layer 2) | BGP (Layer 3) |
+| **Reichweite** | Gleiches VLAN | Über Router hinweg |
+| **Setup** | Einfach | Komplexer |
+| **Skalierung** | Begrenzt | Enterprise-grade |
+| **Use Case** | Homelab, Single VLAN | Multi-Site, Data Center |
+
+### Du hast aktuell: L2 Announcements
+
+```yaml
+# cilium/announce.yaml - ARP-basiert
+apiVersion: cilium.io/v2alpha1
+kind: CiliumL2AnnouncementPolicy
+```
+
+### BGP wäre: Routing mit deinem UniFi Router
+
+```yaml
+# bgp-peer-config.yaml
+apiVersion: cilium.io/v2alpha1
+kind: CiliumBGPPeerConfig
+spec:
+  peers:
+    - peerAddress: 192.168.1.1  # Dein Router
+      peerASN: 65000
+```
+
+**Für Homelab:** L2 reicht völlig. BGP nur wenn du Multi-Site oder komplexes Routing brauchst.
+
+---
+
+## Istio + Cilium Integration
+
+### Was macht das?
+
+| Component | Funktion |
+|-----------|----------|
+| **Cilium** | Networking (CNI), Network Policies, L3/L4 |
+| **Istio** | Service Mesh, mTLS, L7 Traffic Management |
+| **Zusammen** | Cilium für Netzwerk, Istio für mTLS/L7 |
+
+### Architektur
+
+```
+┌─────────────────────────────────────────────┐
+│              Application Pods               │
+├─────────────────────────────────────────────┤
+│  Istio Sidecar (Envoy)  ← mTLS, L7 Routing │
+├─────────────────────────────────────────────┤
+│  Cilium Agent           ← CNI, L3/L4 Policy │
+├─────────────────────────────────────────────┤
+│  Linux Kernel (eBPF)    ← Fast Datapath    │
+└─────────────────────────────────────────────┘
+```
+
+### Du hast beides!
+
+```bash
+kubectl get pods -n istio-system  # Istiod läuft
+kubectl get pods -n kube-system -l k8s-app=cilium  # Cilium läuft
+```
+
+### Wann Istio nutzen?
+
+| Szenario | Cilium allein | + Istio |
+|----------|---------------|---------|
+| Network Policies | ✅ | ✅ |
+| L7 Visibility | ✅ | ✅ |
+| **mTLS (Encryption)** | ❌ | ✅ |
+| **Traffic Splitting** | ❌ | ✅ (Canary, Blue/Green) |
+| **Circuit Breaker** | ❌ | ✅ |
+| **Rate Limiting** | ⚠️ Basic | ✅ Advanced |
+
+**Für dein Homelab:** Cilium reicht für 95% der Fälle. Istio nur wenn du mTLS oder Advanced Traffic Management brauchst.
+
+---
+
 ## Referenzen
 
 - [Cilium L7 Protocol Visibility Docs](https://docs.cilium.io/en/stable/observability/visibility/)
