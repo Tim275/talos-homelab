@@ -1,42 +1,41 @@
-# 🔥 ENTERPRISE L7 VISIBILITY - GLOBAL HTTP/DNS INSPECTION
-# ===========================================================
-# CiliumClusterwideNetworkPolicy to enable L7 (HTTP/DNS) visibility
-# for ALL pods across ALL namespaces.
+# L7 VISIBILITY POLICY - HTTP Inspection for Application Pods
+# =============================================================
+# Enables L7 (HTTP) visibility for Hubble metrics in application namespaces.
 #
-# 🎯 WHY THIS IS CRITICAL:
-# - Cilium's httpV2 metric only works when L7 visibility is enabled
-# - Without this policy, Hubble only sees L4 (TCP/UDP) flows
-# - With this policy, Hubble captures HTTP methods, status codes, latency, DNS queries
+# IMPORTANT FIXES:
+# - DNS on ingress is NOT supported by Cilium (removed)
+# - Port 443 removed - HTTPS cannot be inspected at L7 without TLS termination
+# - Excludes kube-system to prevent blocking CoreDNS/API server access
 #
-# 📊 METRICS ENABLED:
+# METRICS ENABLED:
 # - hubble_flows_processed_total{http_method="GET|POST|..."}
 # - hubble_flows_processed_total{http_status="200|404|500|..."}
-# - hubble_flows_processed_total{dns_query="example.com"}
-# - Full L7 visibility in Hubble UI
+# - Full L7 visibility in Hubble UI for plain HTTP traffic
 #
-# 🔒 SECURITY IMPACT:
-# - This policy is ALLOW-ALL (does NOT block traffic)
-# - Only enables Envoy proxy visibility for specified ports
-# - No impact on existing NetworkPolicies
-# - Minimal performance overhead (Envoy is highly optimized)
-#
-# 🌐 PORTS MONITORED:
-# - 80/TCP, 8080/TCP, 443/TCP: HTTP/HTTPS traffic
+# PORTS MONITORED (HTTP only, NOT HTTPS):
+# - 80/TCP, 8080/TCP: Plain HTTP traffic
 # - 3000/TCP: Common app port (Grafana, Node apps)
-# - 9090-9999/TCP: Metrics/observability ports
-# - 53/UDP: DNS queries (both ingress and egress)
+# - 9090-9115/TCP: Metrics/observability ports
+# - 53/UDP: DNS queries (egress only)
 ---
 apiVersion: cilium.io/v2
 kind: CiliumClusterwideNetworkPolicy
 metadata:
   name: global-l7-visibility
 spec:
-  description: "Enable L7 HTTP/DNS visibility for all pods globally (required for Hubble httpV2 metrics)"
+  description: "Enable L7 HTTP visibility for app pods (excludes kube-system)"
 
-  # Apply to ALL pods in ALL namespaces
-  endpointSelector: {}
+  # Apply to pods NOT in kube-system namespace
+  # Use label selector to exclude system namespaces
+  endpointSelector:
+    matchExpressions:
+      - key: io.kubernetes.pod.namespace
+        operator: NotIn
+        values:
+          - kube-system
+          - cilium-secrets
 
-  # Ingress rules - HTTP traffic TO pods
+  # Ingress rules - HTTP traffic TO pods (NO DNS - not supported on ingress)
   ingress:
     - fromEntities:
         - all
@@ -44,8 +43,6 @@ spec:
         - ports:
             - port: "80"
               protocol: TCP
-            - port: "443"
-              protocol: TCP
             - port: "3000"
               protocol: TCP
             - port: "8080"
@@ -64,24 +61,14 @@ spec:
             http:
               - method: "GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS"
 
-        # DNS ingress (less common, but included for completeness)
-        - ports:
-            - port: "53"
-              protocol: UDP
-          rules:
-            dns:
-              - matchPattern: "*"
-
-  # Egress rules - HTTP/DNS traffic FROM pods
+  # Egress rules - HTTP and DNS traffic FROM pods
   egress:
     - toEntities:
         - all
       toPorts:
-        # HTTP/HTTPS egress
+        # HTTP egress (NOT 443 - HTTPS can't be inspected at L7)
         - ports:
             - port: "80"
-              protocol: TCP
-            - port: "443"
               protocol: TCP
             - port: "3000"
               protocol: TCP
@@ -101,7 +88,7 @@ spec:
             http:
               - method: "GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS"
 
-        # DNS egress (most common - pods querying DNS)
+        # DNS egress - allowed on egress
         - ports:
             - port: "53"
               protocol: UDP
