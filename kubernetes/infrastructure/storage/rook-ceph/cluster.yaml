@@ -25,6 +25,32 @@ spec:
 
   dataDirHostPath: /var/lib/rook
 
+  # ============================================================================
+  # ENTERPRISE CEPH CONFIGURATION (SUSE/Red Hat Best Practices)
+  # Ref: https://documentation.suse.com/sbp/storage/html/SBP-rook-ceph-kubernetes/
+  # ============================================================================
+  cephConfig:
+    global:
+      # CRITICAL: Explicit memory target (SUSE recommends minimum 4GB)
+      osd_memory_target: "4294967296"     # 4GB in bytes - never go below this!
+      osd_memory_target_autotune: "true"  # Auto-adjust based on available memory
+      bluestore_cache_autotune: "true"    # Auto-tune BlueStore cache
+
+      # VM-optimized heartbeat tolerances (prevents false OSD down alerts)
+      osd_heartbeat_grace: "60"           # Default: 20s, increased for VM I/O latency
+      osd_heartbeat_interval: "10"        # Default: 6s
+
+      # Client I/O priority over recovery (banking-grade: never slow down clients)
+      osd_client_op_priority: "63"
+      osd_recovery_op_priority: "3"
+      osd_recovery_max_active: "1"
+      osd_max_backfills: "1"
+
+      # Scrubbing during low-load periods only
+      osd_scrub_begin_hour: "2"           # Start scrubbing at 2 AM
+      osd_scrub_end_hour: "6"             # End scrubbing at 6 AM
+      osd_scrub_during_recovery: "false"  # Never scrub during recovery
+
   # IMPORTANT: Clean up previous data if cluster was deleted
   cleanupPolicy:
     confirmation: ""  # Set to "yes-really-destroy-data" for complete cleanup
@@ -81,29 +107,38 @@ spec:
   crashCollector:
     disable: false
 
-  # Homelab: Memory optimization - MGR needs more for dashboard/modules
+  # ============================================================================
+  # ENTERPRISE RESOURCE CONFIGURATION (SUSE Best Practice)
+  # ============================================================================
+  # CRITICAL: "Never set resource LIMITS for Ceph daemons—only REQUESTS"
+  # Reason: In failure scenarios, killing daemons at limits makes things WORSE
+  # Ref: https://documentation.suse.com/sbp/storage/html/SBP-rook-ceph-kubernetes/
+  # ============================================================================
   resources:
     mgr:
-      limits:
-        cpu: "1000m"       # Increased for dashboard + balancer modules
-        memory: "2Gi"      # MGR loads many Python modules
+      # NO LIMITS - Enterprise best practice
       requests:
-        cpu: "200m"        # Increased for baseline performance
-        memory: "1Gi"      # Prevent OOMKills
+        cpu: "500m"        # SUSE recommends 2 cores, reduced for homelab
+        memory: "2Gi"      # SUSE recommends 2GB minimum
     mon:
-      limits:
-        cpu: "500m"        # Increased - monitors need CPU for consensus
-        memory: "2Gi"      # INCREASED - prevent OOMKills (was 512Mi, too aggressive!)
+      # NO LIMITS - Enterprise best practice
       requests:
-        cpu: "50m"         # Baseline for monitor operations
-        memory: "512Mi"    # Minimum for stable operation
+        cpu: "500m"        # SUSE recommends 4 cores, reduced for homelab
+        memory: "2Gi"      # SUSE recommends 4GB, 2GB minimum for stability
     osd:
-      limits:
-        cpu: "2000m"       # Increased from 1500m to fix BLUESTORE_SLOW_OP_ALERT
-        memory: "4Gi"      # 3GB osd_memory_target + 1GB overhead for BlueStore
+      # NO LIMITS - Enterprise best practice
+      # Request MUST be osd_memory_target (4GB) + 1GB overhead = 5GB
       requests:
-        cpu: "500m"        # Increased from 300m for better baseline performance
-        memory: "2Gi"      # 50% of limit - prevents OOM kills while allowing scheduling
+        cpu: "1000m"       # 1 core per HDD OSD (SUSE recommendation)
+        memory: "5Gi"      # 4GB osd_memory_target + 1GB Kubernetes overhead
+    prepareosd:
+      requests:
+        cpu: "250m"
+        memory: "256Mi"
+    crashcollector:
+      requests:
+        cpu: "50m"
+        memory: "64Mi"
 
   removeOSDsIfOutAndSafeToRemove: true
 
@@ -111,6 +146,13 @@ spec:
   storage:
     useAllNodes: false
     useAllDevices: false  # Use specific block devices (scsi1 = /dev/sdb)
+    # Global BlueStore tuning for VM environments
+    config:
+      osdsPerDevice: "1"
+      # Reduce write amplification on VMs
+      bluestore_min_alloc_size_hdd: "65536"
+      # RocksDB tuning for reduced I/O spikes
+      bluestore_rocksdb_options: "compression=kNoCompression,max_write_buffer_number=4,min_write_buffer_number_to_merge=1,recycle_log_file_num=4"
     nodes:
       - name: "worker-1"  # nipogi - 32GB RAM, stateful workloads
         config:
