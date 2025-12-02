@@ -1,5 +1,10 @@
 # Redis Operator CR for N8N
 # Managed by OpsTree Redis Operator
+#
+# BEST PRACTICE for Queue Mode:
+# - Small PVC (1Gi) - Redis only stores temporary job queue
+# - Node Affinity - Prevents Multi-Attach errors on RWO volumes
+# - PostgreSQL stores the actual workflow data
 apiVersion: redis.redis.opstreelabs.in/v1beta2
 kind: Redis
 metadata:
@@ -19,6 +24,10 @@ spec:
       limits:
         cpu: 500m
         memory: 512Mi
+  # Node Affinity - Pin to worker-2 to prevent Multi-Attach errors
+  # worker-2 has 32GB RAM (nipogi) - good for stateful workloads
+  nodeSelector:
+    kubernetes.io/hostname: worker-2
   redisExporter:
     enabled: true
     image: quay.io/opstree/redis-exporter:v1.79.0
@@ -36,4 +45,4 @@ spec:
         storageClassName: rook-ceph-block-enterprise
         resources:
           requests:
-            storage: 8Gi
+            storage: 1Gi  # Reduced from 8Gi - Redis queue needs minimal storage
