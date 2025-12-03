@@ -65,9 +65,10 @@ export KUBECONFIG="../tofu/output/kube-config.yaml"
 
 kubectl kustomize --enable-helm infrastructure/network/cilium | kubectl apply -f -
 kubectl kustomize --enable-helm infrastructure/controllers/sealed-secrets | kubectl apply -f -
-kubectl kustomize --enable-helm infrastructure/storage/rook-ceph | kubectl apply -f -
+kubectl kustomize --enable-helm infrastructure/storage/rook-ceph | kubectl apply --server-side -f -
 kubectl kustomize --enable-helm infrastructure/controllers/argocd | kubectl apply -f -
 ```
+> Note: Rook-Ceph uses `--server-side` due to large CSI Operator CRDs (>262KB annotations)
 
 ## ArgoCD
 
