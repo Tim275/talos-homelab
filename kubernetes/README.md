@@ -66,8 +66,6 @@ export KUBECONFIG="../tofu/output/kube-config.yaml"
 kubectl kustomize --enable-helm infrastructure/network/cilium | kubectl apply -f -
 kubectl kustomize --enable-helm infrastructure/controllers/sealed-secrets | kubectl apply -f -
 kubectl kustomize --enable-helm infrastructure/storage/rook-ceph | kubectl apply -f -
-kubectl kustomize --enable-helm infrastructure/network/sail-operator | kubectl apply -f -
-kubectl kustomize --enable-helm infrastructure/network/istio-control-plane | kubectl apply -f -
 kubectl kustomize --enable-helm infrastructure/controllers/argocd | kubectl apply -f -
 ```
 
