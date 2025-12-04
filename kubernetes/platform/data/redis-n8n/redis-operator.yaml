@@ -4,6 +4,7 @@
 # BEST PRACTICE for Queue Mode:
 # - Small PVC (1Gi) - Redis only stores temporary job queue
 # - PostgreSQL stores the actual workflow data
+# - AOF disabled (appendonly no) - prevents fsync timeouts on slow Ceph storage
 #
 # ⚠️ ENTERPRISE WARNUNG:
 # Single-Pod Redis = Queue-Datenverlust bei Pod-Crash!
@@ -37,6 +38,13 @@ spec:
       limits:
         cpu: 500m
         memory: 512Mi
+  # Redis config optimized for Ceph block storage (slow fsync)
+  redisConfig:
+    additionalRedisConfig: |
+      appendonly no
+      save 900 1
+      save 300 10
+      save 60 10000
   redisExporter:
     enabled: true
     image: quay.io/opstree/redis-exporter:v1.79.0
