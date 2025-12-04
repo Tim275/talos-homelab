@@ -28,26 +28,46 @@ spec:
         # Note: cluster.initial_master_nodes and xpack.security.enabled
         # are managed by ECK Operator automatically
 
-        # 🔧 CEPH STORAGE OPTIMIZATIONS - Increased timeouts for slow storage I/O
-        # Default discovery timeouts (3s) are too short for Ceph block storage
-        # Symptoms: "request_peers timed out after 3002ms", master election failures
-        discovery.request_peers_timeout: "30s"           # Default: 3s - increased for Ceph I/O
-        discovery.probe.connect_timeout: "30s"           # Default: 30s (already good)
-        discovery.probe.handshake_timeout: "30s"         # Default: 30s (already good)
-        cluster.fault_detection.leader_check.timeout: "30s"   # Prevent false leader failures
-        cluster.fault_detection.follower_check.timeout: "30s" # Prevent false follower failures
+        # 🔧 ENTERPRISE CEPH STORAGE TUNING - Based on Elastic Docs + Internet Research
+        # Reference: https://www.elastic.co/guide/en/elasticsearch/reference/current/cluster-fault-detection.html
+        # Reference: https://opster.com/analysis/elasticsearch-failing-s-failed-to-commit-cluster-state-version-s/
+        #
+        # Problem: Ceph block storage on Proxmox VMs has 50-70s I/O latency spikes
+        # Solution: Increase ALL timeouts to 120s (2x worst-case observed latency)
 
-        # Storage health check tuning (slow Ceph I/O causes 6+ second checks)
-        monitor.fs.health.slow_path_logging_threshold: "30s"  # Default: 5s - reduce log spam
+        # Discovery timeouts (peer finding during cluster formation)
+        discovery.request_peers_timeout: "120s"          # Default: 3s - health checks take 56-69s!
+        discovery.probe.connect_timeout: "120s"          # Default: 30s
+        discovery.probe.handshake_timeout: "120s"        # Default: 30s
+
+        # Cluster state publication (CRITICAL for "failed to commit" errors)
+        cluster.publish.timeout: "180s"                  # Default: 30s - cluster state writes take 69s!
+        cluster.publish.info_timeout: "180s"             # Default: 10s
+
+        # Fault detection (prevent false node removals during I/O spikes)
+        cluster.fault_detection.leader_check.timeout: "120s"   # Default: 10s
+        cluster.fault_detection.leader_check.interval: "10s"   # Default: 1s - reduce check frequency
+        cluster.fault_detection.leader_check.retry_count: "6"  # Default: 3 - more retries
+        cluster.fault_detection.follower_check.timeout: "120s" # Default: 10s
+        cluster.fault_detection.follower_check.interval: "10s" # Default: 1s
+        cluster.fault_detection.follower_check.retry_count: "6" # Default: 3
+
+        # Storage health monitoring (reduce false positives)
+        monitor.fs.health.slow_path_logging_threshold: "120s"  # Default: 5s
+        monitor.fs.health.refresh_interval: "120s"             # Default: 60s
       podTemplate:
         metadata:
           labels:
             app.kubernetes.io/component: elasticsearch
         spec:
-          # 🔧 CEPH STORAGE OPTIMIZATION: Skip recursive chown on volume mount
-          # Without this, Kubernetes scans ALL files and changes ownership - takes 5+ minutes on Ceph
-          # OnRootMismatch: Only change ownership if root dir doesn't match fsGroup
+          # 🔧 CEPH STORAGE OPTIMIZATION: Set proper ownership for ES data directory
+          # Elasticsearch runs as UID 1000, GID 1000 - fsGroup ensures volume ownership
+          # OnRootMismatch: Only change ownership if root dir doesn't match fsGroup (faster on Ceph)
           securityContext:
+            fsGroup: 1000
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
             fsGroupChangePolicy: OnRootMismatch
           # Install S3 repository plugin for Rook Ceph snapshots
           initContainers:
