@@ -3,13 +3,26 @@
 #
 # BEST PRACTICE for Queue Mode:
 # - Small PVC (1Gi) - Redis only stores temporary job queue
-# - Node Affinity - Prevents Multi-Attach errors on RWO volumes
 # - PostgreSQL stores the actual workflow data
+#
+# ⚠️ ENTERPRISE WARNUNG:
+# Single-Pod Redis = Queue-Datenverlust bei Pod-Crash!
+# Für Production HA: Change to 'kind: RedisReplication' with clusterSize: 3
+# Dies erfordert manuelle Migration (alte Redis CR löschen, neue deployen)
+#
+# TODO: Migration zu RedisReplication für volle HA
+# 1. Workflow-Queue leeren (keine laufenden Jobs)
+# 2. kubectl delete redis redis-n8n -n n8n-prod
+# 3. Change kind: Redis -> kind: RedisReplication, add clusterSize: 3
+# 4. ArgoCD sync
 apiVersion: redis.redis.opstreelabs.in/v1beta2
 kind: Redis
 metadata:
   name: redis-n8n
   namespace: n8n-prod
+  labels:
+    app.kubernetes.io/name: redis-n8n
+    app.kubernetes.io/component: queue
 spec:
   podSecurityContext:
     runAsUser: 1000
@@ -24,8 +37,6 @@ spec:
       limits:
         cpu: 500m
         memory: 512Mi
-  # Node Affinity removed - let K8s schedule where the PVC is bound
-  # With WaitForFirstConsumer, new PVCs bind to wherever pod schedules
   redisExporter:
     enabled: true
     image: quay.io/opstree/redis-exporter:v1.79.0
