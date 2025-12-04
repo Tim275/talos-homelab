@@ -27,6 +27,18 @@ spec:
         action.auto_create_index: "true"
         # Note: cluster.initial_master_nodes and xpack.security.enabled
         # are managed by ECK Operator automatically
+
+        # 🔧 CEPH STORAGE OPTIMIZATIONS - Increased timeouts for slow storage I/O
+        # Default discovery timeouts (3s) are too short for Ceph block storage
+        # Symptoms: "request_peers timed out after 3002ms", master election failures
+        discovery.request_peers_timeout: "30s"           # Default: 3s - increased for Ceph I/O
+        discovery.probe.connect_timeout: "30s"           # Default: 30s (already good)
+        discovery.probe.handshake_timeout: "30s"         # Default: 30s (already good)
+        cluster.fault_detection.leader_check.timeout: "30s"   # Prevent false leader failures
+        cluster.fault_detection.follower_check.timeout: "30s" # Prevent false follower failures
+
+        # Storage health check tuning (slow Ceph I/O causes 6+ second checks)
+        monitor.fs.health.slow_path_logging_threshold: "30s"  # Default: 5s - reduce log spam
       podTemplate:
         metadata:
           labels:
