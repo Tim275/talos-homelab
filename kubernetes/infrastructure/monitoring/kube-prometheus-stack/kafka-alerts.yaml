@@ -1,0 +1,167 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kafka-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+    release: kube-prometheus-stack
+    layer: platform
+spec:
+  groups:
+    - name: platform.kafka.critical
+      interval: 30s
+      rules:
+        # ====== P1: CRITICAL - Kafka Broker Down ======
+        - alert: KafkaBrokerDown
+          expr: |
+            kafka_server_replicamanager_leadercount == 0
+          for: 3m
+          labels:
+            severity: critical
+            priority: p1
+            component: kafka
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Kafka broker {{ $labels.pod }} is DOWN"
+            description: |
+              Kafka broker {{ $labels.pod }} has no leader partitions.
+              Broker is unreachable or crashed!
+
+              Impact: Reduced capacity, potential message loss
+              Team: @platform-oncall
+
+              Check: kubectl -n kafka get pods -l app.kubernetes.io/name=kafka
+
+        # ====== P1: CRITICAL - Kafka Under-Replicated Partitions ======
+        - alert: KafkaUnderReplicatedPartitions
+          expr: |
+            kafka_server_replicamanager_underreplicatedpartitions > 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: p1
+            component: kafka
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Kafka has {{ $value }} under-replicated partitions on {{ $labels.pod }}"
+            description: |
+              Kafka broker {{ $labels.pod }} has {{ $value }} under-replicated partitions.
+              Replicas are not syncing - DATA LOSS RISK!
+
+              Impact: Reduced fault tolerance, potential data loss
+              Duration: >5 minutes
+
+              Check: kubectl -n kafka exec {{ $labels.pod }} -- \
+                kafka-topics.sh --bootstrap-server localhost:9092 --describe --under-replicated-partitions
+
+        # ====== P1: CRITICAL - Kafka Offline Partitions ======
+        - alert: KafkaOfflinePartitions
+          expr: |
+            kafka_controller_kafkacontroller_offlinepartitionscount > 0
+          for: 3m
+          labels:
+            severity: critical
+            priority: p1
+            component: kafka
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Kafka has {{ $value }} offline partitions"
+            description: |
+              Kafka cluster has {{ $value }} offline partitions.
+              No available in-sync replicas - COMPLETE DATA UNAVAILABILITY!
+
+              Impact: Message writes and reads FAILING
+              Team: @platform-oncall
+
+    - name: platform.kafka.high
+      interval: 30s
+      rules:
+        # ====== P2: HIGH - Kafka Consumer Lag High ======
+        - alert: KafkaConsumerLagHigh
+          expr: |
+            kafka_consumergroup_lag > 10000
+          for: 10m
+          labels:
+            severity: warning
+            priority: p2
+            component: kafka
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Kafka consumer group {{ $labels.consumergroup }} lag is {{ $value }}"
+            description: |
+              Consumer group {{ $labels.consumergroup }} on topic {{ $labels.topic }} has lag {{ $value }}.
+              Consumers not keeping up with producers!
+
+              Duration: >10 minutes
+              Action: Scale consumers or investigate processing delays
+
+              Check: kubectl -n kafka exec my-cluster-dual-role-0 -- \
+                kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group {{ $labels.consumergroup }}
+
+        # ====== P2: HIGH - Kafka ISR Shrink Rate High ======
+        - alert: KafkaISRShrinkRateHigh
+          expr: |
+            rate(kafka_server_replicamanager_isrshrinkspersec[5m]) > 0
+          for: 10m
+          labels:
+            severity: warning
+            priority: p2
+            component: kafka
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Kafka ISR shrinking on {{ $labels.pod }}"
+            description: |
+              Kafka broker {{ $labels.pod }} ISR is shrinking at {{ $value }}/sec.
+              Replicas falling behind - potential replication lag!
+
+              Duration: >10 minutes
+              Action: Check broker health and network connectivity
+
+        # ====== P2: HIGH - Kafka Active Controller Missing ======
+        - alert: KafkaNoActiveController
+          expr: |
+            sum(kafka_controller_kafkacontroller_activecontrollercount) == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p2
+            component: kafka
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Kafka cluster has no active controller"
+            description: |
+              No Kafka controller is currently active.
+              Split-brain or controller election in progress!
+
+              Impact: Cannot handle partition leadership changes
+              Duration: >3 minutes
+
+    - name: platform.kafka.medium
+      interval: 60s
+      rules:
+        # ====== P3: MEDIUM - Kafka Request Handler Idle Low ======
+        - alert: KafkaRequestHandlerIdleLow
+          expr: |
+            avg(kafka_server_kafkarequesthandlerpool_requesthandleravgidlepercent) < 0.2
+          for: 15m
+          labels:
+            severity: info
+            priority: p3
+            component: kafka
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Kafka request handlers are {{ $value | humanizePercentage }} idle (high load)"
+            description: |
+              Kafka request handlers are only {{ $value | humanizePercentage }} idle.
+              Brokers under high load - may need scaling!
+
+              Duration: >15 minutes
+              Action: Consider increasing broker resources or adding brokers

@@ -64,6 +64,8 @@ variable "talos_nodes" {
     dns              = optional(list(string))
     update           = optional(bool, false)
     igpu             = optional(bool, false)
+    os_disk_size     = optional(number, 50)   # OS disk size in GB
+    ceph_disk_size   = optional(number, 0)    # Ceph OSD disk size in GB (0 = no Ceph disk)
   }))
 
   validation {

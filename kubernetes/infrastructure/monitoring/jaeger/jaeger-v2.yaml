@@ -1,0 +1,174 @@
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: jaeger
+  namespace: jaeger
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "14269"
+spec:
+  mode: deployment
+  image: jaegertracing/jaeger:2.12.0
+  replicas: 3
+
+  env:
+    - name: ES_USERNAME
+      value: "elastic"
+    - name: ES_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: jaeger-elasticsearch
+          key: elastic
+
+  config:
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+      jaeger:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:14250
+          thrift_http:
+            endpoint: 0.0.0.0:14268
+          thrift_compact:
+            endpoint: 0.0.0.0:6831
+          thrift_binary:
+            endpoint: 0.0.0.0:6832
+
+    processors:
+      batch:
+        timeout: 5s
+        send_batch_size: 10000
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 2048
+
+    extensions:
+      jaeger_storage:
+        backends:
+          primary_store:
+            elasticsearch:
+              server_urls:
+                - https://production-cluster-es-http.elastic-system.svc:9200
+              auth:
+                basic:
+                  username: "${env:ES_USERNAME}"
+                  password: "${env:ES_PASSWORD}"
+              tls:
+                insecure: false
+                insecure_skip_verify: true
+      jaeger_query:
+        storage:
+          traces: primary_store
+        ui:
+          config_file: /etc/jaeger/ui-config.json
+
+    exporters:
+      jaeger_storage_exporter:
+        trace_storage: primary_store
+
+    service:
+      extensions: [jaeger_storage, jaeger_query]
+      pipelines:
+        traces:
+          receivers: [otlp, jaeger]
+          processors: [memory_limiter, batch]
+          exporters: [jaeger_storage_exporter]
+
+  ports:
+    - name: jaeger-ui
+      port: 16686
+      protocol: TCP
+      targetPort: 16686
+    - name: otlp-grpc
+      port: 4317
+      protocol: TCP
+      targetPort: 4317
+    - name: otlp-http
+      port: 4318
+      protocol: TCP
+      targetPort: 4318
+    - name: jaeger-grpc
+      port: 14250
+      protocol: TCP
+      targetPort: 14250
+    - name: jaeger-http
+      port: 14268
+      protocol: TCP
+      targetPort: 14268
+    - name: admin
+      port: 14269
+      protocol: TCP
+      targetPort: 14269
+
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 3Gi
+    requests:
+      cpu: 500m
+      memory: 1536Mi
+
+  podAnnotations:
+    sidecar.istio.io/inject: "false"
+
+  volumeMounts:
+    - name: ui-config
+      mountPath: /etc/jaeger
+      readOnly: true
+
+  volumes:
+    - name: ui-config
+      configMap:
+        name: jaeger-ui-config
+        items:
+          - key: ui-config.json
+            path: ui-config.json
+
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: jaeger
+            topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jaeger-ui-config
+  namespace: jaeger
+data:
+  ui-config.json: |
+    {
+      "dependencies": {
+        "menuEnabled": true
+      },
+      "monitor": {
+        "menuEnabled": true,
+        "emptyState": {
+          "mainTitle": "Service Performance Monitoring (SPM)",
+          "subTitle": "Get started with RED metrics (Rate, Error, Duration) for your services"
+        }
+      },
+      "linkPatterns": [
+        {
+          "type": "logs",
+          "key": "customer_id",
+          "url": "/search?service={{ .service }}&tags=customer_id:{{ .value }}",
+          "text": "View logs for customer {{ .value }}"
+        },
+        {
+          "type": "logs",
+          "key": "trace_id",
+          "url": "https://grafana.timourhomelab.org/explore?left=%7B%22datasource%22:%22loki%22,%22queries%22:%5B%7B%22expr%22:%22%7Btrace_id%3D%5C%22{{ .value }}%5C%22%7D%22%7D%5D%7D",
+          "text": "View logs for trace {{ .value }}"
+        }
+      ]
+    }

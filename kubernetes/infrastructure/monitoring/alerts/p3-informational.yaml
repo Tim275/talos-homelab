@@ -1,0 +1,116 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: p3-informational-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack-prometheus
+    role: alert-rules
+    severity: info
+    priority: p3
+spec:
+  groups:
+    - name: p3.capacity.info
+      interval: 300s
+      rules:
+        - alert: PVCWillFillIn7Days
+          expr: predict_linear(kubelet_volume_stats_available_bytes[6h], 7 * 24 * 3600) < 0
+          for: 1h
+          labels:
+            severity: info
+            priority: p3
+            component: capacity
+          annotations:
+            summary: "PVC {{ $labels.persistentvolumeclaim }} will fill in <7 days"
+            description: "PVC predicted to be full within a week based on growth trend"
+            impact: "Plan to expand PVC or clean up data"
+
+        - alert: NodeCPUCapacityWarning
+          expr: sum(rate(node_cpu_seconds_total{mode!="idle"}[5m])) / count(node_cpu_seconds_total{mode="idle"}) > 0.70
+          for: 2h
+          labels:
+            severity: info
+            priority: p3
+            component: capacity
+          annotations:
+            summary: "Cluster CPU usage is {{ $value | humanizePercentage }}"
+            description: "Sustained high CPU usage across cluster"
+            impact: "Consider adding nodes"
+
+        - alert: NodeMemoryCapacityWarning
+          expr: (1 - sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes)) > 0.70
+          for: 2h
+          labels:
+            severity: info
+            priority: p3
+            component: capacity
+          annotations:
+            summary: "Cluster memory usage is {{ $value | humanizePercentage }}"
+            description: "Sustained high memory usage across cluster"
+            impact: "Consider adding nodes"
+
+        - alert: CephCapacityWarning
+          expr: ceph_cluster_total_used_bytes / ceph_cluster_total_bytes > 0.75
+          for: 1h
+          labels:
+            severity: info
+            priority: p3
+            component: capacity
+          annotations:
+            summary: "Ceph cluster is {{ $value | humanizePercentage }} full"
+            description: "Ceph storage consumption over 75%"
+            impact: "Plan to expand Ceph cluster"
+
+    - name: p3.performance.info
+      interval: 300s
+      rules:
+        - alert: HighPodRestartRate
+          expr: rate(kube_pod_container_status_restarts_total[1h]) > 0.5
+          for: 4h
+          labels:
+            severity: info
+            priority: p3
+            component: performance
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} restarting frequently"
+            description: "Pod restarting {{ $value }} times per hour"
+            impact: "Investigate application stability"
+
+        - alert: PrometheusHighCardinality
+          expr: prometheus_tsdb_symbol_table_size_bytes > 100000000
+          for: 2h
+          labels:
+            severity: info
+            priority: p3
+            component: observability
+          annotations:
+            summary: "Prometheus has high cardinality metrics"
+            description: "Symbol table size: {{ $value | humanize1024 }}B"
+            impact: "Prometheus performance may degrade"
+
+    - name: p3.maintenance.info
+      interval: 300s
+      rules:
+        - alert: KubernetesVersionOld
+          expr: (kubernetes_build_info{gitVersion=~"v1\\.(2[0-9]|3[0-2])\\.*"}) * 0 + 1
+          for: 24h
+          labels:
+            severity: info
+            priority: p3
+            component: maintenance
+          annotations:
+            summary: "Kubernetes version {{ $labels.gitVersion }} is old"
+            description: "Running Kubernetes version older than 1.33"
+            impact: "Consider upgrading to latest stable"
+
+        - alert: NodeKernelVersionMismatch
+          expr: count(count by (release) (node_uname_info)) > 1
+          for: 6h
+          labels:
+            severity: info
+            priority: p3
+            component: maintenance
+          annotations:
+            summary: "Nodes running different kernel versions"
+            description: "Cluster has mixed kernel versions"
+            impact: "Consider standardizing node images"

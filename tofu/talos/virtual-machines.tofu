@@ -47,17 +47,19 @@ resource "proxmox_virtual_environment_vm" "this" {
   }
 
   # Ceph Storage Disk (raw, unformatted) - Per-node sizing
-  # IMPORTANT: Must be static block to prevent VM recreation!
-  disk {
-    datastore_id = each.value.datastore_id
-    interface    = "scsi1"
-    iothread     = true
-    cache        = "none"
-    discard      = "on"
-    ssd          = true
-    file_format  = "raw"
-    # OLD: size = 50  # Original Ceph disk size
-    size = each.value.ceph_disk_size  # Conservative: 200GB for all workers
+  # IMPORTANT: Only create if ceph_disk_size > 0 (control planes don't need Ceph disk)
+  dynamic "disk" {
+    for_each = each.value.ceph_disk_size > 0 ? [1] : []
+    content {
+      datastore_id = each.value.datastore_id
+      interface    = "scsi1"
+      iothread     = true
+      cache        = "none"
+      discard      = "on"
+      ssd          = true
+      file_format  = "raw"
+      size         = each.value.ceph_disk_size
+    }
   }
 
   boot_order = ["scsi0"]

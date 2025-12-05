@@ -1,0 +1,200 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-oidc-client-setup
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak-oidc-client-setup
+    app.kubernetes.io/part-of: platform-identity
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: keycloak-oidc-client-setup
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: setup
+          image: quay.io/keycloak/keycloak:25.0.0
+          env:
+            - name: KEYCLOAK_ADMIN
+              value: admin
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: password
+            - name: KEYCLOAK_URL
+              value: "http://keycloak.keycloak.svc.cluster.local:8080"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              echo "=== Waiting for Keycloak to be ready (30s) ==="
+              sleep 30
+
+              echo ""
+              echo "=== Logging in to Keycloak ==="
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --server "$KEYCLOAK_URL" \
+                --realm master \
+                --user "$KEYCLOAK_ADMIN" \
+                --password "$KEYCLOAK_ADMIN_PASSWORD"
+
+              echo ""
+              echo "=== Ensuring 'kubernetes' realm exists ==="
+              if ! /opt/keycloak/bin/kcadm.sh get realms/kubernetes 2>/dev/null; then
+                echo "Creating kubernetes realm..."
+                /opt/keycloak/bin/kcadm.sh create realms \
+                  -s realm=kubernetes \
+                  -s enabled=true \
+                  -s displayName="Kubernetes Homelab"
+                echo "✅ Kubernetes realm created"
+              else
+                echo "✅ Kubernetes realm already exists"
+              fi
+
+              echo ""
+              echo "=== Checking if OIDC client 'kubernetes' already exists ==="
+              if /opt/keycloak/bin/kcadm.sh get clients -r kubernetes -q clientId=kubernetes 2>/dev/null | grep -q "kubernetes"; then
+                echo "⚠️  OIDC Client 'kubernetes' already exists!"
+                echo "Existing configuration:"
+                /opt/keycloak/bin/kcadm.sh get clients -r kubernetes -q clientId=kubernetes
+                echo ""
+                echo "To reconfigure, delete existing client first."
+                echo "Skipping setup..."
+                exit 0
+              fi
+
+              echo ""
+              echo "=== Creating OIDC Client 'kubernetes' ==="
+              CLIENT_ID=$(/opt/keycloak/bin/kcadm.sh create clients -r kubernetes \
+                -s clientId=kubernetes \
+                -s enabled=true \
+                -s protocol=openid-connect \
+                -s publicClient=false \
+                -s standardFlowEnabled=true \
+                -s directAccessGrantsEnabled=true \
+                -s serviceAccountsEnabled=false \
+                -s 'redirectUris=["http://localhost:8000","http://localhost:18000","urn:ietf:wg:oauth:2.0:oob"]' \
+                -s 'webOrigins=["+"]' \
+                -s consentRequired=false \
+                -s fullScopeAllowed=true \
+                -i)
+
+              echo "OIDC Client ID: $CLIENT_ID"
+
+              echo ""
+              echo "=== Getting Client Secret ==="
+              CLIENT_SECRET=$(/opt/keycloak/bin/kcadm.sh get clients/$CLIENT_ID/client-secret -r kubernetes | grep -o '"value" : "[^"]*"' | cut -d'"' -f4)
+
+              echo ""
+              echo "=== Creating 'groups' Client Scope ==="
+              GROUPS_SCOPE_ID=$(/opt/keycloak/bin/kcadm.sh create client-scopes -r kubernetes \
+                -s name=groups \
+                -s protocol=openid-connect \
+                -s 'attributes.include.in.token.scope=true' \
+                -s 'attributes.display.on.consent.screen=true' \
+                -i 2>/dev/null || echo "exists")
+
+              if [ "$GROUPS_SCOPE_ID" = "exists" ]; then
+                echo "Groups scope already exists, fetching ID..."
+                GROUPS_SCOPE_ID=$(/opt/keycloak/bin/kcadm.sh get client-scopes -r kubernetes | grep -B2 '"name" : "groups"' | grep '"id"' | cut -d'"' -f4)
+              fi
+
+              echo "Groups Scope ID: $GROUPS_SCOPE_ID"
+
+              echo ""
+              echo "=== Adding Groups Mapper to 'groups' scope ==="
+              /opt/keycloak/bin/kcadm.sh create client-scopes/$GROUPS_SCOPE_ID/protocol-mappers/models -r kubernetes \
+                -s name=groups \
+                -s protocol=openid-connect \
+                -s protocolMapper=oidc-group-membership-mapper \
+                -s 'config."claim.name"=groups' \
+                -s 'config."full.path"=false' \
+                -s 'config."id.token.claim"=true' \
+                -s 'config."access.token.claim"=true' \
+                -s 'config."userinfo.token.claim"=true' \
+                2>/dev/null || echo "Groups mapper may already exist"
+
+              echo ""
+              echo "=== Assigning 'groups' scope to 'kubernetes' client ==="
+              /opt/keycloak/bin/kcadm.sh update clients/$CLIENT_ID/default-client-scopes/$GROUPS_SCOPE_ID -r kubernetes \
+                2>/dev/null || echo "Scope may already be assigned"
+
+              echo ""
+              echo "=== Creating OMS Groups (if not exist) ==="
+
+              # Create oms-developers group
+              if ! /opt/keycloak/bin/kcadm.sh get groups -r kubernetes | grep -q '"name" : "oms-developers"'; then
+                /opt/keycloak/bin/kcadm.sh create groups -r kubernetes \
+                  -s name=oms-developers \
+                  -s 'attributes.description=["OMS Namespace Developers - Admin access to oms namespace"]'
+                echo "✅ Created group: oms-developers"
+              else
+                echo "✅ Group already exists: oms-developers"
+              fi
+
+              # Create oms-admins group
+              if ! /opt/keycloak/bin/kcadm.sh get groups -r kubernetes | grep -q '"name" : "oms-admins"'; then
+                /opt/keycloak/bin/kcadm.sh create groups -r kubernetes \
+                  -s name=oms-admins \
+                  -s 'attributes.description=["OMS Namespace Admins - Full cluster-admin access"]'
+                echo "✅ Created group: oms-admins"
+              else
+                echo "✅ Group already exists: oms-admins"
+              fi
+
+              echo ""
+              echo "==========================================="
+              echo "✅ OIDC Client Setup Complete!"
+              echo "==========================================="
+              echo ""
+              echo "OIDC Configuration:"
+              echo "  Issuer URL: https://iam.timourhomelab.org/realms/kubernetes"
+              echo "  Client ID: kubernetes"
+              echo "  Client Secret: $CLIENT_SECRET"
+              echo ""
+              echo "Groups Created:"
+              echo "  ✅ oms-developers (namespace: oms, role: admin)"
+              echo "  ✅ oms-admins (cluster-wide, role: cluster-admin)"
+              echo ""
+              echo "Next Steps:"
+              echo "1. Add users to LLDAP"
+              echo "2. Assign users to groups (oms-developers, oms-admins)"
+              echo "3. Users sync automatically from LDAP to Keycloak"
+              echo "4. Create Kubernetes RoleBindings:"
+              echo ""
+              echo "   # OMS Developers RoleBinding"
+              echo "   apiVersion: rbac.authorization.k8s.io/v1"
+              echo "   kind: RoleBinding"
+              echo "   metadata:"
+              echo "     name: oms-developers-binding"
+              echo "     namespace: oms"
+              echo "   roleRef:"
+              echo "     kind: ClusterRole"
+              echo "     name: admin"
+              echo "   subjects:"
+              echo "     - kind: Group"
+              echo "       name: oms-developers"
+              echo "       apiGroup: rbac.authorization.k8s.io"
+              echo ""
+              echo "5. Configure Talos API Server with OIDC:"
+              echo "   cluster:"
+              echo "     apiServer:"
+              echo "       extraArgs:"
+              echo "         oidc-issuer-url: https://iam.timourhomelab.org/realms/kubernetes"
+              echo "         oidc-client-id: kubernetes"
+              echo "         oidc-username-claim: preferred_username"
+              echo "         oidc-groups-claim: groups"
+              echo ""
+              echo "6. Users login via kubectl:"
+              echo "   kubectl oidc-login setup --oidc-issuer-url=https://iam.timourhomelab.org/realms/kubernetes --oidc-client-id=kubernetes"
+              echo "==========================================="

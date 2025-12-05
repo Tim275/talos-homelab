@@ -15,6 +15,12 @@ machine:
     kubePrism:
       enabled: true
       port: 7445
+    # Host DNS - CoreDNS forwards to Talos host DNS cache
+    # Requires loopback interface fix below for Cilium compatibility
+    # Ref: https://github.com/siderolabs/talos/issues/10002
+    hostDNS:
+      enabled: true
+      forwardKubeDNSToHost: true
   kernel:
     modules:
       # Required for Longhorn distributed storage
@@ -53,6 +59,13 @@ machine:
     topology.kubernetes.io/zone: ${node_name}
   network:
     hostname: ${hostname}
+    # Fix for Cilium + Host DNS: Add link-local address to loopback with global scope
+    # Without this, Cilium can't route to 169.254.116.108 (Host DNS)
+    # Ref: https://github.com/cilium/cilium/issues/35153
+    interfaces:
+      - interface: lo
+        addresses:
+          - 169.254.116.108/32
   logging:
     # Basic logging for stability
     destinations:
@@ -90,21 +103,22 @@ machine:
 # ERKLÄRUNG: Was diese common.yaml.tftpl bewirkt
 # ========================================================================
 #
-# PROBLEM das gelöst wird:
-# - Grafana & Loki Pods: "0/6 nodes available: did not have enough free storage"
-# - Obwohl die Nodes eigentlich genug Platz haben!
+# 1. STORAGE OPTIMIERUNG:
+#    - Eviction erst bei <5% statt <15% → mehr nutzbar!
+#    - inotify auf 1048576 erhöht (128x mehr) → keine falschen Fehler
+#    - Image GC bei 70% → räumt früher auf
 #
-# URSACHE:
-# - Kubernetes default: Bei <15% freiem Disk Space (3GB von 20GB) keine Pods mehr
-# - inotify limits zu niedrig → falsche Storage-Fehler
-# - Zu viele alte Container Images & Logs
+# 2. DNS FIX FÜR CILIUM + TALOS HOST DNS:
+#    - Problem: Cilium blockiert Link-Local 169.254.116.108 (Talos Host DNS)
+#    - CoreDNS konnte nicht forwarden → DNS timeout cluster-weit
+#    - Lösung: 169.254.116.108/32 auf loopback mit global scope
+#    - Ref: https://github.com/cilium/cilium/issues/35153
+#    - Ref: https://github.com/siderolabs/talos/issues/10002
 #
-# LÖSUNG durch diese Config:
-# 1. Eviction erst bei <1% (200MB) statt <15% (3GB) → 2.8GB mehr nutzbar!
-# 2. inotify auf 1048576 erhöht (128x mehr) → keine falschen Fehler
-# 3. Image GC bei 70% → räumt früher auf
-# 4. Kleine Logs (5MB) → spart Disk Space
-# 5. Weniger RAM-Reservierung → mehr für Pods
+# 3. HOST DNS CACHING:
+#    - hostDNS.enabled: true → Talos cached DNS auf Host-Ebene
+#    - forwardKubeDNSToHost: true → CoreDNS nutzt Talos DNS Cache
+#    - Vorteil: Geteilter DNS Cache zwischen Host und Pods
 #
-# RESULTAT: Grafana, Loki, Longhorn können endlich deployen!
+# RESULTAT: Stabile DNS Resolution mit Cilium + Talos!
 # ========================================================================

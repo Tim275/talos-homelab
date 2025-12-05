@@ -1,0 +1,93 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 🏢 ENTERPRISE OPERATOR PATTERN - RedHat/CNCF Best Practice 2025
+# ================================================================
+# Single Application deploying ALL operators together at Wave 0
+# Source: https://www.redhat.com/en/blog/operator-installation-with-argo-cd/gitops
+#
+# Pattern:
+#   Wave 0: Install ALL operators (this file)
+#   Wave 1: Verification Job (optional)
+#   Wave 2+: Deploy CRs (Custom Resources)
+
+# 🏗️ NAMESPACES FIRST - Must exist before Helm Charts deploy!
+# ArgoCD CreateNamespace=true does NOT work for Kustomize helmCharts!
+resources:
+  - namespaces.yaml
+  # 🐰 RabbitMQ Cluster Operator (official VMware/Tanzu - no Helm chart available)
+  - rabbitmq-cluster-operator.yaml
+
+# Labels removed - causes selector immutability errors with existing deployments
+# Re-add after fresh install if needed
+
+# 📦 ALL OPERATOR HELM CHARTS - Deployed together as single unit
+helmCharts:
+  # 🗄️ Database Operators
+  - name: cloudnative-pg
+    repo: https://cloudnative-pg.github.io/charts
+    version: "0.26.1"
+    releaseName: cloudnative-pg
+    namespace: cnpg-system
+    includeCRDs: true
+
+  - name: psmdb-operator
+    repo: https://percona.github.io/percona-helm-charts
+    version: "1.18.0"
+    releaseName: psmdb-operator
+    namespace: psmdb-operator
+    includeCRDs: true
+    valuesFile: ./psmdb-values.yaml
+
+  - name: eck-operator
+    repo: https://helm.elastic.co
+    version: "3.2.0"
+    releaseName: eck-operator
+    namespace: elastic-system
+    includeCRDs: true
+
+  # 📨 Messaging Operators
+  - name: strimzi-kafka-operator
+    repo: https://strimzi.io/charts
+    version: "0.49.0"
+    releaseName: strimzi-kafka-operator
+    namespace: kafka
+    includeCRDs: true
+
+  # OpsTree Redis Operator (handles Redis, RedisCluster, RedisReplication, RedisSentinel CRDs)
+  - name: redis-operator
+    repo: https://ot-container-kit.github.io/helm-charts/
+    version: "0.22.2"
+    releaseName: redis-operator
+    namespace: redis-operator-system
+    includeCRDs: true
+
+  # 🔍 Observability Operators
+  - name: grafana-operator
+    repo: oci://ghcr.io/grafana/helm-charts
+    version: v5.19.1
+    releaseName: grafana-operator
+    namespace: grafana
+    includeCRDs: true
+
+  - name: opentelemetry-operator
+    repo: https://open-telemetry.github.io/opentelemetry-helm-charts
+    version: "0.99.1"
+    releaseName: opentelemetry-operator
+    namespace: opentelemetry
+    includeCRDs: true
+
+  # 🌐 Network Operators
+  - name: sail-operator
+    repo: https://istio-ecosystem.github.io/sail-operator
+    version: "1.27.1"
+    releaseName: sail-operator
+    namespace: istio-system
+    includeCRDs: true
+
+  # - name: tailscale-operator  # DISABLED: Not needed for homelab
+  #   repo: https://pkgs.tailscale.com/helmcharts
+  #   version: "1.90.9"
+  #   releaseName: tailscale-operator
+  #   namespace: tailscale
+  #   includeCRDs: true

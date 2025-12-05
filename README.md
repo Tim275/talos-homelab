@@ -133,6 +133,16 @@ Enterprise operators managing lifecycle, scaling, and HA for complex stateful wo
         <td><a href="https://cloudnative-pg.io/">CloudNativePG Operator</a></td>
         <td>PostgreSQL HA operator managing clusters, backups and point-in-time recovery</td>
     </tr>
+    <tr>
+        <td><img width="32" src="https://www.vectorlogo.zone/logos/mongodb/mongodb-icon.svg"></td>
+        <td><a href="https://docs.percona.com/percona-operator-for-mongodb/">PSMDB Operator</a></td>
+        <td>MongoDB operator managing replica sets, sharding, backups and automated failover</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://www.vectorlogo.zone/logos/rabbitmq/rabbitmq-icon.svg"></td>
+        <td><a href="https://www.rabbitmq.com/kubernetes/operator/operator-overview">RabbitMQ Cluster Operator</a></td>
+        <td>Message broker operator managing RabbitMQ clusters, users and policies</td>
+    </tr>
 </table>
 
 ## ⚙️ Infrastructure
@@ -246,11 +256,6 @@ Core cluster services including GitOps, networking, storage, backup, and observa
         <td>AI-powered alert enrichment with automated troubleshooting and root cause analysis</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://avatars.githubusercontent.com/u/121251675?s=200&v=4"></td>
-        <td><a href="https://www.keephq.dev/">Keep</a></td>
-        <td>AIOps platform for alert correlation and centralized incident management</td>
-    </tr>
-    <tr>
         <td><img width="32" src="https://avatars.githubusercontent.com/u/151674099?s=200&v=4"></td>
         <td><a href="https://ollama.com/">Ollama</a></td>
         <td>Self-hosted LLM inference engine for AI troubleshooting (DSGVO-compliant)</td>
@@ -286,6 +291,16 @@ Databases, messaging platforms, and identity management:
         <td><img width="32" src="https://www.vectorlogo.zone/logos/apache_kafka/apache_kafka-icon.svg"></td>
         <td><a href="https://strimzi.io/">Kafka</a></td>
         <td>Event streaming platform with KRaft mode and cluster operators (Strimzi)</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://www.vectorlogo.zone/logos/mongodb/mongodb-icon.svg"></td>
+        <td><a href="https://www.percona.com/mongodb/software/percona-server-for-mongodb">MongoDB</a></td>
+        <td>Document database with replica sets and automated backups (PSMDB Operator)</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://www.vectorlogo.zone/logos/rabbitmq/rabbitmq-icon.svg"></td>
+        <td><a href="https://www.rabbitmq.com/kubernetes/operator/operator-overview">RabbitMQ</a></td>
+        <td>Message broker with clustering and queue management (RabbitMQ Cluster Operator)</td>
     </tr>
     <tr>
         <td><img width="32" src="https://avatars.githubusercontent.com/u/4921466?s=200&v=4"></td>

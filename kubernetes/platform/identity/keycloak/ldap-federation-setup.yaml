@@ -1,0 +1,192 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-ldap-federation-setup
+  namespace: keycloak
+  annotations:
+    # ArgoCD Hook - Delete old job before creating new one
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: keycloak-ldap-setup
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: setup
+          image: quay.io/keycloak/keycloak:26.0.7
+          env:
+            - name: KEYCLOAK_ADMIN
+              value: admin
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: password
+            - name: KEYCLOAK_URL
+              value: "http://keycloak:8080"
+            - name: LLDAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-lldap-admin
+                  key: password
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              echo "=== Logging in to Keycloak ==="
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --server "$KEYCLOAK_URL" \
+                --realm master \
+                --user "$KEYCLOAK_ADMIN" \
+                --password "$KEYCLOAK_ADMIN_PASSWORD"
+
+              echo "=== Checking if LDAP User Federation already exists ==="
+              EXISTING_LDAP=$(/opt/keycloak/bin/kcadm.sh get components -r kubernetes \
+                --fields id,name,providerId \
+                2>/dev/null | grep -c '"providerId" : "ldap"' || echo "0")
+
+              if [ "$EXISTING_LDAP" -gt 0 ]; then
+                echo "⚠️  LDAP User Federation already exists!"
+                echo "Existing configuration:"
+                /opt/keycloak/bin/kcadm.sh get components -r kubernetes \
+                  --fields id,name,providerId,config \
+                  2>/dev/null | grep -A 20 '"providerId" : "ldap"' || true
+                echo ""
+                echo "To reconfigure, delete existing LDAP federation first."
+                echo "Skipping setup..."
+                exit 0
+              fi
+
+              echo "=== Creating LDAP User Federation ==="
+              LDAP_COMPONENT_ID=$(/opt/keycloak/bin/kcadm.sh create components -r kubernetes \
+                -s name=lldap-federation \
+                -s providerId=ldap \
+                -s providerType=org.keycloak.storage.UserStorageProvider \
+                -s 'config.enabled=["true"]' \
+                -s 'config.priority=["0"]' \
+                -s 'config.fullSyncPeriod=["-1"]' \
+                -s 'config.changedSyncPeriod=["86400"]' \
+                -s 'config.cachePolicy=["DEFAULT"]' \
+                -s 'config.evictionDay=[]' \
+                -s 'config.evictionHour=[]' \
+                -s 'config.evictionMinute=[]' \
+                -s 'config.maxLifespan=[]' \
+                -s 'config.batchSizeForSync=["1000"]' \
+                -s 'config.editMode=["WRITABLE"]' \
+                -s 'config.syncRegistrations=["true"]' \
+                -s 'config.vendor=["other"]' \
+                -s 'config.usernameLDAPAttribute=["uid"]' \
+                -s 'config.rdnLDAPAttribute=["uid"]' \
+                -s 'config.uuidLDAPAttribute=["entryUUID"]' \
+                -s 'config.userObjectClasses=["inetOrgPerson, organizationalPerson"]' \
+                -s 'config.connectionUrl=["ldap://lldap-ldap.lldap.svc.cluster.local:389"]' \
+                -s 'config.usersDn=["ou=people,dc=homelab,dc=local"]' \
+                -s 'config.authType=["simple"]' \
+                -s 'config.bindDn=["uid=admin,ou=people,dc=homelab,dc=local"]' \
+                -s "config.bindCredential=[\"$LLDAP_ADMIN_PASSWORD\"]" \
+                -s 'config.searchScope=["1"]' \
+                -s 'config.useTruststoreSpi=["ldapsOnly"]' \
+                -s 'config.connectionPooling=["true"]' \
+                -s 'config.pagination=["true"]' \
+                -s 'config.allowKerberosAuthentication=["false"]' \
+                -s 'config.useKerberosForPasswordAuthentication=["false"]' \
+                -s 'config.importEnabled=["true"]' \
+                -s 'config.debug=["false"]' \
+                -s 'config.validatePasswordPolicy=["false"]' \
+                -s 'config.trustEmail=["true"]' \
+                -i)
+
+              echo "LDAP Component ID: $LDAP_COMPONENT_ID"
+
+              echo "=== Creating LDAP Group Mapper ==="
+              /opt/keycloak/bin/kcadm.sh create components -r kubernetes \
+                -s name=lldap-group-mapper \
+                -s providerId=group-ldap-mapper \
+                -s providerType=org.keycloak.storage.ldap.mappers.LDAPStorageMapper \
+                -s parentId="$LDAP_COMPONENT_ID" \
+                -s 'config."groups.dn"=["ou=groups,dc=homelab,dc=local"]' \
+                -s 'config."group.name.ldap.attribute"=["cn"]' \
+                -s 'config."group.object.classes"=["groupOfUniqueNames"]' \
+                -s 'config."preserve.group.inheritance"=["true"]' \
+                -s 'config."membership.ldap.attribute"=["uniqueMember"]' \
+                -s 'config."membership.attribute.type"=["DN"]' \
+                -s 'config."membership.user.ldap.attribute"=["uid"]' \
+                -s 'config."groups.ldap.filter"=[]' \
+                -s 'config.mode=["READ_ONLY"]' \
+                -s 'config."user.roles.retrieve.strategy"=["LOAD_GROUPS_BY_MEMBER_ATTRIBUTE"]' \
+                -s 'config."mapped.group.attributes"=[]' \
+                -s 'config."drop.non.existing.groups.during.sync"=["false"]' \
+                -s 'config."groups.path"=["/"]' \
+                -s 'config."memberof.ldap.attribute"=["memberOf"]'
+
+              echo "=== Creating LDAP Email Mapper ==="
+              /opt/keycloak/bin/kcadm.sh create components -r kubernetes \
+                -s name=lldap-email-mapper \
+                -s providerId=user-attribute-ldap-mapper \
+                -s providerType=org.keycloak.storage.ldap.mappers.LDAPStorageMapper \
+                -s parentId="$LDAP_COMPONENT_ID" \
+                -s 'config."ldap.attribute"=["mail"]' \
+                -s 'config."user.model.attribute"=["email"]' \
+                -s 'config."read.only"=["false"]' \
+                -s 'config."always.read.value.from.ldap"=["false"]' \
+                -s 'config."is.mandatory.in.ldap"=["false"]'
+
+              echo "=== Creating LDAP First Name Mapper ==="
+              /opt/keycloak/bin/kcadm.sh create components -r kubernetes \
+                -s name=lldap-firstname-mapper \
+                -s providerId=user-attribute-ldap-mapper \
+                -s providerType=org.keycloak.storage.ldap.mappers.LDAPStorageMapper \
+                -s parentId="$LDAP_COMPONENT_ID" \
+                -s 'config."ldap.attribute"=["givenName"]' \
+                -s 'config."user.model.attribute"=["firstName"]' \
+                -s 'config."read.only"=["false"]' \
+                -s 'config."always.read.value.from.ldap"=["false"]' \
+                -s 'config."is.mandatory.in.ldap"=["false"]'
+
+              echo "=== Creating LDAP Last Name Mapper ==="
+              /opt/keycloak/bin/kcadm.sh create components -r kubernetes \
+                -s name=lldap-lastname-mapper \
+                -s providerId=user-attribute-ldap-mapper \
+                -s providerType=org.keycloak.storage.ldap.mappers.LDAPStorageMapper \
+                -s parentId="$LDAP_COMPONENT_ID" \
+                -s 'config."ldap.attribute"=["sn"]' \
+                -s 'config."user.model.attribute"=["lastName"]' \
+                -s 'config."read.only"=["false"]' \
+                -s 'config."always.read.value.from.ldap"=["false"]' \
+                -s 'config."is.mandatory.in.ldap"=["false"]'
+
+              echo "=== Triggering LDAP User Sync ==="
+              /opt/keycloak/bin/kcadm.sh create \
+                "user-storage/$LDAP_COMPONENT_ID/sync?action=triggerFullSync" \
+                -r kubernetes
+
+              echo ""
+              echo "==========================================="
+              echo "✅ LDAP User Federation Setup Complete!"
+              echo "==========================================="
+              echo "Configuration:"
+              echo "  Connection: ldap://lldap-ldap.lldap.svc.cluster.local:389"
+              echo "  Base DN: dc=homelab,dc=local"
+              echo "  Users DN: ou=people,dc=homelab,dc=local"
+              echo "  Groups DN: ou=groups,dc=homelab,dc=local"
+              echo "  Edit Mode: WRITABLE (Google OAuth users will sync to LDAP!)"
+              echo "  Sync Period: 86400s (24 hours)"
+              echo ""
+              echo "Mappers Created:"
+              echo "  ✅ Group Mapper (LDAP Groups → Keycloak Roles)"
+              echo "  ✅ Email Mapper"
+              echo "  ✅ First Name Mapper"
+              echo "  ✅ Last Name Mapper"
+              echo ""
+              echo "Next Steps:"
+              echo "1. Login via Google OAuth"
+              echo "2. User wird automatisch in LDAP synchronisiert!"
+              echo "3. Check LLDAP UI: http://lldap:17170"
+              echo "==========================================="
