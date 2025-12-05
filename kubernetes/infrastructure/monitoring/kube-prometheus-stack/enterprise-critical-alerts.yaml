@@ -1,0 +1,152 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: enterprise-critical-alerts
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+    release: kube-prometheus-stack
+    layer: enterprise-critical
+spec:
+  groups:
+    # ====== STORAGE ALERTS - PVC Monitoring ======
+    - name: enterprise-storage-alerts
+      interval: 30s
+      rules:
+        - alert: PVCFillingUpWarning
+          expr: |
+            (kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes) * 100 < 30
+            and kubelet_volume_stats_capacity_bytes > 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p2
+            component: storage
+          annotations:
+            summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} ist < 30% frei"
+            description: |
+              PVC hat nur noch {{ $value | printf "%.1f" }}% freien Speicher. Bitte prüfen!
+
+        - alert: PVCFillingUpCritical
+          expr: |
+            (kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes) * 100 < 10
+            and kubelet_volume_stats_capacity_bytes > 0
+          for: 2m
+          labels:
+            severity: critical
+            priority: p1
+            component: storage
+          annotations:
+            summary: "CRITICAL: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} ist < 10% frei"
+            description: |
+              PVC hat nur noch {{ $value | printf "%.1f" }}% frei! Sofortige Aktion erforderlich!
+
+    # ====== CNPG ALERTS - CloudNativePG Monitoring ======
+    - name: enterprise-cnpg-alerts
+      interval: 30s
+      rules:
+        - alert: CNPGWALArchivingFailed
+          expr: |
+            cnpg_pg_stat_archiver_failed_count > 10
+          for: 5m
+          labels:
+            severity: critical
+            priority: p1
+            component: database
+          annotations:
+            summary: "CNPG WAL Archiving failing für {{ $labels.cluster }}"
+            description: |
+              WAL Archiving schlägt fehl ({{ $value }} failures). Dies führt zu WAL Accumulation und Disk-Problemen!
+
+        # CNPGBackupStale entfernt - kein S3-Backup für CNPG Cluster konfiguriert
+
+        - alert: CNPGReplicationStopped
+          expr: |
+            cnpg_pg_replication_streaming == 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: p1
+            component: database
+          annotations:
+            summary: "CNPG Replication gestoppt für {{ $labels.cluster }}"
+            description: |
+              Streaming Replication ist nicht aktiv!
+
+    # ====== CONTAINER ALERTS - OOM & Restart Monitoring ======
+    - name: enterprise-container-alerts
+      interval: 30s
+      rules:
+        - alert: ContainerOOMKilled
+          expr: |
+            increase(kube_pod_container_status_restarts_total[1h]) > 0
+            and kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            priority: p2
+            component: workload
+          annotations:
+            summary: "Container {{ $labels.container }} wurde OOMKilled"
+            description: |
+              Container {{ $labels.container }} in Pod {{ $labels.pod }} ({{ $labels.namespace }}) wurde wegen Out-of-Memory beendet.
+
+        - alert: ContainerRestartLoop
+          expr: |
+            increase(kube_pod_container_status_restarts_total[15m]) > 5
+          for: 5m
+          labels:
+            severity: warning
+            priority: p2
+            component: workload
+          annotations:
+            summary: "Container {{ $labels.container }} startet mehrfach neu"
+            description: |
+              Container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} hatte {{ $value | printf "%.0f" }} Restarts in 15 Minuten.
+
+    # ====== NODE ALERTS - Memory Pressure ======
+    - name: enterprise-node-alerts
+      interval: 30s
+      rules:
+        - alert: NodeMemoryPressureEarly
+          expr: |
+            (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+          for: 10m
+          labels:
+            severity: warning
+            priority: p2
+            component: infrastructure
+          annotations:
+            summary: "Node {{ $labels.instance }} hat >90% Memory Usage"
+            description: |
+              Memory Usage ist bei {{ $value | printf "%.1f" }}%. Pods könnten evicted werden.
+
+    # ====== BACKUP ALERTS - Velero & MongoDB ======
+    - name: enterprise-backup-alerts
+      interval: 30s
+      rules:
+        - alert: VeleroBackupFailed
+          expr: |
+            velero_backup_failure_total > 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: p1
+            component: backup
+          annotations:
+            summary: "Velero Backup fehlgeschlagen"
+            description: |
+              {{ $value }} Velero Backups sind fehlgeschlagen. Backup-Integrität prüfen!
+
+        - alert: MongoDBBackupStale
+          expr: |
+            (time() - psmdb_backup_last_completion_time) > 172800
+          for: 10m
+          labels:
+            severity: warning
+            priority: p2
+            component: database
+          annotations:
+            summary: "MongoDB Backup ist >48h alt"
+            description: |
+              Letztes MongoDB Backup für {{ $labels.cluster }} ist {{ $value | humanizeDuration }} alt.

@@ -26,33 +26,35 @@ spec:
     enabled: false
     mode: image
 
----
-# SSD Pool - Ultra High Performance
-apiVersion: ceph.rook.io/v1
-kind: CephBlockPool
-metadata:
-  name: ssd-pool
-  namespace: rook-ceph
-  annotations:
-    argocd.argoproj.io/sync-wave: "3"
-spec:
-  failureDomain: host
-  replicated:
-    size: 3  # Best practice: 3-way replication for reliability
-    requireSafeReplicaSize: true  # Best practice: Ensure safe writes
-  parameters:
-    min_size: "2"  # Best practice: Never go below 2 replicas
-    pg_num: "32"  # Increased based on pg_autoscaler recommendation
-    pgp_num: "32" # Must match pg_num
-    # Optimized for speed over compression
-    compression_mode: "none"
-  # Removed deviceClass: ssd to fix overlapping CRUSH roots (-1, -2)
-  # All pools now use the same default root, fixing pg_autoscaler warnings
-  mirroring:
-    enabled: false
+# ============================================================
+# DISABLED POOLS - Unused, saves resources (MDS, extra pools)
+# Re-enable by uncommenting if needed
+# ============================================================
+
+# ---
+# # SSD Pool - Ultra High Performance (DISABLED - no SSD tier in use)
+# apiVersion: ceph.rook.io/v1
+# kind: CephBlockPool
+# metadata:
+#   name: ssd-pool
+#   namespace: rook-ceph
+#   annotations:
+#     argocd.argoproj.io/sync-wave: "3"
+# spec:
+#   failureDomain: host
+#   replicated:
+#     size: 3
+#     requireSafeReplicaSize: true
+#   parameters:
+#     min_size: "2"
+#     pg_num: "32"
+#     pgp_num: "32"
+#     compression_mode: "none"
+#   mirroring:
+#     enabled: false
 
 ---
-# CephFS Filesystem for Shared Storage
+# CephFS Filesystem for Shared Storage (GitLab, shared data)
 apiVersion: ceph.rook.io/v1
 kind: CephFilesystem
 metadata:
@@ -84,26 +86,13 @@ spec:
         compression_mode: "aggressive"
   preserveFilesystemOnDelete: false
   metadataServer:
-    activeCount: 1  # Reduced from 2 to avoid scheduling conflicts
-    activeStandby: true
+    activeCount: 1
+    activeStandby: false  # Homelab: No standby to save RAM
     priorityClassName: system-cluster-critical
-    placement:
-      # Removed nodeAffinity to allow scheduling on any node
-      podAntiAffinity:
-        requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-                - key: app
-                  operator: In
-                  values: ["rook-ceph-mds"]
-            topologyKey: kubernetes.io/hostname
-      tolerations:
-        - effect: NoSchedule
-          operator: Exists
     resources:
       limits:
         cpu: "500m"
-        memory: "1Gi"  # Reduced from 2Gi to save memory
+        memory: "1Gi"
       requests:
         cpu: "100m"
-        memory: "512Mi"  # Reduced from 1Gi
+        memory: "512Mi"

@@ -1,0 +1,187 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: redis-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+    release: kube-prometheus-stack
+    layer: platform
+spec:
+  groups:
+    - name: platform.redis.critical
+      interval: 30s
+      rules:
+        # ====== P0: CRITICAL - Redis Down ======
+        - alert: RedisDown
+          expr: |
+            redis_up == 0
+          for: 2m
+          labels:
+            severity: critical
+            priority: p0
+            component: redis
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Redis instance {{ $labels.instance }} is DOWN"
+            description: |
+              Redis instance {{ $labels.instance }} is unreachable.
+              Cache and session storage UNAVAILABLE!
+
+              Impact: N8N workflows may fail, session loss
+              Team: @platform-oncall
+
+              Check: kubectl -n n8n-dev get pods -l app=redis
+              Check: kubectl -n n8n-dev logs -l app=redis --tail=100
+
+        # ====== P0: CRITICAL - Redis Memory Critical ======
+        - alert: RedisMemoryCritical
+          expr: |
+            (redis_memory_used_bytes / redis_memory_max_bytes) > 0.95
+          for: 5m
+          labels:
+            severity: critical
+            priority: p0
+            component: redis
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Redis memory usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+            description: |
+              Redis instance {{ $labels.instance }} is using {{ $value | humanizePercentage }} of max memory.
+              OOM and eviction imminent!
+
+              Impact: Cache evictions, potential data loss
+              Current: {{ $value | humanizePercentage }}
+              Team: @platform-oncall
+
+        # ====== P0: CRITICAL - Redis Replication Broken ======
+        - alert: RedisReplicationBroken
+          expr: |
+            redis_connected_slaves == 0 and redis_instance_info{role="master"} == 1
+          for: 5m
+          labels:
+            severity: critical
+            priority: p0
+            component: redis
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Redis master {{ $labels.instance }} has no connected slaves"
+            description: |
+              Redis master has no connected slaves.
+              Replication BROKEN - no redundancy!
+
+              Impact: Single point of failure, data loss risk
+              Duration: >5 minutes
+              Team: @platform-oncall
+
+    - name: platform.redis.high
+      interval: 30s
+      rules:
+        # ====== P1: HIGH - Redis Connection Count High ======
+        - alert: RedisConnectionCountHigh
+          expr: |
+            redis_connected_clients > 100
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: redis
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Redis has {{ $value }} active connections on {{ $labels.instance }}"
+            description: |
+              Redis has {{ $value }} active client connections.
+              High connection count may indicate connection leak!
+
+              Duration: >10 minutes
+              Action: Review connection pooling in N8N configuration
+
+              Check: kubectl exec -it <redis-pod> -- redis-cli CLIENT LIST
+
+        # ====== P1: HIGH - Redis Evictions High ======
+        - alert: RedisEvictionsHigh
+          expr: |
+            rate(redis_evicted_keys_total[5m]) > 10
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: redis
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Redis evicting {{ $value }} keys/sec on {{ $labels.instance }}"
+            description: |
+              Redis is evicting {{ $value }} keys per second.
+              Memory pressure - cache hit rate degrading!
+
+              Duration: >10 minutes
+              Action: Increase Redis memory limit or review cache strategy
+
+        # ====== P1: HIGH - Redis Rejected Connections ======
+        - alert: RedisRejectedConnections
+          expr: |
+            rate(redis_rejected_connections_total[5m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: redis
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Redis rejecting {{ $value }} connections/sec on {{ $labels.instance }}"
+            description: |
+              Redis is rejecting {{ $value }} connections per second.
+              Max client limit reached!
+
+              Duration: >5 minutes
+              Action: Increase maxclients configuration
+
+    - name: platform.redis.medium
+      interval: 60s
+      rules:
+        # ====== P2: MEDIUM - Redis Memory High ======
+        - alert: RedisMemoryHigh
+          expr: |
+            (redis_memory_used_bytes / redis_memory_max_bytes) > 0.8
+          for: 15m
+          labels:
+            severity: info
+            priority: p2
+            component: redis
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Redis memory usage is {{ $value | humanizePercentage }}"
+            description: |
+              Redis memory usage is {{ $value | humanizePercentage }}.
+              Approaching eviction threshold!
+
+              Current: {{ $value | humanizePercentage }}
+              Eviction threshold: 95%
+              Duration: >15 minutes
+
+        # ====== P2: MEDIUM - Redis Persistence Failing ======
+        - alert: RedisPersistenceFailing
+          expr: |
+            redis_rdb_last_save_timestamp_seconds < (time() - 3600)
+          for: 1h
+          labels:
+            severity: info
+            priority: p2
+            component: redis
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Redis has not persisted data in {{ $value | humanizeDuration }}"
+            description: |
+              Redis has not saved RDB snapshot in {{ $value | humanizeDuration }}.
+              Persistence may be failing!
+
+              Duration: >1 hour
+              Action: Check Redis logs for RDB save errors

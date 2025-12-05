@@ -1,0 +1,184 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: p0-critical-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack-prometheus
+    role: alert-rules
+    severity: critical
+    priority: p0
+spec:
+  groups:
+    - name: p0.storage.critical
+      interval: 30s
+      rules:
+        - alert: PVCCriticallyFull
+          expr: |
+            (kubelet_volume_stats_available_bytes{job="kubelet"} / kubelet_volume_stats_capacity_bytes{job="kubelet"}) < 0.10
+          for: 5m
+          labels:
+            severity: critical
+            priority: p0
+            component: storage
+            pagerduty_severity: critical
+          annotations:
+            summary: "PVC {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full"
+            description: "PVC {{ $labels.persistentvolumeclaim }} in namespace {{ $labels.namespace }} has less than 10% free space. IMMEDIATE action required."
+            impact: "HIGH - Application may fail, potential data loss"
+
+        - alert: PVCPredictedFull
+          expr: |
+            predict_linear(kubelet_volume_stats_available_bytes{job="kubelet"}[1h], 4 * 3600) < 0
+          for: 10m
+          labels:
+            severity: critical
+            priority: p0
+            component: storage
+            pagerduty_severity: critical
+          annotations:
+            summary: "PVC {{ $labels.persistentvolumeclaim }} will be full in <4 hours"
+            description: "PVC {{ $labels.persistentvolumeclaim }} predicted to be full within 4 hours"
+            impact: "HIGH - Proactive alert to prevent PVC full"
+
+        - alert: CephClusterDown
+          expr: ceph_health_status == 3
+          for: 2m
+          labels:
+            severity: critical
+            priority: p0
+            component: storage
+            pagerduty_severity: critical
+          annotations:
+            summary: "Ceph cluster is in HEALTH_ERR state"
+            description: "Ceph cluster health CRITICAL - all storage at risk"
+            impact: "CRITICAL - All storage operations may fail"
+
+        - alert: CephQuorumLost
+          expr: (ceph_osd_up + ceph_osd_in) / (ceph_osd_up + ceph_osd_down) < 0.5
+          for: 1m
+          labels:
+            severity: critical
+            priority: p0
+            component: storage
+            pagerduty_severity: critical
+          annotations:
+            summary: "Ceph has lost quorum - majority of OSDs down"
+            description: "More than 50% of Ceph OSDs down - DATA LOSS RISK"
+            impact: "CRITICAL - Data unavailable"
+
+    - name: p0.backups.critical
+      interval: 60s
+      rules:
+        - alert: VeleroBackupFailed
+          expr: velero_backup_failure_total > 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: p0
+            component: backup
+            pagerduty_severity: critical
+          annotations:
+            summary: "Velero backup failed for schedule {{ $labels.schedule }}"
+            description: "Velero backup {{ $labels.schedule }} has failed - backup protection compromised"
+            impact: "HIGH - No recent backup, data loss risk"
+
+        - alert: VeleroNoRecentBackup
+          expr: time() - velero_backup_last_successful_timestamp{schedule!=""} > 86400
+          for: 10m
+          labels:
+            severity: critical
+            priority: p0
+            component: backup
+            pagerduty_severity: critical
+          annotations:
+            summary: "No successful backup in 24h for {{ $labels.schedule }}"
+            description: "Velero schedule {{ $labels.schedule }} no successful backup in 24+ hours"
+            impact: "CRITICAL - Extended backup window"
+
+    - name: p0.controlplane.critical
+      interval: 15s
+      rules:
+        - alert: KubernetesAPIServerDown
+          expr: up{job="apiserver"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            priority: p0
+            component: control-plane
+            pagerduty_severity: critical
+          annotations:
+            summary: "Kubernetes API Server is DOWN"
+            description: "API Server not responding - COMPLETE CLUSTER OUTAGE"
+            impact: "CRITICAL - Complete management plane outage"
+
+        - alert: EtcdClusterUnhealthy
+          expr: (count(up{job="etcd"} == 1) / count(up{job="etcd"})) < 0.5
+          for: 1m
+          labels:
+            severity: critical
+            priority: p0
+            component: control-plane
+            pagerduty_severity: critical
+          annotations:
+            summary: "etcd cluster has lost quorum"
+            description: "More than 50% of etcd members down - cluster cannot persist state"
+            impact: "CRITICAL - Cluster effectively read-only"
+
+    - name: p0.nodes.critical
+      interval: 30s
+      rules:
+        - alert: MajorityOfNodesDown
+          expr: (count(kube_node_status_condition{condition="Ready",status="true"}) / count(kube_node_info)) < 0.5
+          for: 2m
+          labels:
+            severity: critical
+            priority: p0
+            component: infrastructure
+            pagerduty_severity: critical
+          annotations:
+            summary: "More than 50% of nodes are down"
+            description: "Cluster lost majority compute capacity - many workloads failing"
+            impact: "CRITICAL - Massive capacity loss"
+
+        - alert: ControlPlaneNodeDown
+          expr: kube_node_status_condition{condition="Ready",status="true",node="ctrl-0"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            priority: p0
+            component: control-plane
+            pagerduty_severity: critical
+          annotations:
+            summary: "Control plane node {{ $labels.node }} is down"
+            description: "Control plane node offline - complete outage"
+            impact: "CRITICAL - Control plane offline"
+
+    - name: p0.observability.critical
+      interval: 30s
+      rules:
+        - alert: PrometheusDown
+          expr: up{job="prometheus"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            priority: p0
+            component: monitoring
+            pagerduty_severity: critical
+          annotations:
+            summary: "Prometheus is down - ALL ALERTS WILL STOP"
+            description: "Prometheus not responding - blind to cluster state"
+            impact: "CRITICAL - No monitoring, no alerts"
+
+        - alert: AlertmanagerDown
+          expr: up{job="alertmanager"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            priority: p0
+            component: monitoring
+            pagerduty_severity: critical
+          annotations:
+            summary: "Alertmanager down - alerts not routed"
+            description: "Alertmanager not responding - no alert notifications"
+            impact: "CRITICAL - No alert notifications"

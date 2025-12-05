@@ -11,10 +11,14 @@ commonAnnotations:
 namespace: rook-ceph
 
 resources:
-  # Upstream Rook-Ceph components
-  - https://raw.githubusercontent.com/rook/rook/v1.17.7/deploy/examples/crds.yaml
-  - https://raw.githubusercontent.com/rook/rook/v1.17.7/deploy/examples/common.yaml
-  - https://raw.githubusercontent.com/rook/rook/v1.17.7/deploy/examples/operator.yaml
+  # Upstream Rook-Ceph components (v1.18.7 - Latest December 2025)
+  # https://github.com/rook/rook/releases
+  - https://raw.githubusercontent.com/rook/rook/v1.18.7/deploy/examples/crds.yaml
+  - https://raw.githubusercontent.com/rook/rook/v1.18.7/deploy/examples/common.yaml
+  - https://raw.githubusercontent.com/rook/rook/v1.18.7/deploy/examples/operator.yaml
+  # CRITICAL: CSI Operator required for Rook v1.18+ (manages CSI drivers)
+  # The csi-operator.yaml deploys the ceph-csi-controller-manager and all CSI-related RBAC
+  - https://raw.githubusercontent.com/rook/rook/v1.18.7/deploy/examples/csi-operator.yaml
 
   # Enterprise components
   - priority-classes.yaml
@@ -30,12 +34,13 @@ resources:
 
   # Health monitoring automation
   - ceph-health-rbac.yaml
-  - ceph-health-monitor.yaml
+  # - ceph-health-monitor.yaml  # DISABLED: Was causing resource drain with stuck jobs
   - ceph-crash-archive.yaml  # Enterprise: Auto-archive crashes every 6 hours
 
   - http-route.yaml
+  # backend-tls.yaml, ceph-dashboard-ca-secret.yaml, reference-grant.yaml: NOT NEEDED - HTTP backend like ArgoCD/Grafana
   - velero-users.yaml
-  - velero-buckets-init.yaml
+  # velero-buckets-init.yaml removed temporarily
 
 # Resource reduction for homelab stability
 # - resource-reduction-patch.yaml  # Using strategic merge patch instead
@@ -87,19 +92,20 @@ patches:
   # Removed conflicting patches - pools.yaml and storage-classes.yaml already have sync-wave: "3"
 
   # CRITICAL: CSI Plugin Resource Limits (No unlimited memory!)
-  - target:
-      kind: DaemonSet
-      name: csi-cephfsplugin
-    patch: |-
-      - op: replace
-        path: /spec/template/spec/containers/1/resources
-        value:
-          limits:
-            cpu: "100m"
-            memory: "128Mi"
-          requests:
-            cpu: "10m"
-            memory: "64Mi"
+  # DISABLED: CephFS not in use - CSI plugin won't be deployed
+  # - target:
+  #     kind: DaemonSet
+  #     name: csi-cephfsplugin
+  #   patch: |-
+  #     - op: replace
+  #       path: /spec/template/spec/containers/1/resources
+  #       value:
+  #         limits:
+  #           cpu: "100m"
+  #           memory: "128Mi"
+  #         requests:
+  #           cpu: "10m"
+  #           memory: "64Mi"
   - target:
       kind: DaemonSet
       name: csi-rbdplugin
@@ -141,7 +147,7 @@ patches:
           environment: production
           tier: storage
 
-  # Enterprise operator configuration
+  # Enterprise operator configuration (NOT a Ceph daemon - limits are OK here)
   - target:
       kind: Deployment
       name: rook-ceph-operator
@@ -150,11 +156,11 @@ patches:
         path: /spec/template/spec/containers/0/resources
         value:
           limits:
-            cpu: "1000m"  # Reduced from 2000m
-            memory: "1Gi"  # Reduced from 2Gi to save memory
+            cpu: "2000m"   # Increased for reconciliation under load
+            memory: "2Gi"  # Increased for large cluster management
           requests:
-            cpu: "200m"  # Reduced from 500m
-            memory: "512Mi"  # Reduced from 1Gi
+            cpu: "500m"    # Enterprise baseline
+            memory: "1Gi"  # Enterprise baseline
       - op: add
         path: /spec/template/spec/priorityClassName
         value: system-cluster-critical
@@ -173,6 +179,7 @@ patches:
         value:
           name: ROOK_ENABLE_DISCOVERY_DAEMON
           value: "true"
+      # ENABLED: CephFS for GitLab shared storage
       - op: add
         path: /spec/template/spec/containers/0/env/-
         value:
@@ -183,6 +190,8 @@ patches:
         value:
           name: ROOK_CSI_ENABLE_RBD
           value: "true"
+      # NOTE: CSI Operator is now deployed via csi-operator.yaml resource
+      # ROOK_USE_CSI_OPERATOR defaults to true in v1.18+
       - op: add
         path: /spec/template/metadata/annotations
         value:
@@ -190,7 +199,7 @@ patches:
           prometheus.io/port: "8080"
           prometheus.io/path: "/metrics"
 
-# Use upstream version v1.17.7 - no override needed
+# Use upstream version v1.18.7 - latest stable (CSI Operator disabled for simplicity)
 
 # Common labels removed - causes immutable selector issues
 

@@ -4,7 +4,9 @@ metadata:
   name: production-cluster
   namespace: elastic-system
 spec:
-  version: 8.16.1
+  # 🚀 UPGRADED: 8.16.1 → 8.17.0 (December 2025 - latest stable 8.17.x)
+  # ECK Operator 3.2.0 compatible
+  version: 8.17.0
 
   # S3 Snapshot Repository Credentials (Ceph RGW)
   # These credentials are injected into Elasticsearch keystore
@@ -20,18 +22,64 @@ spec:
         # Master + Data + Ingest roles
         node.roles: ["master", "data", "ingest"]
         # CRITICAL FIX: Allow ALL indices for logging pipeline
-        # Previously was "+fluent*,-*" which blocked logstash*
-        # indices - this was the ROOT CAUSE of the EFK stack
-        # failure. FluentBit -> Fluentd -> Elasticsearch
-        # requires logstash format
         action.auto_create_index: "true"
         # Note: cluster.initial_master_nodes and xpack.security.enabled
         # are managed by ECK Operator automatically
+
+        # ============================================================================
+        # 🏆 2025 ENTERPRISE CEPH STORAGE TUNING
+        # Based on: Elastic Docs, Opster Analysis, Pulse Support, GitHub Issues
+        # Problem: Ceph block storage on Proxmox VMs has 50-70s I/O latency spikes
+        # Solution: Enterprise-grade timeout configuration for distributed storage
+        # ============================================================================
+
+        # === CLUSTER STATE PUBLICATION (CRITICAL for "failed to commit" errors) ===
+        # Reference: https://pulse.support/kb/elasticsearch-cluster-publish-timeout
+        cluster.publish.timeout: "180s"       # Default: 30s - cluster state writes take 69s!
+        cluster.publish.info_timeout: "60s"   # Default: 10s - balanced (not too high to mask issues)
+
+        # === DISCOVERY (Cluster Formation) ===
+        # Reference: https://www.elastic.co/guide/en/elasticsearch/reference/current/modules-discovery-settings.html
+        discovery.request_peers_timeout: "120s"     # Default: 3s - health checks take 56-69s!
+        discovery.probe.connect_timeout: "60s"      # Default: 30s
+        discovery.probe.handshake_timeout: "60s"    # Default: 30s
+
+        # === FAULT DETECTION (prevent false node removals during I/O spikes) ===
+        # Reference: https://www.elastic.co/guide/en/elasticsearch/reference/current/cluster-fault-detection.html
+        cluster.fault_detection.leader_check.timeout: "60s"    # Default: 10s
+        cluster.fault_detection.leader_check.interval: "5s"    # Default: 1s - balanced
+        cluster.fault_detection.leader_check.retry_count: "5"  # Default: 3
+        cluster.fault_detection.follower_check.timeout: "60s"  # Default: 10s
+        cluster.fault_detection.follower_check.interval: "5s"  # Default: 1s
+        cluster.fault_detection.follower_check.retry_count: "5" # Default: 3
+
+        # === TRANSPORT LAYER (ES 8.17+ - reduces network chatter) ===
+        transport.ping_schedule: "10s"          # Reduce heartbeat frequency
+        transport.connect_timeout: "60s"        # Default: 30s (renamed from transport.tcp.connect_timeout in 8.17)
+
+        # === STORAGE HEALTH MONITORING ===
+        monitor.fs.health.slow_path_logging_threshold: "60s"  # Default: 5s
+        monitor.fs.health.refresh_interval: "120s"            # Default: 60s
+
+        # === INDEXING PERFORMANCE (2025 Best Practice) ===
+        indices.memory.index_buffer_size: "15%"   # Default: 10% - better for bulk indexing
+        thread_pool.write.queue_size: "1000"      # Default: 200 - prevent rejections
       podTemplate:
         metadata:
           labels:
             app.kubernetes.io/component: elasticsearch
         spec:
+          # ENTERPRISE: Critical priority to survive node pressure
+          priorityClassName: system-cluster-critical
+          # 🔧 CEPH STORAGE OPTIMIZATION: Set proper ownership for ES data directory
+          # Elasticsearch runs as UID 1000, GID 1000 - fsGroup ensures volume ownership
+          # OnRootMismatch: Only change ownership if root dir doesn't match fsGroup (faster on Ceph)
+          securityContext:
+            fsGroup: 1000
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            fsGroupChangePolicy: OnRootMismatch
           # Install S3 repository plugin for Rook Ceph snapshots
           initContainers:
             - name: install-plugins
@@ -72,7 +120,9 @@ spec:
           spec:
             accessModes:
               - ReadWriteOnce
-            storageClassName: rook-ceph-block-enterprise
+            # ENTERPRISE: Use Retain StorageClass to prevent data loss on PVC deletion
+            # This prevents accidental data loss during recovery operations
+            storageClassName: rook-ceph-block-enterprise-retain
             resources:
               requests:
                 storage: 10Gi

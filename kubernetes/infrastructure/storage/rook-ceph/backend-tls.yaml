@@ -1,0 +1,29 @@
+# 🔐 Production-Grade Backend TLS Configuration for Ceph Dashboard
+#
+# CRITICAL: Public-facing service without VPN or Authentication layer
+# MUST have end-to-end TLS encryption
+#
+# Security Architecture:
+# - Client → Cloudflared Tunnel: TLS (Let's Encrypt)
+# - Cloudflared → Envoy Gateway: TLS
+# - Envoy Gateway → Ceph Dashboard: TLS (Self-Signed) ← THIS CONFIG
+#
+# Using BackendTLSPolicy with wellKnownCACertificates
+# Accepts system-trusted CAs for backend validation
+
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: ceph-dashboard-tls
+  namespace: rook-ceph
+spec:
+  targetRefs:
+    - group: ''
+      kind: Service
+      name: rook-ceph-mgr-dashboard
+  validation:
+    caCertificateRefs:
+      - name: ceph-dashboard-ca
+        kind: Secret
+        group: ''
+    hostname: ceph-dashboard

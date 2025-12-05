@@ -1,0 +1,45 @@
+# CoreDNS ConfigMap Override
+# CRITICAL: Override default CoreDNS to use public DNS (8.8.8.8, 1.1.1.1)
+# instead of Talos link-local DNS (169.254.116.108) which breaks in VMs
+#
+# This is applied as an inline manifest at cluster bootstrap to ensure
+# DNS works correctly from the very start.
+#
+# Problem: Talos default /etc/resolv.conf points to 169.254.116.108 which
+# is a link-local address that doesn't work reliably in Proxmox VMs.
+# This breaks Helm chart downloads for ArgoCD (cert-manager, velero, etc.)
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns
+  namespace: kube-system
+data:
+  Corefile: |
+    .:53 {
+        errors
+        health {
+            lameduck 5s
+        }
+        ready
+        log . {
+            class error
+        }
+        prometheus :9153
+
+        kubernetes cluster.local in-addr.arpa ip6.arpa {
+            pods insecure
+            fallthrough in-addr.arpa ip6.arpa
+            ttl 30
+        }
+        forward . 8.8.8.8 1.1.1.1 {
+           max_concurrent 1000
+        }
+        cache 30 {
+           disable success cluster.local
+           disable denial cluster.local
+        }
+        loop
+        reload
+        loadbalance
+    }

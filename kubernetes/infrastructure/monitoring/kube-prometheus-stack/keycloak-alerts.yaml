@@ -1,0 +1,147 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: keycloak-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+    release: kube-prometheus-stack
+    layer: security
+spec:
+  groups:
+    - name: security.keycloak.critical
+      interval: 30s
+      rules:
+        # ====== P0: CRITICAL - Keycloak Down ======
+        - alert: KeycloakDown
+          expr: |
+            up{job="keycloak"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            priority: p0
+            component: keycloak
+            tier: security
+            layer: layer2
+          annotations:
+            summary: "Keycloak authentication service is DOWN"
+            description: |
+              Keycloak instance {{ $labels.instance }} is unreachable.
+              COMPLETE AUTHENTICATION FAILURE!
+
+              Impact: All user logins FAILING, SSO unavailable
+              Team: @security-oncall
+
+              Check: kubectl -n keycloak get pods
+              Check: kubectl -n keycloak logs -l app=keycloak --tail=100
+
+        # ====== P0: CRITICAL - Keycloak Database Connection Failed ======
+        - alert: KeycloakDatabaseConnectionFailed
+          expr: |
+            sum(rate(keycloak_failed_login_attempts[5m])) > 100
+            or absent(up{job="keycloak-postgresql"})
+          for: 3m
+          labels:
+            severity: critical
+            priority: p0
+            component: keycloak
+            tier: security
+            layer: layer2
+          annotations:
+            summary: "Keycloak database connection issues detected"
+            description: |
+              Keycloak cannot connect to PostgreSQL database.
+              Authentication backend UNAVAILABLE!
+
+              Impact: Login failures, session management broken
+              Team: @security-oncall
+
+    - name: security.keycloak.high
+      interval: 30s
+      rules:
+        # ====== P1: HIGH - Keycloak Auth Failure Rate High ======
+        - alert: KeycloakAuthFailureRateHigh
+          expr: |
+            sum(rate(keycloak_failed_login_attempts[5m])) > 10
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: keycloak
+            tier: security
+            layer: layer2
+          annotations:
+            summary: "Keycloak auth failure rate is {{ $value }}/sec"
+            description: |
+              Keycloak is experiencing {{ $value }} failed login attempts per second.
+              Possible brute-force attack or service degradation!
+
+              Duration: >10 minutes
+              Action: Check for attack patterns, review auth logs
+
+              Check: kubectl -n keycloak logs -l app=keycloak | grep "Failed login"
+
+        # ====== P1: HIGH - Keycloak Realm Unavailable ======
+        - alert: KeycloakRealmUnavailable
+          expr: |
+            absent(keycloak_realms) or keycloak_realms == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: keycloak
+            tier: security
+            layer: layer2
+          annotations:
+            summary: "Keycloak realms are unavailable"
+            description: |
+              No Keycloak realms are accessible.
+              SSO configuration error or database issue!
+
+              Impact: Cannot authenticate users
+              Duration: >5 minutes
+
+        # ====== P1: HIGH - Keycloak Memory High ======
+        - alert: KeycloakMemoryHigh
+          expr: |
+            (container_memory_working_set_bytes{namespace="keycloak", container="keycloak"}
+            / container_spec_memory_limit_bytes{namespace="keycloak", container="keycloak"}) > 0.9
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: keycloak
+            tier: security
+            layer: layer2
+          annotations:
+            summary: "Keycloak memory usage is {{ $value | humanizePercentage }}"
+            description: |
+              Keycloak pod {{ $labels.pod }} memory usage is {{ $value | humanizePercentage }}.
+              Risk of OOMKill!
+
+              Current: {{ $value | humanizePercentage }}
+              Limit: 100%
+              Action: Consider increasing memory limits
+
+    - name: security.keycloak.medium
+      interval: 60s
+      rules:
+        # ====== P2: MEDIUM - Keycloak Response Time Slow ======
+        - alert: KeycloakResponseTimeSlow
+          expr: |
+            histogram_quantile(0.99, sum(rate(keycloak_request_duration_seconds_bucket[5m])) by (le)) > 5
+          for: 15m
+          labels:
+            severity: info
+            priority: p2
+            component: keycloak
+            tier: security
+            layer: layer2
+          annotations:
+            summary: "Keycloak p99 response time is {{ $value }}s"
+            description: |
+              Keycloak 99th percentile response time is {{ $value }} seconds.
+              Users experiencing slow authentication!
+
+              Duration: >15 minutes
+              Action: Check database performance, review resource usage
