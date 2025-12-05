@@ -1,0 +1,887 @@
+# yamllint disable rule:line-length
+# https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml
+prometheus:
+  prometheusSpec:
+    # Retention configuration (prevents disk full)
+    retention: 15d           # 15 days retention (homelab standard)
+    retentionSize: "18GB"    # 90% of 20GB PVC (prevents disk full)
+
+    podMonitorNamespaceSelector: {}
+    podMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    # nodeSelector:
+    #   topology.kubernetes.io/zone: abel
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: rook-ceph-block-enterprise  # Use your correct storage class
+          # volumeName: pv-prometheus  # Let Kubernetes auto-provision
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 20G
+          # selector:  # Remove specific PV selector, let Kubernetes handle it
+          #   matchLabels:
+          #     app: prometheus
+
+# https://github.com/siderolabs/talos/discussions/7214
+kubeControllerManager:
+  enabled: true
+  serviceMonitor:
+    relabelings:
+      - sourceLabels: [ __meta_kubernetes_pod_node_name ]
+        separator: ;
+        regex: ^(.*)$
+        targetLabel: nodename
+        replacement: $1
+        action: replace
+    metricRelabelings:
+      - action: labeldrop
+        regex: pod
+
+kubeEtcd:
+  enabled: true
+  service:
+    selector:
+      # etcd doesn't run as a container,
+      # but most probably runs on the same nodes that host a controller
+      k8s-app: kube-controller-manager
+  serviceMonitor:
+    relabelings:
+      - sourceLabels: [ __meta_kubernetes_pod_node_name ]
+        separator: ;
+        regex: ^(.*)$
+        targetLabel: nodename
+        replacement: $1
+        action: replace
+    metricRelabelings:
+      - action: labeldrop
+        regex: pod
+
+kubeProxy:
+  # Cilium replaces Kube Proxy
+  enabled: false
+
+kubeScheduler:
+  enabled: true
+  serviceMonitor:
+    relabelings:
+      - sourceLabels: [ __meta_kubernetes_pod_node_name ]
+        separator: ;
+        regex: ^(.*)$
+        targetLabel: nodename
+        replacement: $1
+        action: replace
+    metricRelabelings:
+      - action: labeldrop
+        regex: pod
+
+nodeExporter:
+  enabled: true
+
+grafana:
+  enabled: false
+  forceDeployDatasources: false
+  forceDeployDashboards: false
+  defaultDashboardsEnabled: false
+  defaultDashboardsTimezone: Europe/Berlin  # Fixed timezone for Germany
+  operator:
+    dashboardsConfigMapRefEnabled: true
+    matchLabels:
+      app: grafana
+    folder: Kubernetes
+
+# Disable all default Prometheus rules - we use custom enterprise rules
+defaultRules:
+  create: false
+  rules:
+    alertmanager: false
+    etcd: false
+    configReloaders: false
+    general: false
+    k8s: false
+    kubeApiserverAvailability: false
+    kubeApiserverBurnrate: false
+    kubeApiserverHistogram: false
+    kubeApiserverSlos: false
+    kubeControllerManager: false
+    kubelet: false
+    kubeProxy: false
+    kubePrometheusGeneral: false
+    kubePrometheusNodeRecording: false
+    kubernetesApps: false
+    kubernetesResources: false
+    kubernetesStorage: false
+    kubernetesSystem: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    kubeStateMetrics: false
+    network: false
+    node: false
+    nodeExporterAlerting: false
+    nodeExporterRecording: false
+    prometheus: false
+    prometheusOperator: false
+    windows: false
+
+prometheusOperator:
+  admissionWebhooks:
+    enabled: false  # Disable admission webhooks completely
+    patch:
+      enabled: false
+    certManager:
+      enabled: false
+  # Disable TLS completely to avoid cert mount issues
+  tls:
+    enabled: false
+  # 🛡️ Homelab Stability: Resource limits for Prometheus Operator
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m     # 10x burst for CRD operations
+      memory: 1Gi    # 4x headroom for operator
+
+# 🛡️ Homelab Stability: Resource limits for Kube State Metrics
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 50m       # Actual: ~7m CPU
+      memory: 64Mi   # Actual: ~27Mi memory
+    limits:
+      cpu: 500m      # 10x burst for metrics collection
+      memory: 512Mi  # ~20x headroom for cluster growth
+
+  # 🔧 Fix CrashLoopBackOff: Increase probe delays (was 5s, now 30s)
+  # Root cause: kube-state-metrics needs time to start and expose health endpoints
+  livenessProbe:
+    initialDelaySeconds: 30  # Changed from default 5s to prevent premature probe failures
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    initialDelaySeconds: 30  # Changed from default 5s to allow full startup
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+# 🚨 ENTERPRISE ALERTMANAGER CONFIG - Production Grade
+# Based on your real production alerting system
+# Priority Levels: P1 (Critical) → P2 (High) → P3 (Warning) → P5 (Info)
+
+alertmanager:
+  alertmanagerSpec:
+    secrets:
+      # - alertmanager-slack-webhooks  # DISABLED: Using PagerDuty instead
+      - pagerduty-integration-key
+      # Slack webhooks commented out - using PagerDuty for all alerts
+      # - argocd-slack-webhook
+      # - storage-slack-webhook
+      # - database-slack-webhook
+      # - security-slack-webhook
+  config:
+    global:
+      resolve_timeout: 5m
+      # slack_api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical  # DISABLED: Using PagerDuty
+
+    # 📋 ROUTE CONFIGURATION - Priority-based Routing
+    route:
+      receiver: 'p3-warning'  # Default to P3 for alerts without priority/severity labels
+      group_by: ['alertname', 'cluster', 'namespace', 'service']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+
+      routes:
+        # ====== P0: COMPLETE OUTAGE (ALL HANDS 🚨🚨) ======
+        # Response SLA: IMMEDIATE - Page EVERYONE
+        - matchers:
+            - priority="P0"
+          receiver: 'p0-outage'
+          group_wait: 0s          # INSTANT broadcast
+          group_interval: 30s
+          repeat_interval: 2m     # Re-notify every 2 min
+          continue: false         # Highest priority
+
+        # ====== STORAGE ALERTS (Ceph) ======
+        - matchers:
+            - component="storage"
+          receiver: 'storage-alerts'
+          group_wait: 10s
+          group_interval: 2m
+          repeat_interval: 10m
+          continue: false
+
+        # ====== DATABASE ALERTS (PostgreSQL + Velero) ======
+        - matchers:
+            - component="database"
+          receiver: 'database-alerts'
+          group_wait: 10s
+          group_interval: 2m
+          repeat_interval: 10m
+          continue: false
+
+        - matchers:
+            - component="backup"
+          receiver: 'database-alerts'
+          group_wait: 10s
+          group_interval: 2m
+          repeat_interval: 10m
+          continue: false
+
+        # ====== SECURITY ALERTS (Certs, Auth, Kyverno) ======
+        - matchers:
+            - component="security"
+          receiver: 'security-alerts'
+          group_wait: 10s
+          group_interval: 2m
+          repeat_interval: 10m
+          continue: false
+
+        # ====== ARGOCD GITOPS ALERTS ======
+        - matchers:
+            - component="argocd"
+            - priority="P1"
+          receiver: 'argocd-critical'
+          group_wait: 0s
+          group_interval: 1m
+          repeat_interval: 5m
+          continue: false
+
+        - matchers:
+            - component="argocd"
+            - priority="P2"
+          receiver: 'argocd-critical'
+          group_wait: 10s
+          group_interval: 2m
+          repeat_interval: 15m
+          continue: false
+
+        - matchers:
+            - component="argocd"
+          receiver: 'argocd-info'
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 1h
+          continue: false
+
+        # ====== P1: DRINGEND/CRITICAL (RED 🔴) ======
+        # Response SLA: 5 minutes
+        - matchers:
+            - priority="P1"
+          receiver: 'p1-critical'
+          group_wait: 0s          # INSTANT notification
+          group_interval: 1m
+          repeat_interval: 5m     # Re-notify every 5 min
+          continue: false         # Only send to Slack
+
+        # ====== P2: WICHTIG/HIGH (ORANGE 🟠) ======
+        # Response SLA: 15 minutes
+        - matchers:
+            - priority="P2"
+          receiver: 'p2-high'
+          group_wait: 10s
+          group_interval: 2m
+          repeat_interval: 15m
+          continue: false         # Only send to Slack
+
+        # ====== P3: WARNING (YELLOW 🟡) ======
+        # Response SLA: 1 hour
+        - matchers:
+            - priority="P3"
+          receiver: 'p3-warning'
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 1h
+          continue: false         # Only send to Slack
+
+        # ====== P4: LOW/INFO (BLUE 🔵) ======
+        # Response SLA: 1 week (backlog)
+        - matchers:
+            - priority="P4"
+          receiver: 'p4-info'
+          group_wait: 2m
+          group_interval: 10m
+          repeat_interval: 4h
+          continue: false         # Only send to Slack
+
+        # Fallback for alerts without priority
+        - matchers:
+            - severity="critical"
+          receiver: 'p1-critical'
+          group_wait: 10s
+          repeat_interval: 15m
+
+        - matchers:
+            - severity="warning"
+          receiver: 'p3-warning'
+
+    # 📨 RECEIVERS - Enterprise Slack Templates
+    receivers:
+      # ====== P1: DRINGEND 🔴 ======
+      - name: 'p1-critical'
+        pagerduty_configs:
+          - routing_key_file: /etc/alertmanager/secrets/pagerduty-integration-key/integration-key
+            send_resolved: true
+            description: '{{ .CommonAnnotations.summary }}'
+            severity: critical
+            details:
+              firing: '{{ .Alerts.Firing | len }}'
+              resolved: '{{ .Alerts.Resolved | len }}'
+              description: '{{ .CommonAnnotations.description }}'
+              namespace: '{{ .CommonLabels.namespace }}'
+              pod: '{{ .CommonLabels.pod }}'
+              action: '{{ .CommonAnnotations.action }}'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
+            channel: '#alerts'
+            username: 'Homelab Monitoring'
+            icon_emoji: ':rotating_light:'
+            title: |-
+              🔴 P1 ALERT - {{ .GroupLabels.alertname }}
+            title_link: '{{ template "__alertmanagerURL" . }}'
+            color: 'danger'
+            text: |-
+              📊 *Alert Summary*
+              {{ range .Alerts }}
+              *Instanz:* `{{ .Labels.instance }}{{ if .Labels.pod }}{{ .Labels.pod }}{{ end }}`
+              *Problem:* {{ .Annotations.summary }}
+              *Zeit:* {{ .StartsAt.Format "02.01.2006, 15:04:05" }} UTC
+              *Alert ID:* #{{ .Labels.alertname }}-{{ .Labels.namespace }}
+
+              🔍 *Details*
+              *Service:* {{ .Labels.job }}{{ if .Labels.namespace }} (Namespace: {{ .Labels.namespace }}){{ end }}
+              *Status:* {{ .Status | toUpper }}{{ if eq .Status "firing" }} - CRITICAL{{ end }}
+              {{ if .Annotations.description }}
+              *Description:* {{ .Annotations.description }}{{ end }}
+              {{ if .Labels.tier }}*Tier:* {{ .Labels.tier }}{{ end }}
+
+              📈 *System Metriken*
+              {{ if .Annotations.current_value }}⚠️ Current Value: `{{ .Annotations.current_value }}`{{ end }}
+              {{ if .Annotations.threshold }}⚠️ Threshold: `{{ .Annotations.threshold }}`{{ end }}
+
+              🔗 *Links*
+              <{{ .GeneratorURL }}|Prometheus Query> | <{{ .Annotations.dashboard_url }}|Dashboard>{{ if .Annotations.runbook_url }} | <{{ .Annotations.runbook_url }}|Runbook>{{ end }}
+
+              ⚡ *Action Required*
+              Team: @Sysadmins - Immediate investigation required!
+              {{ end }}
+            actions:
+              - type: button
+                text: ':chart_with_upwards_trend: Prometheus'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: ':bar_chart: Dashboard'
+                url: '{{ (index .Alerts 0).Annotations.dashboard_url }}'
+              - type: button
+                text: ':green_book: Runbook'
+                url: '{{ (index .Alerts 0).Annotations.runbook_url }}'
+              - type: button
+                text: ':no_bell: Silence'
+                url: '{{ .ExternalURL }}/#/silences'
+            send_resolved: true
+
+      # ====== P2: WICHTIG 🟠 ======
+      - name: 'p2-high'
+        pagerduty_configs:
+          - routing_key_file: /etc/alertmanager/secrets/pagerduty-integration-key/integration-key
+            send_resolved: true
+            description: '{{ .CommonAnnotations.summary }}'
+            severity: warning
+            details:
+              firing: '{{ .Alerts.Firing | len }}'
+              resolved: '{{ .Alerts.Resolved | len }}'
+              description: '{{ .CommonAnnotations.description }}'
+              namespace: '{{ .CommonLabels.namespace }}'
+              pod: '{{ .CommonLabels.pod }}'
+              action: '{{ .CommonAnnotations.action }}'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
+            channel: '#alerts'
+            username: 'Homelab Monitoring'
+            icon_emoji: ':warning:'
+            title: |-
+              {{ if eq .Status "firing" }}⚠️ [FIRING:{{ len .Alerts.Firing }}]{{ else }}✅ [RESOLVED]{{ end }} {{ .GroupLabels.alertname }}
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else }}warning{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              {{ if eq .Status "firing" }}⚠️{{ else }}✅{{ end }} *{{ .Labels.alertname }}* - {{ .Labels.severity | toUpper }}
+              *Summary:* {{ .Annotations.summary }}
+              {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
+
+              *Details:*
+              {{ if .Labels.namespace }}• Namespace: `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.job }}• Job: `{{ .Labels.job }}`{{ end }}
+              {{ if .Labels.instance }}• Instance: `{{ .Labels.instance }}`{{ end }}
+              {{ if eq .Status "firing" }}• Started: {{ .StartsAt.Format "2006-01-02 15:04:05" }}{{ else }}• Resolved: {{ .EndsAt.Format "2006-01-02 15:04:05" }}{{ end }}
+
+              *Status    Priority*
+              {{ .Status | toUpper }}    P2
+              {{ end }}
+            actions:
+              - type: button
+                text: ':chart: Query'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: ':book: Runbook'
+                url: '{{ (index .Alerts 0).Annotations.runbook_url }}'
+            send_resolved: true
+
+      # ====== P3: WARNING 🟡 ======
+      - name: 'p3-warning'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
+            channel: '#alerts'
+            username: 'Homelab Monitoring'
+            icon_emoji: ':prometheus:'
+            title: |-
+              {{ if eq .Status "firing" }}⚠️ [FIRING:{{ len .Alerts.Firing }}]{{ else }}✅ [RESOLVED]{{ end }} {{ .GroupLabels.alertname }}
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else }}warning{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              {{ if eq .Status "firing" }}⚠️{{ else }}✅{{ end }} *{{ .Labels.alertname }}* - WARNING
+              *Summary:* {{ .Annotations.summary }}
+              {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
+              *Details:* {{ if .Labels.namespace }}Namespace: `{{ .Labels.namespace }}`{{ end }}{{ if .Labels.job }}, Job: `{{ .Labels.job }}`{{ end }}
+
+              *Status    Priority*
+              {{ .Status | toUpper }}    P3
+              {{ end }}
+            send_resolved: true
+
+      # ====== P4: LOW/INFO 🔵 ======
+      - name: 'p4-info'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
+            channel: '#alerts'
+            username: 'Homelab Monitoring'
+            icon_emoji: ':information_source:'
+            title: |-
+              {{ if eq .Status "firing" }}ℹ️ [INFO]{{ else }}✅ [RESOLVED]{{ end }} {{ .GroupLabels.alertname }}
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else }}#439FE0{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              ℹ️ *{{ .Labels.alertname }}*
+              {{ .Annotations.summary }}
+
+              *Status    Priority*
+              {{ .Status | toUpper }}    P4 - Backlog
+              {{ end }}
+            send_resolved: true
+
+      # ====== P0: COMPLETE OUTAGE 🚨🚨 (BROADCAST ALL CHANNELS) ======
+      - name: 'p0-outage'
+        pagerduty_configs:
+          - routing_key_file: /etc/alertmanager/secrets/pagerduty-integration-key/integration-key
+            send_resolved: true
+            description: '{{ .CommonAnnotations.summary }}'
+            severity: critical
+            details:
+              firing: '{{ .Alerts.Firing | len }}'
+              resolved: '{{ .Alerts.Resolved | len }}'
+              description: '{{ .CommonAnnotations.description }}'
+              impact: '{{ .CommonAnnotations.impact }}'
+              action: '{{ .CommonAnnotations.action }}'
+              runbook_url: '{{ .CommonAnnotations.runbook_url }}'
+        slack_configs:
+          # Broadcast to #alerts
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
+            channel: '#alerts'
+            username: 'P0 OUTAGE - ALL HANDS'
+            icon_emoji: ':rotating_light:'
+            title: |-
+              {{ if eq .Status "firing" }}🚨🚨 [P0 OUTAGE] {{ .GroupLabels.alertname }}{{ else }}✅ [P0 RESOLVED] {{ .GroupLabels.alertname }}{{ end }}
+            title_link: '{{ template "__alertmanagerURL" . }}'
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else }}#FF0000{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              {{ if eq .Status "firing" }}🚨🚨 *P0 COMPLETE OUTAGE - ALL HANDS ON DECK*{{ else }}✅ *P0 OUTAGE RESOLVED*{{ end }}
+
+              🔥 *CRITICAL SYSTEM FAILURE*
+              {{ .Annotations.summary }}
+
+              💥 *Impact to Users*
+              {{ .Annotations.impact }}
+
+              📋 *Problem Details*
+              {{ .Annotations.description }}
+
+              🛠️ *IMMEDIATE ACTION REQUIRED*
+              {{ .Annotations.action }}
+
+              ⚡ *Priority:* P0 - COMPLETE OUTAGE
+              {{ if .Annotations.runbook_url }}📖 *Runbook:* {{ .Annotations.runbook_url }}{{ end }}
+              {{ end }}
+            actions:
+              - type: button
+                text: ':chart_with_upwards_trend: Prometheus'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: ':book: Runbook'
+                url: '{{ (index .Alerts 0).Annotations.runbook_url }}'
+            send_resolved: true
+          # Broadcast to #argocd-deployments
+          - api_url_file: /etc/alertmanager/secrets/argocd-slack-webhook/webhook-url
+            channel: '#argocd-deployments'
+            username: 'P0 OUTAGE - ALL HANDS'
+            icon_emoji: ':rotating_light:'
+            title: |-
+              {{ if eq .Status "firing" }}🚨🚨 [P0 OUTAGE] {{ .GroupLabels.alertname }}{{ else }}✅ [P0 RESOLVED] {{ .GroupLabels.alertname }}{{ end }}
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else }}#FF0000{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              🚨🚨 *P0 COMPLETE OUTAGE* - {{ .Annotations.summary }}
+              💥 *Impact:* {{ .Annotations.impact }}
+              {{ end }}
+            send_resolved: true
+          # Broadcast to #storage-alerts
+          - api_url_file: /etc/alertmanager/secrets/storage-slack-webhook/webhook-url
+            channel: '#storage-alerts'
+            username: 'P0 OUTAGE - ALL HANDS'
+            icon_emoji: ':rotating_light:'
+            title: |-
+              {{ if eq .Status "firing" }}🚨🚨 [P0 OUTAGE] {{ .GroupLabels.alertname }}{{ else }}✅ [P0 RESOLVED] {{ .GroupLabels.alertname }}{{ end }}
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else }}#FF0000{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              🚨🚨 *P0 COMPLETE OUTAGE* - {{ .Annotations.summary }}
+              💥 *Impact:* {{ .Annotations.impact }}
+              {{ end }}
+            send_resolved: true
+          # Broadcast to #database-alerts
+          - api_url_file: /etc/alertmanager/secrets/database-slack-webhook/webhook-url
+            channel: '#database-alerts'
+            username: 'P0 OUTAGE - ALL HANDS'
+            icon_emoji: ':rotating_light:'
+            title: |-
+              {{ if eq .Status "firing" }}🚨🚨 [P0 OUTAGE] {{ .GroupLabels.alertname }}{{ else }}✅ [P0 RESOLVED] {{ .GroupLabels.alertname }}{{ end }}
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else }}#FF0000{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              🚨🚨 *P0 COMPLETE OUTAGE* - {{ .Annotations.summary }}
+              💥 *Impact:* {{ .Annotations.impact }}
+              {{ end }}
+            send_resolved: true
+          # Broadcast to #security-alerts
+          - api_url_file: /etc/alertmanager/secrets/security-slack-webhook/webhook-url
+            channel: '#security-alerts'
+            username: 'P0 OUTAGE - ALL HANDS'
+            icon_emoji: ':rotating_light:'
+            title: |-
+              {{ if eq .Status "firing" }}🚨🚨 [P0 OUTAGE] {{ .GroupLabels.alertname }}{{ else }}✅ [P0 RESOLVED] {{ .GroupLabels.alertname }}{{ end }}
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else }}#FF0000{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              🚨🚨 *P0 COMPLETE OUTAGE* - {{ .Annotations.summary }}
+              💥 *Impact:* {{ .Annotations.impact }}
+              {{ end }}
+            send_resolved: true
+
+      # ====== ARGOCD CRITICAL (P1/P2) 🔴 ======
+      - name: 'argocd-critical'
+        pagerduty_configs:
+          - routing_key_file: /etc/alertmanager/secrets/pagerduty-integration-key/integration-key
+            send_resolved: true
+            description: '{{ .CommonAnnotations.summary }}'
+            severity: critical
+            details:
+              firing: '{{ .Alerts.Firing | len }}'
+              resolved: '{{ .Alerts.Resolved | len }}'
+              description: '{{ .CommonAnnotations.description }}'
+              namespace: '{{ .CommonLabels.namespace }}'
+              application: '{{ .CommonLabels.name }}'
+              action: '{{ .CommonAnnotations.action }}'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/argocd-slack-webhook/webhook-url
+            channel: '#argocd-deployments'
+            username: 'ArgoCD Homelab'
+            icon_emoji: ':rotating_light:'
+            title: |-
+              {{ if eq .Status "firing" }}🔴 [FIRING] {{ .GroupLabels.alertname }}{{ else }}✅ [RESOLVED] {{ .GroupLabels.alertname }}{{ end }}
+            title_link: '{{ template "__alertmanagerURL" . }}'
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else }}danger{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              {{ if eq .Status "firing" }}🔴 *CRITICAL GitOps Alert*{{ else }}✅ *Issue Resolved*{{ end }}
+
+              📦 *Application Details*
+              • *Name:* `{{ .Labels.name }}`
+              • *Project:* `{{ .Labels.project }}`
+              • *Destination:* {{ .Labels.dest_server }}
+              • *Repository:* {{ .Labels.repo }}
+
+              ⚠️ *Current Status*
+              • *Sync:* {{ .Labels.sync_status }}{{ if .Labels.autosync_enabled }} (Auto-Sync: ON){{ end }}
+              • *Health:* {{ .Labels.health_status }}
+              {{ if eq .Status "firing" }}• *Started:* {{ .StartsAt.Format "2006-01-02 15:04:05" }}{{ else }}• *Resolved:* {{ .EndsAt.Format "2006-01-02 15:04:05" }}{{ end }}
+
+              🔍 *Problem Summary*
+              {{ .Annotations.summary }}
+              {{ if .Annotations.description }}
+              *Details:* {{ .Annotations.description }}{{ end }}
+
+              🛠️ *Recommended Action*
+              {{ .Annotations.action }}
+
+              📊 *Priority:* P1 - CRITICAL
+              {{ end }}
+            actions:
+              - type: button
+                text: ':argocd: View in ArgoCD'
+                url: 'https://argocd.homelab.local/applications/{{ (index .Alerts 0).Labels.name }}'
+              - type: button
+                text: ':kubernetes: View Logs'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: ':no_bell: Silence'
+                url: '{{ .ExternalURL }}/#/silences'
+            send_resolved: true
+
+      # ====== ARGOCD INFO (P3+) ℹ️ ======
+      - name: 'argocd-info'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/argocd-slack-webhook/webhook-url
+            channel: '#argocd-deployments'
+            username: 'ArgoCD Homelab'
+            icon_emoji: ':information_source:'
+            title: |-
+              {{ if eq .Status "firing" }}⚠️ [WARNING] {{ .GroupLabels.alertname }}{{ else }}✅ [RESOLVED] {{ .GroupLabels.alertname }}{{ end }}
+            title_link: '{{ template "__alertmanagerURL" . }}'
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else }}warning{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              {{ if eq .Status "firing" }}⚠️ *GitOps Warning*{{ else }}✅ *Issue Resolved*{{ end }}
+
+              📦 *Application:* `{{ .Labels.name }}`
+              🗂️ *Project:* `{{ .Labels.project }}`
+              📊 *Status:* {{ .Labels.sync_status }} / {{ .Labels.health_status }}
+
+              💡 *Summary:* {{ .Annotations.summary }}
+              {{ if .Annotations.description }}
+              *Details:* {{ .Annotations.description }}{{ end }}
+
+              📋 *Priority:* P3 - Informational
+              {{ end }}
+            actions:
+              - type: button
+                text: ':argocd: View Application'
+                url: 'https://argocd.homelab.local/applications/{{ (index .Alerts 0).Labels.name }}'
+            send_resolved: true
+
+      # ====== STORAGE ALERTS (#storage-alerts) 💾 ======
+      - name: 'storage-alerts'
+        pagerduty_configs:
+          - routing_key_file: /etc/alertmanager/secrets/pagerduty-integration-key/integration-key
+            send_resolved: true
+            description: '{{ .CommonAnnotations.summary }}'
+            severity: '{{ if eq .CommonLabels.priority "P1" }}critical{{ else }}warning{{ end }}'
+            details:
+              firing: '{{ .Alerts.Firing | len }}'
+              resolved: '{{ .Alerts.Resolved | len }}'
+              description: '{{ .CommonAnnotations.description }}'
+              action: '{{ .CommonAnnotations.action }}'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/storage-slack-webhook/webhook-url
+            channel: '#storage-alerts'
+            username: 'Storage Monitoring'
+            icon_emoji: ':floppy_disk:'
+            title: |-
+              {{ if eq .Status "firing" }}{{ if eq .CommonLabels.priority "P1" }}🔴 [CRITICAL]{{ else }}⚠️ [WARNING]{{ end }} {{ .GroupLabels.alertname }}{{ else }}✅ [RESOLVED] {{ .GroupLabels.alertname }}{{ end }}
+            title_link: '{{ template "__alertmanagerURL" . }}'
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else if eq .CommonLabels.priority "P1" }}danger{{ else }}warning{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              {{ if eq .Status "firing" }}{{ if eq .Labels.priority "P1" }}🔴 *CRITICAL Storage Alert*{{ else }}⚠️ *Storage Warning*{{ end }}{{ else }}✅ *Storage Issue Resolved*{{ end }}
+
+              💾 *Storage Details*
+              {{ if .Labels.ceph_daemon }}• *OSD:* `{{ .Labels.ceph_daemon }}`{{ end }}
+              {{ if .Labels.name }}• *Pool:* `{{ .Labels.name }}`{{ end }}
+              {{ if .Labels.tier }}• *Tier:* {{ .Labels.tier }}{{ end }}
+
+              🔍 *Problem Summary*
+              {{ .Annotations.summary }}
+              {{ if .Annotations.description }}
+              *Details:* {{ .Annotations.description }}{{ end }}
+
+              📊 *Metrics*
+              {{ if .Annotations.current_value }}• *Current:* {{ .Annotations.current_value }}{{ end }}
+              {{ if .Annotations.threshold }}• *Threshold:* {{ .Annotations.threshold }}{{ end }}
+
+              🛠️ *Action Required*
+              {{ .Annotations.action }}
+
+              📋 *Priority:* {{ .Labels.priority }}
+              {{ end }}
+            actions:
+              - type: button
+                text: ':bar_chart: Ceph Dashboard'
+                url: '{{ (index .Alerts 0).Annotations.dashboard_url }}'
+              - type: button
+                text: ':chart_with_upwards_trend: Prometheus'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+            send_resolved: true
+
+      # ====== DATABASE ALERTS (#database-alerts) 🗄️ ======
+      - name: 'database-alerts'
+        pagerduty_configs:
+          - routing_key_file: /etc/alertmanager/secrets/pagerduty-integration-key/integration-key
+            send_resolved: true
+            description: '{{ .CommonAnnotations.summary }}'
+            severity: '{{ if eq .CommonLabels.priority "P1" }}critical{{ else }}warning{{ end }}'
+            details:
+              firing: '{{ .Alerts.Firing | len }}'
+              resolved: '{{ .Alerts.Resolved | len }}'
+              description: '{{ .CommonAnnotations.description }}'
+              cluster: '{{ .CommonLabels.cnpg_cluster }}'
+              namespace: '{{ .CommonLabels.namespace }}'
+              action: '{{ .CommonAnnotations.action }}'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/database-slack-webhook/webhook-url
+            channel: '#database-alerts'
+            username: 'Database Monitoring'
+            icon_emoji: ':database:'
+            title: |-
+              {{ if eq .Status "firing" }}{{ if eq .CommonLabels.priority "P1" }}🔴 [CRITICAL]{{ else }}⚠️ [WARNING]{{ end }} {{ .GroupLabels.alertname }}{{ else }}✅ [RESOLVED] {{ .GroupLabels.alertname }}{{ end }}
+            title_link: '{{ template "__alertmanagerURL" . }}'
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else if eq .CommonLabels.priority "P1" }}danger{{ else }}warning{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              {{ if eq .Status "firing" }}{{ if eq .Labels.priority "P1" }}🔴 *CRITICAL Database Alert*{{ else }}⚠️ *Database Warning*{{ end }}{{ else }}✅ *Database Issue Resolved*{{ end }}
+
+              🗄️ *Database Details*
+              {{ if .Labels.cnpg_cluster }}• *Cluster:* `{{ .Labels.cnpg_cluster }}`{{ end }}
+              {{ if .Labels.namespace }}• *Namespace:* `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.pod }}• *Pod:* `{{ .Labels.pod }}`{{ end }}
+              {{ if .Labels.component }}• *Component:* {{ .Labels.component }}{{ end }}
+
+              🔍 *Problem Summary*
+              {{ .Annotations.summary }}
+              {{ if .Annotations.description }}
+              *Details:* {{ .Annotations.description }}{{ end }}
+
+              📊 *Metrics*
+              {{ if .Annotations.current_value }}• *Current:* {{ .Annotations.current_value }}{{ end }}
+              {{ if .Annotations.threshold }}• *Threshold:* {{ .Annotations.threshold }}{{ end }}
+
+              🛠️ *Action Required*
+              {{ .Annotations.action }}
+
+              📋 *Priority:* {{ .Labels.priority }}
+              {{ end }}
+            actions:
+              - type: button
+                text: ':bar_chart: PostgreSQL Dashboard'
+                url: '{{ (index .Alerts 0).Annotations.dashboard_url }}'
+              - type: button
+                text: ':chart_with_upwards_trend: Prometheus'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+            send_resolved: true
+
+      # ====== SECURITY ALERTS (#security-alerts) 🔒 ======
+      - name: 'security-alerts'
+        pagerduty_configs:
+          - routing_key_file: /etc/alertmanager/secrets/pagerduty-integration-key/integration-key
+            send_resolved: true
+            description: '{{ .CommonAnnotations.summary }}'
+            severity: '{{ if eq .CommonLabels.priority "P1" }}critical{{ else }}warning{{ end }}'
+            details:
+              firing: '{{ .Alerts.Firing | len }}'
+              resolved: '{{ .Alerts.Resolved | len }}'
+              description: '{{ .CommonAnnotations.description }}'
+              action: '{{ .CommonAnnotations.action }}'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/security-slack-webhook/webhook-url
+            channel: '#security-alerts'
+            username: 'Security Monitoring'
+            icon_emoji: ':lock:'
+            title: |-
+              {{ if eq .Status "firing" }}{{ if eq .CommonLabels.priority "P1" }}🔴 [CRITICAL SECURITY]{{ else }}⚠️ [SECURITY WARNING]{{ end }} {{ .GroupLabels.alertname }}{{ else }}✅ [RESOLVED] {{ .GroupLabels.alertname }}{{ end }}
+            title_link: '{{ template "__alertmanagerURL" . }}'
+            color: |-
+              {{ if eq .Status "resolved" }}good{{ else if eq .CommonLabels.priority "P1" }}danger{{ else }}warning{{ end }}
+            text: |-
+              {{ range .Alerts }}
+              {{ if eq .Status "firing" }}{{ if eq .Labels.priority "P1" }}🔴 *CRITICAL Security Alert*{{ else }}⚠️ *Security Warning*{{ end }}{{ else }}✅ *Security Issue Resolved*{{ end }}
+
+              🔒 *Security Event*
+              {{ if .Labels.name }}• *Certificate:* `{{ .Labels.name }}`{{ end }}
+              {{ if .Labels.namespace }}• *Namespace:* `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.component }}• *Component:* {{ .Labels.component }}{{ end }}
+
+              🔍 *Problem Summary*
+              {{ .Annotations.summary }}
+              {{ if .Annotations.description }}
+              *Details:* {{ .Annotations.description }}{{ end }}
+
+              📊 *Metrics*
+              {{ if .Annotations.current_value }}• *Current:* {{ .Annotations.current_value }}{{ end }}
+              {{ if .Annotations.threshold }}• *Threshold:* {{ .Annotations.threshold }}{{ end }}
+
+              🛠️ *Action Required*
+              {{ .Annotations.action }}
+
+              📋 *Priority:* {{ .Labels.priority }}
+              {{ end }}
+            actions:
+              - type: button
+                text: ':shield: Cert Manager'
+                url: '{{ (index .Alerts 0).Annotations.dashboard_url }}'
+              - type: button
+                text: ':chart_with_upwards_trend: Prometheus'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+            send_resolved: true
+
+      # ====== DEFAULT RECEIVER ======
+      - name: 'default'
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-webhooks/critical
+            channel: '#alerts'
+            username: 'AlertManager'
+            icon_emoji: ':prometheus:'
+            title: '[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
+            text: |-
+              {{ range .Alerts }}
+              *{{ .Labels.alertname }}*
+              {{ .Annotations.summary }}
+              {{ end }}
+            send_resolved: true
+
+    # 🚫 INHIBIT RULES - Prevent Alert Spam
+    inhibit_rules:
+      # Critical alerts suppress warnings for same target
+      - source_matchers:
+          - severity="critical"
+        target_matchers:
+          - severity="warning"
+        equal: ['namespace', 'alertname', 'instance']
+
+      # P1 suppresses P2/P3 for same service
+      - source_matchers:
+          - priority="P1"
+        target_matchers:
+          - priority=~"P2|P3"
+        equal: ['namespace', 'job']
+
+      # Node down suppresses pod alerts on that node
+      - source_matchers:
+          - alertname="NodeDown"
+        target_matchers:
+          - alertname=~"Pod.*|Container.*"
+        equal: ['node']

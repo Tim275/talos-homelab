@@ -38,6 +38,12 @@ resource "terraform_data" "cilium_bootstrap_inline_manifests" {
           "values.yaml" = file("${path.root}/${var.cluster.cilium.values_file_path}")
         }
       })
+    },
+    {
+      # CRITICAL: CoreDNS ConfigMap override to use public DNS (8.8.8.8, 1.1.1.1)
+      # instead of Talos link-local DNS (169.254.116.108) which breaks in Proxmox VMs
+      name     = "coredns-config"
+      contents = file("${path.module}/inline-manifests/coredns-config.yaml")
     }
   ]
 }

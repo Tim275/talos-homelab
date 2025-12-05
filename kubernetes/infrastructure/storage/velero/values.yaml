@@ -4,7 +4,7 @@
 # Velero Configuration
 image:
   repository: velero/velero
-  tag: v1.14.1
+  tag: v1.17.1
 
 # Enterprise HA Configuration
 replicas: 2
@@ -37,14 +37,14 @@ configuration:
 # Enable CSI Snapshots
 snapshotsEnabled: true
 
-# Resource Configuration
+# Resource Configuration (Homelab-optimized)
 resources:
   limits:
-    cpu: 1000m
+    cpu: 500m
     memory: 512Mi
   requests:
-    cpu: 500m
-    memory: 256Mi
+    cpu: 100m       # Homelab: reduced from 500m
+    memory: 128Mi
 
 # Monitoring
 metrics:
@@ -57,21 +57,21 @@ metrics:
       prometheus.io/port: "8085"
       prometheus.io/path: "/metrics"
 
-# Node Agent (for pod volume backup with Restic encryption)
+# Node Agent (for pod volume backup with Kopia encryption)
 nodeAgent:
-  enable: true
+  podVolumePath: /var/lib/kubelet/pods
+  privileged: false
   resources:
     limits:
-      cpu: 1000m
-      memory: 1Gi
-    requests:
       cpu: 500m
       memory: 512Mi
+    requests:
+      cpu: 100m       # Homelab: reduced from 500m (DaemonSet on every node!)
+      memory: 256Mi
 
-# 🔐 ENTERPRISE ENCRYPTION - Client-Side with Restic
+# 🔐 ENTERPRISE ENCRYPTION - Client-Side with Kopia
 # Backups are encrypted BEFORE upload to S3!
-defaultVolumesToFsBackup: true  # Force Restic for all PVs
-defaultSnapshotMoveData: true   # Move snapshots via Restic (encrypted)
+uploaderType: kopia  # Kopia replaces deprecated restic
 
 # Security
 podSecurityContext:
@@ -97,7 +97,7 @@ serviceAccount:
 # Init Containers (for S3 plugin support)
 initContainers:
   - name: velero-plugin-for-aws
-    image: velero/velero-plugin-for-aws:v1.11.0
+    image: velero/velero-plugin-for-aws:v1.13.1
     imagePullPolicy: IfNotPresent
     volumeMounts:
       - mountPath: /target

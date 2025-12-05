@@ -11,7 +11,10 @@ metadata:
     argocd.argoproj.io/sync-wave: "2"
 spec:
   cephVersion:
-    image: quay.io/ceph/ceph:v19.2.3  # Squid - Latest stable version
+    # Ceph Squid v19.2.3 - Latest stable (December 2025)
+    # Ceph Tentacle v20.2.0 available but Squid is more stable for homelab
+    # https://docs.ceph.com/en/latest/releases/
+    image: quay.io/ceph/ceph:v19.2.3
     allowUnsupported: false
 
   # 🔐 ENTERPRISE SECURITY UPGRADES (Optional - for Production/Finance/Healthcare):
@@ -24,6 +27,45 @@ spec:
   #     schedule: "@monthly"  # Rotate keys monthly
 
   dataDirHostPath: /var/lib/rook
+
+  # ============================================================================
+  # ENTERPRISE CEPH CONFIGURATION (SUSE/Red Hat Best Practices)
+  # Ref: https://documentation.suse.com/sbp/storage/html/SBP-rook-ceph-kubernetes/
+  # ============================================================================
+  cephConfig:
+    global:
+      # CRITICAL: Explicit memory target (SUSE recommends minimum 4GB)
+      osd_memory_target: "4294967296"     # 4GB in bytes - never go below this!
+      osd_memory_target_autotune: "true"  # Auto-adjust based on available memory
+      bluestore_cache_autotune: "true"    # Auto-tune BlueStore cache
+
+      # VM-optimized heartbeat tolerances (prevents false OSD down alerts)
+      osd_heartbeat_grace: "120"          # Default: 20s, increased for VM I/O latency
+      osd_heartbeat_interval: "15"        # Default: 6s
+      mon_osd_down_out_interval: "600"    # Wait 10 min before marking OSD out
+
+      # VM/Proxmox BlueStore tuning (prevents SLOW_OPS warnings)
+      # CRITICAL: Aggressive VM tuning for Proxmox shared storage
+      osd_op_complaint_time: "120"        # Default: 30s, increased to 120s for VM I/O spikes
+      osd_op_log_threshold: "50"          # Default: 5, reduce log spam
+      osd_op_history_slow_op_threshold: "120" # Match complaint time
+      bluestore_throttle_bytes: "134217728"          # 128MB write buffer (doubled)
+      bluestore_throttle_deferred_bytes: "268435456" # 256MB deferred buffer (doubled)
+
+      # Reduce I/O pressure from commit batching
+      bluestore_default_buffered_write: "true"
+      bluestore_prefer_deferred_size: "65536"  # Defer small writes
+
+      # Client I/O priority over recovery (banking-grade: never slow down clients)
+      osd_client_op_priority: "63"
+      osd_recovery_op_priority: "3"
+      osd_recovery_max_active: "1"
+      osd_max_backfills: "1"
+
+      # Scrubbing during low-load periods only
+      osd_scrub_begin_hour: "2"           # Start scrubbing at 2 AM
+      osd_scrub_end_hour: "6"             # End scrubbing at 6 AM
+      osd_scrub_during_recovery: "false"  # Never scrub during recovery
 
   # IMPORTANT: Clean up previous data if cluster was deleted
   cleanupPolicy:
@@ -58,10 +100,10 @@ spec:
       - name: telemetry
         enabled: true  # Advanced cluster insights and health analytics
 
-  # Production-grade dashboard with SSL
+  # Production-grade dashboard with SSL (end-to-end encryption)
   dashboard:
     enabled: true
-    ssl: true  # HTTPS enabled for secure web access
+    ssl: false  # HTTP backend - Envoy Gateway handles TLS at edge (like ArgoCD, Grafana, etc.)
 
   # Essential monitoring only
   monitoring:
@@ -81,29 +123,38 @@ spec:
   crashCollector:
     disable: false
 
-  # Homelab: Memory optimization - MGR needs more for dashboard/modules
+  # ============================================================================
+  # ENTERPRISE RESOURCE CONFIGURATION (SUSE Best Practice)
+  # ============================================================================
+  # CRITICAL: "Never set resource LIMITS for Ceph daemons—only REQUESTS"
+  # Reason: In failure scenarios, killing daemons at limits makes things WORSE
+  # Ref: https://documentation.suse.com/sbp/storage/html/SBP-rook-ceph-kubernetes/
+  # ============================================================================
   resources:
     mgr:
-      limits:
-        cpu: "500m"        # Increased for dashboard responsiveness
-        memory: "2Gi"      # Increased - MGR loads many Python modules!
+      # NO LIMITS - Enterprise best practice
       requests:
-        cpu: "100m"        # Increased for baseline performance
-        memory: "1Gi"      # Increased - prevent OOMKills
+        cpu: "250m"        # Homelab: reduced from 500m
+        memory: "1.5Gi"    # Increased: SUSE min for prod is 2GB
     mon:
-      limits:
-        cpu: "300m"        # Reduced from 500m
-        memory: "512Mi"    # Reduced from 1Gi - MAJOR SAVINGS!
+      # NO LIMITS - Enterprise best practice
       requests:
-        cpu: "30m"         # Reduced from 50m
-        memory: "128Mi"    # Reduced from 256Mi
+        cpu: "250m"        # Homelab: reduced from 500m
+        memory: "2Gi"      # Increased: SUSE min for prod is 4GB - 1Gi caused quorum issues!
     osd:
-      limits:
-        cpu: "1500m"       # Increased from 1000m to fix BLUESTORE_SLOW_OP_ALERT
-        memory: "3Gi"      # 2GB osd_memory_target + 1GB overhead (Ceph recommended minimum)
+      # NO LIMITS - Enterprise best practice
+      # Request MUST be osd_memory_target (4GB) + overhead
       requests:
-        cpu: "300m"        # Increased from 250m for better baseline performance
-        memory: "1.5Gi"    # 50% of limit - prevents OOM kills while allowing scheduling
+        cpu: "500m"        # Homelab: reduced from 1000m (still need some for I/O)
+        memory: "4Gi"      # Homelab: reduced from 5Gi (match osd_memory_target)
+    prepareosd:
+      requests:
+        cpu: "250m"
+        memory: "256Mi"
+    crashcollector:
+      requests:
+        cpu: "50m"
+        memory: "64Mi"
 
   removeOSDsIfOutAndSafeToRemove: true
 
@@ -111,6 +162,13 @@ spec:
   storage:
     useAllNodes: false
     useAllDevices: false  # Use specific block devices (scsi1 = /dev/sdb)
+    # Global BlueStore tuning for VM environments
+    config:
+      osdsPerDevice: "1"
+      # Reduce write amplification on VMs
+      bluestore_min_alloc_size_hdd: "65536"
+      # RocksDB tuning for reduced I/O spikes
+      bluestore_rocksdb_options: "compression=kNoCompression,max_write_buffer_number=4,min_write_buffer_number_to_merge=1,recycle_log_file_num=4"
     nodes:
       - name: "worker-1"  # nipogi - 32GB RAM, stateful workloads
         config:

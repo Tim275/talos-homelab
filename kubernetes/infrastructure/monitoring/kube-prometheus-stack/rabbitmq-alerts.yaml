@@ -1,0 +1,166 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: rabbitmq-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+    release: kube-prometheus-stack
+    layer: platform
+spec:
+  groups:
+    - name: platform.rabbitmq.critical
+      interval: 30s
+      rules:
+        # ====== P0: CRITICAL - RabbitMQ Down ======
+        - alert: RabbitMQDown
+          expr: |
+            rabbitmq_up == 0
+          for: 2m
+          labels:
+            severity: critical
+            priority: p0
+            component: rabbitmq
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "RabbitMQ instance {{ $labels.instance }} is DOWN"
+            description: |
+              RabbitMQ instance {{ $labels.instance }} is unreachable.
+              Message queue UNAVAILABLE!
+
+              Impact: Message delivery stopped, N8N workflows blocked
+              Team: @platform-oncall
+
+              Check: kubectl get pods -l app=rabbitmq
+              Check: kubectl logs -l app=rabbitmq --tail=100
+
+        # ====== P0: CRITICAL - RabbitMQ Memory Alarm ======
+        - alert: RabbitMQMemoryAlarm
+          expr: |
+            rabbitmq_alarms_memory_used_watermark == 1
+          for: 2m
+          labels:
+            severity: critical
+            priority: p0
+            component: rabbitmq
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "RabbitMQ memory alarm triggered on {{ $labels.instance }}"
+            description: |
+              RabbitMQ has triggered memory alarm on {{ $labels.instance }}.
+              Publishing BLOCKED to prevent OOM!
+
+              Impact: Cannot publish new messages
+              Team: @platform-oncall
+              Action: Increase memory limits or purge queues
+
+        # ====== P0: CRITICAL - RabbitMQ Disk Alarm ======
+        - alert: RabbitMQDiskAlarm
+          expr: |
+            rabbitmq_alarms_free_disk_space_watermark == 1
+          for: 2m
+          labels:
+            severity: critical
+            priority: p0
+            component: rabbitmq
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "RabbitMQ disk alarm triggered on {{ $labels.instance }}"
+            description: |
+              RabbitMQ has triggered disk alarm on {{ $labels.instance }}.
+              Publishing BLOCKED to prevent disk full!
+
+              Impact: Cannot publish new messages
+              Team: @platform-oncall
+
+    - name: platform.rabbitmq.high
+      interval: 30s
+      rules:
+        # ====== P1: HIGH - RabbitMQ Queue Depth High ======
+        - alert: RabbitMQQueueDepthHigh
+          expr: |
+            rabbitmq_queue_messages > 10000
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: rabbitmq
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "RabbitMQ queue {{ $labels.queue }} has {{ $value }} messages"
+            description: |
+              Queue {{ $labels.queue }} has {{ $value }} pending messages.
+              Consumers not keeping up with producers!
+
+              Duration: >10 minutes
+              Action: Scale consumers or investigate processing delays
+
+              Check: kubectl exec -it <rabbitmq-pod> -- rabbitmqctl list_queues
+
+        # ====== P1: HIGH - RabbitMQ Connection Count High ======
+        - alert: RabbitMQConnectionCountHigh
+          expr: |
+            rabbitmq_connections > 100
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: rabbitmq
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "RabbitMQ has {{ $value }} active connections"
+            description: |
+              RabbitMQ has {{ $value }} active connections.
+              High connection count may indicate connection leak!
+
+              Duration: >10 minutes
+              Action: Review connection pooling configuration
+
+        # ====== P1: HIGH - RabbitMQ Unroutable Messages ======
+        - alert: RabbitMQUnroutableMessages
+          expr: |
+            rate(rabbitmq_channel_messages_unroutable_returned_total[5m]) > 0
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: rabbitmq
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "RabbitMQ has {{ $value }} unroutable messages/sec"
+            description: |
+              RabbitMQ is returning {{ $value }} unroutable messages per second.
+              Queue routing configuration issue!
+
+              Duration: >10 minutes
+              Action: Check exchange and queue bindings
+
+    - name: platform.rabbitmq.medium
+      interval: 60s
+      rules:
+        # ====== P2: MEDIUM - RabbitMQ Memory High ======
+        - alert: RabbitMQMemoryHigh
+          expr: |
+            (rabbitmq_process_resident_memory_bytes / rabbitmq_resident_memory_limit_bytes) > 0.8
+          for: 15m
+          labels:
+            severity: info
+            priority: p2
+            component: rabbitmq
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "RabbitMQ memory usage is {{ $value | humanizePercentage }}"
+            description: |
+              RabbitMQ memory usage is {{ $value | humanizePercentage }}.
+              Approaching memory alarm threshold (90%)!
+
+              Current: {{ $value | humanizePercentage }}
+              Alarm threshold: 90%
+              Duration: >15 minutes

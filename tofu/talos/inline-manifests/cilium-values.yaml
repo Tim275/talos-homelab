@@ -87,12 +87,15 @@ dnsProxy:
 l7Proxy: true
 
 # 🔥 PHASE 1: PERFORMANCE - Bandwidth Manager + BBR (30-40% throughput boost)
+# NOTE: BBR requires BPF host routing (native routing mode), not tunneling
 bandwidthManager:
   enabled: true
-  bbr: true  # Kernel 6.12 supports BBR congestion control
+  bbr: false  # DISABLED: BBR requires native routing, will enable in kubernetes/network/cilium
 
 # 🔥 PHASE 1: PERFORMANCE - BIG TCP (reduce CPU 20-40%, max throughput)
-enableIPv4BIGTCP: true
+# DISABLED: BIG TCP is not compatible with tunneling mode (VXLAN/Geneve)
+# Requires native routing mode to work. Can be re-enabled after switching to native routing.
+enableIPv4BIGTCP: false
 
 # 🔐 PHASE 2: SECURITY - WireGuard Encryption (zero-trust pod-to-pod)
 encryption:
@@ -132,7 +135,7 @@ hubble:
       - flow
       - port-distribution
       - icmp
-      - http
+      # httpV2 replaces http plugin with additional features (exemplars, labels)
       - httpV2:exemplars=true;labelsContext=source_namespace,source_workload,destination_namespace,destination_workload
     enableOpenMetrics: true
     serviceMonitor:
