@@ -26,16 +26,15 @@ provider "proxmox" {
   api_token = var.proxmox_api_token
 
   ssh {
-    agent    = true
-    username = var.proxmox.username
+    agent       = false
+    username    = "root"
+    private_key = file(pathexpand("~/.ssh/id_rsa_proxmox"))
   }
 }
 
 provider "kubernetes" {
-  host                   = module.talos.kube_config.kubernetes_client_configuration.host
-  client_certificate     = base64decode(module.talos.kube_config.kubernetes_client_configuration.client_certificate)
-  client_key             = base64decode(module.talos.kube_config.kubernetes_client_configuration.client_key)
-  cluster_ca_certificate = base64decode(module.talos.kube_config.kubernetes_client_configuration.ca_certificate)
+  # Use existing kubeconfig file to avoid circular dependency during import
+  config_path = "${path.module}/output/kube-config.yaml"
 }
 
 provider "restapi" {

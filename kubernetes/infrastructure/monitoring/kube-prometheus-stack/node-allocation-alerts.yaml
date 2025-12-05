@@ -1,0 +1,158 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: node-allocation-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+    release: kube-prometheus-stack
+    layer: infrastructure
+spec:
+  groups:
+    # ============================================================================
+    # NODE RESOURCE ALLOCATION ALERTS
+    # These alert on REQUESTS (what scheduler sees) not actual usage!
+    # Critical for preventing scheduling failures like worker-4 at 97% requests
+    # ============================================================================
+    - name: node.allocation.critical
+      interval: 30s
+      rules:
+        # ====== P1: CRITICAL - Node CPU Requests >95% ======
+        - alert: NodeCPURequestsCritical
+          expr: |
+            (
+              sum by (node) (kube_pod_container_resource_requests{resource="cpu", unit="core"})
+              /
+              sum by (node) (kube_node_status_allocatable{resource="cpu"})
+            ) * 100 > 95
+          for: 5m
+          labels:
+            severity: critical
+            priority: p1
+            component: node-allocation
+            tier: infrastructure
+          annotations:
+            summary: "CRITICAL: Node {{ $labels.node }} CPU requests >95%"
+            description: |
+              Node {{ $labels.node }} hat {{ $value | printf "%.1f" }}% der CPU durch Requests belegt!
+              KEINE neuen Pods können auf diesem Node schedulen!
+
+              Requests: >95% von allocatable CPU
+              Impact: Scheduling failures, OSD/MON können nicht starten
+
+              Action: Pods evicten oder auf andere Nodes verschieben
+              Team: @platform-oncall
+
+        # ====== P1: CRITICAL - Node Memory Requests >95% ======
+        - alert: NodeMemoryRequestsCritical
+          expr: |
+            (
+              sum by (node) (kube_pod_container_resource_requests{resource="memory", unit="byte"})
+              /
+              sum by (node) (kube_node_status_allocatable{resource="memory"})
+            ) * 100 > 95
+          for: 5m
+          labels:
+            severity: critical
+            priority: p1
+            component: node-allocation
+            tier: infrastructure
+          annotations:
+            summary: "CRITICAL: Node {{ $labels.node }} Memory requests >95%"
+            description: |
+              Node {{ $labels.node }} hat {{ $value | printf "%.1f" }}% des Memory durch Requests belegt!
+              KEINE neuen Pods können auf diesem Node schedulen!
+
+              Impact: Scheduling failures
+              Action: Pods evicten oder Memory requests reduzieren
+
+    - name: node.allocation.warning
+      interval: 30s
+      rules:
+        # ====== P2: WARNING - Node CPU Requests >90% ======
+        - alert: NodeCPURequestsHigh
+          expr: |
+            (
+              sum by (node) (kube_pod_container_resource_requests{resource="cpu", unit="core"})
+              /
+              sum by (node) (kube_node_status_allocatable{resource="cpu"})
+            ) * 100 > 90
+          for: 10m
+          labels:
+            severity: warning
+            priority: p2
+            component: node-allocation
+            tier: infrastructure
+          annotations:
+            summary: "Node {{ $labels.node }} CPU requests >90%"
+            description: |
+              Node {{ $labels.node }} hat {{ $value | printf "%.1f" }}% der CPU durch Requests belegt.
+              Scheduling wird bald problematisch!
+
+              Threshold: 90%
+              Action: Workloads besser verteilen (Descheduler, Anti-Affinity)
+
+        # ====== P2: WARNING - Node Memory Requests >90% ======
+        - alert: NodeMemoryRequestsHigh
+          expr: |
+            (
+              sum by (node) (kube_pod_container_resource_requests{resource="memory", unit="byte"})
+              /
+              sum by (node) (kube_node_status_allocatable{resource="memory"})
+            ) * 100 > 90
+          for: 10m
+          labels:
+            severity: warning
+            priority: p2
+            component: node-allocation
+            tier: infrastructure
+          annotations:
+            summary: "Node {{ $labels.node }} Memory requests >90%"
+            description: |
+              Node {{ $labels.node }} hat {{ $value | printf "%.1f" }}% des Memory durch Requests belegt.
+
+              Action: Workloads besser verteilen
+
+        # ====== P2: WARNING - Cluster-wide CPU Requests >70% ======
+        - alert: ClusterCPURequestsHigh
+          expr: |
+            (
+              sum(kube_pod_container_resource_requests{resource="cpu", unit="core"})
+              /
+              sum(kube_node_status_allocatable{resource="cpu"})
+            ) * 100 > 70
+          for: 15m
+          labels:
+            severity: warning
+            priority: p2
+            component: cluster-allocation
+            tier: infrastructure
+          annotations:
+            summary: "Cluster CPU requests >70%"
+            description: |
+              Cluster-weite CPU Requests sind bei {{ $value | printf "%.1f" }}%.
+
+              Action: Capacity planning - mehr Nodes oder Requests optimieren
+
+        # ====== P2: WARNING - Unschedulable Pods ======
+        - alert: PodsUnschedulable
+          expr: |
+            kube_pod_status_phase{phase="Pending"} == 1
+            and on(namespace, pod) kube_pod_status_unschedulable == 1
+          for: 10m
+          labels:
+            severity: warning
+            priority: p2
+            component: scheduler
+            tier: infrastructure
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} unschedulable"
+            description: |
+              Pod {{ $labels.namespace }}/{{ $labels.pod }} kann seit >10 Minuten nicht schedulen.
+
+              Mögliche Ursachen:
+              - Insufficient CPU/Memory requests
+              - Node affinity/taints
+              - PVC not bound
+
+              Action: kubectl describe pod {{ $labels.pod }} -n {{ $labels.namespace }}

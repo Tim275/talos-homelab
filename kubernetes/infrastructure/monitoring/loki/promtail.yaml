@@ -19,15 +19,25 @@ spec:
         runAsUser: 0
         runAsGroup: 0
         fsGroup: 0
+        runAsNonRoot: false
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: promtail-container
           # renovate: docker=grafana/promtail
-          image: grafana/promtail:3.3.0
+          image: grafana/promtail:3.6.1
           args:
             - -config.file=/etc/promtail/promtail.yaml
           securityContext:
-            privileged: true
+            privileged: false
             runAsUser: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+              - ALL
+              add:
+              - DAC_READ_SEARCH
           env:
             - name: "HOSTNAME" # needed when using kubernetes_sd_configs
               valueFrom:
@@ -36,11 +46,15 @@ spec:
           volumeMounts:
             - name: logs
               mountPath: /var/log
+              readOnly: true
             - name: promtail-config
               mountPath: /etc/promtail
-            - mountPath: /var/lib/docker/containers
-              name: varlibdockercontainers
               readOnly: true
+            - name: varlibdockercontainers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+            - name: positions
+              mountPath: /tmp/positions
       volumes:
         - name: logs
           hostPath:
@@ -51,6 +65,8 @@ spec:
         - name: promtail-config
           configMap:
             name: promtail-config
+        - name: positions
+          emptyDir: {}
 ---
 # configmap.yaml
 apiVersion: v1

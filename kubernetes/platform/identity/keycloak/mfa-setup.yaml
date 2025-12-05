@@ -1,0 +1,103 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-mfa-setup
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak-mfa-setup
+    app.kubernetes.io/part-of: platform-identity
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: keycloak-mfa-setup
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: setup
+          image: quay.io/keycloak/keycloak:25.0.0
+          env:
+            - name: KEYCLOAK_ADMIN
+              value: admin
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: password
+            - name: KEYCLOAK_URL
+              value: "http://keycloak.keycloak.svc.cluster.local:8080"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              echo "=== Waiting for Keycloak to be ready (30s) ==="
+              sleep 30
+
+              echo ""
+              echo "=== Logging in to Keycloak ==="
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --server "$KEYCLOAK_URL" \
+                --realm master \
+                --user "$KEYCLOAK_ADMIN" \
+                --password "$KEYCLOAK_ADMIN_PASSWORD"
+
+              echo ""
+              echo "=== Creating 'kubernetes' realm (if not exists) ==="
+              if ! /opt/keycloak/bin/kcadm.sh get realms/kubernetes 2>/dev/null; then
+                echo "Creating kubernetes realm..."
+                /opt/keycloak/bin/kcadm.sh create realms \
+                  -s realm=kubernetes \
+                  -s enabled=true \
+                  -s displayName="Kubernetes Authentication"
+                echo "✅ Kubernetes realm created"
+              else
+                echo "✅ Kubernetes realm already exists"
+              fi
+
+              echo ""
+              echo "=== Enabling OTP Required Action (Google Authenticator) ==="
+              /opt/keycloak/bin/kcadm.sh update authentication/required-actions/CONFIGURE_TOTP -r kubernetes \
+                -s enabled=true \
+                -s defaultAction=true
+
+              echo ""
+              echo "=== Configuring OTP Policy (6 digits, 30s period) ==="
+              /opt/keycloak/bin/kcadm.sh update realms/kubernetes \
+                -s 'otpPolicyType=totp' \
+                -s 'otpPolicyAlgorithm=HmacSHA1' \
+                -s 'otpPolicyDigits=6' \
+                -s 'otpPolicyPeriod=30'
+
+              echo ""
+              echo "=== Configuring Session Timeouts ==="
+              /opt/keycloak/bin/kcadm.sh update realms/kubernetes \
+                -s 'ssoSessionIdleTimeout=1800' \
+                -s 'ssoSessionMaxLifespan=36000' \
+                -s 'accessTokenLifespan=300'
+
+              echo ""
+              echo "=========================================="
+              echo "🎉 MFA Setup Complete!"
+              echo "=========================================="
+              echo ""
+              echo "Next Steps:"
+              echo "1. Login to Keycloak: https://iam.timourhomelab.org"
+              echo "2. You will be forced to setup Google Authenticator"
+              echo "3. Install Google Authenticator app on phone:"
+              echo "   - iOS: https://apps.apple.com/app/google-authenticator/id388497605"
+              echo "   - Android: https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2"
+              echo "4. Scan QR code with app"
+              echo "5. Enter 6-digit code"
+              echo "6. ✅ MFA is now active!"
+              echo ""
+              echo "From now on, every login requires:"
+              echo "- Username + Password"
+              echo "- 6-digit code from Google Authenticator"
+              echo "=========================================="

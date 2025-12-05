@@ -5,10 +5,10 @@ kind: Kustomization
 namespace: velero
 
 resources:
-  - ns.yaml
   - velero-s3-credentials-sealed.yaml
   - velero-restic-credentials-sealedsecret.yaml
   - tier0-databases-6h-schedule.yaml
+  - schedules/
 
 patches:
   - path: patches/upgrade-job-initcontainer-resources.yaml
@@ -19,14 +19,14 @@ patches:
 helmCharts:
   - name: velero
     repo: https://vmware-tanzu.github.io/helm-charts
-    version: 10.1.3
+    version: 11.2.0
     releaseName: velero
     namespace: velero
     includeCRDs: true
     valuesInline:
       image:
         repository: velero/velero
-        tag: v1.14.1
+        tag: v1.15.0
       replicas: 2
       credentials:
         useSecret: true
@@ -42,7 +42,7 @@ helmCharts:
       configuration:
         features: ""  # CSI DISABLED - CSI plugin ignores uploaderType and always creates Kopia repos!
         defaultBackupTTL: 8760h
-        uploaderType: restic  # Use Restic File System Backup (direct mount, no CSI)
+        uploaderType: kopia  # Use Kopia File System Backup (replaces deprecated restic)
         backupStorageLocation:
           - name: cluster-backups
             provider: aws
@@ -110,9 +110,9 @@ helmCharts:
         containerSecurityContext:
           privileged: false  # Not fully privileged
           allowPrivilegeEscalation: false
-      # ENTERPRISE ENCRYPTION - Client-Side with Restic
+      # ENTERPRISE ENCRYPTION - Client-Side with Kopia
       # Backups are encrypted BEFORE upload to S3!
-      defaultVolumesToFsBackup: true  # Force Restic FS backup for all PVs (no CSI snapshots)
+      # Note: defaultVolumesToFsBackup removed - use opt-in annotation instead
       podSecurityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -131,7 +131,7 @@ helmCharts:
           name: velero
       initContainers:
         - name: velero-plugin-for-aws
-          image: velero/velero-plugin-for-aws:v1.11.0
+          image: velero/velero-plugin-for-aws:v1.13.1
           imagePullPolicy: IfNotPresent
           resources:
             requests:
