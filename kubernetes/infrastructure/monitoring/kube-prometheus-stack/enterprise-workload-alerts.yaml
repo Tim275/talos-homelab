@@ -1,0 +1,359 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: enterprise-workload-alerts
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+    release: kube-prometheus-stack
+    layer: enterprise-workload
+spec:
+  groups:
+    # ====== RABBITMQ ALERTS - Message Queue Health ======
+    - name: enterprise-rabbitmq-alerts
+      interval: 30s
+      rules:
+        - alert: RabbitMQDown
+          expr: |
+            rabbitmq_identity_info == 0
+          for: 2m
+          labels:
+            severity: critical
+            priority: p1
+            component: messaging
+          annotations:
+            summary: "RabbitMQ {{ $labels.namespace }}/{{ $labels.pod }} ist down"
+            description: |
+              RabbitMQ Instanz ist nicht erreichbar. Message Queue nicht verfügbar!
+
+        - alert: RabbitMQQueueDepthHigh
+          expr: |
+            rabbitmq_queue_messages > 10000
+          for: 5m
+          labels:
+            severity: warning
+            priority: p2
+            component: messaging
+          annotations:
+            summary: "RabbitMQ Queue {{ $labels.queue }} hat >10k Messages"
+            description: |
+              Queue {{ $labels.queue }} hat {{ $value }} Messages.
+              Consumer können nicht mithalten!
+
+        - alert: RabbitMQQueueDepthCritical
+          expr: |
+            rabbitmq_queue_messages > 50000
+          for: 5m
+          labels:
+            severity: critical
+            priority: p1
+            component: messaging
+          annotations:
+            summary: "CRITICAL: RabbitMQ Queue {{ $labels.queue }} hat >50k Messages"
+            description: |
+              Queue {{ $labels.queue }} hat {{ $value }} Messages.
+              Sofortige Aktion erforderlich - Consumer komplett gestoppt?
+
+        - alert: RabbitMQMemoryAlarmActive
+          expr: |
+            rabbitmq_alarms_memory_used_watermark == 1
+          for: 1m
+          labels:
+            severity: critical
+            priority: p1
+            component: messaging
+          annotations:
+            summary: "RabbitMQ Memory Alarm aktiv!"
+            description: |
+              RabbitMQ hat Memory High Watermark erreicht.
+              Publishing wird blockiert bis Memory freigegeben wird!
+
+        - alert: RabbitMQDiskAlarmActive
+          expr: |
+            rabbitmq_alarms_free_disk_space_watermark == 1
+          for: 1m
+          labels:
+            severity: critical
+            priority: p1
+            component: messaging
+          annotations:
+            summary: "RabbitMQ Disk Alarm aktiv!"
+            description: |
+              RabbitMQ Disk Space kritisch niedrig.
+              Publishing blockiert!
+
+        - alert: RabbitMQConnectionsHigh
+          expr: |
+            rabbitmq_connections > 1000
+          for: 5m
+          labels:
+            severity: warning
+            priority: p2
+            component: messaging
+          annotations:
+            summary: "RabbitMQ hat >1000 Connections"
+            description: |
+              {{ $value }} aktive Connections.
+              Möglicher Connection Leak oder unerwartete Last.
+
+        - alert: RabbitMQUnackedMessagesHigh
+          expr: |
+            rabbitmq_queue_messages_unacked > 5000
+          for: 10m
+          labels:
+            severity: warning
+            priority: p2
+            component: messaging
+          annotations:
+            summary: "RabbitMQ {{ $labels.queue }} hat >5k unacked Messages"
+            description: |
+              {{ $value }} unacknowledged Messages.
+              Consumer verarbeiten nicht korrekt oder hängen.
+
+    # ====== JOB/CRONJOB ALERTS - Batch Processing ======
+    - name: enterprise-job-alerts
+      interval: 30s
+      rules:
+        - alert: KubeJobFailed
+          expr: |
+            kube_job_status_failed > 0
+          for: 1m
+          labels:
+            severity: warning
+            priority: p2
+            component: workload
+          annotations:
+            summary: "Job {{ $labels.namespace }}/{{ $labels.job_name }} fehlgeschlagen"
+            description: |
+              Kubernetes Job ist fehlgeschlagen.
+              Prüfe Logs: kubectl logs -n {{ $labels.namespace }} job/{{ $labels.job_name }}
+
+        - alert: KubeJobNotCompleted
+          expr: |
+            kube_job_spec_completions - kube_job_status_succeeded > 0
+            and kube_job_status_active == 0
+            and (time() - kube_job_status_start_time) > 3600
+          for: 5m
+          labels:
+            severity: warning
+            priority: p2
+            component: workload
+          annotations:
+            summary: "Job {{ $labels.namespace }}/{{ $labels.job_name }} läuft >1h ohne Completion"
+            description: |
+              Job läuft seit {{ $value | humanizeDuration }} ohne alle Completions zu erreichen.
+
+        - alert: CronJobSuspended
+          expr: |
+            kube_cronjob_spec_suspend == 1
+          for: 24h
+          labels:
+            severity: info
+            priority: p3
+            component: workload
+          annotations:
+            summary: "CronJob {{ $labels.namespace }}/{{ $labels.cronjob }} ist suspended"
+            description: |
+              CronJob ist seit >24h suspended. Ist das beabsichtigt?
+
+        - alert: CronJobLastScheduleFailed
+          expr: |
+            (time() - kube_cronjob_status_last_schedule_time) > (kube_cronjob_spec_schedule_next_schedule_time - kube_cronjob_status_last_schedule_time) * 2
+          for: 10m
+          labels:
+            severity: warning
+            priority: p2
+            component: workload
+          annotations:
+            summary: "CronJob {{ $labels.namespace }}/{{ $labels.cronjob }} läuft nicht planmäßig"
+            description: |
+              CronJob hat mehr als 2 Schedules verpasst. Scheduling-Problem?
+
+    # ====== HPA ALERTS - Autoscaling Health ======
+    - name: enterprise-hpa-alerts
+      interval: 30s
+      rules:
+        - alert: HPAMaxedOut
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas == kube_horizontalpodautoscaler_spec_max_replicas
+            and kube_horizontalpodautoscaler_status_current_replicas > 1
+          for: 15m
+          labels:
+            severity: warning
+            priority: p2
+            component: scaling
+          annotations:
+            summary: "HPA {{ $labels.namespace }}/{{ $labels.horizontalpodautoscaler }} ist am Maximum"
+            description: |
+              HPA läuft seit 15min auf Maximum ({{ $value }} Replicas).
+              Evtl. max_replicas erhöhen oder Performance optimieren.
+
+        - alert: HPAReplicasMismatch
+          expr: |
+            kube_horizontalpodautoscaler_status_desired_replicas != kube_horizontalpodautoscaler_status_current_replicas
+          for: 15m
+          labels:
+            severity: warning
+            priority: p2
+            component: scaling
+          annotations:
+            summary: "HPA {{ $labels.namespace }}/{{ $labels.horizontalpodautoscaler }} kann nicht skalieren"
+            description: |
+              Desired: {{ $labels.desired }} vs Current: {{ $labels.current }}.
+              Möglicherweise Resource Limits, PDB oder Scheduling-Probleme.
+
+        - alert: HPAScaledToZero
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas == 0
+            and kube_horizontalpodautoscaler_spec_min_replicas > 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: p1
+            component: scaling
+          annotations:
+            summary: "HPA {{ $labels.namespace }}/{{ $labels.horizontalpodautoscaler }} hat 0 Replicas!"
+            description: |
+              HPA hat 0 Replicas obwohl min_replicas > 0.
+              Service ist komplett down!
+
+    # ====== PDB ALERTS - Disruption Budget ======
+    - name: enterprise-pdb-alerts
+      interval: 30s
+      rules:
+        - alert: PodDisruptionBudgetAtLimit
+          expr: |
+            kube_poddisruptionbudget_status_current_healthy == kube_poddisruptionbudget_status_desired_healthy
+            and kube_poddisruptionbudget_status_expected_pods > kube_poddisruptionbudget_status_current_healthy
+          for: 10m
+          labels:
+            severity: warning
+            priority: p2
+            component: availability
+          annotations:
+            summary: "PDB {{ $labels.namespace }}/{{ $labels.poddisruptionbudget }} am Limit"
+            description: |
+              PodDisruptionBudget erlaubt keine weiteren Disruptions.
+              Pods sind an der Mindestgrenze.
+
+        - alert: PodDisruptionBudgetViolated
+          expr: |
+            kube_poddisruptionbudget_status_current_healthy < kube_poddisruptionbudget_status_desired_healthy
+          for: 5m
+          labels:
+            severity: critical
+            priority: p1
+            component: availability
+          annotations:
+            summary: "PDB {{ $labels.namespace }}/{{ $labels.poddisruptionbudget }} verletzt!"
+            description: |
+              Weniger healthy Pods ({{ $value }}) als vom PDB gefordert.
+              Service-Verfügbarkeit ist gefährdet!
+
+    # ====== CLOUDFLARED ALERTS - Tunnel Connectivity ======
+    - name: enterprise-cloudflared-alerts
+      interval: 30s
+      rules:
+        - alert: CloudflaredTunnelDown
+          expr: |
+            up{job=~".*cloudflared.*"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            priority: p1
+            component: networking
+          annotations:
+            summary: "Cloudflared Tunnel ist down"
+            description: |
+              Cloudflare Tunnel nicht erreichbar.
+              Externe Services sind nicht mehr zugänglich!
+
+        - alert: CloudflaredPodNotReady
+          expr: |
+            kube_pod_status_ready{namespace="cloudflared", condition="true"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: p1
+            component: networking
+          annotations:
+            summary: "Cloudflared Pod {{ $labels.pod }} nicht ready"
+            description: |
+              Cloudflared Pod ist nicht ready. Tunnel-Konnektivität beeinträchtigt.
+
+    # ====== DEPLOYMENT HEALTH ALERTS ======
+    - name: enterprise-deployment-alerts
+      interval: 30s
+      rules:
+        - alert: DeploymentReplicasUnavailable
+          expr: |
+            kube_deployment_status_replicas_unavailable > 0
+          for: 10m
+          labels:
+            severity: warning
+            priority: p2
+            component: workload
+          annotations:
+            summary: "Deployment {{ $labels.namespace }}/{{ $labels.deployment }} hat unavailable Replicas"
+            description: |
+              {{ $value }} Replicas sind unavailable seit 10min.
+
+        - alert: DeploymentGenerationMismatch
+          expr: |
+            kube_deployment_status_observed_generation != kube_deployment_metadata_generation
+          for: 10m
+          labels:
+            severity: warning
+            priority: p2
+            component: workload
+          annotations:
+            summary: "Deployment {{ $labels.namespace }}/{{ $labels.deployment }} Generation Mismatch"
+            description: |
+              Deployment wurde geändert aber nicht angewendet.
+              Rollout hängt möglicherweise.
+
+        - alert: StatefulSetReplicasMismatch
+          expr: |
+            kube_statefulset_status_replicas_ready != kube_statefulset_status_replicas
+          for: 15m
+          labels:
+            severity: warning
+            priority: p2
+            component: workload
+          annotations:
+            summary: "StatefulSet {{ $labels.namespace }}/{{ $labels.statefulset }} Replicas Mismatch"
+            description: |
+              Ready: {{ $value }} vs Desired. StatefulSet nicht healthy.
+
+    # ====== RESOURCE QUOTA ALERTS ======
+    - name: enterprise-quota-alerts
+      interval: 30s
+      rules:
+        - alert: ResourceQuotaAlmostFull
+          expr: |
+            (kube_resourcequota_used / kube_resourcequota_hard) > 0.9
+            and kube_resourcequota_hard > 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p2
+            component: governance
+          annotations:
+            summary: "ResourceQuota {{ $labels.namespace }}/{{ $labels.resourcequota }} >90% genutzt"
+            description: |
+              Resource {{ $labels.resource }} ist zu {{ $value | humanizePercentage }} ausgelastet.
+              Quota-Limit bald erreicht.
+
+        - alert: NamespaceQuotaExceeded
+          expr: |
+            kube_resourcequota_used > kube_resourcequota_hard
+          for: 1m
+          labels:
+            severity: critical
+            priority: p1
+            component: governance
+          annotations:
+            summary: "ResourceQuota {{ $labels.namespace }}/{{ $labels.resourcequota }} überschritten!"
+            description: |
+              Resource {{ $labels.resource }} hat Quota überschritten.
+              Neue Deployments werden blockiert!

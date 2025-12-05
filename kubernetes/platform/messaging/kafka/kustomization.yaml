@@ -16,16 +16,14 @@ commonAnnotations:
 namespace: kafka
 
 resources:
-  - namespace.yaml
+  # NOTE: Namespace managed by operators ArgoCD app (avoids SharedResourceWarning)
   - kafka-metrics-config.yaml
-  # Kafka Custom Resources - now enabled after operator deployment
+  # Kafka Custom Resources - deployed after operator (wave 12)
   - kafka-cluster.yaml
   - kafka-topic.yaml
-  # 🎯 MONITORING: ServiceMonitors moved to infrastructure/monitoring/servicemonitors/ (Vegarn pattern)
-  - kafka-exporter-service.yaml  # ✅ CORRECTED Service with proper selector for Kafka Exporter metrics
-  - kafka-exporter-servicemonitor.yaml   # Prometheus ServiceMonitor (fixed from VMServiceScrape)
-  - strimzi-operator-service.yaml  # ✅ Strimzi Operator metrics Service
-  - strimzi-operator-servicemonitor.yaml  # ✅ Strimzi Operator ServiceMonitor
+  # Kafka Workload Monitoring
+  - kafka-exporter-service.yaml  # Kafka Exporter metrics Service
+  - kafka-exporter-servicemonitor.yaml   # Prometheus ServiceMonitor
 
 # 🚨 CRITICAL INFRASTRUCTURE AS CODE: Service Labeling für Grafana Dashboard Discovery
 # ===================================================================================
@@ -75,13 +73,3 @@ patches:
 patchesStrategicMerge:
   # 🔧 Fix service selectors for Strimzi-generated pods (Enterprise vs Operator conflict)
   - kafka-service-selector-fix.yaml
-
-
-helmCharts:
-  - name: strimzi-kafka-operator
-    repo: https://strimzi.io/charts/
-    version: 0.47.0
-    releaseName: strimzi-kafka-operator
-    namespace: kafka
-    includeCRDs: true
-    valuesFile: strimzi-values.yaml

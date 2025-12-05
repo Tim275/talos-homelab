@@ -1,0 +1,536 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: p1-infrastructure-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack-prometheus
+    role: alert-rules
+    severity: warning
+    priority: p1
+spec:
+  groups:
+    - name: p1.argocd.high
+      interval: 60s
+      rules:
+        - alert: ArgoCDControllerDown
+          expr: up{job="argocd-application-controller-metrics"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: gitops
+            pagerduty_severity: warning
+          annotations:
+            summary: "ArgoCD Application Controller is down"
+            description: "ArgoCD Controller has been unreachable for 3+ minutes - all GitOps reconciliation stopped"
+            impact: "NO application syncing, NO auto-healing, cluster drift possible"
+
+        - alert: ArgoCDAPIServerDown
+          expr: up{job="argocd-server-metrics"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: gitops
+            pagerduty_severity: warning
+          annotations:
+            summary: "ArgoCD API Server is down"
+            description: "ArgoCD API Server has been unreachable for 3+ minutes - Web UI and CLI unavailable"
+            impact: "NO GitOps operations possible, cluster management blocked"
+
+        - alert: ArgoCDRepoServerDown
+          expr: up{job="argocd-repo-server-metrics"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: gitops
+            pagerduty_severity: warning
+          annotations:
+            summary: "ArgoCD Repo Server is down"
+            description: "ArgoCD Repo Server has been unreachable for 3+ minutes - Git operations blocked"
+            impact: "NO manifest generation, NO application updates possible"
+
+
+    - name: p1.talos.controlplane
+      interval: 60s
+      rules:
+        - alert: TalosApiserverDown
+          expr: up{job="apiserver"} == 0
+          for: 2m
+          labels:
+            severity: warning
+            priority: p1
+            component: control-plane
+            pagerduty_severity: warning
+          annotations:
+            summary: "Talos Kubernetes API Server is down"
+            description: "Talos control plane API server unreachable for 2+ minutes"
+            impact: "Cluster management unavailable"
+
+        - alert: TalosSchedulerDown
+          expr: up{job="kube-scheduler"} == 0
+          for: 2m
+          labels:
+            severity: warning
+            priority: p1
+            component: control-plane
+            pagerduty_severity: warning
+          annotations:
+            summary: "Talos Scheduler is down"
+            description: "Kubernetes Scheduler unreachable for 2+ minutes"
+            impact: "New pods cannot be scheduled"
+
+        - alert: TalosControllerManagerDown
+          expr: up{job="kube-controller-manager"} == 0
+          for: 2m
+          labels:
+            severity: warning
+            priority: p1
+            component: control-plane
+            pagerduty_severity: warning
+          annotations:
+            summary: "Talos Controller Manager is down"
+            description: "Kubernetes Controller Manager unreachable for 2+ minutes"
+            impact: "Resource controllers not running"
+
+    - name: p1.nodes.warning
+      interval: 60s
+      rules:
+        - alert: NodeNotReady
+          expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: infrastructure
+            pagerduty_severity: warning
+          annotations:
+            summary: "Node {{ $labels.node }} is NotReady"
+            description: "Node {{ $labels.node }} has been NotReady for 5+ minutes"
+            impact: "Reduced capacity, pods may be evicted"
+
+        - alert: NodeMemoryPressure
+          expr: kube_node_status_condition{condition="MemoryPressure",status="true"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: infrastructure
+            pagerduty_severity: warning
+          annotations:
+            summary: "Node {{ $labels.node }} has memory pressure"
+            description: "Node {{ $labels.node }} is under memory pressure"
+            impact: "Pods may be evicted"
+
+        - alert: NodeDiskPressure
+          expr: kube_node_status_condition{condition="DiskPressure",status="true"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: infrastructure
+            pagerduty_severity: warning
+          annotations:
+            summary: "Node {{ $labels.node }} has disk pressure"
+            description: "Node {{ $labels.node }} is under disk pressure"
+            impact: "Pods may be evicted"
+
+        - alert: NodeHighCPU
+          expr: (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) by (instance)) > 0.80
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: infrastructure
+            pagerduty_severity: warning
+          annotations:
+            summary: "Node {{ $labels.instance }} has high CPU usage"
+            description: "Node CPU usage is {{ $value | humanizePercentage }} for 10+ minutes"
+            impact: "Performance degradation"
+
+        - alert: NodeHighMemory
+          expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 0.85
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: infrastructure
+            pagerduty_severity: warning
+          annotations:
+            summary: "Node {{ $labels.instance }} has high memory usage"
+            description: "Node memory usage is {{ $value | humanizePercentage }} for 10+ minutes"
+            impact: "Risk of OOM kills"
+
+    - name: p1.networking.warning
+      interval: 60s
+      rules:
+        - alert: CiliumAgentDown
+          expr: up{job="cilium-agent"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: networking
+            pagerduty_severity: warning
+          annotations:
+            summary: "Cilium agent down on node {{ $labels.instance }}"
+            description: "Cilium CNI agent unreachable for 3+ minutes"
+            impact: "Networking disruption on node, pods cannot communicate"
+
+        - alert: CiliumOperatorDown
+          expr: up{job="cilium-operator"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: networking
+            pagerduty_severity: warning
+          annotations:
+            summary: "Cilium Operator is down"
+            description: "Cilium Operator unreachable for 3+ minutes"
+            impact: "Network policy enforcement degraded"
+
+        - alert: IstioControlPlaneDown
+          expr: up{job="istiod"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: service-mesh
+            pagerduty_severity: warning
+          annotations:
+            summary: "Istio control plane (istiod) is down"
+            description: "Istiod unreachable for 3+ minutes"
+            impact: "Service mesh configuration updates blocked"
+
+        - alert: EnvoyGatewayDown
+          expr: up{job="envoy-gateway"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: gateway
+            pagerduty_severity: warning
+          annotations:
+            summary: "Envoy Gateway is down"
+            description: "Envoy Gateway controller unreachable for 3+ minutes"
+            impact: "Gateway configuration updates blocked"
+
+    - name: p1.storage.warning
+      interval: 60s
+      rules:
+        - alert: PVCWarningFull
+          expr: (kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes) < 0.20
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: storage
+            pagerduty_severity: warning
+          annotations:
+            summary: "PVC {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full"
+            description: "PVC {{ $labels.persistentvolumeclaim }} in {{ $labels.namespace }} has less than 20% free"
+            impact: "Will hit critical threshold soon"
+
+        - alert: CephWarning
+          expr: ceph_health_status == 1
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: storage
+            pagerduty_severity: warning
+          annotations:
+            summary: "Ceph cluster is in HEALTH_WARN state"
+            description: "Ceph cluster has warnings - investigate"
+            impact: "Degraded storage performance"
+
+        - alert: CephOSDDown
+          expr: ceph_osd_up == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: storage
+            pagerduty_severity: warning
+          annotations:
+            summary: "Ceph OSD {{ $labels.ceph_daemon }} is down"
+            description: "OSD {{ $labels.ceph_daemon }} has been down for 5+ minutes"
+            impact: "Reduced storage redundancy"
+
+        - alert: RookCephOperatorDown
+          expr: up{job="rook-ceph-operator"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: storage
+            pagerduty_severity: warning
+          annotations:
+            summary: "Rook Ceph Operator is down"
+            description: "Rook Ceph Operator unreachable for 5+ minutes"
+            impact: "Ceph management operations blocked"
+
+    - name: p1.databases.warning
+      interval: 60s
+      rules:
+        - alert: PostgreSQLDown
+          expr: pg_up == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: database
+            pagerduty_severity: warning
+          annotations:
+            summary: "PostgreSQL {{ $labels.namespace }}/{{ $labels.pod }} is down"
+            description: "PostgreSQL instance unreachable for 3+ minutes"
+            impact: "Database unavailable for applications"
+
+        - alert: PostgreSQLHighConnections
+          expr: (sum(pg_stat_database_numbackends) by (namespace, pod) / sum(pg_settings_max_connections) by (namespace, pod)) > 0.80
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: database
+            pagerduty_severity: warning
+          annotations:
+            summary: "PostgreSQL {{ $labels.namespace }}/{{ $labels.pod }} connection limit"
+            description: "Using {{ $value | humanizePercentage }} of max connections"
+            impact: "Connection exhaustion risk"
+
+        - alert: MongoDBDown
+          expr: up{job=~".*mongodb.*"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: database
+            pagerduty_severity: warning
+          annotations:
+            summary: "MongoDB instance is down"
+            description: "MongoDB unreachable for 3+ minutes"
+            impact: "Database unavailable"
+
+        - alert: RedisDown
+          expr: up{job=~".*redis.*"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: cache
+            pagerduty_severity: warning
+          annotations:
+            summary: "Redis instance is down"
+            description: "Redis unreachable for 3+ minutes"
+            impact: "Cache unavailable, performance degradation"
+
+    - name: p1.pods.warning
+      interval: 60s
+      rules:
+        - alert: PodCrashLooping
+          expr: rate(kube_pod_container_status_restarts_total[15m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: application
+            pagerduty_severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+            description: "Pod has restarted {{ $value }} times in 15 minutes"
+            impact: "Service degradation"
+
+        - alert: PodNotReady
+          expr: kube_pod_status_phase{phase!~"Running|Succeeded"} == 1
+          for: 15m
+          labels:
+            severity: warning
+            priority: p1
+            component: application
+            pagerduty_severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} not ready"
+            description: "Pod in phase {{ $labels.phase }} for 15+ minutes"
+            impact: "Service degradation"
+
+        - alert: PodOOMKilled
+          expr: kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
+          for: 1m
+          labels:
+            severity: warning
+            priority: p1
+            component: application
+            pagerduty_severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} was OOMKilled"
+            description: "Container {{ $labels.container }} killed due to out of memory"
+            impact: "Insufficient memory limits"
+
+    - name: p1.controlplane.warning
+      interval: 60s
+      rules:
+        - alert: KubeAPIServerHighLatency
+          expr: histogram_quantile(0.99, sum(rate(apiserver_request_duration_seconds_bucket{verb!="WATCH"}[5m])) by (verb, le)) > 1
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: control-plane
+            pagerduty_severity: warning
+          annotations:
+            summary: "Kubernetes API Server has high latency"
+            description: "99th percentile API latency is {{ $value }}s for {{ $labels.verb }} requests"
+            impact: "Slow cluster operations"
+
+        - alert: EtcdHighLatency
+          expr: histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m])) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: control-plane
+            pagerduty_severity: warning
+          annotations:
+            summary: "etcd has high disk latency"
+            description: "99th percentile etcd fsync is {{ $value }}s"
+            impact: "Slow state persistence"
+
+        - alert: EtcdNoLeader
+          expr: etcd_server_has_leader == 0
+          for: 1m
+          labels:
+            severity: warning
+            priority: p1
+            component: control-plane
+            pagerduty_severity: warning
+          annotations:
+            summary: "etcd cluster has no leader"
+            description: "etcd is performing leader election"
+            impact: "Temporary unavailability"
+
+    - name: p1.operators.warning
+      interval: 60s
+      rules:
+        - alert: CertManagerDown
+          expr: up{job="cert-manager"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: operator
+            pagerduty_severity: warning
+          annotations:
+            summary: "Cert-Manager is down"
+            description: "Cert-Manager controller unreachable for 5+ minutes"
+            impact: "Certificate renewals blocked, new certificates cannot be issued"
+
+        - alert: SealedSecretsControllerDown
+          expr: up{job="sealed-secrets"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: operator
+            pagerduty_severity: warning
+          annotations:
+            summary: "Sealed Secrets controller is down"
+            description: "Sealed Secrets controller unreachable for 5+ minutes"
+            impact: "Cannot decrypt SealedSecrets, new secret deployments will fail"
+
+        - alert: CloudNativePGOperatorDown
+          expr: up{job="cloudnative-pg-operator"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: operator
+            pagerduty_severity: warning
+          annotations:
+            summary: "CloudNative PG Operator is down"
+            description: "CloudNative PG Operator unreachable for 5+ minutes"
+            impact: "PostgreSQL cluster management blocked"
+
+        - alert: VeleroDown
+          expr: up{job="velero"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: operator
+            pagerduty_severity: warning
+          annotations:
+            summary: "Velero is down"
+            description: "Velero backup controller unreachable for 5+ minutes"
+            impact: "Backup operations blocked"
+
+        - alert: IstioOperatorDown
+          expr: up{job="istio-operator"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: operator
+            pagerduty_severity: warning
+          annotations:
+            summary: "Istio Operator is down"
+            description: "Istio Operator unreachable for 5+ minutes"
+            impact: "Service mesh management blocked"
+
+        - alert: ArgoCDApplicationSetControllerDown
+          expr: up{job="argocd-applicationset-controller"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: operator
+            pagerduty_severity: warning
+          annotations:
+            summary: "ArgoCD ApplicationSet Controller is down"
+            description: "ApplicationSet Controller unreachable for 5+ minutes"
+            impact: "Multi-cluster application generation blocked"
+
+    - name: p1.monitoring.warning
+      interval: 60s
+      rules:
+        - alert: PrometheusDown
+          expr: up{job="prometheus"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: observability
+            pagerduty_severity: warning
+          annotations:
+            summary: "Prometheus is down"
+            description: "Prometheus unreachable for 3+ minutes"
+            impact: "NO metrics collection, alerting blind"
+
+        - alert: AlertmanagerDown
+          expr: up{job="alertmanager"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: observability
+            pagerduty_severity: warning
+          annotations:
+            summary: "Alertmanager is down"
+            description: "Alertmanager unreachable for 3+ minutes"
+            impact: "NO alert notifications sent"
+
+        - alert: GrafanaDown
+          expr: up{job="grafana"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: observability
+            pagerduty_severity: warning
+          annotations:
+            summary: "Grafana is down"
+            description: "Grafana unreachable for 5+ minutes"
+            impact: "Dashboard visualizations unavailable"

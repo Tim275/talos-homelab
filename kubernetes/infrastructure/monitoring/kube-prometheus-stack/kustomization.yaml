@@ -1,10 +1,12 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# 🏗️ ENTERPRISE PATTERN: Parent manages namespaces, children inherit
+# Namespace managed by: monitoring/namespace.yaml (parent app)
+namespace: monitoring
 
 resources:
-  - ns.yaml
-  - alertmanager-slack-webhooks-sealed-secret.yaml  # Slack webhook for #alerts channel
+  # - alertmanager-slack-webhooks-sealed-secret.yaml  # Slack webhook for #alerts channel (DISABLED: Using PagerDuty instead)
   - layer1-infrastructure-alerts.yaml
   - layer2-security-alerts.yaml
   - layer3-network-alerts.yaml
@@ -14,11 +16,17 @@ resources:
   - argocd-enhanced-alerts.yaml  # ArgoCD: Git failures, webhooks, API errors, drift detection
   - velero-backup-alerts.yaml  # Tier-0 Backup Monitoring
   - cnpg-postgresql-alerts.yaml  # CloudNativePG production alerts
+  - enterprise-critical-alerts.yaml  # Enterprise critical: PVC filling, WAL archiving, OOM, restarts
+  - enterprise-workload-alerts.yaml  # Enterprise: RabbitMQ, Jobs, HPA, PDB, Cloudflared, Quotas
+  - node-allocation-alerts.yaml      # Node CPU/Memory REQUESTS alerts (scheduling failures)
+  - ceph-cluster-alerts.yaml         # Ceph health, slow ops, degraded PGs, RGW latency
 
   # ===== SERVICEMONITORS - Infrastructure Monitoring =====
   - servicemonitors/servicemonitor-grafana.yaml              # Grafana UI metrics
+  - servicemonitors/servicemonitor-grafana-operator.yaml     # Grafana Operator controller metrics
   - servicemonitors/servicemonitor-cert-manager.yaml         # SSL certificate health
-  - servicemonitors/servicemonitor-sealed-secrets.yaml       # Sealed Secrets controller
+  # NOTE: sealed-secrets ServiceMonitor removed - now created by sealed-secrets Helm chart
+  # (was causing SharedResourceWarning due to duplicate management)
   # ArgoCD: Controller, API Server, Repo Server, ApplicationSet
   - servicemonitors/argocd-complete.yaml
 
@@ -32,16 +40,23 @@ resources:
 
   # ===== SERVICEMONITORS - Observability =====
   - servicemonitors/servicemonitor-elasticsearch-exporter.yaml  # Elasticsearch health
+  - servicemonitors/servicemonitor-elasticsearch-cluster.yaml   # Elasticsearch cluster metrics
   - servicemonitors/vector-agent.yaml                           # Vector logging agent
   - servicemonitors/vector-aggregator.yaml                      # Vector aggregator
+  - servicemonitors/servicemonitor-vector.yaml                  # Vector Aggregator metrics (fixed port)
   # - servicemonitors/loki.yaml  # Loki Helm chart creates its own ServiceMonitor
   - servicemonitors/jaeger.yaml                                 # Jaeger tracing
+  - servicemonitors/servicemonitor-influxdb.yaml                # InfluxDB metrics
+  - servicemonitors/servicemonitor-opentelemetry-collector.yaml # OpenTelemetry Collector
 
   # ===== SERVICEMONITORS - Messaging =====
   - servicemonitors/servicemonitor-kafka-exporter.yaml          # Kafka metrics
+  - servicemonitors/servicemonitor-schema-registry.yaml         # Confluent Schema Registry
+  - servicemonitors/servicemonitor-rabbitmq.yaml                # RabbitMQ metrics
 
   # ===== SERVICEMONITORS - Databases =====
   - servicemonitors/cnpg-clusters.yaml                          # PostgreSQL cluster metrics
+  - servicemonitors/servicemonitor-mongodb.yaml                 # MongoDB OMS metrics
 
   # ===== SERVICEMONITORS - Applications =====
   - servicemonitors/servicemonitor-n8n-dev.yaml                 # N8N dev environment
@@ -50,7 +65,7 @@ resources:
 helmCharts:
   - name: kube-prometheus-stack
     repo: https://prometheus-community.github.io/helm-charts
-    includeCRDs: false  # CRDs already installed - prevents ArgoCD annotation size limit errors
+    includeCRDs: true  # CRDs required for PrometheusRule resources
     namespace: monitoring
     version: 75.15.1
     releaseName: kube-prometheus-stack

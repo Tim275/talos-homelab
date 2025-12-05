@@ -1,0 +1,75 @@
+# Kibana Data Views - Auto-Import via ArgoCD
+# Diese ConfigMap + Job erstellt automatisch Data Views in Kibana
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kibana-data-views
+  namespace: elastic-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+data:
+  data-views.ndjson: |
+    {"attributes":{"allowNoIndex":true,"name":"OMS - All Services","timeFieldName":"@timestamp","title":"logs-oms-*"},"id":"oms-all","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"OMS - Gateway","timeFieldName":"@timestamp","title":"logs-oms-gateway.*"},"id":"oms-gateway","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"OMS - Orders","timeFieldName":"@timestamp","title":"logs-oms-orders.*"},"id":"oms-orders","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"OMS - Payments","timeFieldName":"@timestamp","title":"logs-oms-payments.*"},"id":"oms-payments","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"OMS - Stock","timeFieldName":"@timestamp","title":"logs-oms-stock.*"},"id":"oms-stock","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"OMS - Kitchen","timeFieldName":"@timestamp","title":"logs-oms-kitchen.*"},"id":"oms-kitchen","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"OMS - Kitchen Display","timeFieldName":"@timestamp","title":"logs-oms-kitchen-display.*"},"id":"oms-kitchen-display","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"OMS - Customer App","timeFieldName":"@timestamp","title":"logs-oms-customer-app.*"},"id":"oms-customer-app","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"OMS - Infrastructure","timeFieldName":"@timestamp","title":"logs-oms-infra.*"},"id":"oms-infra","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"All Critical/Errors","timeFieldName":"@timestamp","title":"logs-*.critical-*"},"id":"all-critical","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"All Warnings","timeFieldName":"@timestamp","title":"logs-*.warn-*"},"id":"all-warnings","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"ArgoCD","timeFieldName":"@timestamp","title":"logs-argocd.*"},"id":"argocd","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"Rook-Ceph Storage","timeFieldName":"@timestamp","title":"logs-rook-ceph.*"},"id":"rook-ceph","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"Kubernetes System","timeFieldName":"@timestamp","title":"logs-kube-system.*"},"id":"kube-system","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"Monitoring Stack","timeFieldName":"@timestamp","title":"logs-monitoring.*"},"id":"monitoring","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"Envoy Gateway","timeFieldName":"@timestamp","title":"logs-envoy-gateway-system.*"},"id":"envoy-gateway","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"Cert-Manager","timeFieldName":"@timestamp","title":"logs-cert-manager.*"},"id":"cert-manager","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"All Logs","timeFieldName":"@timestamp","title":"logs-*"},"id":"all-logs","type":"index-pattern"}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kibana-import-data-views
+  namespace: elastic-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "11"
+    argocd.argoproj.io/hook: Skip
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: import
+          image: curlimages/curl:8.4.0
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for Kibana to be ready..."
+              sleep 60
+              
+              echo "Importing Data Views..."
+              curl -s -k -X POST "https://production-cluster-kb-http:5601/api/saved_objects/_import?overwrite=true" \
+                -H "kbn-xsrf: true" \
+                -u "elastic:${ELASTIC_PASSWORD}" \
+                -F file=@/config/data-views.ndjson
+              
+              echo ""
+              echo "Data Views import complete!"
+          env:
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: production-cluster-es-elastic-user
+                  key: elastic
+          volumeMounts:
+            - name: config
+              mountPath: /config
+      volumes:
+        - name: config
+          configMap:
+            name: kibana-data-views

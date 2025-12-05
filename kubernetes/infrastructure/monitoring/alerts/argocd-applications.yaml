@@ -1,0 +1,87 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: argocd-application-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack-prometheus
+    role: alert-rules
+    severity: info
+    priority: argocd-gitops
+spec:
+  groups:
+    - name: argocd.applications.sync
+      interval: 120s
+      rules:
+        - alert: ArgoCDApplicationOutOfSync
+          expr: argocd_app_info{sync_status!="Synced"} == 1
+          for: 15m
+          labels:
+            severity: info
+            priority: argocd-gitops
+            component: gitops
+          annotations:
+            summary: "Application {{ $labels.name }} is OutOfSync"
+            description: "ArgoCD Application {{ $labels.name }} in project {{ $labels.project }} has been OutOfSync for 15+ minutes"
+            impact: "Configuration drift between Git and cluster"
+            application: "{{ $labels.name }}"
+            project: "{{ $labels.project }}"
+            sync_status: "{{ $labels.sync_status }}"
+
+        - alert: ArgoCDApplicationDegraded
+          expr: argocd_app_info{health_status!~"Healthy|Progressing"} == 1
+          for: 10m
+          labels:
+            severity: info
+            priority: argocd-gitops
+            component: gitops
+          annotations:
+            summary: "Application {{ $labels.name }} is {{ $labels.health_status }}"
+            description: "ArgoCD Application {{ $labels.name }} health status is {{ $labels.health_status }} for 10+ minutes"
+            impact: "Application may not be functioning correctly"
+            application: "{{ $labels.name }}"
+            project: "{{ $labels.project }}"
+            health_status: "{{ $labels.health_status }}"
+
+        - alert: ArgoCDApplicationSyncFailed
+          expr: argocd_app_sync_total{phase="Failed"} > 0
+          for: 5m
+          labels:
+            severity: info
+            priority: argocd-gitops
+            component: gitops
+          annotations:
+            summary: "Application {{ $labels.name }} sync failed"
+            description: "ArgoCD Application {{ $labels.name }} sync operation failed"
+            impact: "Latest Git changes not applied to cluster"
+            application: "{{ $labels.name }}"
+            project: "{{ $labels.project }}"
+            phase: "Failed"
+
+        - alert: ArgoCDApplicationMissing
+          expr: argocd_app_info{health_status="Missing"} == 1
+          for: 5m
+          labels:
+            severity: info
+            priority: argocd-gitops
+            component: gitops
+          annotations:
+            summary: "Application {{ $labels.name }} resources missing"
+            description: "ArgoCD Application {{ $labels.name }} has missing resources"
+            impact: "Application components not deployed"
+            application: "{{ $labels.name }}"
+            project: "{{ $labels.project }}"
+
+        - alert: ArgoCDApplicationSuspended
+          expr: argocd_app_info{health_status="Suspended"} == 1
+          for: 5m
+          labels:
+            severity: info
+            priority: argocd-gitops
+            component: gitops
+          annotations:
+            summary: "Application {{ $labels.name }} is suspended"
+            description: "ArgoCD Application {{ $labels.name }} has been suspended"
+            impact: "Application updates paused"
+            application: "{{ $labels.name }}"
+            project: "{{ $labels.project }}"

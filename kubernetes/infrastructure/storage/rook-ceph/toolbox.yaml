@@ -18,6 +18,31 @@ spec:
         app: rook-ceph-tools
     spec:
       dnsPolicy: ClusterFirstWithHostNet
+      initContainers:
+        - name: config-init
+          image: quay.io/ceph/ceph:v19.2.3
+          command:
+            - /bin/bash
+            - -c
+            - |
+              # Generate ceph.conf from secrets
+              cat > /etc/ceph/ceph.conf << EOF
+              [global]
+              mon_host = $(cat /etc/rook/mon_host)
+              [client.admin]
+              keyring = /etc/ceph/keyring
+              EOF
+              # Copy admin keyring
+              cp /etc/ceph-keyring/keyring /etc/ceph/keyring
+              chmod 600 /etc/ceph/keyring
+              echo "Config initialized successfully"
+          volumeMounts:
+            - mountPath: /etc/ceph
+              name: ceph-config
+            - mountPath: /etc/rook
+              name: mon-config
+            - mountPath: /etc/ceph-keyring
+              name: ceph-admin-keyring
       containers:
         - name: rook-ceph-tools
           image: quay.io/ceph/ceph:v19.2.3
@@ -25,40 +50,20 @@ spec:
             - /bin/bash
             - -c
             - |
-              # Wait for the Ceph cluster to be ready
-              until ceph status; do
-                echo "Waiting for Ceph cluster..."
-                sleep 5
-              done
-              # Keep the container running
+              echo "Ceph Toolbox Ready"
               tail -f /dev/null
-          env:
-            - name: ROOK_CEPH_USERNAME
-              valueFrom:
-                secretKeyRef:
-                  name: rook-ceph-mon
-                  key: ceph-username
-            - name: ROOK_CEPH_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: rook-ceph-mon
-                  key: ceph-secret
-            - name: CEPH_ARGS
-              value: "-c /etc/ceph/ceph.conf"
           volumeMounts:
             - mountPath: /etc/ceph
               name: ceph-config
-            - name: mon-endpoint-volume
-              mountPath: /etc/rook
       volumes:
         - name: ceph-config
           emptyDir: {}
-        - name: mon-endpoint-volume
-          configMap:
-            name: rook-ceph-mon-endpoints
-            items:
-              - key: data
-                path: mon-endpoints
+        - name: mon-config
+          secret:
+            secretName: rook-ceph-config
+        - name: ceph-admin-keyring
+          secret:
+            secretName: rook-ceph-admin-keyring
       tolerations:
         - key: "node.kubernetes.io/unreachable"
           operator: "Exists"

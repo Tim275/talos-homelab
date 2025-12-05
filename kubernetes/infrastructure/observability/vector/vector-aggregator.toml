@@ -142,8 +142,37 @@ if exists(.level) {
 # ═══════════════════════════════════════════════════════════════
 .namespace = to_string(.kubernetes.namespace) ?? "unknown"
 
+# ═══════════════════════════════════════════════════════════════
+# OMS (Order Management System) - 7 Service-Specific Indices
+# ═══════════════════════════════════════════════════════════════
+# Backend: gateway, orders, payments, stock, kitchen
+# Frontend: customer-app, kitchen-display
+
+# Extract pod name for OMS service detection
+pod_name = to_string(.kubernetes.pod_name) ?? ""
+
 # Service-based routing (use service_name for routing, not service which is ECS nested object)
-.service_name = if .namespace == "kube-system" {
+.service_name = if .namespace == "oms" {
+  # OMS Service Detection based on pod name prefix
+  if starts_with(pod_name, "gateway") {
+    "oms-gateway"
+  } else if starts_with(pod_name, "orders") {
+    "oms-orders"
+  } else if starts_with(pod_name, "payments") {
+    "oms-payments"
+  } else if starts_with(pod_name, "stock") {
+    "oms-stock"
+  } else if starts_with(pod_name, "kitchen-display") {
+    "oms-kitchen-display"
+  } else if starts_with(pod_name, "kitchen") {
+    "oms-kitchen"
+  } else if starts_with(pod_name, "customer-app") {
+    "oms-customer-app"
+  } else {
+    # Fallback for other OMS pods (mongodb, rabbitmq, etc.)
+    "oms-infra"
+  }
+} else if .namespace == "kube-system" {
   "kube-system"
 } else if .namespace == "rook-ceph" {
   "rook-ceph"
@@ -165,10 +194,9 @@ if exists(.level) {
   "elastic-system"
 } else if .namespace == "cnpg-system" {
   "cloudnative-pg"
-} else if contains(string!(.namespace), "boutique") {
-  "boutique-" + string!(.namespace)
 } else {
-  string!(.namespace)
+  # Fallback: use namespace as service_name
+  .namespace
 }
 
 # ═══════════════════════════════════════════════════════════════
@@ -304,3 +332,17 @@ type = "console"
 inputs = ["sample_logs"]
 encoding.codec = "json"
 target = "stdout"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# PROMETHEUS EXPORTER - Vector Internal Metrics
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Internal metrics source (Vector's own telemetry)
+[sources.internal_metrics]
+type = "internal_metrics"
+
+# Expose internal metrics via Prometheus exporter
+[sinks.prometheus_exporter]
+type = "prometheus_exporter"
+inputs = ["internal_metrics"]
+address = "0.0.0.0:9090"
+default_namespace = "vector"
