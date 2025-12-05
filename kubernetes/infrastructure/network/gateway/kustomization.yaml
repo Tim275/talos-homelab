@@ -6,16 +6,17 @@ kind: Kustomization
 commonAnnotations:
   argocd.argoproj.io/sync-wave: "1"
 
-# Envoy Gateway Installation via official manifests
+namespace: gateway
+
 resources:
-  - ns.yaml
-  - https://github.com/envoyproxy/gateway/releases/download/v1.2.4/install.yaml
+  - https://github.com/envoyproxy/gateway/releases/download/v1.6.0/install.yaml
   - sealed-cloudflare-api-token.yaml
   - cloudflare-issuer.yaml
   - certificate-timourhomelab.yaml
   - envoy-gatewayclass.yaml
   - gateway.yaml
   - http-redirect-to-https.yaml
+  # envoy-patch-ceph-tls.yaml: NOT NEEDED - Ceph Dashboard uses HTTP backend now
   # - authelia-securitypolicy.yaml  # ⚠️ DISABLED: Enable after Phase 1 (VPN-only access) is confirmed working
 
 labels:
@@ -23,12 +24,54 @@ labels:
       app.kubernetes.io/part-of: network-infrastructure
 
 # Fix for CRD annotation too long issue
+# DISABLED: v1.6.0 doesn't have these annotations
+# patches:
+#   - target:
+#       group: apiextensions.k8s.io
+#       version: v1
+#       kind: CustomResourceDefinition
+#       name: envoyproxies.gateway.envoyproxy.io
+#     patch: |-
+#       - op: remove
+#         path: /metadata/annotations/controller-gen.kubebuilder.io~1version
+#   - target:
+#       group: apiextensions.k8s.io
+#       version: v1
+#       kind: CustomResourceDefinition
+#       name: httproutes.gateway.networking.k8s.io
+#     patch: |-
+#       - op: remove
+#         path: /metadata/annotations/controller-gen.kubebuilder.io~1version
+
 patches:
+  # CRITICAL: Fix certgen job - disable topology injector webhook patching
+  # The topology-injector MutatingWebhookConfiguration doesn't exist during first install
   - target:
-      group: apiextensions.k8s.io
-      version: v1
-      kind: CustomResourceDefinition
-      name: envoyproxies.gateway.envoyproxy.io
+      kind: Job
+      name: eg-gateway-helm-certgen
     patch: |-
-      - op: remove
-        path: /metadata/annotations/controller-gen.kubebuilder.io~1version
+      - op: add
+        path: /spec/template/spec/containers/0/args
+        value:
+          - --disable-topology-injector
+
+  # Enable Backend API for production-grade TLS
+  - target:
+      kind: ConfigMap
+      name: envoy-gateway-config
+      namespace: envoy-gateway-system
+    patch: |-
+      - op: add
+        path: /data/envoy-gateway.yaml
+        value: |
+          apiVersion: gateway.envoyproxy.io/v1alpha1
+          kind: EnvoyGateway
+          gateway:
+            controllerName: gateway.envoyproxy.io/gatewayclass-controller
+          logging:
+            level:
+              default: info
+          extensionApis:
+            enableBackend: true
+          provider:
+            type: Kubernetes

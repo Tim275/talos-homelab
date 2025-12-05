@@ -1,0 +1,561 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-notifications-cm
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+data:
+  # 🌐 CONTEXT - ArgoCD URL and cluster info
+  context: |
+    argocdUrl: https://argo.timourhomelab.org
+    grafanaUrl: https://grafana.timourhomelab.org
+    prometheusUrl: https://prometheus.timourhomelab.org
+    clusterName: Talos Homelab Production
+
+  # 🔔 SLACK SERVICE - Bot Token Authentication
+  service.slack: |
+    token: $slack-token
+
+  # 📢 GLOBAL SUBSCRIPTIONS - All apps get these notifications
+  subscriptions: |
+    - recipients:
+      - slack:argocd-deployments
+      triggers:
+      - on-created
+      - on-deployed
+      - on-health-degraded
+      - on-sync-failed
+      - on-sync-running
+      - on-sync-succeeded
+      - on-deleted
+
+  # ═══════════════════════════════════════════════════════════════
+  # 📋 TEMPLATES - Rich Slack notifications with dashboard links
+  # ═══════════════════════════════════════════════════════════════
+
+  # ✨ NEW APPLICATION CREATED
+  template.app-created: |
+    slack:
+      attachments: |
+        [{
+          "title": "🆕 New Application Created",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "color": "#36A64F",
+          "fields": [
+            {
+              "title": "Application",
+              "value": "{{.app.metadata.name}}",
+              "short": true
+            },
+            {
+              "title": "Project",
+              "value": "{{.app.spec.project}}",
+              "short": true
+            },
+            {
+              "title": "Namespace",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Cluster",
+              "value": "{{.context.clusterName}}",
+              "short": true
+            },
+            {
+              "title": "Repository",
+              "value": "<{{.app.spec.source.repoURL}}|{{.app.spec.source.repoURL}}>",
+              "short": false
+            },
+            {
+              "title": "Target Revision",
+              "value": "{{.app.spec.source.targetRevision}}",
+              "short": true
+            },
+            {
+              "title": "Auto-Sync",
+              "value": "{{if .app.spec.syncPolicy.automated}}✅ Enabled{{else}}❌ Manual{{end}}",
+              "short": true
+            }
+          ],
+          "footer": "ArgoCD {{.context.clusterName}}",
+          "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png"
+        }]
+
+  # ✅ APPLICATION SUCCESSFULLY DEPLOYED
+  template.app-deployed: |
+    slack:
+      attachments: |
+        [{
+          "title": "✅ Application Deployed Successfully",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "color": "#18be52",
+          "fields": [
+            {
+              "title": "Application",
+              "value": "{{.app.metadata.name}}",
+              "short": true
+            },
+            {
+              "title": "Environment",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Sync Status",
+              "value": "✅ {{.app.status.sync.status}}",
+              "short": true
+            },
+            {
+              "title": "Health Status",
+              "value": "💚 {{.app.status.health.status}}",
+              "short": true
+            },
+            {
+              "title": "Git Revision",
+              "value": "`{{.app.status.sync.revision}}`",
+              "short": false
+            },
+            {{if .app.status.operationState.operation.initiatedBy.username}}
+            {
+              "title": "Deployed By",
+              "value": "{{.app.status.operationState.operation.initiatedBy.username}}",
+              "short": true
+            },
+            {{end}}
+            {
+              "title": "Deploy Duration",
+              "value": "{{.app.status.operationState.finishedAt.Sub .app.status.operationState.startedAt}}",
+              "short": true
+            }
+          ],
+          "actions": [
+            {
+              "type": "button",
+              "text": "📊 View Metrics",
+              "url": "{{.context.grafanaUrl}}/d/argocd-overview"
+            },
+            {
+              "type": "button",
+              "text": "🔍 View Logs",
+              "url": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}?view=tree&resource="
+            },
+            {
+              "type": "button",
+              "text": "📈 Prometheus",
+              "url": "{{.context.prometheusUrl}}/graph?g0.expr=argocd_app_info%7Bname%3D%22{{.app.metadata.name}}%22%7D"
+            }
+          ],
+          "footer": "ArgoCD {{.context.clusterName}} | Deployment successful",
+          "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png"
+        }]
+
+  # 🔴 APPLICATION HEALTH DEGRADED - CRITICAL
+  template.app-health-degraded: |
+    slack:
+      attachments: |
+        [{
+          "title": "🔴 APPLICATION HEALTH DEGRADED - ACTION REQUIRED",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "color": "#E96D76",
+          "fields": [
+            {
+              "title": "Application",
+              "value": "{{.app.metadata.name}}",
+              "short": true
+            },
+            {
+              "title": "Environment",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Health Status",
+              "value": "🔴 {{.app.status.health.status}}",
+              "short": true
+            },
+            {
+              "title": "Sync Status",
+              "value": "{{.app.status.sync.status}}",
+              "short": true
+            },
+            {
+              "title": "Error Message",
+              "value": "```{{.app.status.health.message}}```",
+              "short": false
+            },
+            {
+              "title": "Affected Resources",
+              "value": "{{range .app.status.resources}}{{if ne .health.status \"Healthy\"}}• {{.kind}}/{{.name}} ({{.health.status}})\n{{end}}{{end}}",
+              "short": false
+            }
+          ],
+          "actions": [
+            {
+              "type": "button",
+              "text": "🚨 View in ArgoCD",
+              "url": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}"
+            },
+            {
+              "type": "button",
+              "text": "📊 Grafana Dashboard",
+              "url": "{{.context.grafanaUrl}}/d/argocd-app-health"
+            },
+            {
+              "type": "button",
+              "text": "🔄 Sync Application",
+              "url": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}?operation=true"
+            },
+            {
+              "type": "button",
+              "text": "⏮️ Rollback",
+              "url": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}?operation=true"
+            }
+          ],
+          "footer": "ArgoCD {{.context.clusterName}} | IMMEDIATE ATTENTION REQUIRED ⚠️",
+          "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png"
+        }]
+
+  # ❌ APPLICATION SYNC FAILED
+  template.app-sync-failed: |
+    slack:
+      attachments: |
+        [{
+          "title": "❌ Application Sync Failed",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "color": "#E01E5A",
+          "fields": [
+            {
+              "title": "Application",
+              "value": "{{.app.metadata.name}}",
+              "short": true
+            },
+            {
+              "title": "Environment",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Sync Status",
+              "value": "❌ {{.app.status.sync.status}}",
+              "short": true
+            },
+            {
+              "title": "Phase",
+              "value": "{{.app.status.operationState.phase}}",
+              "short": true
+            },
+            {
+              "title": "Error Details",
+              "value": "```{{.app.status.operationState.message}}```",
+              "short": false
+            },
+            {
+              "title": "Target Revision",
+              "value": "`{{.app.status.sync.revision}}`",
+              "short": true
+            },
+            {{if .app.status.operationState.operation.initiatedBy.username}}
+            {
+              "title": "Initiated By",
+              "value": "{{.app.status.operationState.operation.initiatedBy.username}}",
+              "short": true
+            },
+            {{end}}
+            {
+              "title": "Failed Resources",
+              "value": "{{range .app.status.operationState.syncResult.resources}}{{if eq .status \"SyncFailed\"}}• {{.kind}}/{{.name}}: {{.message}}\n{{end}}{{end}}",
+              "short": false
+            }
+          ],
+          "actions": [
+            {
+              "type": "button",
+              "text": "🚨 View Failure Details",
+              "url": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}"
+            },
+            {
+              "type": "button",
+              "text": "📋 View Logs",
+              "url": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}?view=tree&resource="
+            },
+            {
+              "type": "button",
+              "text": "🔄 Retry Sync",
+              "url": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}?operation=true"
+            }
+          ],
+          "footer": "ArgoCD {{.context.clusterName}} | Sync failed - Manual intervention required ⚠️",
+          "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png"
+        }]
+
+  # 🔄 SYNC OPERATION RUNNING - User Experience
+  template.app-sync-running: |
+    slack:
+      attachments: |
+        [{
+          "title": "🔄 Application Sync in Progress",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "color": "#439FE0",
+          "fields": [
+            {
+              "title": "Application",
+              "value": "{{.app.metadata.name}}",
+              "short": true
+            },
+            {
+              "title": "Environment",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Phase",
+              "value": "🔄 {{.app.status.operationState.phase}}",
+              "short": true
+            },
+            {
+              "title": "Target Revision",
+              "value": "`{{.app.status.operationState.operation.sync.revision}}`",
+              "short": true
+            },
+            {{if .app.status.operationState.operation.initiatedBy.username}}
+            {
+              "title": "Initiated By",
+              "value": "{{.app.status.operationState.operation.initiatedBy.username}}",
+              "short": true
+            },
+            {{end}}
+            {
+              "title": "Started At",
+              "value": "{{.app.status.operationState.startedAt}}",
+              "short": true
+            },
+            {
+              "title": "Resources Being Synced",
+              "value": "{{.app.status.operationState.operation.sync.resources | len}} resources",
+              "short": false
+            }
+          ],
+          "footer": "ArgoCD {{.context.clusterName}} | Deployment in progress...",
+          "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png"
+        }]
+
+  # ⚠️ APPLICATION OUT OF SYNC
+  template.app-sync-status-unknown: |
+    slack:
+      attachments: |
+        [{
+          "title": "⚠️ Application Out of Sync",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "color": "#FFA500",
+          "fields": [
+            {
+              "title": "Application",
+              "value": "{{.app.metadata.name}}",
+              "short": true
+            },
+            {
+              "title": "Environment",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Sync Status",
+              "value": "⚠️ {{.app.status.sync.status}}",
+              "short": true
+            },
+            {
+              "title": "Health Status",
+              "value": "{{.app.status.health.status}}",
+              "short": true
+            },
+            {
+              "title": "Warning",
+              "value": "Application is out of sync with Git. {{if not .app.spec.syncPolicy.automated}}Auto-sync is disabled - manual sync required.{{else}}Auto-sync enabled but not triggered yet.{{end}}",
+              "short": false
+            },
+            {
+              "title": "Expected Revision",
+              "value": "`{{.app.spec.source.targetRevision}}`",
+              "short": true
+            },
+            {
+              "title": "Current Revision",
+              "value": "`{{.app.status.sync.revision}}`",
+              "short": true
+            }
+          ],
+          "actions": [
+            {
+              "type": "button",
+              "text": "🔄 Sync Now",
+              "url": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}?operation=true"
+            },
+            {
+              "type": "button",
+              "text": "👁️ View Diff",
+              "url": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}?view=tree&resource="
+            }
+          ],
+          "footer": "ArgoCD {{.context.clusterName}} | Manual sync required",
+          "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png"
+        }]
+
+  # ✅ SYNC SUCCEEDED (different from deployed - sync only)
+  template.app-sync-succeeded: |
+    slack:
+      attachments: |
+        [{
+          "title": "✅ Application Sync Succeeded",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "color": "#2EB67D",
+          "fields": [
+            {
+              "title": "Application",
+              "value": "{{.app.metadata.name}}",
+              "short": true
+            },
+            {
+              "title": "Environment",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Sync Status",
+              "value": "✅ {{.app.status.sync.status}}",
+              "short": true
+            },
+            {
+              "title": "Health Status",
+              "value": "{{.app.status.health.status}}",
+              "short": true
+            },
+            {
+              "title": "Revision",
+              "value": "`{{.app.status.sync.revision}}`",
+              "short": false
+            },
+            {
+              "title": "Synced Resources",
+              "value": "{{.app.status.operationState.syncResult.resources | len}} resources synced",
+              "short": true
+            },
+            {
+              "title": "Duration",
+              "value": "{{.app.status.operationState.finishedAt.Sub .app.status.operationState.startedAt}}",
+              "short": true
+            }
+          ],
+          "footer": "ArgoCD {{.context.clusterName}} | Sync complete, waiting for health check",
+          "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png"
+        }]
+
+  # 🗑️ APPLICATION DELETED
+  template.app-deleted: |
+    slack:
+      attachments: |
+        [{
+          "title": "🗑️ Application Deleted",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "color": "#808080",
+          "fields": [
+            {
+              "title": "Application",
+              "value": "{{.app.metadata.name}}",
+              "short": true
+            },
+            {
+              "title": "Project",
+              "value": "{{.app.spec.project}}",
+              "short": true
+            },
+            {
+              "title": "Namespace",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Cluster",
+              "value": "{{.context.clusterName}}",
+              "short": true
+            },
+            {
+              "title": "Repository",
+              "value": "{{.app.spec.source.repoURL}}",
+              "short": false
+            },
+            {
+              "title": "Last Sync Status",
+              "value": "{{.app.status.sync.status}}",
+              "short": true
+            },
+            {
+              "title": "Last Health Status",
+              "value": "{{.app.status.health.status}}",
+              "short": true
+            }
+          ],
+          "footer": "ArgoCD {{.context.clusterName}} | Application removed from cluster",
+          "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png"
+        }]
+
+  # ═══════════════════════════════════════════════════════════════
+  # 🎯 TRIGGERS - When to send notifications (with deduplication)
+  # ═══════════════════════════════════════════════════════════════
+
+  trigger.on-created: |
+    - description: Application is created (new app in cluster)
+      oncePer: app.metadata.name
+      send:
+      - app-created
+      when: "true"
+
+  trigger.on-deleted: |
+    - description: Application has been deleted
+      oncePer: app.metadata.name
+      send:
+      - app-deleted
+      when: app.metadata.deletionTimestamp != nil
+
+  trigger.on-deployed: |
+    - description: Application is synced and healthy (successful deployment)
+      oncePer: app.status.operationState.syncResult.revision
+      send:
+      - app-deployed
+      when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+
+  trigger.on-health-degraded: |
+    - description: Application health is degraded (requires immediate attention)
+      oncePer: app.status.operationState.syncResult.revision
+      send:
+      - app-health-degraded
+      when: app.status.health.status == 'Degraded'
+
+  trigger.on-sync-failed: |
+    - description: Application sync operation failed
+      oncePer: app.status.operationState.syncResult.revision
+      send:
+      - app-sync-failed
+      when: app.status.operationState.phase in ['Error', 'Failed']
+
+  trigger.on-sync-running: |
+    - description: Application sync operation is in progress (user experience for long deployments)
+      oncePer: app.status.operationState.syncResult.revision
+      send:
+      - app-sync-running
+      when: app.status.operationState.phase in ['Running']
+
+  trigger.on-sync-status-unknown: |
+    - description: Application is out of sync and requires manual intervention
+      oncePer: app.status.sync.revision
+      send:
+      - app-sync-status-unknown
+      when: app.status.sync.status == 'OutOfSync' and app.spec.syncPolicy.automated == nil
+
+  trigger.on-sync-succeeded: |
+    - description: Application sync operation succeeded (waiting for health check)
+      oncePer: app.status.operationState.syncResult.revision
+      send:
+      - app-sync-succeeded
+      when: app.status.operationState.phase in ['Succeeded']

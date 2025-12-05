@@ -23,6 +23,9 @@ configs:
     # Enable Helm support in Kustomize for all applications
     kustomize.buildOptions: --enable-helm
 
+    # 🚨 EXEC TIMEOUT - Extended for operators kustomization with 9 Helm charts
+    exec.timeout: "300s"  # 5 minutes for kustomize build (default 90s)
+
     # 🔐 KEYCLOAK OIDC AUTHENTICATION - PRODUCTION SSO
     # ================================================
     # Client secret is stored in SealedSecret: oidc-secret.yaml
@@ -274,7 +277,7 @@ controller:
       memory: 1Gi    # 🚨 INCREASED: 65 apps need more memory (was 512Mi)
     limits:
       cpu: 1000m     # Homelab scale - reduced CPU limit
-      memory: 4Gi    # 🚨 INCREASED: Prevent OOMKilled (was 2Gi)
+      memory: 8Gi    # 🚨 INCREASED: 60+ apps cause OOMKilled (was 4Gi)
 
   # 🚀 ADVANCED PERFORMANCE METRICS
   metrics:
@@ -317,7 +320,7 @@ controller:
     - name: GOGC
       value: "50"                            # ULTRA aggressive GC - prevent memory hangs
     - name: GOMEMLIMIT
-      value: "4GiB"                          # 🚨 INCREASED: Match memory limit (was 2GiB)
+      value: "8GiB"                          # 🚨 INCREASED: Match memory limit (was 4GiB)
 
     # 🚨 ANTI-HANG PROTECTION - NEVER STUCK AGAIN!
     # =============================================
@@ -392,6 +395,12 @@ redis-ha:
   # 🚨 DISABLE HELM TEST JOBS - NOT FOR BOOTSTRAP
   tests:
     enabled: false  # No test pods during bootstrap
+
+  # 🚨 DISABLE ALL HELM HOOKS (test pods)
+  configmapTest:
+    enabled: false
+  serviceTest:
+    enabled: false
 
   # 🚀 3 REDIS REPLICAS for true HA (1 master + 2 replicas)
   replicas: 3

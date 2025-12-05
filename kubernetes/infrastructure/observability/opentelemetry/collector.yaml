@@ -1,32 +1,28 @@
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: otel-collector
   namespace: opentelemetry
   annotations:
-    # Disable automatic Prometheus scraping for gRPC/HTTP OTLP endpoints
     prometheus.io/scrape: "false"
 spec:
   mode: daemonset
   image: otel/opentelemetry-collector-contrib:0.114.0
-
-  # Add pod annotations to disable scraping for OTLP endpoints
   podAnnotations:
     prometheus.io/scrape: "false"
   resources:
     requests:
-      memory: 128Mi
+      memory: 256Mi
       cpu: 100m
     limits:
-      memory: 512Mi
+      memory: 1Gi
       cpu: 500m
-  # 🌐 ENVIRONMENT: Node IP for kubelet access
   env:
     - name: K8S_NODE_IP
       valueFrom:
         fieldRef:
           fieldPath: status.hostIP
-  config: |
+  config:
     receivers:
       otlp:
         protocols:
@@ -34,68 +30,49 @@ spec:
             endpoint: 0.0.0.0:4317
           http:
             endpoint: 0.0.0.0:4318
-      hostmetrics:
-        collection_interval: 30s
-        scrapers:
-          cpu:
-          load:
-          memory:
-          disk:
-          filesystem:
-          network:
-      # kubeletstats:  # DISABLED: Talos kubelet doesn't accept ServiceAccount tokens
-        #   # Duplicate data - we already have hostmetrics + kube-state-metrics via Prometheus
-        #   collection_interval: 30s
-        #   auth_type: "serviceAccount"
-        #   endpoint: "https://${env:K8S_NODE_IP}:10250"
-        #   insecure_skip_verify: true
-
     processors:
       batch:
-        timeout: 10s           # Increased from 1s to reduce write pressure
-        send_batch_size: 512   # Reduced from 1024 to avoid overwhelming Prometheus
+        timeout: 10s
+        send_batch_size: 512
         send_batch_max_size: 1024
       memory_limiter:
-        limit_mib: 480         # Increased from 400 to use more of 512Mi pod limit
+        limit_mib: 900
         check_interval: 1s
       resource:
         attributes:
           - key: cluster
-            value: "talos-homelab"
+            value: talos-homelab
             action: upsert
-
     exporters:
-      # Modern OTLP exporter for Jaeger (Netflix/Uber enterprise pattern)
       otlp/jaeger:
         endpoint: jaeger-collector.jaeger:4317
         tls:
           insecure: true
         headers:
-          x-scope-orgid: "talos-homelab"
-
-      # Metriken zu Prometheus (Grafana)
-      prometheusremotewrite:
-        endpoint: http://prometheus-operator-kube-p-prometheus.monitoring:9090/api/v1/write
-        # Fix timeouts: 6 DaemonSet pods writing simultaneously
-        timeout: 60s
-        retry_on_failure:
-          enabled: true
-          initial_interval: 5s
-          max_interval: 30s
-          max_elapsed_time: 300s
-
+          x-scope-orgid: talos-homelab
+      otlp/tempo:
+        endpoint: tempo-distributor.monitoring:4317
+        tls:
+          insecure: true
+        headers:
+          x-scope-orgid: talos-homelab
     service:
       pipelines:
         traces:
-          receivers: [otlp]
-          processors: [memory_limiter, batch, resource]
-          exporters: [otlp/jaeger]
+          receivers:
+            - otlp
+          processors:
+            - memory_limiter
+            - batch
+            - resource
+          exporters:
+            - otlp/jaeger
+            - otlp/tempo
+      telemetry:
         metrics:
-          receivers: [otlp, hostmetrics]  # kubeletstats disabled (Talos auth issue)
-          processors: [memory_limiter, batch, resource]
-          exporters: [prometheusremotewrite]
-
-    extensions:
-      health_check:
-      pprof:
-      zpages:
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: 0.0.0.0
+                    port: 8888

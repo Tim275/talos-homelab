@@ -1,0 +1,175 @@
+# =============================================================================
+# Keycloak ArgoCD OIDC Client Setup Job
+# =============================================================================
+# Creates the 'argocd' OIDC client in Keycloak kubernetes realm
+# This enables ArgoCD SSO via Keycloak
+# =============================================================================
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-argocd-client-setup
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak-argocd-client-setup
+    app.kubernetes.io/part-of: platform-identity
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: keycloak-argocd-client-setup
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: setup
+          image: quay.io/keycloak/keycloak:25.0.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: KEYCLOAK_ADMIN
+              value: admin
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: password
+            - name: KEYCLOAK_URL
+              value: "http://keycloak.keycloak.svc.cluster.local:8080"
+            - name: ARGOCD_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: argocd-oidc-client-secret
+                  key: clientSecret
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              echo "=== Waiting for Keycloak to be ready (20s) ==="
+              sleep 20
+
+              echo ""
+              echo "=== Logging in to Keycloak ==="
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --server "$KEYCLOAK_URL" \
+                --realm master \
+                --user "$KEYCLOAK_ADMIN" \
+                --password "$KEYCLOAK_ADMIN_PASSWORD"
+
+              echo ""
+              echo "=== Ensuring 'kubernetes' realm exists ==="
+              if ! /opt/keycloak/bin/kcadm.sh get realms/kubernetes 2>/dev/null; then
+                echo "Creating kubernetes realm..."
+                /opt/keycloak/bin/kcadm.sh create realms \
+                  -s realm=kubernetes \
+                  -s enabled=true \
+                  -s displayName="Kubernetes Homelab"
+                echo "Kubernetes realm created"
+              else
+                echo "Kubernetes realm already exists"
+              fi
+
+              echo ""
+              echo "=== Checking if 'argocd' client exists ==="
+              EXISTING_CLIENT=$(/opt/keycloak/bin/kcadm.sh get clients -r kubernetes -q clientId=argocd --fields id 2>/dev/null | grep '"id"' | cut -d'"' -f4 || true)
+
+              if [ -n "$EXISTING_CLIENT" ]; then
+                echo "ArgoCD client already exists (ID: $EXISTING_CLIENT)"
+                echo "Updating client configuration..."
+                /opt/keycloak/bin/kcadm.sh update clients/$EXISTING_CLIENT -r kubernetes \
+                  -s enabled=true \
+                  -s 'redirectUris=["https://argocd.timourhomelab.org/auth/callback","https://argocd.timourhomelab.org/api/dex/callback"]' \
+                  -s 'webOrigins=["https://argocd.timourhomelab.org"]' \
+                  -s secret="$ARGOCD_CLIENT_SECRET"
+                echo "Client updated"
+              else
+                echo ""
+                echo "=== Creating OIDC Client 'argocd' ==="
+                CLIENT_ID=$(/opt/keycloak/bin/kcadm.sh create clients -r kubernetes \
+                  -s clientId=argocd \
+                  -s enabled=true \
+                  -s protocol=openid-connect \
+                  -s publicClient=false \
+                  -s standardFlowEnabled=true \
+                  -s directAccessGrantsEnabled=true \
+                  -s serviceAccountsEnabled=false \
+                  -s 'redirectUris=["https://argocd.timourhomelab.org/auth/callback","https://argocd.timourhomelab.org/api/dex/callback"]' \
+                  -s 'webOrigins=["https://argocd.timourhomelab.org"]' \
+                  -s consentRequired=false \
+                  -s fullScopeAllowed=true \
+                  -s secret="$ARGOCD_CLIENT_SECRET" \
+                  -i)
+                echo "Created ArgoCD Client: $CLIENT_ID"
+                EXISTING_CLIENT=$CLIENT_ID
+              fi
+
+              echo ""
+              echo "=== Ensuring 'groups' scope is assigned ==="
+              GROUPS_SCOPE_ID=$(/opt/keycloak/bin/kcadm.sh get client-scopes -r kubernetes --fields id,name 2>/dev/null | grep -B1 '"name" : "groups"' | grep '"id"' | cut -d'"' -f4 || true)
+
+              if [ -n "$GROUPS_SCOPE_ID" ]; then
+                /opt/keycloak/bin/kcadm.sh update clients/$EXISTING_CLIENT/default-client-scopes/$GROUPS_SCOPE_ID -r kubernetes 2>/dev/null || true
+                echo "Groups scope assigned to argocd client"
+              else
+                echo "Warning: 'groups' scope not found - creating it..."
+                GROUPS_SCOPE_ID=$(/opt/keycloak/bin/kcadm.sh create client-scopes -r kubernetes \
+                  -s name=groups \
+                  -s protocol=openid-connect \
+                  -s 'attributes.include.in.token.scope=true' \
+                  -i)
+
+                /opt/keycloak/bin/kcadm.sh create client-scopes/$GROUPS_SCOPE_ID/protocol-mappers/models -r kubernetes \
+                  -s name=groups \
+                  -s protocol=openid-connect \
+                  -s protocolMapper=oidc-group-membership-mapper \
+                  -s 'config."claim.name"=groups' \
+                  -s 'config."full.path"=false' \
+                  -s 'config."id.token.claim"=true' \
+                  -s 'config."access.token.claim"=true' \
+                  -s 'config."userinfo.token.claim"=true'
+
+                /opt/keycloak/bin/kcadm.sh update clients/$EXISTING_CLIENT/default-client-scopes/$GROUPS_SCOPE_ID -r kubernetes
+                echo "Groups scope created and assigned"
+              fi
+
+              echo ""
+              echo "==========================================="
+              echo "ArgoCD OIDC Client Setup Complete!"
+              echo "==========================================="
+              echo ""
+              echo "OIDC Configuration:"
+              echo "  Issuer URL: https://iam.timourhomelab.org/realms/kubernetes"
+              echo "  Client ID: argocd"
+              echo "  Redirect URIs:"
+              echo "    - https://argocd.timourhomelab.org/auth/callback"
+              echo "    - https://argocd.timourhomelab.org/api/dex/callback"
+              echo "==========================================="
+---
+# ArgoCD OIDC Client Secret - should be SealedSecret in production
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-oidc-client-secret
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: argocd-oidc-client-secret
+    app.kubernetes.io/part-of: platform-identity
+type: Opaque
+stringData:
+  # This secret should match the one in argocd namespace (argocd-oidc-secret)
+  clientSecret: "ArgoCD-OIDC-Secret-2025!"

@@ -1,10 +1,29 @@
 # Redis Operator CR for N8N
 # Managed by OpsTree Redis Operator
+#
+# BEST PRACTICE for Queue Mode:
+# - Small PVC (1Gi) - Redis only stores temporary job queue
+# - PostgreSQL stores the actual workflow data
+# - AOF disabled (appendonly no) - prevents fsync timeouts on slow Ceph storage
+#
+# ⚠️ ENTERPRISE WARNUNG:
+# Single-Pod Redis = Queue-Datenverlust bei Pod-Crash!
+# Für Production HA: Change to 'kind: RedisReplication' with clusterSize: 3
+# Dies erfordert manuelle Migration (alte Redis CR löschen, neue deployen)
+#
+# TODO: Migration zu RedisReplication für volle HA
+# 1. Workflow-Queue leeren (keine laufenden Jobs)
+# 2. kubectl delete redis redis-n8n -n n8n-prod
+# 3. Change kind: Redis -> kind: RedisReplication, add clusterSize: 3
+# 4. ArgoCD sync
 apiVersion: redis.redis.opstreelabs.in/v1beta2
 kind: Redis
 metadata:
   name: redis-n8n
   namespace: n8n-prod
+  labels:
+    app.kubernetes.io/name: redis-n8n
+    app.kubernetes.io/component: queue
 spec:
   podSecurityContext:
     runAsUser: 1000
@@ -15,13 +34,17 @@ spec:
     resources:
       requests:
         cpu: 250m
-        memory: 256Mi
-      limits:
-        cpu: 500m
         memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi  # Increased from 512Mi - AOF loading on Ceph needs more memory
+  # Redis config optimized for Ceph block storage (slow fsync)
+  # Reference to ConfigMap with custom redis config (AOF disabled)
+  redisConfig:
+    additionalRedisConfig: redis-n8n-external-config
   redisExporter:
     enabled: true
-    image: quay.io/opstree/redis-exporter:v1.44.0
+    image: quay.io/opstree/redis-exporter:v1.79.0
     resources:
       requests:
         cpu: 50m
@@ -36,4 +59,4 @@ spec:
         storageClassName: rook-ceph-block-enterprise
         resources:
           requests:
-            storage: 8Gi
+            storage: 1Gi  # Reduced from 8Gi - Redis queue needs minimal storage

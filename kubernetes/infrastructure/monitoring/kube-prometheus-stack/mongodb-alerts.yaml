@@ -1,0 +1,145 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: mongodb-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+    release: kube-prometheus-stack
+    layer: platform
+spec:
+  groups:
+    - name: platform.mongodb.critical
+      interval: 30s
+      rules:
+        # ====== P0: CRITICAL - MongoDB Down ======
+        - alert: MongoDBDown
+          expr: |
+            mongodb_up == 0
+          for: 2m
+          labels:
+            severity: critical
+            priority: p0
+            component: mongodb
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "MongoDB instance {{ $labels.instance }} is DOWN"
+            description: |
+              MongoDB instance {{ $labels.instance }} is unreachable.
+              Database UNAVAILABLE!
+
+              Impact: OMS application cannot access data
+              Team: @platform-oncall
+
+              Check: kubectl -n oms get pods -l app=mongodb
+              Check: kubectl -n oms logs -l app=mongodb --tail=100
+
+        # ====== P0: CRITICAL - MongoDB Replication Lag High ======
+        - alert: MongoDBReplicationLagHigh
+          expr: |
+            mongodb_replset_member_replication_lag > 10
+          for: 5m
+          labels:
+            severity: critical
+            priority: p0
+            component: mongodb
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "MongoDB replication lag is {{ $value }}s on {{ $labels.instance }}"
+            description: |
+              MongoDB replica {{ $labels.instance }} is lagging {{ $value }} seconds behind primary.
+              DATA CONSISTENCY RISK!
+
+              Impact: Stale reads, potential data loss on failover
+              Duration: >5 minutes
+              Team: @platform-oncall
+
+    - name: platform.mongodb.high
+      interval: 30s
+      rules:
+        # ====== P1: HIGH - MongoDB Connections High ======
+        - alert: MongoDBConnectionsHigh
+          expr: |
+            (mongodb_connections{state="current"} / mongodb_connections{state="available"}) > 0.8
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: mongodb
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "MongoDB connections at {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+            description: |
+              MongoDB instance {{ $labels.instance }} is using {{ $value | humanizePercentage }} of available connections.
+              Connection pool exhaustion risk!
+
+              Current: {{ $value | humanizePercentage }}
+              Duration: >10 minutes
+              Action: Check for connection leaks, consider increasing connection limit
+
+        # ====== P1: HIGH - MongoDB Disk Usage High ======
+        - alert: MongoDBDiskUsageHigh
+          expr: |
+            (container_fs_usage_bytes{namespace="oms", container="mongodb"}
+            / container_fs_limit_bytes{namespace="oms", container="mongodb"}) > 0.85
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: mongodb
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "MongoDB disk usage is {{ $value | humanizePercentage }}"
+            description: |
+              MongoDB pod {{ $labels.pod }} disk usage is {{ $value | humanizePercentage }}.
+              Risk of out-of-disk!
+
+              Current: {{ $value | humanizePercentage }}
+              Action: Clean up old data or increase storage
+
+        # ====== P1: HIGH - MongoDB Replica Set Member Down ======
+        - alert: MongoDBReplicaSetMemberDown
+          expr: |
+            mongodb_replset_member_health == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: mongodb
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "MongoDB replica set member {{ $labels.name }} is DOWN"
+            description: |
+              MongoDB replica set member {{ $labels.name }} is unhealthy.
+              Reduced redundancy!
+
+              Impact: Lost replica, reduced fault tolerance
+              Duration: >3 minutes
+
+    - name: platform.mongodb.medium
+      interval: 60s
+      rules:
+        # ====== P2: MEDIUM - MongoDB Slow Queries ======
+        - alert: MongoDBSlowQueries
+          expr: |
+            rate(mongodb_mongod_metrics_query_executor_total{state="scanned"}[5m]) > 1000
+          for: 15m
+          labels:
+            severity: info
+            priority: p2
+            component: mongodb
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "MongoDB experiencing {{ $value }} slow queries/sec on {{ $labels.instance }}"
+            description: |
+              MongoDB is scanning {{ $value }} documents per second.
+              Queries may be inefficient!
+
+              Duration: >15 minutes
+              Action: Review query patterns, add indexes

@@ -1,0 +1,130 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cert-manager-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+    release: kube-prometheus-stack
+    layer: security
+spec:
+  groups:
+    - name: security.cert-manager.critical
+      interval: 60s
+      rules:
+        # ====== P0: CRITICAL - Certificate Expiring in 7 Days ======
+        - alert: CertificateExpiringSoon
+          expr: |
+            certmanager_certificate_expiration_timestamp_seconds - time() < (7 * 24 * 3600)
+          for: 1h
+          labels:
+            severity: critical
+            priority: p0
+            component: cert-manager
+            tier: security
+            layer: layer2
+          annotations:
+            summary: "Certificate {{ $labels.name }} expires in {{ $value | humanizeDuration }}"
+            description: |
+              Certificate {{ $labels.name }} in namespace {{ $labels.namespace }} expires in {{ $value | humanizeDuration }}.
+              URGENT: TLS certificate about to expire!
+
+              Impact: Service {{ $labels.name }} will lose TLS encryption
+              Expiry: {{ $value | humanizeDuration }}
+              Team: @security-oncall
+
+              Check: kubectl -n {{ $labels.namespace }} get certificate {{ $labels.name }}
+              Check: kubectl -n {{ $labels.namespace }} describe certificate {{ $labels.name }}
+
+        # ====== P0: CRITICAL - Certificate Renewal Failed ======
+        - alert: CertificateRenewalFailed
+          expr: |
+            certmanager_certificate_ready_status{condition="False"} == 1
+          for: 15m
+          labels:
+            severity: critical
+            priority: p0
+            component: cert-manager
+            tier: security
+            layer: layer2
+          annotations:
+            summary: "Certificate {{ $labels.name }} renewal FAILED"
+            description: |
+              Certificate {{ $labels.name }} in namespace {{ $labels.namespace }} is not ready.
+              Automatic renewal has FAILED!
+
+              Impact: Certificate will expire, TLS encryption will break
+              Duration: >15 minutes
+              Team: @security-oncall
+
+              Check: kubectl -n {{ $labels.namespace }} describe certificate {{ $labels.name }}
+              Check: kubectl -n {{ $labels.namespace }} get certificaterequest
+
+    - name: security.cert-manager.high
+      interval: 60s
+      rules:
+        # ====== P1: HIGH - Cert-Manager Down ======
+        - alert: CertManagerDown
+          expr: |
+            up{job="cert-manager"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: cert-manager
+            tier: security
+            layer: layer2
+          annotations:
+            summary: "Cert-Manager controller is DOWN"
+            description: |
+              Cert-Manager controller is unreachable.
+              Cannot renew or issue new certificates!
+
+              Impact: No certificate renewals, new issuance blocked
+              Duration: >5 minutes
+
+              Check: kubectl -n cert-manager get pods
+              Check: kubectl -n cert-manager logs -l app=cert-manager
+
+        # ====== P1: HIGH - Certificate Expiring in 14 Days ======
+        - alert: CertificateExpiringIn14Days
+          expr: |
+            certmanager_certificate_expiration_timestamp_seconds - time() < (14 * 24 * 3600)
+          for: 6h
+          labels:
+            severity: warning
+            priority: p1
+            component: cert-manager
+            tier: security
+            layer: layer2
+          annotations:
+            summary: "Certificate {{ $labels.name }} expires in {{ $value | humanizeDuration }}"
+            description: |
+              Certificate {{ $labels.name }} in namespace {{ $labels.namespace }} expires in {{ $value | humanizeDuration }}.
+              Renewal should happen automatically at 30 days.
+
+              Expiry: {{ $value | humanizeDuration }}
+              Action: Monitor for automatic renewal
+
+    - name: security.cert-manager.medium
+      interval: 300s
+      rules:
+        # ====== P2: MEDIUM - Certificate Expiring in 30 Days ======
+        - alert: CertificateExpiringIn30Days
+          expr: |
+            certmanager_certificate_expiration_timestamp_seconds - time() < (30 * 24 * 3600)
+          for: 12h
+          labels:
+            severity: info
+            priority: p2
+            component: cert-manager
+            tier: security
+            layer: layer2
+          annotations:
+            summary: "Certificate {{ $labels.name }} expires in {{ $value | humanizeDuration }}"
+            description: |
+              Certificate {{ $labels.name }} in namespace {{ $labels.namespace }} expires in {{ $value | humanizeDuration }}.
+              Cert-Manager should renew automatically.
+
+              Expiry: {{ $value | humanizeDuration }}
+              Action: Monitor renewal progress

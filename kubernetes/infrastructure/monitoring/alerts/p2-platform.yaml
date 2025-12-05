@@ -1,0 +1,155 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: p2-platform-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack-prometheus
+    role: alert-rules
+    severity: info
+    priority: p2
+spec:
+  groups:
+    - name: p2.network.info
+      interval: 120s
+      rules:
+        - alert: CiliumAgentDown
+          expr: up{job="cilium-agent"} == 0
+          for: 10m
+          labels:
+            severity: info
+            priority: p2
+            component: network
+          annotations:
+            summary: "Cilium agent down on node {{ $labels.instance }}"
+            description: "Cilium CNI agent not responding for 10+ minutes"
+            impact: "Network policy enforcement degraded on this node"
+
+        - alert: IstioSidecarInjectionFailing
+          expr: sum(rate(sidecar_injection_failure_total[5m])) > 0
+          for: 15m
+          labels:
+            severity: info
+            priority: p2
+            component: network
+          annotations:
+            summary: "Istio sidecar injection is failing"
+            description: "Sidecar injection failures detected"
+            impact: "New pods won't have service mesh"
+
+        - alert: EnvoyGatewayDown
+          expr: up{job="envoy-gateway"} == 0
+          for: 10m
+          labels:
+            severity: info
+            priority: p2
+            component: network
+          annotations:
+            summary: "Envoy Gateway is down"
+            description: "Envoy Gateway not responding"
+            impact: "Ingress traffic may be affected"
+
+    - name: p2.applications.info
+      interval: 120s
+      rules:
+        - alert: N8NWorkflowsFailing
+          expr: rate(n8n_workflow_executions_failed_total[15m]) > 0.1
+          for: 20m
+          labels:
+            severity: info
+            priority: p2
+            component: automation
+          annotations:
+            summary: "N8N workflow execution failure rate is high"
+            description: "N8N workflows failing at {{ $value }} per minute"
+            impact: "Automation workflows not completing"
+
+        - alert: GrafanaDown
+          expr: up{job="grafana"} == 0
+          for: 10m
+          labels:
+            severity: info
+            priority: p2
+            component: observability
+          annotations:
+            summary: "Grafana is down"
+            description: "Grafana not responding for 10+ minutes"
+            impact: "No dashboard access"
+
+    - name: p2.storage.info
+      interval: 120s
+      rules:
+        - alert: CephSlowOps
+          expr: ceph_healthcheck_slow_ops > 10
+          for: 15m
+          labels:
+            severity: info
+            priority: p2
+            component: storage
+          annotations:
+            summary: "Ceph has {{ $value }} slow operations"
+            description: "Ceph cluster experiencing slow operations"
+            impact: "Storage performance degraded"
+
+        - alert: PostgreSQLDown
+          expr: pg_up == 0
+          for: 5m
+          labels:
+            severity: info
+            priority: p2
+            component: database
+          annotations:
+            summary: "PostgreSQL instance {{ $labels.instance }} is down"
+            description: "PostgreSQL not responding"
+            impact: "Database unavailable"
+
+        - alert: PostgreSQLReplicationLag
+          expr: pg_replication_lag > 30
+          for: 10m
+          labels:
+            severity: info
+            priority: p2
+            component: database
+          annotations:
+            summary: "PostgreSQL replication lag is {{ $value }}s"
+            description: "Replication lag exceeds 30 seconds"
+            impact: "Stale replica data"
+
+    - name: p2.security.info
+      interval: 120s
+      rules:
+        - alert: CertificateExpiringSoon
+          expr: (cert_manager_certificate_expiration_timestamp_seconds - time()) / 86400 < 14
+          for: 1h
+          labels:
+            severity: info
+            priority: p2
+            component: security
+          annotations:
+            summary: "Certificate {{ $labels.name }} expires in {{ $value }} days"
+            description: "Certificate in {{ $labels.namespace }} expires soon"
+            impact: "TLS certificate renewal needed"
+
+        - alert: KeycloakDown
+          expr: up{job="keycloak"} == 0
+          for: 10m
+          labels:
+            severity: info
+            priority: p2
+            component: security
+          annotations:
+            summary: "Keycloak is down"
+            description: "Keycloak OIDC provider not responding"
+            impact: "SSO authentication unavailable"
+
+        - alert: SealedSecretsControllerDown
+          expr: up{job="sealed-secrets"} == 0
+          for: 10m
+          labels:
+            severity: info
+            priority: p2
+            component: security
+          annotations:
+            summary: "Sealed Secrets controller is down"
+            description: "Cannot decrypt SealedSecrets"
+            impact: "New secret deployments will fail"
