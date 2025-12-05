@@ -24,53 +24,58 @@ reclaimPolicy: Delete
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer  # Better scheduling decisions
 
----
-# Enterprise RBD Storage Class - SSD Performance
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: rook-ceph-block-ssd
-  annotations:
-    argocd.argoproj.io/sync-wave: "3"
-provisioner: rook-ceph.rbd.csi.ceph.com
-parameters:
-  clusterID: rook-ceph
-  pool: ssd-pool
-  imageFormat: "2"
-  imageFeatures: layering,deep-flatten,exclusive-lock,object-map,fast-diff
-  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
-  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
-  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
-  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
-  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
-  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
-  csi.storage.k8s.io/fstype: ext4
-reclaimPolicy: Delete
-allowVolumeExpansion: true
-volumeBindingMode: WaitForFirstConsumer  # Better scheduling decisions
+# ============================================================
+# DISABLED STORAGE CLASSES - Unused, saves resources
+# Re-enable by uncommenting if needed
+# ============================================================
 
----
-# Enterprise CephFS Storage Class - Shared Storage
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: rook-cephfs-enterprise
-  annotations:
-    argocd.argoproj.io/sync-wave: "3"
-provisioner: rook-ceph.cephfs.csi.ceph.com
-parameters:
-  clusterID: rook-ceph
-  fsName: myfs-enterprise
-  pool: myfs-enterprise-replicated
-  csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
-  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
-  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-cephfs-provisioner
-  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
-  csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
-  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
-reclaimPolicy: Delete
-allowVolumeExpansion: true
-volumeBindingMode: WaitForFirstConsumer  # Better scheduling decisions
+# ---
+# # Enterprise RBD Storage Class - SSD Performance (DISABLED - no SSD tier in use)
+# apiVersion: storage.k8s.io/v1
+# kind: StorageClass
+# metadata:
+#   name: rook-ceph-block-ssd
+#   annotations:
+#     argocd.argoproj.io/sync-wave: "3"
+# provisioner: rook-ceph.rbd.csi.ceph.com
+# parameters:
+#   clusterID: rook-ceph
+#   pool: ssd-pool
+#   imageFormat: "2"
+#   imageFeatures: layering,deep-flatten,exclusive-lock,object-map,fast-diff
+#   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+#   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+#   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+#   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+#   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+#   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+#   csi.storage.k8s.io/fstype: ext4
+# reclaimPolicy: Delete
+# allowVolumeExpansion: true
+# volumeBindingMode: WaitForFirstConsumer
+
+# ---
+# # Enterprise CephFS Storage Class - Shared Storage (DISABLED - CephFS MDS wastes resources)
+# apiVersion: storage.k8s.io/v1
+# kind: StorageClass
+# metadata:
+#   name: rook-cephfs-enterprise
+#   annotations:
+#     argocd.argoproj.io/sync-wave: "3"
+# provisioner: rook-ceph.cephfs.csi.ceph.com
+# parameters:
+#   clusterID: rook-ceph
+#   fsName: myfs-enterprise
+#   pool: myfs-enterprise-replicated
+#   csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
+#   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+#   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-cephfs-provisioner
+#   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+#   csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
+#   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+# reclaimPolicy: Delete
+# allowVolumeExpansion: true
+# volumeBindingMode: WaitForFirstConsumer
 
 ---
 # Object Storage (S3) via Ceph RGW
@@ -88,62 +93,59 @@ parameters:
 reclaimPolicy: Delete
 
 # ============================================================
-# PRODUCTION-SAFE STORAGE CLASSES WITH RETAIN POLICY
+# PRODUCTION-SAFE STORAGE CLASSES WITH RETAIN POLICY (DISABLED)
 # ============================================================
 # These storage classes use reclaimPolicy: Retain instead of Delete
 # to prevent accidental data loss when PVCs are deleted.
-# Use these for:
-# - Tier-0 production databases (PostgreSQL, InfluxDB, etc.)
-# - Critical application data that must survive PVC recreation
-# - Backup targets and archival storage
+# DISABLED: Currently unused - re-enable if needed for tier-0 databases
 # ============================================================
 
----
-# Enterprise RBD Storage Class - RETAIN POLICY (Production Databases)
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: rook-ceph-block-enterprise-retain
-  annotations:
-    argocd.argoproj.io/sync-wave: "3"
-    storageclass.kubernetes.io/description: "Production-safe block storage with Retain policy. Use for tier-0 databases."
-provisioner: rook-ceph.rbd.csi.ceph.com
-parameters:
-  clusterID: rook-ceph
-  pool: replicapool-enterprise
-  imageFormat: "2"
-  imageFeatures: layering
-  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
-  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
-  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
-  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
-  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
-  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
-  csi.storage.k8s.io/fstype: ext4
-reclaimPolicy: Retain  # PV will NOT be deleted when PVC is removed
-allowVolumeExpansion: true
-volumeBindingMode: WaitForFirstConsumer  # Better scheduling decisions
+# ---
+# # Enterprise RBD Storage Class - RETAIN POLICY (Production Databases)
+# apiVersion: storage.k8s.io/v1
+# kind: StorageClass
+# metadata:
+#   name: rook-ceph-block-enterprise-retain
+#   annotations:
+#     argocd.argoproj.io/sync-wave: "3"
+#     storageclass.kubernetes.io/description: "Production-safe block storage with Retain policy. Use for tier-0 databases."
+# provisioner: rook-ceph.rbd.csi.ceph.com
+# parameters:
+#   clusterID: rook-ceph
+#   pool: replicapool-enterprise
+#   imageFormat: "2"
+#   imageFeatures: layering
+#   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+#   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+#   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+#   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+#   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+#   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+#   csi.storage.k8s.io/fstype: ext4
+# reclaimPolicy: Retain
+# allowVolumeExpansion: true
+# volumeBindingMode: WaitForFirstConsumer
 
----
-# Enterprise CephFS Storage Class - RETAIN POLICY (Shared Production Data)
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: rook-cephfs-enterprise-retain
-  annotations:
-    argocd.argoproj.io/sync-wave: "3"
-    storageclass.kubernetes.io/description: "Production-safe shared storage with Retain policy."
-provisioner: rook-ceph.cephfs.csi.ceph.com
-parameters:
-  clusterID: rook-ceph
-  fsName: myfs-enterprise
-  pool: myfs-enterprise-replicated
-  csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
-  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
-  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-cephfs-provisioner
-  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
-  csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
-  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
-reclaimPolicy: Retain  # PV will NOT be deleted when PVC is removed
-allowVolumeExpansion: true
-volumeBindingMode: WaitForFirstConsumer  # Better scheduling decisions
+# ---
+# # Enterprise CephFS Storage Class - RETAIN POLICY (Shared Production Data)
+# apiVersion: storage.k8s.io/v1
+# kind: StorageClass
+# metadata:
+#   name: rook-cephfs-enterprise-retain
+#   annotations:
+#     argocd.argoproj.io/sync-wave: "3"
+#     storageclass.kubernetes.io/description: "Production-safe shared storage with Retain policy."
+# provisioner: rook-ceph.cephfs.csi.ceph.com
+# parameters:
+#   clusterID: rook-ceph
+#   fsName: myfs-enterprise
+#   pool: myfs-enterprise-replicated
+#   csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
+#   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+#   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-cephfs-provisioner
+#   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+#   csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
+#   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+# reclaimPolicy: Retain
+# allowVolumeExpansion: true
+# volumeBindingMode: WaitForFirstConsumer
