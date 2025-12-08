@@ -211,10 +211,18 @@ spec:
               Check: kubectl -n {{ $labels.namespace }} logs job/{{ $labels.job_name }}
 
         # ====== P2: HIGH - CronJob Missed Schedule ======
+        # Enterprise Best Practice: Alert if last run > 3x expected interval
+        # Uses kube_cronjob_next_schedule_time to calculate expected interval dynamically
         - alert: CronJobMissedSchedule
           expr: |
-            time() - kube_cronjob_status_last_schedule_time > (kube_cronjob_spec_suspend == 0) * 3600 * 2
-          for: 10m
+            (
+              time() - kube_cronjob_status_last_schedule_time
+              >
+              (kube_cronjob_next_schedule_time - kube_cronjob_status_last_schedule_time) * 3
+            )
+            and
+            kube_cronjob_spec_suspend == 0
+          for: 5m
           labels:
             severity: warning
             priority: p2
@@ -225,13 +233,14 @@ spec:
             summary: "CronJob {{ $labels.namespace }}/{{ $labels.cronjob }} missed schedule"
             description: |
               CronJob {{ $labels.cronjob }} in {{ $labels.namespace }}
-              has not run for over 2 hours (or more than 2x its schedule).
+              has missed more than 3 scheduled runs.
 
-              Last Run: >2 hours ago
-              Suspended: {{ $labels.kube_cronjob_spec_suspend }}
+              Last Successful Run: {{ $value | humanizeDuration }} ago
+              Expected Interval: Based on cron schedule
 
               Action: Check CronJob configuration and history
               Check: kubectl -n {{ $labels.namespace }} describe cronjob {{ $labels.cronjob }}
+              Logs: kubectl -n {{ $labels.namespace }} logs -l job-name --tail=50
 
         # ====== P2: HIGH - DaemonSet Not Scheduled ======
         - alert: DaemonSetNotScheduled

@@ -169,9 +169,19 @@ spec:
               Duration: >15 minutes
 
         # ====== P2: MEDIUM - Redis Persistence Failing ======
+        # ENTERPRISE BEST PRACTICE: Only alert on Redis instances where persistence is EXPECTED
+        # =====================================================================================
+        # Excluded namespaces (pure cache mode, persistence intentionally disabled):
+        #   - argocd: Redis-HA is configured with save: "" (no RDB snapshots)
+        #
+        # This alert monitors Redis instances that SHOULD persist data but are failing to do so.
+        # Cache-only Redis instances are excluded to prevent false positive alerts.
         - alert: RedisPersistenceFailing
           expr: |
-            redis_rdb_last_save_timestamp_seconds < (time() - 3600)
+            (time() - redis_rdb_last_save_timestamp_seconds) > 3600
+            unless on(namespace) (
+              redis_rdb_last_save_timestamp_seconds{namespace="argocd"}
+            )
           for: 1h
           labels:
             severity: info
@@ -180,10 +190,18 @@ spec:
             tier: platform
             layer: layer5
           annotations:
-            summary: "Redis has not persisted data in {{ $value | humanizeDuration }}"
+            summary: "Redis {{ $labels.pod }} has not persisted data in {{ $value | humanizeDuration }}"
             description: |
-              Redis has not saved RDB snapshot in {{ $value | humanizeDuration }}.
-              Persistence may be failing!
+              Redis instance {{ $labels.pod }} in namespace {{ $labels.namespace }}
+              has not saved RDB snapshot in {{ $value | humanizeDuration }}.
 
+              Persistence may be failing - data loss risk on restart!
+
+              Namespace: {{ $labels.namespace }}
+              Pod: {{ $labels.pod }}
               Duration: >1 hour
+
               Action: Check Redis logs for RDB save errors
+              Check: kubectl -n {{ $labels.namespace }} logs {{ $labels.pod }} -c redis
+
+              Note: ArgoCD Redis-HA is excluded (pure cache mode by design)
