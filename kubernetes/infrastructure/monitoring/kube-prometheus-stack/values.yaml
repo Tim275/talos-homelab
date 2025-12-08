@@ -180,185 +180,290 @@ kube-state-metrics:
     timeoutSeconds: 5
     failureThreshold: 3
 
-# 🚨 ENTERPRISE ALERTMANAGER CONFIG - Production Grade
-# Based on your real production alerting system
-# Priority Levels: P1 (Critical) → P2 (High) → P3 (Warning) → P5 (Info)
-
+# ============================================================================
+# ENTERPRISE TIER-0 ALERTMANAGER CONFIG
+# Based on: Google SRE Workbook, ITIL Priority Matrix, Prometheus Best Practices
+# References:
+#   - https://sre.google/workbook/alerting-on-slos/
+#   - https://www.sysdig.com/blog/prometheus-alertmanager
+#   - https://fibery.io/blog/product-management/p0-p1-p2-p3-p4/
+# ============================================================================
+#
+# PRIORITY LEVELS (ITIL-based):
+# ┌──────┬─────────────┬─────────────────┬────────────────────────────────────┐
+# │ Prio │ Response    │ Channel         │ Description                        │
+# ├──────┼─────────────┼─────────────────┼────────────────────────────────────┤
+# │ P0   │ Immediate   │ #alerts-critical│ Total outage, data loss risk       │
+# │ P1   │ < 15 min    │ #alerts-critical│ Major degradation, users impacted  │
+# │ P2   │ < 1 hour    │ #alerts         │ Partial degradation, workaround    │
+# │ P3   │ < 4 hours   │ #alerts         │ Minor issue, no user impact        │
+# │ P4   │ Next day    │ #alerts-info    │ Informational, maintenance         │
+# └──────┴─────────────┴─────────────────┴────────────────────────────────────┘
+#
+# SEVERITY LEVELS:
+#   critical = Service down, immediate action required
+#   warning  = Degraded, action needed soon
+#   info     = Informational, no action needed
+# ============================================================================
 
 alertmanager:
   alertmanagerSpec:
+    replicas: 1
+    retention: 120h
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: rook-ceph-block-enterprise
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
     secrets:
-      - pagerduty-integration-key
       - slack-webhook-url
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
   config:
     global:
       resolve_timeout: 5m
-      pagerduty_url: https://events.pagerduty.com/v2/enqueue
+      slack_api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
 
+    # ========================================================================
+    # ROUTING TREE - Priority-based with severity fallback
+    # ========================================================================
     route:
-      group_by: ['alertname', 'cluster', 'service']
-      group_wait: 10s
-      group_interval: 10s
-      repeat_interval: 12h
-      receiver: 'default'
+      receiver: 'slack-default'
+      group_by: ['alertname', 'namespace', 'severity']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+
       routes:
+        # ============ P0: CRITICAL OUTAGE ============
+        # Total service failure, data loss risk
         - matchers:
-            - priority="p0"
-          receiver: 'pagerduty-critical'
-          continue: true
-
-        - matchers:
-            - priority="p0"
+            - severity="critical"
+            - priority=~"p0|P0"
           receiver: 'slack-critical'
+          group_wait: 10s
+          group_interval: 1m
+          repeat_interval: 30m
+          continue: false
+
+        # ============ P1: MAJOR INCIDENT ============
+        # Major degradation, users actively impacted
+        - matchers:
+            - severity="critical"
+          receiver: 'slack-critical'
+          group_wait: 10s
+          group_interval: 2m
+          repeat_interval: 1h
+          continue: false
 
         - matchers:
-            - priority="p1"
-          receiver: 'pagerduty-high'
-          continue: true
+            - priority=~"p1|P1"
+          receiver: 'slack-critical'
+          group_wait: 15s
+          group_interval: 3m
+          repeat_interval: 1h
+          continue: false
+
+        # ============ P2: DEGRADED SERVICE ============
+        # Partial issues, workaround available
+        - matchers:
+            - severity="warning"
+          receiver: 'slack-default'
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 2h
+          continue: false
 
         - matchers:
-            - priority="p1"
-          receiver: 'slack-high'
+            - priority=~"p2|P2"
+          receiver: 'slack-default'
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 2h
+          continue: false
 
+        # ============ P3/P4: LOW PRIORITY ============
+        # Minor issues, informational
         - matchers:
-            - priority="p2"
-          receiver: 'slack-medium'
-
-        - matchers:
-            - priority="p3"
+            - severity="info"
           receiver: 'slack-info'
+          group_wait: 1m
+          group_interval: 10m
+          repeat_interval: 12h
+          continue: false
 
         - matchers:
-            - priority="argocd-gitops"
-          receiver: 'slack-argocd-deployments'
+            - priority=~"p3|P3|p4|P4"
+          receiver: 'slack-info'
+          group_wait: 1m
+          group_interval: 10m
+          repeat_interval: 12h
+          continue: false
 
+    # ========================================================================
+    # INHIBITION RULES - Suppress lower priority when higher is firing
+    # Based on: https://www.neteye-blog.com/2025/06/alertmanager-alert-filtering-rules/
+    # ========================================================================
     inhibit_rules:
+      # Critical suppresses Warning for same alert
       - source_matchers:
           - severity="critical"
         target_matchers:
           - severity="warning"
-        equal: ['alertname', 'namespace', 'instance']
+        equal: ['alertname', 'namespace']
 
+      # Critical suppresses Info
       - source_matchers:
-          - priority="p0"
+          - severity="critical"
         target_matchers:
-          - priority=~"p1|p2|p3"
+          - severity="info"
+        equal: ['alertname', 'namespace']
+
+      # Warning suppresses Info
+      - source_matchers:
+          - severity="warning"
+        target_matchers:
+          - severity="info"
+        equal: ['alertname', 'namespace']
+
+      # P0 suppresses P1/P2/P3/P4
+      - source_matchers:
+          - priority=~"p0|P0"
+        target_matchers:
+          - priority=~"p1|P1|p2|P2|p3|P3|p4|P4"
         equal: ['job', 'namespace']
 
+      # P1 suppresses P2/P3/P4
+      - source_matchers:
+          - priority=~"p1|P1"
+        target_matchers:
+          - priority=~"p2|P2|p3|P3|p4|P4"
+        equal: ['job', 'namespace']
+
+      # Node down suppresses all pod alerts on that node
       - source_matchers:
           - alertname="NodeDown"
         target_matchers:
-          - alertname=~"Pod.*|Container.*"
+          - alertname=~"Pod.*|Container.*|Kube.*"
         equal: ['node']
 
+      # Cluster down suppresses node alerts
+      - source_matchers:
+          - alertname=~".*ClusterDown|.*ClusterUnhealthy"
+        target_matchers:
+          - alertname=~".*NodeDown|.*OSDDown"
+        equal: ['cluster']
+
+      # API Server down suppresses controller alerts
+      - source_matchers:
+          - alertname="KubeAPIServerDown"
+        target_matchers:
+          - alertname=~"KubeController.*|KubeScheduler.*|ArgoCD.*"
+
+    # ========================================================================
+    # RECEIVERS - All with unified detailed templates
+    # ========================================================================
     receivers:
-      - name: 'default'
+      # ============ CRITICAL: P0/P1 ============
+      - name: 'slack-critical'
         slack_configs:
-          - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
-            channel: '#alerts'
+          - channel: '#alerts'
             send_resolved: true
             title: |-
-              [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }}
+              {{ if eq .Status "firing" }}:rotating_light:{{ else }}:white_check_mark:{{ end }} [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }}
             text: |-
               {{ range .Alerts }}
               *Alert:* {{ .Labels.alertname }}
-              *Severity:* {{ .Labels.severity | toUpper }}
+              *Severity:* :red_circle: {{ .Labels.severity | toUpper }}
+              {{ if .Labels.priority }}*Priority:* {{ .Labels.priority | toUpper }}{{ end }}
               {{ if .Labels.namespace }}*Namespace:* `{{ .Labels.namespace }}`{{ end }}
               {{ if .Labels.pod }}*Pod:* `{{ .Labels.pod }}`{{ end }}
               {{ if .Labels.container }}*Container:* `{{ .Labels.container }}`{{ end }}
               {{ if .Labels.node }}*Node:* `{{ .Labels.node }}`{{ end }}
               {{ if .Labels.job }}*Job:* `{{ .Labels.job }}`{{ end }}
+              {{ if .Labels.component }}*Component:* `{{ .Labels.component }}`{{ end }}
+              {{ if .Labels.layer }}*Layer:* {{ .Labels.layer }}{{ end }}
+              {{ if .Labels.tier }}*Tier:* {{ .Labels.tier }}{{ end }}
               *Summary:* {{ .Annotations.summary }}
               {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
               {{ if .Annotations.impact }}*Impact:* {{ .Annotations.impact }}{{ end }}
               {{ if .Annotations.runbook_url }}*Runbook:* {{ .Annotations.runbook_url }}{{ end }}
               {{ end }}
             color: |-
-              {{ if eq .Status "firing" }}
-                {{ if eq .CommonLabels.severity "critical" }}danger{{ else if eq .CommonLabels.severity "warning" }}warning{{ else }}#439FE0{{ end }}
-              {{ else }}good{{ end }}
+              {{ if eq .Status "firing" }}danger{{ else }}good{{ end }}
+            actions:
+              - type: button
+                text: 'Prometheus'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: 'Grafana'
+                url: 'https://grafana.timourhomelab.org'
+              - type: button
+                text: 'Silence 2h'
+                url: '{{ .ExternalURL }}/#/silences/new?filter=%7Balertname%3D%22{{ .CommonLabels.alertname }}%22%7D'
 
-      - name: 'pagerduty-critical'
-        pagerduty_configs:
-          - routing_key_file: /etc/alertmanager/secrets/pagerduty-integration-key/integration-key
-            severity: critical
-            description: '{{ .CommonAnnotations.summary }}'
-            details:
-              firing: '{{ .Alerts.Firing | len }}'
-              resolved: '{{ .Alerts.Resolved | len }}'
-              alertname: '{{ .CommonLabels.alertname }}'
-              namespace: '{{ .CommonLabels.namespace }}'
-              priority: '{{ .CommonLabels.priority }}'
-              component: '{{ .CommonLabels.component }}'
-              impact: '{{ .CommonAnnotations.impact }}'
-            send_resolved: true
-
-      - name: 'pagerduty-high'
-        pagerduty_configs:
-          - routing_key_file: /etc/alertmanager/secrets/pagerduty-integration-key/integration-key
-            severity: warning
-            description: '{{ .CommonAnnotations.summary }}'
-            details:
-              firing: '{{ .Alerts.Firing | len }}'
-              resolved: '{{ .Alerts.Resolved | len }}'
-              alertname: '{{ .CommonLabels.alertname }}'
-              namespace: '{{ .CommonLabels.namespace }}'
-              priority: '{{ .CommonLabels.priority }}'
-            send_resolved: true
-
-      - name: 'slack-critical'
+      # ============ DEFAULT: P2/Warning ============
+      - name: 'slack-default'
         slack_configs:
-          - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
-            channel: '#alerts-critical'
+          - channel: '#alerts'
             send_resolved: true
-            color: 'danger'
-            title: ':rotating_light: P0 CRITICAL: {{ .CommonLabels.alertname }}'
-            text: |
-              *Summary:* {{ .CommonAnnotations.summary }}
-              *Description:* {{ .CommonAnnotations.description }}
-              *Impact:* {{ .CommonAnnotations.impact }}
-              *Namespace:* {{ .CommonLabels.namespace }}
-              *Component:* {{ .CommonLabels.component }}
+            title: |-
+              {{ if eq .Status "firing" }}:warning:{{ else }}:white_check_mark:{{ end }} [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }}
+            text: |-
+              {{ range .Alerts }}
+              *Alert:* {{ .Labels.alertname }}
+              *Severity:* :large_orange_circle: {{ .Labels.severity | toUpper }}
+              {{ if .Labels.priority }}*Priority:* {{ .Labels.priority | toUpper }}{{ end }}
+              {{ if .Labels.namespace }}*Namespace:* `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.pod }}*Pod:* `{{ .Labels.pod }}`{{ end }}
+              {{ if .Labels.container }}*Container:* `{{ .Labels.container }}`{{ end }}
+              {{ if .Labels.node }}*Node:* `{{ .Labels.node }}`{{ end }}
+              {{ if .Labels.job }}*Job:* `{{ .Labels.job }}`{{ end }}
+              {{ if .Labels.component }}*Component:* `{{ .Labels.component }}`{{ end }}
+              *Summary:* {{ .Annotations.summary }}
+              {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
+              {{ if .Annotations.impact }}*Impact:* {{ .Annotations.impact }}{{ end }}
+              {{ if .Annotations.runbook_url }}*Runbook:* {{ .Annotations.runbook_url }}{{ end }}
+              {{ end }}
+            color: |-
+              {{ if eq .Status "firing" }}warning{{ else }}good{{ end }}
+            actions:
+              - type: button
+                text: 'Prometheus'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: 'Grafana'
+                url: 'https://grafana.timourhomelab.org'
 
-      - name: 'slack-high'
-        slack_configs:
-          - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
-            channel: '#alerts-high'
-            send_resolved: true
-            color: 'warning'
-            title: ':warning: P1 HIGH: {{ .CommonLabels.alertname }}'
-            text: |
-              *Summary:* {{ .CommonAnnotations.summary }}
-              *Namespace:* {{ .CommonLabels.namespace }}
-
-      - name: 'slack-medium'
-        slack_configs:
-          - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
-            channel: '#alerts-medium'
-            send_resolved: true
-            color: '#439FE0'
-            title: ':information_source: P2: {{ .CommonLabels.alertname }}'
-            text: '{{ .CommonAnnotations.summary }}'
-
+      # ============ INFO: P3/P4 ============
       - name: 'slack-info'
         slack_configs:
-          - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
-            channel: '#alerts-info'
+          - channel: '#alerts'
             send_resolved: false
-            color: 'good'
-            title: ':memo: P3: {{ .CommonLabels.alertname }}'
-            text: '{{ .CommonAnnotations.summary }}'
-
-      - name: 'slack-argocd-deployments'
-        slack_configs:
-          - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
-            channel: '#argocd-deployments'
-            send_resolved: true
-            color: '#5B9BD5'
-            title: ':git: ArgoCD: {{ .CommonLabels.alertname }}'
-            text: |
-              *Application:* {{ .CommonAnnotations.application }}
-              *Project:* {{ .CommonAnnotations.project }}
-              *Summary:* {{ .CommonAnnotations.summary }}
-              *Status:* {{ .CommonAnnotations.sync_status }}{{ .CommonAnnotations.health_status }}{{ .CommonAnnotations.phase }}
-              *Impact:* {{ .CommonAnnotations.impact }}
+            title: |-
+              :information_source: [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }}
+            text: |-
+              {{ range .Alerts }}
+              *Alert:* {{ .Labels.alertname }}
+              *Severity:* :large_blue_circle: {{ .Labels.severity | toUpper }}
+              {{ if .Labels.priority }}*Priority:* {{ .Labels.priority | toUpper }}{{ end }}
+              {{ if .Labels.namespace }}*Namespace:* `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.pod }}*Pod:* `{{ .Labels.pod }}`{{ end }}
+              {{ if .Labels.job }}*Job:* `{{ .Labels.job }}`{{ end }}
+              *Summary:* {{ .Annotations.summary }}
+              {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
+              {{ end }}
+            color: '#439FE0'
+            actions:
+              - type: button
+                text: 'View Details'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
