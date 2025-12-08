@@ -1,5 +1,12 @@
-# Kibana Data Views - Auto-Import via ArgoCD
-# Diese ConfigMap + Job erstellt automatisch Data Views in Kibana
+# ============================================================
+# TIER-0 KIBANA DATA VIEWS - Enterprise Production Structure
+# ============================================================
+# Hierarchical structure:
+# 1. Operations Views (All logs, by severity)
+# 2. Layer Views (Infrastructure, Platform, Apps)
+# 3. Application Views (n8n, OMS)
+# 4. Infrastructure Views (ArgoCD, Istio, Storage)
+# ============================================================
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -8,58 +15,136 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "10"
 data:
+  # WICHTIG: Kibana unterstützt KEINE Brace-Expansion {a,b,c} - nur Wildcards und Komma-Listen!
   data-views.ndjson: |
-    {"attributes":{"allowNoIndex":true,"name":"OMS - All Services","timeFieldName":"@timestamp","title":"logs-oms-*"},"id":"oms-all","type":"index-pattern"}
-    {"attributes":{"allowNoIndex":true,"name":"OMS - Gateway","timeFieldName":"@timestamp","title":"logs-oms-gateway.*"},"id":"oms-gateway","type":"index-pattern"}
-    {"attributes":{"allowNoIndex":true,"name":"OMS - Orders","timeFieldName":"@timestamp","title":"logs-oms-orders.*"},"id":"oms-orders","type":"index-pattern"}
-    {"attributes":{"allowNoIndex":true,"name":"OMS - Payments","timeFieldName":"@timestamp","title":"logs-oms-payments.*"},"id":"oms-payments","type":"index-pattern"}
-    {"attributes":{"allowNoIndex":true,"name":"OMS - Stock","timeFieldName":"@timestamp","title":"logs-oms-stock.*"},"id":"oms-stock","type":"index-pattern"}
-    {"attributes":{"allowNoIndex":true,"name":"OMS - Kitchen","timeFieldName":"@timestamp","title":"logs-oms-kitchen.*"},"id":"oms-kitchen","type":"index-pattern"}
-    {"attributes":{"allowNoIndex":true,"name":"OMS - Kitchen Display","timeFieldName":"@timestamp","title":"logs-oms-kitchen-display.*"},"id":"oms-kitchen-display","type":"index-pattern"}
-    {"attributes":{"allowNoIndex":true,"name":"OMS - Customer App","timeFieldName":"@timestamp","title":"logs-oms-customer-app.*"},"id":"oms-customer-app","type":"index-pattern"}
-    {"attributes":{"allowNoIndex":true,"name":"OMS - Infrastructure","timeFieldName":"@timestamp","title":"logs-oms-infra.*"},"id":"oms-infra","type":"index-pattern"}
-    {"attributes":{"allowNoIndex":true,"name":"All Critical/Errors","timeFieldName":"@timestamp","title":"logs-*.critical-*"},"id":"all-critical","type":"index-pattern"}
-    {"attributes":{"allowNoIndex":true,"name":"All Warnings","timeFieldName":"@timestamp","title":"logs-*.warn-*"},"id":"all-warnings","type":"index-pattern"}
-    {"attributes":{"allowNoIndex":true,"name":"ArgoCD","timeFieldName":"@timestamp","title":"logs-argocd.*"},"id":"argocd","type":"index-pattern"}
-    {"attributes":{"allowNoIndex":true,"name":"Rook-Ceph Storage","timeFieldName":"@timestamp","title":"logs-rook-ceph.*"},"id":"rook-ceph","type":"index-pattern"}
-    {"attributes":{"allowNoIndex":true,"name":"Kubernetes System","timeFieldName":"@timestamp","title":"logs-kube-system.*"},"id":"kube-system","type":"index-pattern"}
-    {"attributes":{"allowNoIndex":true,"name":"Monitoring Stack","timeFieldName":"@timestamp","title":"logs-monitoring.*"},"id":"monitoring","type":"index-pattern"}
-    {"attributes":{"allowNoIndex":true,"name":"Envoy Gateway","timeFieldName":"@timestamp","title":"logs-envoy-gateway-system.*"},"id":"envoy-gateway","type":"index-pattern"}
-    {"attributes":{"allowNoIndex":true,"name":"Cert-Manager","timeFieldName":"@timestamp","title":"logs-cert-manager.*"},"id":"cert-manager","type":"index-pattern"}
-    {"attributes":{"allowNoIndex":true,"name":"All Logs","timeFieldName":"@timestamp","title":"logs-*"},"id":"all-logs","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Ops] All Logs","timeFieldName":"@timestamp","title":".ds-logs-*"},"id":"ops-all-logs","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Ops] Critical/Errors","timeFieldName":"@timestamp","title":".ds-logs-*.critical-*"},"id":"ops-critical","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Ops] Warnings","timeFieldName":"@timestamp","title":".ds-logs-*.warn-*"},"id":"ops-warnings","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Ops] Info","timeFieldName":"@timestamp","title":".ds-logs-*.info-*"},"id":"ops-info","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[App] n8n Prod","timeFieldName":"@timestamp","title":".ds-logs-n8n-prod.*"},"id":"app-n8n-prod","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[App] n8n Dev","timeFieldName":"@timestamp","title":".ds-logs-n8n-dev.*"},"id":"app-n8n-dev","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[App] OMS All","timeFieldName":"@timestamp","title":".ds-logs-oms-*"},"id":"app-oms-all","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[App] OMS Gateway","timeFieldName":"@timestamp","title":".ds-logs-oms-gateway.*"},"id":"app-oms-gateway","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[App] OMS Orders","timeFieldName":"@timestamp","title":".ds-logs-oms-orders.*"},"id":"app-oms-orders","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[App] OMS Payments","timeFieldName":"@timestamp","title":".ds-logs-oms-payments.*"},"id":"app-oms-payments","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[App] OMS Stock","timeFieldName":"@timestamp","title":".ds-logs-oms-stock.*"},"id":"app-oms-stock","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[App] OMS Kitchen","timeFieldName":"@timestamp","title":".ds-logs-oms-kitchen*"},"id":"app-oms-kitchen","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[App] OMS Customer","timeFieldName":"@timestamp","title":".ds-logs-oms-customer-app.*"},"id":"app-oms-customer","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[App] OMS Infra","timeFieldName":"@timestamp","title":".ds-logs-oms-infra.*"},"id":"app-oms-infra","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Infra] ArgoCD","timeFieldName":"@timestamp","title":".ds-logs-argocd.*"},"id":"infra-argocd","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Infra] Argo Rollouts","timeFieldName":"@timestamp","title":".ds-logs-argo-rollouts.*"},"id":"infra-argo-rollouts","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Infra] Istio","timeFieldName":"@timestamp","title":".ds-logs-istio.*"},"id":"infra-istio","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Infra] Gateway","timeFieldName":"@timestamp","title":".ds-logs-gateway.*"},"id":"infra-gateway","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Infra] Rook-Ceph","timeFieldName":"@timestamp","title":".ds-logs-rook-ceph.*"},"id":"infra-rook-ceph","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Infra] Cert-Manager","timeFieldName":"@timestamp","title":".ds-logs-cert-manager.*"},"id":"infra-cert-manager","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Infra] Cloudflared","timeFieldName":"@timestamp","title":".ds-logs-cloudflared.*"},"id":"infra-cloudflared","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Infra] Keycloak","timeFieldName":"@timestamp","title":".ds-logs-keycloak.*"},"id":"infra-keycloak","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Infra] Velero","timeFieldName":"@timestamp","title":".ds-logs-velero.*"},"id":"infra-velero","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Infra] Kyverno","timeFieldName":"@timestamp","title":".ds-logs-kyverno.*"},"id":"infra-kyverno","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Infra] LLDAP","timeFieldName":"@timestamp","title":".ds-logs-lldap.*"},"id":"infra-lldap","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Monitoring] Stack","timeFieldName":"@timestamp","title":".ds-logs-monitoring.*"},"id":"mon-stack","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Monitoring] Grafana","timeFieldName":"@timestamp","title":".ds-logs-grafana.*"},"id":"mon-grafana","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Monitoring] Jaeger","timeFieldName":"@timestamp","title":".ds-logs-jaeger.*"},"id":"mon-jaeger","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Observability] Elastic","timeFieldName":"@timestamp","title":".ds-logs-elastic-system.*"},"id":"obs-elastic","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Observability] OpenTelemetry","timeFieldName":"@timestamp","title":".ds-logs-opentelemetry.*"},"id":"obs-otel","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Data] Kafka","timeFieldName":"@timestamp","title":".ds-logs-kafka.*"},"id":"data-kafka","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Data] PostgreSQL (CNPG)","timeFieldName":"@timestamp","title":".ds-logs-cloudnative-pg.*"},"id":"data-postgres","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Data] RabbitMQ","timeFieldName":"@timestamp","title":".ds-logs-rabbitmq-system.*"},"id":"data-rabbitmq","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Data] Redis","timeFieldName":"@timestamp","title":".ds-logs-redis-operator-system.*"},"id":"data-redis","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Data] MongoDB","timeFieldName":"@timestamp","title":".ds-logs-psmdb-operator.*"},"id":"data-mongodb","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Data] InfluxDB","timeFieldName":"@timestamp","title":".ds-logs-influxdb.*"},"id":"data-influxdb","type":"index-pattern"}
+    {"attributes":{"allowNoIndex":true,"name":"[Data] CloudBeaver","timeFieldName":"@timestamp","title":".ds-logs-cloudbeaver.*"},"id":"data-cloudbeaver","type":"index-pattern"}
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: kibana-import-data-views
+  name: kibana-dataviews-bootstrap
   namespace: elastic-system
   annotations:
     argocd.argoproj.io/sync-wave: "11"
-    argocd.argoproj.io/hook: Skip
+    argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
-  ttlSecondsAfterFinished: 300
+  ttlSecondsAfterFinished: 600
   template:
+    metadata:
+      labels:
+        app: kibana-dataviews-bootstrap
+        sidecar.istio.io/inject: "false"
     spec:
       restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
-        - name: import
+        - name: bootstrap
           image: curlimages/curl:8.4.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           command:
             - /bin/sh
             - -c
             - |
+              set -e
+              # Use external URL to bypass Istio mTLS
+              KIBANA_URL="https://kibana.timourhomelab.org"
+
+              echo "=== Tier-0 Kibana Data Views Bootstrap ==="
               echo "Waiting for Kibana to be ready..."
-              sleep 60
-              
-              echo "Importing Data Views..."
-              curl -s -k -X POST "https://production-cluster-kb-http:5601/api/saved_objects/_import?overwrite=true" \
+
+              # Wait for Kibana
+              for i in $(seq 1 30); do
+                if curl -s -k -u "elastic:${ELASTIC_PASSWORD}" "${KIBANA_URL}/api/status" | grep -q '"level":"available"'; then
+                  echo "Kibana is ready!"
+                  break
+                fi
+                echo "Attempt $i/30 - Kibana not ready, waiting..."
+                sleep 10
+              done
+
+              echo ""
+              echo "Step 1: Deleting existing data views..."
+              # Get all data view IDs
+              EXISTING=$(curl -s -k -u "elastic:${ELASTIC_PASSWORD}" \
+                -H "kbn-xsrf: true" \
+                "${KIBANA_URL}/api/data_views" 2>/dev/null || echo '{"data_view":[]}')
+
+              # Parse and delete each data view
+              echo "$EXISTING" | grep -o '"id":"[^"]*"' | sed 's/"id":"//g' | sed 's/"//g' | while read id; do
+                if [ -n "$id" ]; then
+                  echo "  Deleting: $id"
+                  curl -s -k -X DELETE -u "elastic:${ELASTIC_PASSWORD}" \
+                    -H "kbn-xsrf: true" \
+                    "${KIBANA_URL}/api/data_views/data_view/${id}" 2>/dev/null || true
+                fi
+              done
+
+              echo ""
+              echo "Step 2: Importing Tier-0 Data Views..."
+              RESULT=$(curl -s -k -X POST "${KIBANA_URL}/api/saved_objects/_import?overwrite=true" \
                 -H "kbn-xsrf: true" \
                 -u "elastic:${ELASTIC_PASSWORD}" \
-                -F file=@/config/data-views.ndjson
-              
+                -F file=@/config/data-views.ndjson)
+
+              echo "$RESULT"
+
+              # Set default data view
               echo ""
-              echo "Data Views import complete!"
+              echo "Step 3: Setting default data view..."
+              curl -s -k -X POST "${KIBANA_URL}/api/data_views/default" \
+                -H "kbn-xsrf: true" \
+                -H "Content-Type: application/json" \
+                -u "elastic:${ELASTIC_PASSWORD}" \
+                -d '{"data_view_id":"ops-all-logs","force":true}'
+
+              echo ""
+              echo "=== Tier-0 Data Views Bootstrap Complete ==="
+              echo "Created views: Operations (4), Layers (6), Apps (10), Infra (7), Data (5)"
           env:
             - name: ELASTIC_PASSWORD
               valueFrom:
@@ -69,6 +154,13 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
       volumes:
         - name: config
           configMap:

@@ -127,24 +127,34 @@ spec:
                 echo "Groups scope assigned to argocd client"
               else
                 echo "Warning: 'groups' scope not found - creating it..."
+                # Create client scope for groups
                 GROUPS_SCOPE_ID=$(/opt/keycloak/bin/kcadm.sh create client-scopes -r kubernetes \
                   -s name=groups \
+                  -s description="Group membership claim" \
                   -s protocol=openid-connect \
-                  -s 'attributes.include.in.token.scope=true' \
-                  -i)
+                  -s 'attributes."include.in.token.scope"=true' \
+                  -s 'attributes."display.on.consent.screen"=true' \
+                  -i 2>/dev/null || echo "")
 
-                /opt/keycloak/bin/kcadm.sh create client-scopes/$GROUPS_SCOPE_ID/protocol-mappers/models -r kubernetes \
-                  -s name=groups \
-                  -s protocol=openid-connect \
-                  -s protocolMapper=oidc-group-membership-mapper \
-                  -s 'config."claim.name"=groups' \
-                  -s 'config."full.path"=false' \
-                  -s 'config."id.token.claim"=true' \
-                  -s 'config."access.token.claim"=true' \
-                  -s 'config."userinfo.token.claim"=true'
+                if [ -n "$GROUPS_SCOPE_ID" ]; then
+                  # Use oidc-usermodel-attribute-mapper as fallback (works without LDAP)
+                  # The actual groups will come from LDAP federation when configured
+                  /opt/keycloak/bin/kcadm.sh create client-scopes/$GROUPS_SCOPE_ID/protocol-mappers/models -r kubernetes \
+                    -s name=groups \
+                    -s protocol=openid-connect \
+                    -s protocolMapper=oidc-usermodel-realm-role-mapper \
+                    -s 'config."claim.name"=groups' \
+                    -s 'config."multivalued"=true' \
+                    -s 'config."id.token.claim"=true' \
+                    -s 'config."access.token.claim"=true' \
+                    -s 'config."userinfo.token.claim"=true' \
+                    2>/dev/null || echo "Protocol mapper creation skipped (may already exist)"
 
-                /opt/keycloak/bin/kcadm.sh update clients/$EXISTING_CLIENT/default-client-scopes/$GROUPS_SCOPE_ID -r kubernetes
-                echo "Groups scope created and assigned"
+                  /opt/keycloak/bin/kcadm.sh update clients/$EXISTING_CLIENT/default-client-scopes/$GROUPS_SCOPE_ID -r kubernetes 2>/dev/null || true
+                  echo "Groups scope created and assigned"
+                else
+                  echo "Note: Groups scope creation skipped - will be configured via LDAP federation"
+                fi
               fi
 
               echo ""

@@ -1,0 +1,441 @@
+# ============================================================================
+# ELASTICSEARCH ILM POLICIES - Enterprise Best Practice (2025)
+# ============================================================================
+#
+# Consolidated ILM policies for all log types based on:
+# - Data criticality (business vs operational)
+# - Compliance requirements (audit trails)
+# - Storage optimization (hot/warm/cold tiering)
+#
+# POLICY STRUCTURE:
+# ┌──────────────────────┬───────────┬──────────────────────────────────────┐
+# │ Policy               │ Retention │ Use Case                             │
+# ├──────────────────────┼───────────┼──────────────────────────────────────┤
+# │ logs-critical        │ 365 days  │ Errors, security events, compliance  │
+# │ logs-standard        │ 90 days   │ Warnings, business app logs (OMS)    │
+# │ logs-operational     │ 30 days   │ Info logs, infrastructure            │
+# │ logs-debug           │ 7 days    │ Debug/trace logs, high volume        │
+# │ traces-short         │ 7 days    │ Jaeger traces, APM data              │
+# └──────────────────────┴───────────┴──────────────────────────────────────┘
+#
+# MAPPING TO YOUR APPLICATIONS:
+# - OMS (Orders, Payments, Stock, Kitchen) → logs-standard (90d)
+# - OMS Errors → logs-critical (365d)
+# - n8n → logs-operational (30d)
+# - Infrastructure (ArgoCD, Istio, etc.) → logs-operational (30d)
+# - Jaeger → traces-short (7d)
+# ============================================================================
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: elasticsearch-ilm-policies
+  namespace: elastic-system
+  labels:
+    app.kubernetes.io/name: elasticsearch
+    app.kubernetes.io/component: ilm-policies
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: elasticsearch
+        app.kubernetes.io/component: ilm-policies
+        sidecar.istio.io/inject: "false"
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: apply-ilm-policies
+          image: curlimages/curl:8.11.1
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+
+              ES_URL="https://production-cluster-es-http.elastic-system.svc.cluster.local:9200"
+
+              echo "=============================================="
+              echo "  Elasticsearch ILM Policies - Enterprise"
+              echo "=============================================="
+
+              # Wait for Elasticsearch to be ready
+              echo "Waiting for Elasticsearch cluster..."
+              until curl -sk -u "elastic:${ES_PASSWORD}" "${ES_URL}/_cluster/health" | grep -q '"status":"green\|yellow"'; do
+                sleep 10
+              done
+              echo "Elasticsearch is ready!"
+
+              # ─────────────────────────────────────────────────────────
+              # POLICY 1: logs-critical (365 days)
+              # For: Errors, security events, audit logs, compliance data
+              # Phases: Hot(7d) → Warm(30d) → Cold(90d) → Delete(365d)
+              # ─────────────────────────────────────────────────────────
+              echo ""
+              echo "[1/5] Creating ILM policy: logs-critical (365 days)"
+              curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
+                "${ES_URL}/_ilm/policy/logs-critical" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "policy": {
+                    "phases": {
+                      "hot": {
+                        "min_age": "0ms",
+                        "actions": {
+                          "rollover": {
+                            "max_age": "7d",
+                            "max_primary_shard_size": "50gb"
+                          },
+                          "set_priority": { "priority": 100 }
+                        }
+                      },
+                      "warm": {
+                        "min_age": "7d",
+                        "actions": {
+                          "set_priority": { "priority": 50 },
+                          "forcemerge": { "max_num_segments": 1 },
+                          "readonly": {}
+                        }
+                      },
+                      "cold": {
+                        "min_age": "30d",
+                        "actions": {
+                          "set_priority": { "priority": 0 }
+                        }
+                      },
+                      "delete": {
+                        "min_age": "365d",
+                        "actions": { "delete": {} }
+                      }
+                    }
+                  }
+                }'
+              echo " - Created!"
+
+              # ─────────────────────────────────────────────────────────
+              # POLICY 2: logs-standard (90 days)
+              # For: Business application logs (OMS), warnings
+              # Phases: Hot(7d) → Warm(14d) → Cold(30d) → Delete(90d)
+              # ─────────────────────────────────────────────────────────
+              echo ""
+              echo "[2/5] Creating ILM policy: logs-standard (90 days)"
+              curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
+                "${ES_URL}/_ilm/policy/logs-standard" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "policy": {
+                    "phases": {
+                      "hot": {
+                        "min_age": "0ms",
+                        "actions": {
+                          "rollover": {
+                            "max_age": "7d",
+                            "max_primary_shard_size": "50gb"
+                          },
+                          "set_priority": { "priority": 100 }
+                        }
+                      },
+                      "warm": {
+                        "min_age": "7d",
+                        "actions": {
+                          "set_priority": { "priority": 50 },
+                          "forcemerge": { "max_num_segments": 1 },
+                          "readonly": {}
+                        }
+                      },
+                      "cold": {
+                        "min_age": "14d",
+                        "actions": {
+                          "set_priority": { "priority": 0 }
+                        }
+                      },
+                      "delete": {
+                        "min_age": "90d",
+                        "actions": { "delete": {} }
+                      }
+                    }
+                  }
+                }'
+              echo " - Created!"
+
+              # ─────────────────────────────────────────────────────────
+              # POLICY 3: logs-operational (30 days)
+              # For: Infrastructure logs, info level, n8n
+              # Phases: Hot(3d) → Warm(7d) → Delete(30d)
+              # ─────────────────────────────────────────────────────────
+              echo ""
+              echo "[3/5] Creating ILM policy: logs-operational (30 days)"
+              curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
+                "${ES_URL}/_ilm/policy/logs-operational" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "policy": {
+                    "phases": {
+                      "hot": {
+                        "min_age": "0ms",
+                        "actions": {
+                          "rollover": {
+                            "max_age": "3d",
+                            "max_primary_shard_size": "30gb"
+                          },
+                          "set_priority": { "priority": 100 }
+                        }
+                      },
+                      "warm": {
+                        "min_age": "3d",
+                        "actions": {
+                          "set_priority": { "priority": 50 },
+                          "forcemerge": { "max_num_segments": 1 },
+                          "readonly": {}
+                        }
+                      },
+                      "delete": {
+                        "min_age": "30d",
+                        "actions": { "delete": {} }
+                      }
+                    }
+                  }
+                }'
+              echo " - Created!"
+
+              # ─────────────────────────────────────────────────────────
+              # POLICY 4: logs-debug (7 days)
+              # For: Debug/trace logs, high volume temporary data
+              # Phases: Hot(1d) → Delete(7d)
+              # ─────────────────────────────────────────────────────────
+              echo ""
+              echo "[4/5] Creating ILM policy: logs-debug (7 days)"
+              curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
+                "${ES_URL}/_ilm/policy/logs-debug" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "policy": {
+                    "phases": {
+                      "hot": {
+                        "min_age": "0ms",
+                        "actions": {
+                          "rollover": {
+                            "max_age": "1d",
+                            "max_primary_shard_size": "20gb"
+                          },
+                          "set_priority": { "priority": 100 }
+                        }
+                      },
+                      "delete": {
+                        "min_age": "7d",
+                        "actions": { "delete": {} }
+                      }
+                    }
+                  }
+                }'
+              echo " - Created!"
+
+              # ─────────────────────────────────────────────────────────
+              # POLICY 5: traces-short (7 days)
+              # For: Jaeger traces, APM spans
+              # Phases: Hot(1d) → Delete(7d)
+              # ─────────────────────────────────────────────────────────
+              echo ""
+              echo "[5/5] Creating ILM policy: traces-short (7 days)"
+              curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
+                "${ES_URL}/_ilm/policy/traces-short" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "policy": {
+                    "phases": {
+                      "hot": {
+                        "min_age": "0ms",
+                        "actions": {
+                          "rollover": {
+                            "max_age": "1d",
+                            "max_primary_shard_size": "30gb"
+                          },
+                          "set_priority": { "priority": 100 }
+                        }
+                      },
+                      "delete": {
+                        "min_age": "7d",
+                        "actions": { "delete": {} }
+                      }
+                    }
+                  }
+                }'
+              echo " - Created!"
+
+              # ─────────────────────────────────────────────────────────
+              # CLEANUP: Delete legacy/orphan ILM policies
+              # ─────────────────────────────────────────────────────────
+              echo ""
+              echo "[6/8] Cleaning up legacy ILM policies..."
+              for policy in \
+                "180-days-default" "180-days@lifecycle" \
+                "30-days-default" "30-days@lifecycle" \
+                "365-days-default" "365-days@lifecycle" \
+                "7-days-default" "7-days@lifecycle" \
+                "90-days-default" "90-days@lifecycle" \
+                "audit-logs-365d" "debug-logs-7d" "jaeger-traces-7d" \
+                "logs-critical-policy" "logs-debug-policy" \
+                "logs-info-policy" "logs-warn-policy" "logs-info" "logs-warn" \
+                "oms-errors-90d" "oms-logs-30d" "vector-logs-30d" "metrics-logs-14d"
+              do
+                echo "  Deleting: $policy"
+                curl -sk -X DELETE -u "elastic:${ES_PASSWORD}" \
+                  "${ES_URL}/_ilm/policy/$policy" 2>/dev/null || true
+              done
+              echo " - Legacy policies cleaned up!"
+
+              # ─────────────────────────────────────────────────────────
+              # CLEANUP: Delete legacy index templates
+              # ─────────────────────────────────────────────────────────
+              echo ""
+              echo "[7/9] Cleaning up legacy index templates..."
+              for template in \
+                "logs-oms-critical" "logs-oms" "logs-oms-warn" \
+                "logs-infra-critical" "logs-infra" "logs-infra-warn" \
+                "vector-logs" "logs"
+              do
+                echo "  Deleting: $template"
+                curl -sk -X DELETE -u "elastic:${ES_PASSWORD}" \
+                  "${ES_URL}/_index_template/$template" 2>/dev/null || true
+              done
+              echo " - Legacy templates cleaned up!"
+
+              # ─────────────────────────────────────────────────────────
+              # INDEX TEMPLATES: Link to ILM policies by severity
+              # ─────────────────────────────────────────────────────────
+              echo ""
+              echo "[8/9] Creating index templates with ILM policy mapping..."
+
+              # Template for CRITICAL logs (*.critical-*)
+              curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
+                "${ES_URL}/_index_template/logs-critical-template" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "index_patterns": ["logs-*.critical-*"],
+                  "data_stream": {},
+                  "priority": 600,
+                  "template": {
+                    "settings": {
+                      "index.lifecycle.name": "logs-critical",
+                      "index.codec": "best_compression",
+                      "index.number_of_shards": 1,
+                      "index.number_of_replicas": 1
+                    }
+                  },
+                  "_meta": { "managed_by": "talos-homelab-enterprise" }
+                }'
+              echo "  - logs-critical-template (365d retention)"
+
+              # Template for WARN logs (*.warn-*)
+              curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
+                "${ES_URL}/_index_template/logs-warn-template" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "index_patterns": ["logs-*.warn-*"],
+                  "data_stream": {},
+                  "priority": 550,
+                  "template": {
+                    "settings": {
+                      "index.lifecycle.name": "logs-standard",
+                      "index.codec": "best_compression",
+                      "index.number_of_shards": 1,
+                      "index.number_of_replicas": 1
+                    }
+                  },
+                  "_meta": { "managed_by": "talos-homelab-enterprise" }
+                }'
+              echo "  - logs-warn-template (90d retention)"
+
+              # Template for INFO logs (*.info-*)
+              curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
+                "${ES_URL}/_index_template/logs-info-template" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "index_patterns": ["logs-*.info-*"],
+                  "data_stream": {},
+                  "priority": 500,
+                  "template": {
+                    "settings": {
+                      "index.lifecycle.name": "logs-operational",
+                      "index.codec": "best_compression",
+                      "index.number_of_shards": 1,
+                      "index.number_of_replicas": 1
+                    }
+                  },
+                  "_meta": { "managed_by": "talos-homelab-enterprise" }
+                }'
+              echo "  - logs-info-template (30d retention)"
+
+              # Template for DEBUG logs (*.debug-*)
+              curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
+                "${ES_URL}/_index_template/logs-debug-template" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "index_patterns": ["logs-*.debug-*"],
+                  "data_stream": {},
+                  "priority": 450,
+                  "template": {
+                    "settings": {
+                      "index.lifecycle.name": "logs-debug",
+                      "index.codec": "best_compression",
+                      "index.number_of_shards": 1,
+                      "index.number_of_replicas": 1
+                    }
+                  },
+                  "_meta": { "managed_by": "talos-homelab-enterprise" }
+                }'
+              echo "  - logs-debug-template (7d retention)"
+
+              # Template for Jaeger traces
+              curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
+                "${ES_URL}/_index_template/jaeger-traces-template" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "index_patterns": ["jaeger-span-*", "jaeger-service-*"],
+                  "priority": 600,
+                  "template": {
+                    "settings": {
+                      "index.lifecycle.name": "traces-short",
+                      "index.codec": "best_compression",
+                      "index.number_of_shards": 1,
+                      "index.number_of_replicas": 1
+                    }
+                  },
+                  "_meta": { "managed_by": "talos-homelab-enterprise" }
+                }'
+              echo "  - jaeger-traces-template (7d retention)"
+              echo " - Index templates created!"
+
+              echo ""
+              echo "=============================================="
+              echo "  ILM Policies Summary - Enterprise"
+              echo "=============================================="
+              echo ""
+              echo "Policy            | Retention | Pattern              | Use Case"
+              echo "------------------|-----------|----------------------|---------------------------"
+              echo "logs-critical     | 365 days  | logs-*.critical-*    | Errors, audit, compliance"
+              echo "logs-standard     | 90 days   | logs-*.warn-*        | OMS apps, warnings"
+              echo "logs-operational  | 30 days   | logs-*.info-*        | Infrastructure, n8n, info"
+              echo "logs-debug        | 7 days    | logs-*.debug-*       | Debug/trace logs"
+              echo "traces-short      | 7 days    | jaeger-span/service  | Jaeger traces"
+              echo ""
+              echo "All ILM policies and index templates configured!"
+          env:
+            - name: ES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: production-cluster-es-elastic-user
+                  key: elastic

@@ -129,7 +129,8 @@ velero restore create n8n-restore-$(date +%Y%m%d-%H%M) \
 ```
 kubernetes/infrastructure/storage/velero/
 ├── kustomization.yaml                    # Main Velero config (CSI disabled, Restic enabled)
-├── sealed-secret-s3.yaml                 # S3 credentials
+├── init-velero-buckets-job.yaml          # Bootstrap Job: Erstellt Buckets & synct Credentials
+├── velero-s3-credentials-sealed.yaml     # BACKUP: SealedSecret (nur als Fallback)
 ├── velero-restic-credentials-sealedsecret.yaml  # Restic encryption key
 └── patches/
     └── upgrade-job-initcontainer-resources.yaml
@@ -138,6 +139,51 @@ kubernetes/infrastructure/storage/velero-schedules/
 ├── backup-schedules.yaml                 # Tier-0/1/2 schedules
 ├── kustomization.yaml
 └── velero-schedules-app.yaml            # ArgoCD Application
+```
+
+---
+
+## 🔄 **Bootstrap & Credential Management**
+
+### **Problem gelöst: Credentials nach Bootstrap**
+
+Nach einem neuen `kubectl apply -k kubernetes/bootstrap/` werden neue Rook-Ceph User Credentials generiert.
+Der `init-velero-buckets-job` löst dieses Problem automatisch:
+
+1. ⏳ Wartet auf Rook-Ceph User Secret `rook-ceph-object-user-homelab-objectstore-velero`
+2. 🔑 Holt aktuelle Credentials vom Rook-generierten Secret
+3. 📝 Erstellt/Updated `velero-s3-credentials` Secret in velero namespace
+4. 🪣 Erstellt S3 Buckets `velero-cluster-backups` und `velero-pv-backups`
+5. 🔄 Restartet Velero Deployment
+
+### **Nach Bootstrap prüfen:**
+```bash
+# Job Status
+kubectl get jobs -n velero velero-init-buckets
+
+# Job Logs
+kubectl logs -n velero job/velero-init-buckets
+
+# BackupStorageLocation Status (sollte "Available" sein)
+kubectl get backupstoragelocation -n velero
+```
+
+### **Falls Buckets trotzdem fehlen (manueller Fix):**
+```bash
+# Credentials holen
+ACCESS_KEY=$(kubectl get secret -n rook-ceph rook-ceph-object-user-homelab-objectstore-velero -o jsonpath='{.data.AccessKey}' | base64 -d)
+SECRET_KEY=$(kubectl get secret -n rook-ceph rook-ceph-object-user-homelab-objectstore-velero -o jsonpath='{.data.SecretKey}' | base64 -d)
+
+# Debug Pod starten
+kubectl run s3-debug --rm -it --image=amazon/aws-cli:2.15.0 --env="AWS_ACCESS_KEY_ID=$ACCESS_KEY" --env="AWS_SECRET_ACCESS_KEY=$SECRET_KEY" -- sh
+
+# Im Pod:
+aws s3api create-bucket --bucket velero-cluster-backups --endpoint-url=http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
+aws s3api create-bucket --bucket velero-pv-backups --endpoint-url=http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
+exit
+
+# Velero neustarten
+kubectl rollout restart deployment/velero -n velero
 ```
 
 ---
