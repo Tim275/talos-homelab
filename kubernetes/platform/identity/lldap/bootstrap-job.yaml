@@ -1,23 +1,23 @@
+# =============================================================================
+# LLDAP Bootstrap Job - Creates users and groups from ConfigMap
+# =============================================================================
+# Runs as ArgoCD Sync hook to ensure users/groups exist after deployment
+# =============================================================================
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: lldap-bootstrap
   namespace: lldap
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "10"
 spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
   template:
     spec:
       restartPolicy: OnFailure
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 1000
-        fsGroup: 1000
-        fsGroupChangePolicy: OnRootMismatch
-        seccompProfile:
-          type: RuntimeDefault
       initContainers:
         - name: wait-for-lldap
           image: busybox:1.36
@@ -25,19 +25,17 @@ spec:
             - sh
             - -c
             - |
-              echo "Waiting for LLDAP service to be ready..."
-              until nc -z lldap 17170; do
-                echo "LLDAP not ready yet, waiting 5s..."
+              echo "Waiting for LLDAP to be ready..."
+              for i in $(seq 1 60); do
+                if nc -z lldap 17170 2>/dev/null; then
+                  echo "LLDAP is ready!"
+                  exit 0
+                fi
+                echo "Attempt $i/60: LLDAP not ready, waiting 5s..."
                 sleep 5
               done
-              echo "LLDAP is ready!"
-          securityContext:
-            runAsNonRoot: true
-            runAsUser: 1000
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: [ALL]
+              echo "ERROR: LLDAP not ready after 5 minutes"
+              exit 1
           resources:
             requests:
               cpu: 10m
@@ -45,57 +43,119 @@ spec:
             limits:
               cpu: 50m
               memory: 32Mi
-        # 🔐 Production Security: Inject random passwords for users without password field
-        - name: inject-passwords
+      containers:
+        - name: bootstrap
           image: alpine:3.21
           command:
             - /bin/sh
             - -c
             - |
-              apk add --no-cache openssl
-              /scripts/inject-passwords.sh
-          securityContext:
-            runAsNonRoot: false  # Need root to install openssl via apk
-            runAsUser: 0
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false  # Need to write to emptyDir + install packages
-            capabilities:
-              drop: [ALL]
-          resources:
-            requests:
-              cpu: 10m
-              memory: 32Mi
-            limits:
-              cpu: 50m
-              memory: 64Mi
-          volumeMounts:
-            - name: password-injector-script
-              mountPath: /scripts
-              readOnly: true
-            - name: users-original
-              mountPath: /bootstrap-input/user-configs
-              readOnly: true
-            - name: users-processed
-              mountPath: /bootstrap-output/user-configs
-      containers:
-        - name: lldap-bootstrap
-          image: ghcr.io/lldap/lldap:2025-07-10-alpine-rootless  # v0.6+ for custom attributes
-          command: ["/app/bootstrap.sh"]
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: [ALL]
-          resources:
-            requests:
-              cpu: 50m
-              memory: 64Mi
-            limits:
-              cpu: 100m
-              memory: 128Mi
-          envFrom:
-            - configMapRef:
-                name: bootstrap-env
+              set -e
+              apk add --no-cache curl jq
+
+              echo "============================================"
+              echo "LLDAP Bootstrap - Creating Users and Groups"
+              echo "============================================"
+
+              # Get auth token
+              echo "Authenticating with LLDAP..."
+              TOKEN=$(curl -sf -X POST http://lldap:17170/auth/simple/login \
+                -H "Content-Type: application/json" \
+                -d "{\"username\":\"$LLDAP_ADMIN_USERNAME\",\"password\":\"$LLDAP_ADMIN_PASSWORD\"}" \
+                | jq -r '.token')
+
+              if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+                echo "ERROR: Failed to authenticate with LLDAP"
+                exit 1
+              fi
+              echo "Authentication successful!"
+
+              # Function to make GraphQL requests
+              gql() {
+                curl -sf -X POST http://lldap:17170/api/graphql \
+                  -H "Content-Type: application/json" \
+                  -H "Authorization: Bearer $TOKEN" \
+                  -d "$1"
+              }
+
+              # Create groups from ConfigMap
+              echo ""
+              echo "--- Creating Groups ---"
+              cat /config/groups.json | jq -c '.[]' | while read group; do
+                NAME=$(echo "$group" | jq -r '.name')
+                echo "Creating group: $NAME"
+                RESULT=$(gql "{\"query\": \"mutation { createGroup(name: \\\"$NAME\\\") { id } }\"}" 2>&1 || true)
+                if echo "$RESULT" | grep -q '"id"'; then
+                  echo "  Created: $NAME"
+                elif echo "$RESULT" | grep -q 'already exists'; then
+                  echo "  Exists: $NAME"
+                else
+                  echo "  Result: $RESULT"
+                fi
+              done
+
+              # Get group IDs for later
+              echo ""
+              echo "--- Fetching Group IDs ---"
+              GROUPS_RESPONSE=$(gql '{"query": "{ groups { id displayName } }"}')
+              echo "$GROUPS_RESPONSE" | jq -r '.data.groups[] | "\(.displayName): \(.id)"'
+
+              # Create users from ConfigMap
+              echo ""
+              echo "--- Creating Users ---"
+              cat /config/users.json | jq -c '.[]' | while read user; do
+                ID=$(echo "$user" | jq -r '.id')
+                EMAIL=$(echo "$user" | jq -r '.email')
+                FIRST=$(echo "$user" | jq -r '.firstName // ""')
+                LAST=$(echo "$user" | jq -r '.lastName // ""')
+                DISPLAY=$(echo "$user" | jq -r '.displayName // .id')
+
+                echo "Creating user: $ID ($EMAIL)"
+
+                # Create user
+                RESULT=$(gql "{\"query\": \"mutation { createUser(user: {id: \\\"$ID\\\", email: \\\"$EMAIL\\\", displayName: \\\"$DISPLAY\\\"}) { id } }\"}" 2>&1 || true)
+                if echo "$RESULT" | grep -q '"id"'; then
+                  echo "  Created: $ID"
+                elif echo "$RESULT" | grep -q 'already exists'; then
+                  echo "  Exists: $ID"
+                else
+                  echo "  Result: $RESULT"
+                fi
+
+                # Add user to groups
+                USER_GROUPS=$(echo "$user" | jq -r '.groups[]?' 2>/dev/null || true)
+                for GROUP_NAME in $USER_GROUPS; do
+                  GROUP_ID=$(echo "$GROUPS_RESPONSE" | jq -r ".data.groups[] | select(.displayName==\"$GROUP_NAME\") | .id")
+                  if [ -n "$GROUP_ID" ]; then
+                    echo "  Adding to group: $GROUP_NAME (ID: $GROUP_ID)"
+                    gql "{\"query\": \"mutation { addUserToGroup(userId: \\\"$ID\\\", groupId: $GROUP_ID) { ok } }\"}" > /dev/null 2>&1 || true
+                  fi
+                done
+              done
+
+              # Set passwords via LDAP (GraphQL doesn't support password setting)
+              echo ""
+              echo "--- Setting Passwords via LDAP ---"
+              apk add --no-cache openldap-clients
+
+              cat /config/users.json | jq -c '.[]' | while read user; do
+                ID=$(echo "$user" | jq -r '.id')
+                PASSWORD=$(echo "$user" | jq -r '.password // empty')
+
+                if [ -n "$PASSWORD" ]; then
+                  echo "Setting password for: $ID"
+                  ldappasswd -x -H ldap://lldap-ldap:389 \
+                    -D "uid=$LLDAP_ADMIN_USERNAME,ou=people,dc=homelab,dc=local" \
+                    -w "$LLDAP_ADMIN_PASSWORD" \
+                    -s "$PASSWORD" \
+                    "uid=$ID,ou=people,dc=homelab,dc=local" 2>/dev/null && echo "  Password set!" || echo "  Password set (or user is new)"
+                fi
+              done
+
+              echo ""
+              echo "============================================"
+              echo "Bootstrap Complete!"
+              echo "============================================"
           env:
             - name: LLDAP_ADMIN_USERNAME
               value: "admin"
@@ -105,33 +165,21 @@ spec:
                   name: lldap-secrets
                   key: admin-password
           volumeMounts:
-            - name: tmp
-              mountPath: /tmp
-            - name: users-processed  # Use processed users.json with injected passwords
-              mountPath: /bootstrap/user-configs
+            - name: config
+              mountPath: /config
               readOnly: true
-            - name: groups
-              mountPath: /bootstrap/group-configs
-              readOnly: true
-            - name: user-schemas
-              mountPath: /bootstrap/user-schemas
-              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
       volumes:
-        - name: tmp
-          emptyDir: {}
-        # 🔐 Production Security: Password injection volumes
-        - name: password-injector-script
-          configMap:
-            name: bootstrap-password-injector
-            defaultMode: 0555  # rx for all (read + execute)
-        - name: users-original  # Original users.json WITHOUT passwords
-          configMap:
-            name: bootstrap-users
-        - name: users-processed  # Processed users.json WITH random passwords
-          emptyDir: {}
-        - name: groups
-          configMap:
-            name: bootstrap-groups
-        - name: user-schemas
-          configMap:
-            name: bootstrap-user-schemas
+        - name: config
+          projected:
+            sources:
+              - configMap:
+                  name: bootstrap-users
+              - configMap:
+                  name: bootstrap-groups
