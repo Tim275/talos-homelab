@@ -1,3 +1,32 @@
+# ============================================================================
+# OPENTELEMETRY COLLECTOR - Enterprise Unified Observability (2025)
+# ============================================================================
+# Single pipeline for ALL telemetry signals:
+# - Traces  → Jaeger + Tempo
+# - Logs    → Loki + Elasticsearch
+# - Metrics → Prometheus (Remote Write)
+#
+# Architecture:
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │                    Applications (OMS, n8n, etc.)                        │
+# │                    via OpenTelemetry SDK                                │
+# └─────────────────────────────────────────────────────────────────────────┘
+#                          │ OTLP (4317/4318)
+#                          ▼
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │                    OTel Collector (DaemonSet)                           │
+# │  Receivers: OTLP (traces, logs, metrics)                                │
+# │  Processors: batch, memory_limiter, resource, k8sattributes             │
+# └─────────────────────────────────────────────────────────────────────────┘
+#          │                    │                    │
+#          ▼                    ▼                    ▼
+#    ┌──────────┐        ┌──────────┐        ┌──────────────┐
+#    │  Traces  │        │   Logs   │        │   Metrics    │
+#    │──────────│        │──────────│        │──────────────│
+#    │ • Jaeger │        │ • Loki   │        │ • Prometheus │
+#    │ • Tempo  │        │ • ES     │        │   (remote)   │
+#    └──────────┘        └──────────┘        └──────────────┘
+# ============================================================================
 apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
@@ -12,62 +41,230 @@ spec:
     prometheus.io/scrape: "false"
   resources:
     requests:
-      memory: 256Mi
-      cpu: 100m
+      memory: 512Mi
+      cpu: 200m
     limits:
-      memory: 1Gi
-      cpu: 500m
+      memory: 1536Mi
+      cpu: 1000m
   env:
     - name: K8S_NODE_IP
       valueFrom:
         fieldRef:
           fieldPath: status.hostIP
+    - name: K8S_NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+    - name: K8S_POD_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.name
+    - name: K8S_POD_NAMESPACE
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.namespace
   config:
+    # =========================================================================
+    # RECEIVERS - Accept telemetry from applications
+    # =========================================================================
     receivers:
+      # OTLP receiver for all signals (traces, logs, metrics)
       otlp:
         protocols:
           grpc:
             endpoint: 0.0.0.0:4317
           http:
             endpoint: 0.0.0.0:4318
+
+    # =========================================================================
+    # PROCESSORS - Transform and enrich telemetry
+    # =========================================================================
     processors:
+      # Batch processor for efficient exports
       batch:
         timeout: 10s
-        send_batch_size: 512
-        send_batch_max_size: 1024
+        send_batch_size: 1024
+        send_batch_max_size: 2048
+
+      # Memory limiter to prevent OOM
       memory_limiter:
-        limit_mib: 900
+        limit_mib: 1400
+        spike_limit_mib: 400
         check_interval: 1s
+
+      # Add cluster-level attributes
       resource:
         attributes:
           - key: cluster
             value: talos-homelab
             action: upsert
+          - key: collector.name
+            value: ${env:K8S_POD_NAME}
+            action: upsert
+
+      # Add Kubernetes metadata to all signals
+      k8sattributes:
+        auth_type: "serviceAccount"
+        passthrough: false
+        extract:
+          metadata:
+            - k8s.namespace.name
+            - k8s.deployment.name
+            - k8s.statefulset.name
+            - k8s.daemonset.name
+            - k8s.job.name
+            - k8s.cronjob.name
+            - k8s.pod.name
+            - k8s.pod.uid
+            - k8s.node.name
+            - k8s.container.name
+          labels:
+            - tag_name: app
+              key: app
+              from: pod
+            - tag_name: app.kubernetes.io/name
+              key: app.kubernetes.io/name
+              from: pod
+            - tag_name: app.kubernetes.io/component
+              key: app.kubernetes.io/component
+              from: pod
+        pod_association:
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.ip
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.uid
+          - sources:
+              - from: connection
+
+    # =========================================================================
+    # EXPORTERS - Send telemetry to backends
+    # =========================================================================
     exporters:
+      # --- TRACES ---
+      # Jaeger (stores in Elasticsearch)
       otlp/jaeger:
         endpoint: jaeger-collector.jaeger:4317
         tls:
           insecure: true
         headers:
           x-scope-orgid: talos-homelab
+
+      # Tempo (stores in S3/Ceph)
       otlp/tempo:
         endpoint: tempo-distributor.monitoring:4317
         tls:
           insecure: true
         headers:
           x-scope-orgid: talos-homelab
+
+      # --- LOGS ---
+      # Loki for log aggregation (OTel 0.114.0+ syntax)
+      loki:
+        endpoint: http://loki-gateway.monitoring:80/loki/api/v1/push
+        headers:
+          X-Scope-OrgID: talos-homelab
+        default_labels_enabled:
+          exporter: true
+          job: true
+          instance: true
+          level: true
+
+      # Elasticsearch for log search/analytics
+      elasticsearch:
+        endpoints:
+          - https://production-cluster-es-http.elastic-system.svc.cluster.local:9200
+        logs_index: logs-otel-%{+yyyy.MM.dd}
+        logs_dynamic_index:
+          enabled: true
+        tls:
+          insecure_skip_verify: true
+        auth:
+          authenticator: basicauth/es
+        retry:
+          enabled: true
+          initial_interval: 1s
+          max_interval: 30s
+
+      # --- METRICS ---
+      # Prometheus Remote Write
+      prometheusremotewrite:
+        endpoint: http://kube-prometheus-stack-prometheus.monitoring:9090/api/v1/write
+        headers:
+          X-Scope-OrgID: talos-homelab
+        resource_to_telemetry_conversion:
+          enabled: true
+        target_info:
+          enabled: true
+
+      # Debug exporter (for troubleshooting)
+      debug:
+        verbosity: basic
+        sampling_initial: 5
+        sampling_thereafter: 200
+
+    # =========================================================================
+    # EXTENSIONS - Additional functionality
+    # =========================================================================
+    extensions:
+      # Basic auth for Elasticsearch
+      basicauth/es:
+        client_auth:
+          username: elastic
+          password: ${env:ES_PASSWORD}
+
+      # Health check endpoint
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    # =========================================================================
+    # SERVICE - Wire everything together
+    # =========================================================================
     service:
+      extensions:
+        - basicauth/es
+        - health_check
+
       pipelines:
+        # Traces pipeline → Jaeger + Tempo
         traces:
           receivers:
             - otlp
           processors:
             - memory_limiter
-            - batch
+            - k8sattributes
             - resource
+            - batch
           exporters:
             - otlp/jaeger
             - otlp/tempo
+
+        # Logs pipeline → Loki + Elasticsearch
+        logs:
+          receivers:
+            - otlp
+          processors:
+            - memory_limiter
+            - k8sattributes
+            - resource
+            - batch
+          exporters:
+            - loki
+            - elasticsearch
+
+        # Metrics pipeline → Prometheus
+        metrics:
+          receivers:
+            - otlp
+          processors:
+            - memory_limiter
+            - k8sattributes
+            - resource
+            - batch
+          exporters:
+            - prometheusremotewrite
+
       telemetry:
         metrics:
           readers:
@@ -76,3 +273,8 @@ spec:
                   prometheus:
                     host: 0.0.0.0
                     port: 8888
+
+  # Environment variables for secrets
+  envFrom:
+    - secretRef:
+        name: otel-collector-secrets
