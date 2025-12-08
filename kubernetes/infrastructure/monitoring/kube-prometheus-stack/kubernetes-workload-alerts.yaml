@@ -1,0 +1,358 @@
+# ============================================================================
+# KUBERNETES WORKLOAD ALERTS
+# Enterprise Tier-0: PVC, Deployments, Jobs, CronJobs, HPA
+# ============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kubernetes-workload-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+    release: kube-prometheus-stack
+    tier: infrastructure
+spec:
+  groups:
+    # ========================================================================
+    # KUBERNETES WORKLOAD CRITICAL ALERTS
+    # ========================================================================
+    - name: kubernetes.workload.critical
+      interval: 30s
+      rules:
+        # ====== P1: CRITICAL - Deployment at Zero Replicas ======
+        - alert: DeploymentReplicasZero
+          expr: |
+            kube_deployment_spec_replicas > 0
+            and
+            kube_deployment_status_replicas_available == 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: p1
+            component: deployment
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "Deployment {{ $labels.namespace }}/{{ $labels.deployment }} has 0 available replicas"
+            description: |
+              Deployment {{ $labels.deployment }} in {{ $labels.namespace }} has NO available replicas!
+              SERVICE IS DOWN!
+
+              Desired: {{ $labels.kube_deployment_spec_replicas }}
+              Available: 0
+              Duration: >5 minutes
+
+              Impact: Service completely unavailable
+              Team: @platform-oncall
+
+              Check: kubectl -n {{ $labels.namespace }} describe deployment {{ $labels.deployment }}
+
+    # ========================================================================
+    # KUBERNETES WORKLOAD HIGH ALERTS
+    # ========================================================================
+    - name: kubernetes.workload.high
+      interval: 30s
+      rules:
+        # ====== P2: HIGH - PVC Pending ======
+        - alert: PersistentVolumeClaimPending
+          expr: |
+            kube_persistentvolumeclaim_status_phase{phase="Pending"} == 1
+          for: 15m
+          labels:
+            severity: warning
+            priority: p2
+            component: storage
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is Pending"
+            description: |
+              PersistentVolumeClaim {{ $labels.persistentvolumeclaim }} in {{ $labels.namespace }}
+              has been Pending for >15 minutes.
+
+              Status: Pending
+              Duration: >15 minutes
+
+              Possible Causes:
+              - No matching PersistentVolume
+              - StorageClass provisioner failure
+              - Insufficient storage capacity
+
+              Check: kubectl -n {{ $labels.namespace }} describe pvc {{ $labels.persistentvolumeclaim }}
+
+        # ====== P2: HIGH - Pod Pending Scheduling ======
+        - alert: PodPendingScheduling
+          expr: |
+            kube_pod_status_phase{phase="Pending"} == 1
+            and
+            time() - kube_pod_created > 900
+          for: 5m
+          labels:
+            severity: warning
+            priority: p2
+            component: scheduler
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} pending >15min"
+            description: |
+              Pod {{ $labels.pod }} in {{ $labels.namespace }} has been Pending for >15 minutes.
+
+              Status: Pending
+              Duration: >15 minutes
+
+              Possible Causes:
+              - Insufficient CPU/Memory on nodes
+              - Node selector/affinity constraints
+              - Taints not tolerated
+              - PVC not bound
+
+              Check: kubectl -n {{ $labels.namespace }} describe pod {{ $labels.pod }}
+
+        # ====== P2: HIGH - Deployment Replicas Mismatch ======
+        - alert: DeploymentReplicasMismatch
+          expr: |
+            kube_deployment_spec_replicas
+            !=
+            kube_deployment_status_replicas_available
+          for: 15m
+          labels:
+            severity: warning
+            priority: p2
+            component: deployment
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "Deployment {{ $labels.namespace }}/{{ $labels.deployment }} replica mismatch"
+            description: |
+              Deployment {{ $labels.deployment }} in {{ $labels.namespace }}
+              has mismatched replica count for >15 minutes.
+
+              Desired: {{ $labels.kube_deployment_spec_replicas }}
+              Available: Different
+              Duration: >15 minutes
+
+              Impact: Reduced capacity or unavailable pods
+              Action: Check pod events and node resources
+
+        # ====== P2: HIGH - StatefulSet Replicas Mismatch ======
+        - alert: StatefulSetReplicasMismatch
+          expr: |
+            kube_statefulset_replicas
+            !=
+            kube_statefulset_status_replicas_ready
+          for: 15m
+          labels:
+            severity: warning
+            priority: p2
+            component: statefulset
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "StatefulSet {{ $labels.namespace }}/{{ $labels.statefulset }} replica mismatch"
+            description: |
+              StatefulSet {{ $labels.statefulset }} in {{ $labels.namespace }}
+              has mismatched replica count for >15 minutes.
+
+              Desired: {{ $labels.kube_statefulset_replicas }}
+              Ready: Different
+              Duration: >15 minutes
+
+              Impact: Stateful service degraded
+              Action: Check pod events and PVC binding
+
+        # ====== P2: HIGH - HPA at Maximum ======
+        - alert: HorizontalPodAutoscalerMaxedOut
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas
+            ==
+            kube_horizontalpodautoscaler_spec_max_replicas
+          for: 30m
+          labels:
+            severity: warning
+            priority: p2
+            component: hpa
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "HPA {{ $labels.namespace }}/{{ $labels.horizontalpodautoscaler }} at maximum"
+            description: |
+              HPA {{ $labels.horizontalpodautoscaler }} in {{ $labels.namespace }}
+              has been at maximum replicas for >30 minutes.
+
+              Current Replicas: {{ $labels.kube_horizontalpodautoscaler_status_current_replicas }}
+              Max Replicas: {{ $labels.kube_horizontalpodautoscaler_spec_max_replicas }}
+              Duration: >30 minutes
+
+              Impact: Cannot scale further, potential performance issues
+              Action: Consider increasing max replicas or optimizing application
+
+        # ====== P2: HIGH - Job Failed ======
+        - alert: KubernetesJobFailed
+          expr: |
+            kube_job_status_failed > 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p2
+            component: job
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "Job {{ $labels.namespace }}/{{ $labels.job_name }} FAILED"
+            description: |
+              Kubernetes Job {{ $labels.job_name }} in {{ $labels.namespace }} has failed.
+
+              Failed Count: {{ $value }}
+              Duration: >5 minutes
+
+              Action: Check job logs and events
+              Check: kubectl -n {{ $labels.namespace }} describe job {{ $labels.job_name }}
+              Check: kubectl -n {{ $labels.namespace }} logs job/{{ $labels.job_name }}
+
+        # ====== P2: HIGH - CronJob Missed Schedule ======
+        - alert: CronJobMissedSchedule
+          expr: |
+            time() - kube_cronjob_status_last_schedule_time > (kube_cronjob_spec_suspend == 0) * 3600 * 2
+          for: 10m
+          labels:
+            severity: warning
+            priority: p2
+            component: cronjob
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "CronJob {{ $labels.namespace }}/{{ $labels.cronjob }} missed schedule"
+            description: |
+              CronJob {{ $labels.cronjob }} in {{ $labels.namespace }}
+              has not run for over 2 hours (or more than 2x its schedule).
+
+              Last Run: >2 hours ago
+              Suspended: {{ $labels.kube_cronjob_spec_suspend }}
+
+              Action: Check CronJob configuration and history
+              Check: kubectl -n {{ $labels.namespace }} describe cronjob {{ $labels.cronjob }}
+
+        # ====== P2: HIGH - DaemonSet Not Scheduled ======
+        - alert: DaemonSetNotScheduled
+          expr: |
+            kube_daemonset_status_desired_number_scheduled
+            -
+            kube_daemonset_status_current_number_scheduled > 0
+          for: 10m
+          labels:
+            severity: warning
+            priority: p2
+            component: daemonset
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "DaemonSet {{ $labels.namespace }}/{{ $labels.daemonset }} not fully scheduled"
+            description: |
+              DaemonSet {{ $labels.daemonset }} in {{ $labels.namespace }}
+              is not scheduled on all nodes.
+
+              Desired: {{ $labels.kube_daemonset_status_desired_number_scheduled }}
+              Scheduled: Different
+              Duration: >10 minutes
+
+              Action: Check node taints and DaemonSet tolerations
+
+        # ====== P2: HIGH - DaemonSet Rollout Stuck ======
+        - alert: DaemonSetRolloutStuck
+          expr: |
+            kube_daemonset_status_number_ready
+            /
+            kube_daemonset_status_desired_number_scheduled < 1
+          for: 15m
+          labels:
+            severity: warning
+            priority: p2
+            component: daemonset
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "DaemonSet {{ $labels.namespace }}/{{ $labels.daemonset }} rollout stuck"
+            description: |
+              DaemonSet {{ $labels.daemonset }} in {{ $labels.namespace }}
+              rollout is stuck - not all pods are ready.
+
+              Ready: {{ $value | humanizePercentage }}
+              Duration: >15 minutes
+
+              Action: Check pod status and events
+
+    # ========================================================================
+    # KUBERNETES WORKLOAD MEDIUM ALERTS
+    # ========================================================================
+    - name: kubernetes.workload.medium
+      interval: 60s
+      rules:
+        # ====== P3: MEDIUM - Container Waiting ======
+        - alert: ContainerWaiting
+          expr: |
+            kube_pod_container_status_waiting_reason{reason!="ContainerCreating"} == 1
+          for: 30m
+          labels:
+            severity: info
+            priority: p3
+            component: container
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "Container {{ $labels.container }} waiting: {{ $labels.reason }}"
+            description: |
+              Container {{ $labels.container }} in pod {{ $labels.namespace }}/{{ $labels.pod }}
+              has been waiting for >30 minutes.
+
+              Reason: {{ $labels.reason }}
+              Duration: >30 minutes
+
+              Common Reasons:
+              - ImagePullBackOff: Cannot pull image
+              - CrashLoopBackOff: Container keeps crashing
+              - ErrImagePull: Image not found
+
+        # ====== P3: MEDIUM - HPA Unable to Scale ======
+        - alert: HPAUnableToScale
+          expr: |
+            kube_horizontalpodautoscaler_status_condition{condition="ScalingActive",status="false"} == 1
+          for: 15m
+          labels:
+            severity: info
+            priority: p3
+            component: hpa
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "HPA {{ $labels.namespace }}/{{ $labels.horizontalpodautoscaler }} cannot scale"
+            description: |
+              HPA {{ $labels.horizontalpodautoscaler }} in {{ $labels.namespace }}
+              is unable to calculate metrics for scaling.
+
+              Condition: ScalingActive = false
+              Duration: >15 minutes
+
+              Action: Check metrics-server and HPA configuration
+
+        # ====== P3: MEDIUM - PV Reclaim Failed ======
+        - alert: PersistentVolumeReclaimFailed
+          expr: |
+            kube_persistentvolume_status_phase{phase="Failed"} == 1
+          for: 15m
+          labels:
+            severity: info
+            priority: p3
+            component: storage
+            tier: infrastructure
+            layer: layer1
+          annotations:
+            summary: "PV {{ $labels.persistentvolume }} reclaim failed"
+            description: |
+              PersistentVolume {{ $labels.persistentvolume }} is in Failed state.
+              Volume reclaim policy could not be executed.
+
+              Status: Failed
+              Duration: >15 minutes
+
+              Action: Manual intervention required to clean up PV
