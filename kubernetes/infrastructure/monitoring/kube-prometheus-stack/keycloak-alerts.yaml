@@ -36,11 +36,17 @@ spec:
               Check: kubectl -n keycloak logs -l app=keycloak --tail=100
 
         # ====== P0: CRITICAL - Keycloak Database Connection Failed ======
+        # Enterprise Best Practice: Check actual DB pod health
         - alert: KeycloakDatabaseConnectionFailed
           expr: |
-            sum(rate(keycloak_failed_login_attempts[5m])) > 100
-            or absent(up{job="keycloak-postgresql"})
-          for: 3m
+            # PostgreSQL pod not ready (condition=Ready, status=true should be 1)
+            (
+              kube_pod_status_ready{namespace="keycloak", pod=~"keycloak-db-.*", condition="true"} == 0
+              and on(pod) kube_pod_status_phase{namespace="keycloak", pod=~"keycloak-db-.*", phase="Running"} == 1
+            )
+            # OR Keycloak pod restarting rapidly (DB connection issues cause restarts)
+            or (increase(kube_pod_container_status_restarts_total{namespace="keycloak", container="keycloak"}[10m]) > 3)
+          for: 5m
           labels:
             severity: critical
             priority: p0
@@ -50,15 +56,52 @@ spec:
           annotations:
             summary: "Keycloak database connection issues detected"
             description: |
-              Keycloak cannot connect to PostgreSQL database.
+              Keycloak PostgreSQL database is unhealthy or unreachable.
               Authentication backend UNAVAILABLE!
 
               Impact: Login failures, session management broken
               Team: @security-oncall
 
+              Check DB: kubectl -n keycloak get cluster keycloak-db
+              Check Pods: kubectl -n keycloak get pods -l cnpg.io/cluster=keycloak-db
+              Check Logs: kubectl -n keycloak logs -l app.kubernetes.io/name=keycloak --tail=50 | grep -i database
+
     - name: security.keycloak.high
       interval: 30s
       rules:
+        # ====== P1: HIGH - Keycloak LDAP Federation Failed ======
+        # Enterprise Best Practice: Monitor external identity provider connectivity
+        - alert: KeycloakLDAPFederationFailed
+          expr: |
+            # LLDAP pod not ready (running but unhealthy)
+            (
+              kube_pod_status_ready{namespace="lldap", pod=~"lldap-.*", condition="true"} == 0
+              and on(pod) kube_pod_status_phase{namespace="lldap", pod=~"lldap-.*", phase="Running"} == 1
+            )
+            # OR LLDAP pod not running at all
+            or (
+              absent(kube_pod_status_phase{namespace="lldap", pod=~"lldap-.*", phase="Running"} == 1)
+            )
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: keycloak
+            tier: security
+            layer: layer2
+          annotations:
+            summary: "Keycloak LDAP federation connection failed"
+            description: |
+              Keycloak cannot connect to LDAP provider (LLDAP).
+              User federation BROKEN - LDAP users cannot authenticate!
+
+              Impact: LDAP-synced users cannot login
+              Team: @security-oncall
+
+              Check LLDAP: kubectl -n lldap get pods
+              Check Secret: kubectl -n keycloak get secret keycloak-lldap-admin
+              Check Logs: kubectl -n keycloak logs -l app.kubernetes.io/name=keycloak | grep -i ldap
+
         # ====== P1: HIGH - Keycloak Auth Failure Rate High ======
         - alert: KeycloakAuthFailureRateHigh
           expr: |

@@ -1,3 +1,5 @@
+# SIMPLIFIED ALERTMANAGER CONFIG - All Alerts to #alerts
+# This file is kept for reference but values.yaml is the active config
 apiVersion: v1
 kind: Secret
 metadata:
@@ -8,44 +10,13 @@ stringData:
   alertmanager.yaml: |
     global:
       resolve_timeout: 5m
-      pagerduty_url: https://events.pagerduty.com/v2/enqueue
 
     route:
-      group_by: ['alertname', 'namespace', 'pod']
+      group_by: ['alertname', 'namespace']
       group_wait: 30s
       group_interval: 5m
-      repeat_interval: 12h
-      receiver: 'default'
-      routes:
-        - matchers:
-            - priority="p0"
-          receiver: 'pagerduty-critical'
-          continue: true
-
-        - matchers:
-            - priority="p0"
-          receiver: 'slack-critical'
-
-        - matchers:
-            - priority="p1"
-          receiver: 'pagerduty-high'
-          continue: true
-
-        - matchers:
-            - priority="p1"
-          receiver: 'slack-high'
-
-        - matchers:
-            - priority="p2"
-          receiver: 'slack-medium'
-
-        - matchers:
-            - priority="p3"
-          receiver: 'slack-info'
-
-        - matchers:
-            - priority="argocd-gitops"
-          receiver: 'slack-argocd-gitops'
+      repeat_interval: 4h
+      receiver: 'slack-alerts'
 
     inhibit_rules:
       - source_matchers:
@@ -55,101 +26,39 @@ stringData:
         equal: ['alertname', 'namespace', 'instance']
 
       - source_matchers:
-          - priority="p0"
-        target_matchers:
-          - priority=~"p1|p2|p3"
-        equal: ['job', 'namespace']
-
-      - source_matchers:
           - alertname="NodeDown"
         target_matchers:
           - alertname=~"Pod.*|Container.*"
         equal: ['node']
 
     receivers:
-      - name: 'default'
+      - name: 'slack-alerts'
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
             channel: '#alerts'
             send_resolved: true
-            title: '{{ if eq .Status "firing" }}🔥{{ else }}✅{{ end }} {{ .CommonLabels.alertname }}'
-            text: '{{ .CommonAnnotations.summary }}'
-            short_fields: true
-            fields:
-              - title: Status
-                value: '{{ .Status | toUpper }}'
-                short: true
-              - title: Severity
-                value: '{{ .CommonLabels.severity | toUpper }}'
-                short: true
-              - title: Namespace
-                value: '{{ or .CommonLabels.namespace "—" }}'
-                short: true
-              - title: Node
-                value: '{{ or .CommonLabels.node "—" }}'
-                short: true
-            color: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}danger{{ else if eq .CommonLabels.severity "warning" }}warning{{ else }}#439FE0{{ end }}{{ else }}good{{ end }}'
-            actions:
-              - type: button
-                text: 'Prometheus'
-                url: '{{ (index .Alerts 0).GeneratorURL }}'
-              - type: button
-                text: 'Silence'
-                url: '{{ .ExternalURL }}/#/silences/new'
-
-      - name: 'pagerduty-critical'
-        pagerduty_configs:
-          - routing_key_file: /etc/alertmanager/secrets/pagerduty-integration-key/integration-key
-            severity: critical
-            description: '{{ .CommonAnnotations.summary }}'
-            details:
-              firing: '{{ .Alerts.Firing | len }}'
-              resolved: '{{ .Alerts.Resolved | len }}'
-              alertname: '{{ .CommonLabels.alertname }}'
-              namespace: '{{ .CommonLabels.namespace }}'
-              priority: '{{ .CommonLabels.priority }}'
-              component: '{{ .CommonLabels.component }}'
-              impact: '{{ .CommonAnnotations.impact }}'
-            send_resolved: true
-
-      - name: 'pagerduty-high'
-        pagerduty_configs:
-          - routing_key_file: /etc/alertmanager/secrets/pagerduty-integration-key/integration-key
-            severity: warning
-            description: '{{ .CommonAnnotations.summary }}'
-            details:
-              firing: '{{ .Alerts.Firing | len }}'
-              resolved: '{{ .Alerts.Resolved | len }}'
-              alertname: '{{ .CommonLabels.alertname }}'
-              namespace: '{{ .CommonLabels.namespace }}'
-              priority: '{{ .CommonLabels.priority }}'
-            send_resolved: true
-
-      - name: 'slack-critical'
-        slack_configs:
-          - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
-            channel: '#alerts-critical'
-            send_resolved: true
-            title: '🚨 P0 CRITICAL: {{ .CommonLabels.alertname }}'
-            text: '{{ .CommonAnnotations.summary }}'
-            short_fields: true
-            fields:
-              - title: Priority
-                value: 'P0 - OUTAGE'
-                short: true
-              - title: Severity
-                value: '{{ .CommonLabels.severity | toUpper }}'
-                short: true
-              - title: Namespace
-                value: '{{ or .CommonLabels.namespace "—" }}'
-                short: true
-              - title: Node
-                value: '{{ or .CommonLabels.node "—" }}'
-                short: true
-              - title: Impact
-                value: '{{ or .CommonAnnotations.impact "Service degradation" }}'
-                short: false
-            color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+            title: |-
+              [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }}
+            text: |-
+              {{ range .Alerts }}
+              *Alert:* {{ .Labels.alertname }}
+              *Severity:* {{ .Labels.severity | toUpper }}
+              {{ if .Labels.priority }}*Priority:* {{ .Labels.priority | toUpper }}{{ end }}
+              {{ if .Labels.namespace }}*Namespace:* `{{ .Labels.namespace }}`{{ end }}
+              {{ if .Labels.pod }}*Pod:* `{{ .Labels.pod }}`{{ end }}
+              {{ if .Labels.container }}*Container:* `{{ .Labels.container }}`{{ end }}
+              {{ if .Labels.node }}*Node:* `{{ .Labels.node }}`{{ end }}
+              {{ if .Labels.job }}*Job:* `{{ .Labels.job }}`{{ end }}
+              {{ if .Labels.component }}*Component:* {{ .Labels.component }}{{ end }}
+              *Summary:* {{ .Annotations.summary }}
+              {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
+              {{ if .Annotations.impact }}*Impact:* {{ .Annotations.impact }}{{ end }}
+              {{ if .Annotations.runbook_url }}*Runbook:* {{ .Annotations.runbook_url }}{{ end }}
+              {{ end }}
+            color: |-
+              {{ if eq .Status "firing" }}
+                {{ if eq .CommonLabels.severity "critical" }}danger{{ else if eq .CommonLabels.severity "warning" }}warning{{ else }}#439FE0{{ end }}
+              {{ else }}good{{ end }}
             actions:
               - type: button
                 text: 'Prometheus'
@@ -160,90 +69,3 @@ stringData:
               - type: button
                 text: 'Silence'
                 url: '{{ .ExternalURL }}/#/silences/new'
-
-      - name: 'slack-high'
-        slack_configs:
-          - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
-            channel: '#alerts-high'
-            send_resolved: true
-            title: '⚠️ P1 HIGH: {{ .CommonLabels.alertname }}'
-            text: '{{ .CommonAnnotations.summary }}'
-            short_fields: true
-            fields:
-              - title: Priority
-                value: 'P1 - HIGH'
-                short: true
-              - title: Severity
-                value: '{{ .CommonLabels.severity | toUpper }}'
-                short: true
-              - title: Namespace
-                value: '{{ or .CommonLabels.namespace "—" }}'
-                short: true
-              - title: Node
-                value: '{{ or .CommonLabels.node "—" }}'
-                short: true
-            color: '{{ if eq .Status "firing" }}warning{{ else }}good{{ end }}'
-            actions:
-              - type: button
-                text: 'Prometheus'
-                url: '{{ (index .Alerts 0).GeneratorURL }}'
-              - type: button
-                text: 'Silence'
-                url: '{{ .ExternalURL }}/#/silences/new'
-
-      - name: 'slack-medium'
-        slack_configs:
-          - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
-            channel: '#alerts-medium'
-            send_resolved: true
-            title: 'ℹ️ P2: {{ .CommonLabels.alertname }}'
-            text: '{{ .CommonAnnotations.summary }}'
-            short_fields: true
-            fields:
-              - title: Namespace
-                value: '{{ or .CommonLabels.namespace "—" }}'
-                short: true
-              - title: Node
-                value: '{{ or .CommonLabels.node "—" }}'
-                short: true
-            color: '{{ if eq .Status "firing" }}#439FE0{{ else }}good{{ end }}'
-            actions:
-              - type: button
-                text: 'Details'
-                url: '{{ (index .Alerts 0).GeneratorURL }}'
-
-      - name: 'slack-info'
-        slack_configs:
-          - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
-            channel: '#alerts-info'
-            send_resolved: false
-            title: '📝 INFO: {{ .CommonLabels.alertname }}'
-            text: '{{ .CommonAnnotations.summary }}'
-            color: '#CCCCCC'
-
-      - name: 'slack-argocd-gitops'
-        slack_configs:
-          - api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
-            channel: '#argocd-deployments'
-            send_resolved: true
-            title: '{{ if eq .Status "firing" }}🔴{{ else }}✅{{ end }} {{ .CommonLabels.alertname }}'
-            text: '{{ .CommonAnnotations.summary }}'
-            short_fields: true
-            fields:
-              - title: Application
-                value: '{{ or .CommonAnnotations.application "—" }}'
-                short: true
-              - title: Namespace
-                value: '{{ or .CommonLabels.namespace "—" }}'
-                short: true
-              - title: Sync
-                value: '{{ or .CommonAnnotations.sync_status "—" }}'
-                short: true
-              - title: Health
-                value: '{{ or .CommonAnnotations.health_status "—" }}'
-                short: true
-            color: '{{ if eq .Status "firing" }}#5B9BD5{{ else }}good{{ end }}'
-            actions:
-              - type: button
-                text: 'ArgoCD'
-                url: 'https://argo.timourhomelab.org'
