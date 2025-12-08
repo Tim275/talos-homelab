@@ -97,6 +97,62 @@ configs:
       hs.message = "Waiting for HTTPRoute to be accepted by parent Gateway"
       return hs
 
+    # 🔥 STRIMZI KAFKA HEALTH CHECKS - Fix permanent "Progressing" status
+    # ====================================================================
+    resource.customizations.health.kafka.strimzi.io_Kafka: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "Ready" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = "Kafka cluster is ready"
+              return hs
+            elseif condition.type == "Ready" and condition.status == "False" then
+              hs.status = "Degraded"
+              hs.message = condition.message or "Kafka cluster not ready"
+              return hs
+            end
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for Kafka cluster to be ready"
+      return hs
+    resource.customizations.health.kafka.strimzi.io_KafkaTopic: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "Ready" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = "KafkaTopic is ready"
+              return hs
+            elseif condition.type == "Ready" and condition.status == "False" then
+              hs.status = "Degraded"
+              hs.message = condition.message or "KafkaTopic not ready"
+              return hs
+            end
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for KafkaTopic"
+      return hs
+    resource.customizations.health.kafka.strimzi.io_KafkaNodePool: |
+      hs = {}
+      if obj.status ~= nil then
+        -- KafkaNodePool uses replicas field, not conditions
+        if obj.status.replicas ~= nil and obj.status.replicas > 0 then
+          hs.status = "Healthy"
+          hs.message = "KafkaNodePool has " .. obj.status.replicas .. " replica(s)"
+          return hs
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for KafkaNodePool replicas"
+      return hs
+
   cmp:
     create: true
     plugins:
@@ -723,9 +779,10 @@ notifications:
   # 🔔 ENTERPRISE ARGOCD NOTIFICATIONS - Deployment Status Tracking
   # =================================================================
   # Separate from Prometheus alerts - focuses on deployment health
+  # Secret is managed in monitoring/alerts/argocd-slack-webhook-secret.yaml
 
   secret:
-    create: false  # Use SealedSecret instead of Helm-managed secret
+    create: false  # Secret managed externally in monitoring/alerts/
 
   resources:
     requests:
@@ -743,205 +800,125 @@ notifications:
       additionalLabels:
         release: kube-prometheus-stack
 
-  # 🎯 NOTIFICATION SERVICES - Slack Bot API
+  # 🌐 CONTEXT - ArgoCD URLs for notifications
+  context:
+    argocdUrl: https://argo.timourhomelab.org
+
+  # 🎯 NOTIFICATION SERVICES - Slack Incoming Webhook
+  # Using webhook service for Slack Incoming Webhooks (not Bot Token)
+  # Reference: https://argo-cd.readthedocs.io/en/stable/operator-manual/notifications/services/webhook/
   notifiers:
-    service.slack: |
-      token: $slack-token
+    service.webhook.slack: |
+      url: $slack-token
+      headers:
+        - name: Content-Type
+          value: application/json
 
   # 📋 SLACK TEMPLATES - Enterprise Rich Notifications with Slack Blocks
-  # Uses Slack Attachments API for colored sidebars and structured fields
+  # Uses Webhook service with Slack Attachments API for colored sidebars
+  # Reference: https://argo-cd.readthedocs.io/en/stable/operator-manual/notifications/services/webhook/
   templates:
     template.app-deployed: |
-      slack:
-        attachments: |
-          [{
-            "title": "✅ Application Deployed",
-            "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
-            "color": "#18be52",
-            "fields": [
-              {
-                "title": "Application",
-                "value": "{{.app.metadata.name}}",
-                "short": true
-              },
-              {
-                "title": "Namespace",
-                "value": "{{.app.spec.destination.namespace}}",
-                "short": true
-              },
-              {
-                "title": "Sync Status",
-                "value": "{{.app.status.sync.status}}",
-                "short": true
-              },
-              {
-                "title": "Health",
-                "value": "{{.app.status.health.status}}",
-                "short": true
-              },
-              {
-                "title": "Repository",
-                "value": "{{.app.spec.source.repoURL}}",
-                "short": false
-              }
-            ],
-            "footer": "ArgoCD Homelab",
-            "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png",
-            "ts": {{.app.status.operationState.finishedAt.Unix}}
-          }]
+      webhook:
+        slack:
+          method: POST
+          body: |
+            {
+              "attachments": [{
+                "title": "✅ Application Deployed",
+                "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
+                "color": "#18be52",
+                "fields": [
+                  {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
+                  {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true},
+                  {"title": "Sync Status", "value": "{{.app.status.sync.status}}", "short": true},
+                  {"title": "Health", "value": "{{.app.status.health.status}}", "short": true},
+                  {"title": "Revision", "value": "{{.app.status.sync.revision | substr 0 7}}", "short": true}
+                ],
+                "footer": "ArgoCD Homelab",
+                "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png"
+              }]
+            }
 
     template.app-health-degraded: |
-      slack:
-        attachments: |
-          [{
-            "title": "🔴 Application Health Degraded",
-            "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
-            "color": "#E96D76",
-            "fields": [
-              {
-                "title": "Application",
-                "value": "{{.app.metadata.name}}",
-                "short": true
-              },
-              {
-                "title": "Namespace",
-                "value": "{{.app.spec.destination.namespace}}",
-                "short": true
-              },
-              {
-                "title": "Health Status",
-                "value": "{{.app.status.health.status}}",
-                "short": true
-              },
-              {
-                "title": "Sync Status",
-                "value": "{{.app.status.sync.status}}",
-                "short": true
-              },
-              {
-                "title": "Error Message",
-                "value": "{{.app.status.health.message}}",
-                "short": false
-              }
-            ],
-            "footer": "ArgoCD Homelab - NEEDS ATTENTION",
-            "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png"
-          }]
+      webhook:
+        slack:
+          method: POST
+          body: |
+            {
+              "attachments": [{
+                "title": "🔴 Application Health Degraded",
+                "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
+                "color": "#E96D76",
+                "fields": [
+                  {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
+                  {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true},
+                  {"title": "Health", "value": "{{.app.status.health.status}}", "short": true},
+                  {"title": "Sync", "value": "{{.app.status.sync.status}}", "short": true}
+                ],
+                "footer": "ArgoCD Homelab - NEEDS ATTENTION"
+              }]
+            }
 
     template.app-sync-failed: |
-      slack:
-        attachments: |
-          [{
-            "title": "❌ Application Sync Failed",
-            "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
-            "color": "#E01E5A",
-            "fields": [
-              {
-                "title": "Application",
-                "value": "{{.app.metadata.name}}",
-                "short": true
-              },
-              {
-                "title": "Namespace",
-                "value": "{{.app.spec.destination.namespace}}",
-                "short": true
-              },
-              {
-                "title": "Sync Status",
-                "value": "{{.app.status.sync.status}}",
-                "short": true
-              },
-              {
-                "title": "Phase",
-                "value": "{{.app.status.operationState.phase}}",
-                "short": true
-              },
-              {
-                "title": "Error Details",
-                "value": "{{.app.status.operationState.message}}",
-                "short": false
-              }
-            ],
-            "footer": "ArgoCD Homelab - ACTION REQUIRED",
-            "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png"
-          }]
+      webhook:
+        slack:
+          method: POST
+          body: |
+            {
+              "attachments": [{
+                "title": "❌ Application Sync Failed",
+                "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
+                "color": "#E01E5A",
+                "fields": [
+                  {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
+                  {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true},
+                  {"title": "Phase", "value": "{{.app.status.operationState.phase}}", "short": true},
+                  {"title": "Sync", "value": "{{.app.status.sync.status}}", "short": true}
+                ],
+                "footer": "ArgoCD Homelab - ACTION REQUIRED"
+              }]
+            }
 
     template.app-sync-succeeded: |
-      slack:
-        attachments: |
-          [{
-            "title": "✅ Application Sync Succeeded",
-            "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
-            "color": "#2EB67D",
-            "fields": [
-              {
-                "title": "Application",
-                "value": "{{.app.metadata.name}}",
-                "short": true
-              },
-              {
-                "title": "Namespace",
-                "value": "{{.app.spec.destination.namespace}}",
-                "short": true
-              },
-              {
-                "title": "Sync Status",
-                "value": "{{.app.status.sync.status}}",
-                "short": true
-              },
-              {
-                "title": "Health",
-                "value": "{{.app.status.health.status}}",
-                "short": true
-              },
-              {
-                "title": "Revision",
-                "value": "{{.app.status.sync.revision}}",
-                "short": false
-              }
-            ],
-            "footer": "ArgoCD Homelab",
-            "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png",
-            "ts": {{.app.status.operationState.finishedAt.Unix}}
-          }]
+      webhook:
+        slack:
+          method: POST
+          body: |
+            {
+              "attachments": [{
+                "title": "✅ Application Sync Succeeded",
+                "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
+                "color": "#2EB67D",
+                "fields": [
+                  {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
+                  {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true},
+                  {"title": "Sync", "value": "{{.app.status.sync.status}}", "short": true},
+                  {"title": "Health", "value": "{{.app.status.health.status}}", "short": true}
+                ],
+                "footer": "ArgoCD Homelab"
+              }]
+            }
 
     template.app-sync-status-unknown: |
-      slack:
-        attachments: |
-          [{
-            "title": "⚠️ Application Out of Sync",
-            "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
-            "color": "#FFA500",
-            "fields": [
-              {
-                "title": "Application",
-                "value": "{{.app.metadata.name}}",
-                "short": true
-              },
-              {
-                "title": "Namespace",
-                "value": "{{.app.spec.destination.namespace}}",
-                "short": true
-              },
-              {
-                "title": "Sync Status",
-                "value": "{{.app.status.sync.status}}",
-                "short": true
-              },
-              {
-                "title": "Health",
-                "value": "{{.app.status.health.status}}",
-                "short": true
-              },
-              {
-                "title": "Warning",
-                "value": "Application is out of sync with Git. Manual sync required if auto-sync is disabled.",
-                "short": false
-              }
-            ],
-            "footer": "ArgoCD Homelab - SYNC REQUIRED",
-            "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png"
-          }]
+      webhook:
+        slack:
+          method: POST
+          body: |
+            {
+              "attachments": [{
+                "title": "⚠️ Application Out of Sync",
+                "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
+                "color": "#FFA500",
+                "fields": [
+                  {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
+                  {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true},
+                  {"title": "Sync", "value": "{{.app.status.sync.status}}", "short": true},
+                  {"title": "Health", "value": "{{.app.status.health.status}}", "short": true}
+                ],
+                "footer": "ArgoCD Homelab - SYNC REQUIRED"
+              }]
+            }
 
   # 🚨 TRIGGERS - Production-grade with deduplication
   triggers:
@@ -1005,10 +982,9 @@ notifications:
 
   # 📢 DEFAULT SUBSCRIPTIONS - Production-grade triggers (no noise!)
   # Global subscription for all apps (can override per-app via annotations)
+  # For webhooks: just use the webhook name (matches service.webhook.<name>)
   subscriptions:
-    - recipients: ["slack:argocd-deployments"]
-      # REMOVED: on-sync-succeeded (verbose - covered by on-deployed)
-      # ADDED: on-sync-failed-degraded (critical combo alert)
+    - recipients: ["slack"]
       triggers:
         - on-deployed
         - on-health-degraded

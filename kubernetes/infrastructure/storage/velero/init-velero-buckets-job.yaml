@@ -1,0 +1,227 @@
+---
+# Velero Bucket Initialization Job
+# =================================
+# Dieser Job erstellt die S3 Buckets für Velero beim Bootstrap.
+# Er verwendet die Credentials vom Rook-Ceph generierten Secret.
+#
+# FLOW:
+# 1. Rook erstellt CephObjectStoreUser "velero"
+# 2. Rook generiert Secret "rook-ceph-object-user-homelab-objectstore-velero" in rook-ceph namespace
+# 3. Dieser Job holt die Credentials und erstellt die Buckets
+# 4. Der Job aktualisiert das velero-s3-credentials Secret falls nötig
+#
+# ArgoCD Sync Wave: 5 (nach Rook-Ceph bei 0-3)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: velero-init-buckets
+  namespace: velero
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        app: velero-init-buckets
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: velero-bucket-init
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: init-buckets
+        image: alpine/k8s:1.31.13
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          readOnlyRootFilesystem: false
+        env:
+        - name: AWS_DEFAULT_REGION
+          value: "us-east-1"
+        - name: ENDPOINT
+          value: "http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80"
+        - name: ROOK_SECRET_NAME
+          value: "rook-ceph-object-user-homelab-objectstore-velero"
+        - name: ROOK_SECRET_NAMESPACE
+          value: "rook-ceph"
+        - name: VELERO_SECRET_NAME
+          value: "velero-s3-credentials"
+        - name: VELERO_NAMESPACE
+          value: "velero"
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          set -e
+          echo "=== Velero Bucket Initialization ==="
+          echo "Endpoint: $ENDPOINT"
+
+          # Wait for Rook-generated secret to exist
+          echo "Waiting for Rook-Ceph velero user secret..."
+          for i in $(seq 1 60); do
+            if kubectl get secret -n $ROOK_SECRET_NAMESPACE $ROOK_SECRET_NAME 2>/dev/null; then
+              echo "✅ Rook secret found"
+              break
+            fi
+            echo "Attempt $i/60 - Secret not ready, waiting..."
+            sleep 10
+          done
+
+          # Get credentials from Rook-generated secret
+          echo "Fetching credentials from Rook secret..."
+          export AWS_ACCESS_KEY_ID=$(kubectl get secret -n $ROOK_SECRET_NAMESPACE $ROOK_SECRET_NAME -o jsonpath='{.data.AccessKey}' | base64 -d)
+          export AWS_SECRET_ACCESS_KEY=$(kubectl get secret -n $ROOK_SECRET_NAMESPACE $ROOK_SECRET_NAME -o jsonpath='{.data.SecretKey}' | base64 -d)
+
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "❌ ERROR: Could not get credentials from Rook secret"
+            exit 1
+          fi
+
+          echo "Using AccessKey: ${AWS_ACCESS_KEY_ID:0:8}..."
+
+          # Update velero-s3-credentials secret with current credentials
+          echo "Updating velero-s3-credentials secret..."
+          cat > /tmp/cloud << EOF
+          [default]
+          aws_access_key_id=$AWS_ACCESS_KEY_ID
+          aws_secret_access_key=$AWS_SECRET_ACCESS_KEY
+          EOF
+
+          # Check if secret exists, create or patch
+          if kubectl get secret -n $VELERO_NAMESPACE $VELERO_SECRET_NAME 2>/dev/null; then
+            kubectl create secret generic $VELERO_SECRET_NAME \
+              --namespace=$VELERO_NAMESPACE \
+              --from-file=cloud=/tmp/cloud \
+              --dry-run=client -o yaml | kubectl apply -f -
+            echo "✅ Secret updated"
+          else
+            kubectl create secret generic $VELERO_SECRET_NAME \
+              --namespace=$VELERO_NAMESPACE \
+              --from-file=cloud=/tmp/cloud
+            echo "✅ Secret created"
+          fi
+
+          rm /tmp/cloud
+
+          # alpine/k8s image has aws cli built-in
+          echo "Using built-in AWS CLI..."
+          aws --version
+
+          # Wait for RGW to be available (check exit code, not output)
+          echo "Waiting for Ceph RGW..."
+          for i in $(seq 1 30); do
+            if aws s3 ls --endpoint-url=$ENDPOINT >/dev/null 2>&1; then
+              echo "✅ RGW is available"
+              break
+            fi
+            echo "Attempt $i/30 - RGW not ready, waiting..."
+            sleep 5
+          done
+
+          # Create buckets (idempotent - ignores if already exists)
+          echo "Creating velero-cluster-backups bucket..."
+          aws s3api create-bucket --bucket velero-cluster-backups --endpoint-url=$ENDPOINT 2>&1 || echo "Bucket may already exist"
+
+          echo "Creating velero-pv-backups bucket..."
+          aws s3api create-bucket --bucket velero-pv-backups --endpoint-url=$ENDPOINT 2>&1 || echo "Bucket may already exist"
+
+          # Verify buckets
+          echo "=== Verifying buckets ==="
+          aws s3 ls --endpoint-url=$ENDPOINT
+
+          echo "=== Testing access to buckets ==="
+          aws s3 ls s3://velero-cluster-backups --endpoint-url=$ENDPOINT && echo "✅ velero-cluster-backups OK"
+          aws s3 ls s3://velero-pv-backups --endpoint-url=$ENDPOINT && echo "✅ velero-pv-backups OK"
+
+          # Restart Velero to pick up new credentials
+          echo "Restarting Velero deployment..."
+          kubectl rollout restart deployment/velero -n $VELERO_NAMESPACE || true
+
+          echo "=== Bucket initialization complete ==="
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+---
+# ServiceAccount for the init job
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: velero-bucket-init
+  namespace: velero
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+---
+# Role to read Rook secrets and manage Velero secrets
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: velero-bucket-init
+  namespace: velero
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "create", "update", "patch"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: velero-bucket-init
+  namespace: velero
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: velero-bucket-init
+subjects:
+- kind: ServiceAccount
+  name: velero-bucket-init
+  namespace: velero
+---
+# Role to read Rook secrets from rook-ceph namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: velero-bucket-init-rook-reader
+  namespace: rook-ceph
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["rook-ceph-object-user-homelab-objectstore-velero"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: velero-bucket-init-rook-reader
+  namespace: rook-ceph
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: velero-bucket-init-rook-reader
+subjects:
+- kind: ServiceAccount
+  name: velero-bucket-init
+  namespace: velero
