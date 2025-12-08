@@ -86,12 +86,14 @@ spec:
               This impacts HA failover RPO and read replica freshness.
 
         # P2: Failed WAL archiving
+        # Only alert if WAL archiving is configured (failed_count > 0 indicates archiving is active)
+        # Homelab clusters without backup don't export this metric or have failed_count=0
         - alert: CNPGLastFailedArchiveTime
           expr: |
-            time() - cnpg_pg_stat_archiver_last_failed_time > 300
+            (time() - cnpg_pg_stat_archiver_last_failed_time < 3600)
             and
-            cnpg_pg_stat_archiver_last_failed_time > 0
-          for: 5m
+            cnpg_pg_stat_archiver_failed_count > 0
+          for: 10m
           labels:
             severity: warning
             component: postgresql
@@ -100,7 +102,7 @@ spec:
             summary: "PostgreSQL WAL archiving failures detected"
             description: |
               PostgreSQL pod {{ $labels.pod }} in namespace {{ $labels.namespace }}
-              has failed WAL archiving for more than 5 minutes.
+              has failed WAL archiving in the last hour.
               This breaks backup continuity and PITR capability.
 
         # P3: Deadlocks (>10 deadlocks in 5 minutes)
