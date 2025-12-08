@@ -15,61 +15,46 @@ commonAnnotations:
 
 namespace: kafka
 
-resources:
-  # NOTE: Namespace managed by operators ArgoCD app (avoids SharedResourceWarning)
-  - kafka-metrics-config.yaml
-  # Kafka Custom Resources - deployed after operator (wave 12)
-  - kafka-cluster.yaml
-  - kafka-topic.yaml
-  # Kafka Workload Monitoring
-  - kafka-exporter-service.yaml  # Kafka Exporter metrics Service
-  - kafka-exporter-servicemonitor.yaml   # Prometheus ServiceMonitor
+# DISABLED: Kafka temporarily disabled to save ~4GB RAM for Wazuh
+# Uncomment resources below to re-enable Kafka
+# resources:
+#   # NOTE: Namespace managed by operators ArgoCD app (avoids SharedResourceWarning)
+#   - kafka-metrics-config.yaml
+#   # Kafka Custom Resources - deployed after operator (wave 12)
+#   - kafka-cluster.yaml
+#   - kafka-topic.yaml
+#   # Kafka Workload Monitoring
+#   - kafka-exporter-service.yaml  # Kafka Exporter metrics Service
+#   - kafka-exporter-servicemonitor.yaml   # Prometheus ServiceMonitor
 
-# 🚨 CRITICAL INFRASTRUCTURE AS CODE: Service Labeling für Grafana Dashboard Discovery
-# ===================================================================================
-#
-# 🎯 PROBLEM: Kafka Services haben NICHT die Labels die ServiceMonitor braucht!
-# 🎯 LÖSUNG: Kustomize patches fügen automatisch die CRITICAL labels hinzu!
-#
-# 🔧 WAS PASSIERT:
-# 1. Strimzi Kafka Operator erstellt "my-cluster-kafka-brokers" service
-# 2. Service hat NUR: app.kubernetes.io/name=kafka, strimzi.io/cluster=my-cluster
-# 3. ServiceMonitor sucht: app=kafka, component=kafka-broker, release=prometheus-operator
-# 4. MISMATCH = keine metrics in Grafana! 😭
-# 5. Diese patches fügen fehlende labels AUTOMATISCH hinzu! 🎉
-#
-# 🎛️ RULE: JEDER Service der in Grafana sichtbar sein soll MUSS haben:
-# - release: prometheus-operator  ← Prometheus entdeckt nur Services mit diesem label
-# - app: [SERVICE-NAME]          ← ServiceMonitor selector requirement
-# - component: [SERVICE-TYPE]    ← Zusätzliche kategorisierung
-#
-patches:
-  # 🎯 KAFKA BROKERS SERVICE LABELING (CRITICAL für Dashboard Data!)
-  - target:
-      kind: Service
-      name: my-cluster-kafka-brokers
-    patch: |-
-      - op: add
-        path: /metadata/labels/app
-        value: kafka
-      - op: add
-        path: /metadata/labels/component
-        value: kafka-broker
-      - op: add
-        path: /metadata/labels/release
-        value: prometheus-operator
+resources: []
 
-  # 🔧 KAFKA EXPORTER SERVICE SELECTOR FIX - Override commonLabels selector pollution
-  - target:
-      kind: Service
-      name: kafka-exporter-metrics
-    patch: |-
-      - op: replace
-        path: /spec/selector
-        value:
-          strimzi.io/cluster: my-cluster
-          strimzi.io/name: my-cluster-kafka-exporter
-
-patchesStrategicMerge:
-  # 🔧 Fix service selectors for Strimzi-generated pods (Enterprise vs Operator conflict)
-  - kafka-service-selector-fix.yaml
+# 🚨 DISABLED: All patches disabled while Kafka is disabled
+# Uncomment below when re-enabling Kafka resources
+#
+# patches:
+#   - target:
+#       kind: Service
+#       name: my-cluster-kafka-brokers
+#     patch: |-
+#       - op: add
+#         path: /metadata/labels/app
+#         value: kafka
+#       - op: add
+#         path: /metadata/labels/component
+#         value: kafka-broker
+#       - op: add
+#         path: /metadata/labels/release
+#         value: prometheus-operator
+#   - target:
+#       kind: Service
+#       name: kafka-exporter-metrics
+#     patch: |-
+#       - op: replace
+#         path: /spec/selector
+#         value:
+#           strimzi.io/cluster: my-cluster
+#           strimzi.io/name: my-cluster-kafka-exporter
+#
+# patchesStrategicMerge:
+#   - kafka-service-selector-fix.yaml

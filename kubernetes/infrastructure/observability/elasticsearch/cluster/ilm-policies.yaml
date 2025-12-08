@@ -320,6 +320,7 @@ spec:
               echo "[8/9] Creating index templates with ILM policy mapping..."
 
               # Template for CRITICAL logs (*.critical-*)
+              # NOTE: number_of_replicas=0 for single-node cluster
               curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
                 "${ES_URL}/_index_template/logs-critical-template" \
                 -H 'Content-Type: application/json' \
@@ -332,7 +333,7 @@ spec:
                       "index.lifecycle.name": "logs-critical",
                       "index.codec": "best_compression",
                       "index.number_of_shards": 1,
-                      "index.number_of_replicas": 1
+                      "index.number_of_replicas": 0
                     }
                   },
                   "_meta": { "managed_by": "talos-homelab-enterprise" }
@@ -352,7 +353,7 @@ spec:
                       "index.lifecycle.name": "logs-standard",
                       "index.codec": "best_compression",
                       "index.number_of_shards": 1,
-                      "index.number_of_replicas": 1
+                      "index.number_of_replicas": 0
                     }
                   },
                   "_meta": { "managed_by": "talos-homelab-enterprise" }
@@ -372,7 +373,7 @@ spec:
                       "index.lifecycle.name": "logs-operational",
                       "index.codec": "best_compression",
                       "index.number_of_shards": 1,
-                      "index.number_of_replicas": 1
+                      "index.number_of_replicas": 0
                     }
                   },
                   "_meta": { "managed_by": "talos-homelab-enterprise" }
@@ -392,14 +393,15 @@ spec:
                       "index.lifecycle.name": "logs-debug",
                       "index.codec": "best_compression",
                       "index.number_of_shards": 1,
-                      "index.number_of_replicas": 1
+                      "index.number_of_replicas": 0
                     }
                   },
                   "_meta": { "managed_by": "talos-homelab-enterprise" }
                 }'
               echo "  - logs-debug-template (7d retention)"
 
-              # Template for Jaeger traces
+              # Template for Jaeger traces (NO ILM - Jaeger manages its own daily indices)
+              # Jaeger creates jaeger-span-YYYY-MM-DD indices which conflict with rollover-based ILM
               curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
                 "${ES_URL}/_index_template/jaeger-traces-template" \
                 -H 'Content-Type: application/json' \
@@ -408,15 +410,14 @@ spec:
                   "priority": 600,
                   "template": {
                     "settings": {
-                      "index.lifecycle.name": "traces-short",
                       "index.codec": "best_compression",
                       "index.number_of_shards": 1,
-                      "index.number_of_replicas": 1
+                      "index.number_of_replicas": 0
                     }
                   },
-                  "_meta": { "managed_by": "talos-homelab-enterprise" }
+                  "_meta": { "managed_by": "talos-homelab-enterprise", "note": "No ILM - Jaeger manages daily indices" }
                 }'
-              echo "  - jaeger-traces-template (7d retention)"
+              echo "  - jaeger-traces-template (no ILM - Jaeger managed)"
               echo " - Index templates created!"
 
               echo ""
