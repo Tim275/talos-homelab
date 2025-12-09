@@ -1,0 +1,139 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: oms-stock
+  namespace: grafana
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: dashboard
+    dashboard-tier: tier2-platform
+spec:
+  allowCrossNamespaceImport: true
+  folder: "OMS"
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  json: |
+    {
+      "title": "OMS: Stock Service",
+      "uid": "oms-stock",
+      "tags": ["oms", "stock", "grpc", "postgresql", "redis"],
+      "timezone": "utc",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": {"from": "now-1h", "to": "now"},
+      "panels": [
+        {
+          "title": "gRPC RPS",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
+          "targets": [{"expr": "sum(rate(grpc_server_handled_total{job=~\".*stock.*\"}[5m]))", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "blue"}]}, "unit": "reqps"}}
+        },
+        {
+          "title": "gRPC Error Rate",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
+          "targets": [{"expr": "sum(rate(grpc_server_handled_total{job=~\".*stock.*\", grpc_code!=\"OK\"}[5m])) / sum(rate(grpc_server_handled_total{job=~\".*stock.*\"}[5m])) * 100 or vector(0)", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 1, "color": "yellow"}, {"value": 5, "color": "red"}]}, "unit": "percent"}}
+        },
+        {
+          "title": "PostgreSQL Connections",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0},
+          "targets": [{"expr": "sum(db_sql_connections_open{job=~\".*stock.*\"})", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 20, "color": "yellow"}, {"value": 50, "color": "red"}]}, "unit": "short"}}
+        },
+        {
+          "title": "Redis Commands/s",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0},
+          "targets": [{"expr": "sum(rate(redis_commands_total{namespace=\"oms\"}[5m]))", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "blue"}]}, "unit": "ops"}}
+        },
+        {
+          "title": "Redis Hit Rate",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0},
+          "targets": [{"expr": "sum(redis_keyspace_hits_total{namespace=\"oms\"}) / (sum(redis_keyspace_hits_total{namespace=\"oms\"}) + sum(redis_keyspace_misses_total{namespace=\"oms\"})) * 100 or vector(0)", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "red"}, {"value": 80, "color": "yellow"}, {"value": 95, "color": "green"}]}, "unit": "percent"}}
+        },
+        {
+          "title": "Redis Memory",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0},
+          "targets": [{"expr": "redis_memory_used_bytes{namespace=\"oms\"}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "green"}]}, "unit": "bytes"}}
+        },
+        {
+          "title": "gRPC Request Rate by Method",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "targets": [{"expr": "sum by (grpc_method) (rate(grpc_server_handled_total{job=~\".*stock.*\"}[5m]))", "legendFormat": "{{grpc_method}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"legend": {"displayMode": "table", "placement": "right"}},
+          "fieldConfig": {"defaults": {"custom": {"lineWidth": 2, "fillOpacity": 10}, "unit": "reqps"}}
+        },
+        {
+          "title": "gRPC Latency by Method (P95)",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "targets": [{"expr": "histogram_quantile(0.95, sum by (grpc_method, le) (rate(grpc_server_handling_seconds_bucket{job=~\".*stock.*\"}[5m])))", "legendFormat": "{{grpc_method}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"legend": {"displayMode": "table", "placement": "right"}},
+          "fieldConfig": {"defaults": {"custom": {"lineWidth": 2, "fillOpacity": 10}, "unit": "s"}}
+        },
+        {
+          "title": "PostgreSQL - Connection Pool",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+          "targets": [
+            {"expr": "db_sql_connections_open{job=~\".*stock.*\"}", "legendFormat": "Open", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+            {"expr": "db_sql_connections_in_use{job=~\".*stock.*\"}", "legendFormat": "In Use", "refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+            {"expr": "db_sql_connections_idle{job=~\".*stock.*\"}", "legendFormat": "Idle", "refId": "C", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+          "fieldConfig": {"defaults": {"custom": {"lineWidth": 2, "fillOpacity": 20}, "unit": "short"}}
+        },
+        {
+          "title": "Redis - Cache Operations",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+          "targets": [
+            {"expr": "sum(rate(redis_keyspace_hits_total{namespace=\"oms\"}[5m]))", "legendFormat": "Hits", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+            {"expr": "sum(rate(redis_keyspace_misses_total{namespace=\"oms\"}[5m]))", "legendFormat": "Misses", "refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+          "fieldConfig": {"defaults": {"custom": {"lineWidth": 2, "fillOpacity": 20}, "unit": "ops"}, "overrides": [{"matcher": {"id": "byName", "options": "Hits"}, "properties": [{"id": "color", "value": {"fixedColor": "green", "mode": "fixed"}}]}, {"matcher": {"id": "byName", "options": "Misses"}, "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}]}]}
+        },
+        {
+          "title": "PostgreSQL Query Latency",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+          "targets": [
+            {"expr": "histogram_quantile(0.50, sum(rate(db_sql_latency_seconds_bucket{job=~\".*stock.*\"}[5m])) by (le))", "legendFormat": "P50", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+            {"expr": "histogram_quantile(0.95, sum(rate(db_sql_latency_seconds_bucket{job=~\".*stock.*\"}[5m])) by (le))", "legendFormat": "P95", "refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+            {"expr": "histogram_quantile(0.99, sum(rate(db_sql_latency_seconds_bucket{job=~\".*stock.*\"}[5m])) by (le))", "legendFormat": "P99", "refId": "C", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+          "fieldConfig": {"defaults": {"custom": {"lineWidth": 2, "fillOpacity": 10}, "unit": "s"}}
+        },
+        {
+          "title": "Redis Command Latency",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+          "targets": [
+            {"expr": "histogram_quantile(0.50, sum(rate(redis_command_duration_seconds_bucket{namespace=\"oms\"}[5m])) by (le))", "legendFormat": "P50", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+            {"expr": "histogram_quantile(0.95, sum(rate(redis_command_duration_seconds_bucket{namespace=\"oms\"}[5m])) by (le))", "legendFormat": "P95", "refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+            {"expr": "histogram_quantile(0.99, sum(rate(redis_command_duration_seconds_bucket{namespace=\"oms\"}[5m])) by (le))", "legendFormat": "P99", "refId": "C", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+          "fieldConfig": {"defaults": {"custom": {"lineWidth": 2, "fillOpacity": 10}, "unit": "s"}}
+        }
+      ]
+    }
