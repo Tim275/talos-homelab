@@ -56,6 +56,16 @@ End-user applications deployed in dev, staging, and production environments:
         <td><a href="kubernetes/apps/base/kafka-demo/">Kafka User Producer</a></td>
         <td>Kafka message producer for user registration events</td>
     </tr>
+    <tr>
+        <td>🍔</td>
+        <td><a href="https://github.com/Tim275/oms-k8s">OMS</a></td>
+        <td>Order Management System - Go microservices with distributed tracing (gateway, orders, payments, stock, kitchen)</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://dbeaver.io/wp-content/uploads/2015/09/beaver-head.png"></td>
+        <td><a href="https://dbeaver.io/docs/cloudbeaver/">CloudBeaver</a></td>
+        <td>Web-based database management UI for PostgreSQL, MongoDB and more</td>
+    </tr>
 </table>
 
 ## 🎛️ Kubernetes Operators
@@ -127,6 +137,11 @@ Enterprise operators managing lifecycle, scaling, and HA for complex stateful wo
         <td><img width="32" src="https://tailscale.com/files/press/tailscale-symbol-color.svg"></td>
         <td><a href="https://tailscale.com/kb/1236/kubernetes-operator">Tailscale Operator</a></td>
         <td>VPN connectivity operator managing connectors and subnet routes</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://raw.githubusercontent.com/argoproj/argo-cd/master/docs/assets/argo.png"></td>
+        <td><a href="https://argo-rollouts.readthedocs.io/">Argo Rollouts</a></td>
+        <td>Progressive delivery controller with blue-green and canary deployments</td>
     </tr>
     <tr>
         <td><img width="32" src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/postgresql.svg"></td>
