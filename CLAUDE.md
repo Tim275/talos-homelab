@@ -1,1 +1,0 @@
-- bevor es weiter geht ob wir alle alerts auch enterprise bzw 110% production ready machen... auch vom style.... idk vlt optional durch claude api laufen lassen um tipps zu haben was man tun sollte ?
