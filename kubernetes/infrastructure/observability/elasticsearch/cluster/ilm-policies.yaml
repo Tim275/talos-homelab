@@ -400,24 +400,116 @@ spec:
                 }'
               echo "  - logs-debug-template (7d retention)"
 
-              # Template for Jaeger traces (NO ILM - Jaeger manages its own daily indices)
+              # Template for Jaeger SPAN traces (NO ILM - Jaeger manages its own daily indices)
               # Jaeger creates jaeger-span-YYYY-MM-DD indices which conflict with rollover-based ILM
+              # IMPORTANT: Must include full mapping to avoid dynamic text mapping for keyword fields
               curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
-                "${ES_URL}/_index_template/jaeger-traces-template" \
+                "${ES_URL}/_index_template/jaeger-span-template" \
                 -H 'Content-Type: application/json' \
                 -d '{
-                  "index_patterns": ["jaeger-span-*", "jaeger-service-*"],
+                  "index_patterns": ["jaeger-span-*"],
+                  "priority": 600,
+                  "template": {
+                    "settings": {
+                      "index.codec": "best_compression",
+                      "index.number_of_shards": 3,
+                      "index.number_of_replicas": 1,
+                      "index.mapping.nested_fields.limit": 50
+                    },
+                    "mappings": {
+                      "dynamic_templates": [
+                        { "span_tags_map": { "path_match": "tag.*", "mapping": { "type": "keyword", "ignore_above": 256 } } },
+                        { "process_tags_map": { "path_match": "process.tag.*", "mapping": { "type": "keyword", "ignore_above": 256 } } }
+                      ],
+                      "properties": {
+                        "traceID": { "type": "keyword" },
+                        "spanID": { "type": "keyword" },
+                        "parentSpanID": { "type": "keyword" },
+                        "operationName": { "type": "keyword" },
+                        "flags": { "type": "integer" },
+                        "startTime": { "type": "long" },
+                        "startTimeMillis": { "type": "date", "format": "epoch_millis" },
+                        "duration": { "type": "long" },
+                        "tag": { "type": "object", "dynamic": true },
+                        "tags": {
+                          "type": "nested",
+                          "dynamic": false,
+                          "properties": {
+                            "key": { "type": "keyword" },
+                            "type": { "type": "keyword" },
+                            "value": { "type": "keyword" }
+                          }
+                        },
+                        "logs": {
+                          "type": "nested",
+                          "dynamic": false,
+                          "properties": {
+                            "timestamp": { "type": "long" },
+                            "fields": {
+                              "type": "nested",
+                              "dynamic": false,
+                              "properties": {
+                                "key": { "type": "keyword" },
+                                "type": { "type": "keyword" },
+                                "value": { "type": "keyword" }
+                              }
+                            }
+                          }
+                        },
+                        "process": {
+                          "properties": {
+                            "serviceName": { "type": "keyword" },
+                            "tag": { "type": "object", "dynamic": true },
+                            "tags": {
+                              "type": "nested",
+                              "dynamic": false,
+                              "properties": {
+                                "key": { "type": "keyword" },
+                                "type": { "type": "keyword" },
+                                "value": { "type": "keyword" }
+                              }
+                            }
+                          }
+                        },
+                        "references": {
+                          "type": "nested",
+                          "dynamic": false,
+                          "properties": {
+                            "refType": { "type": "keyword" },
+                            "traceID": { "type": "keyword" },
+                            "spanID": { "type": "keyword" }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "_meta": { "managed_by": "talos-homelab-enterprise", "note": "No ILM - Jaeger manages daily indices" }
+                }'
+              echo "  - jaeger-span-template (no ILM - Jaeger managed)"
+
+              # Template for Jaeger SERVICE indices
+              curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
+                "${ES_URL}/_index_template/jaeger-service-template" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "index_patterns": ["jaeger-service-*"],
                   "priority": 600,
                   "template": {
                     "settings": {
                       "index.codec": "best_compression",
                       "index.number_of_shards": 1,
-                      "index.number_of_replicas": 0
+                      "index.number_of_replicas": 1
+                    },
+                    "mappings": {
+                      "properties": {
+                        "serviceName": { "type": "keyword" },
+                        "operationName": { "type": "keyword" }
+                      }
                     }
                   },
                   "_meta": { "managed_by": "talos-homelab-enterprise", "note": "No ILM - Jaeger manages daily indices" }
                 }'
-              echo "  - jaeger-traces-template (no ILM - Jaeger managed)"
+              echo "  - jaeger-service-template (no ILM - Jaeger managed)"
               echo " - Index templates created!"
 
               echo ""
@@ -431,7 +523,8 @@ spec:
               echo "logs-standard     | 90 days   | logs-*.warn-*        | OMS apps, warnings"
               echo "logs-operational  | 30 days   | logs-*.info-*        | Infrastructure, n8n, info"
               echo "logs-debug        | 7 days    | logs-*.debug-*       | Debug/trace logs"
-              echo "traces-short      | 7 days    | jaeger-span/service  | Jaeger traces"
+              echo "(no ILM)          | n/a       | jaeger-span-*        | Jaeger span traces"
+              echo "(no ILM)          | n/a       | jaeger-service-*     | Jaeger service registry"
               echo ""
               echo "All ILM policies and index templates configured!"
           env:
