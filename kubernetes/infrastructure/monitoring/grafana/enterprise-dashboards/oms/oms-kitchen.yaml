@@ -1,0 +1,96 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: oms-kitchen
+  namespace: grafana
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: dashboard
+    dashboard-tier: tier2-platform
+spec:
+  allowCrossNamespaceImport: true
+  folder: "OMS"
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  json: |
+    {
+      "title": "OMS: Kitchen Services",
+      "uid": "oms-kitchen",
+      "tags": ["oms", "kitchen", "http", "websocket"],
+      "timezone": "utc",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": {"from": "now-1h", "to": "now"},
+      "panels": [
+        {
+          "title": "Kitchen - Request Rate",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+          "targets": [{"expr": "sum(rate(kitchen_http_requests_total[5m]))", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "blue"}]}, "unit": "reqps"}}
+        },
+        {
+          "title": "Kitchen - Error Rate",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+          "targets": [{"expr": "sum(rate(kitchen_http_requests_total{status=~\"5..\"}[5m])) / sum(rate(kitchen_http_requests_total[5m])) * 100 or vector(0)", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 1, "color": "yellow"}, {"value": 5, "color": "red"}]}, "unit": "percent"}}
+        },
+        {
+          "title": "Kitchen - P95 Latency",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+          "targets": [{"expr": "histogram_quantile(0.95, sum(rate(kitchen_http_request_duration_seconds_bucket[5m])) by (le))", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 0.3, "color": "yellow"}, {"value": 1, "color": "red"}]}, "unit": "s"}}
+        },
+        {
+          "title": "Kitchen Display - Active",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+          "targets": [{"expr": "up{job=~\".*kitchen-display.*\"}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "red"}, {"value": 1, "color": "green"}]}, "mappings": [{"type": "value", "options": {"0": {"text": "DOWN"}, "1": {"text": "UP"}}}]}}
+        },
+        {
+          "title": "Kitchen - Request Rate Over Time",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "targets": [{"expr": "sum by (path) (rate(kitchen_http_requests_total[5m]))", "legendFormat": "{{path}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"legend": {"displayMode": "table", "placement": "right"}},
+          "fieldConfig": {"defaults": {"custom": {"lineWidth": 2, "fillOpacity": 10}, "unit": "reqps"}}
+        },
+        {
+          "title": "Kitchen - Latency Distribution",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "targets": [
+            {"expr": "histogram_quantile(0.50, sum(rate(kitchen_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "P50", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+            {"expr": "histogram_quantile(0.95, sum(rate(kitchen_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "P95", "refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+            {"expr": "histogram_quantile(0.99, sum(rate(kitchen_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "P99", "refId": "C", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+          "fieldConfig": {"defaults": {"custom": {"lineWidth": 2, "fillOpacity": 10}, "unit": "s"}}
+        },
+        {
+          "title": "Kitchen - HTTP Status Codes",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+          "targets": [{"expr": "sum by (status) (rate(kitchen_http_requests_total[5m]))", "legendFormat": "{{status}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+          "fieldConfig": {"defaults": {"custom": {"lineWidth": 2, "fillOpacity": 20, "stacking": {"mode": "normal"}}, "unit": "reqps"}, "overrides": [{"matcher": {"id": "byRegexp", "options": "2.."}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}]}, {"matcher": {"id": "byRegexp", "options": "4.."}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "yellow"}}]}, {"matcher": {"id": "byRegexp", "options": "5.."}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]}]}
+        },
+        {
+          "title": "Kitchen - gRPC Client Calls",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+          "targets": [{"expr": "sum by (grpc_method) (rate(grpc_client_handled_total{job=~\".*kitchen.*\"}[5m]))", "legendFormat": "{{grpc_method}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"legend": {"displayMode": "table", "placement": "right"}},
+          "fieldConfig": {"defaults": {"custom": {"lineWidth": 2, "fillOpacity": 10}, "unit": "reqps"}}
+        }
+      ]
+    }

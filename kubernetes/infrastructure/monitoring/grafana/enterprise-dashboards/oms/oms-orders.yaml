@@ -1,0 +1,138 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: oms-orders
+  namespace: grafana
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: dashboard
+    dashboard-tier: tier2-platform
+spec:
+  allowCrossNamespaceImport: true
+  folder: "OMS"
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  json: |
+    {
+      "title": "OMS: Orders Service",
+      "uid": "oms-orders",
+      "tags": ["oms", "orders", "grpc", "mongodb", "stripe"],
+      "timezone": "utc",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": {"from": "now-1h", "to": "now"},
+      "panels": [
+        {
+          "title": "Orders Created",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
+          "targets": [{"expr": "sum(orders_orders_created_total)", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "blue"}]}, "unit": "short"}}
+        },
+        {
+          "title": "Orders Paid",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
+          "targets": [{"expr": "sum(orders_orders_paid_total)", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "green"}]}, "unit": "short"}}
+        },
+        {
+          "title": "Payment Links Created",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0},
+          "targets": [{"expr": "sum(orders_payment_links_created_total)", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "purple"}]}, "unit": "short"}}
+        },
+        {
+          "title": "gRPC RPS",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0},
+          "targets": [{"expr": "sum(rate(grpc_server_handled_total{job=~\".*orders.*\"}[5m]))", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "blue"}]}, "unit": "reqps"}}
+        },
+        {
+          "title": "Stripe API P95",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0},
+          "targets": [{"expr": "histogram_quantile(0.95, sum(rate(orders_stripe_api_duration_seconds_bucket[5m])) by (le))", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 1, "color": "yellow"}, {"value": 3, "color": "red"}]}, "unit": "s"}}
+        },
+        {
+          "title": "Conversion Rate",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0},
+          "targets": [{"expr": "sum(orders_orders_paid_total) / sum(orders_orders_created_total) * 100 or vector(0)", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "red"}, {"value": 50, "color": "yellow"}, {"value": 80, "color": "green"}]}, "unit": "percent"}}
+        },
+        {
+          "title": "Orders Over Time",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "targets": [
+            {"expr": "sum(increase(orders_orders_created_total[5m]))", "legendFormat": "Created", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+            {"expr": "sum(increase(orders_orders_paid_total[5m]))", "legendFormat": "Paid", "refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+            {"expr": "sum(increase(orders_payment_links_created_total[5m]))", "legendFormat": "Payment Links", "refId": "C", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+          "fieldConfig": {"defaults": {"custom": {"lineWidth": 2, "fillOpacity": 20}, "unit": "short"}}
+        },
+        {
+          "title": "Stripe API Latency",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "targets": [
+            {"expr": "histogram_quantile(0.50, sum(rate(orders_stripe_api_duration_seconds_bucket[5m])) by (le))", "legendFormat": "P50", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+            {"expr": "histogram_quantile(0.95, sum(rate(orders_stripe_api_duration_seconds_bucket[5m])) by (le))", "legendFormat": "P95", "refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+            {"expr": "histogram_quantile(0.99, sum(rate(orders_stripe_api_duration_seconds_bucket[5m])) by (le))", "legendFormat": "P99", "refId": "C", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+          "fieldConfig": {"defaults": {"custom": {"lineWidth": 2, "fillOpacity": 10}, "unit": "s"}}
+        },
+        {
+          "title": "gRPC Request Rate by Method",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+          "targets": [{"expr": "sum by (grpc_method) (rate(grpc_server_handled_total{job=~\".*orders.*\"}[5m]))", "legendFormat": "{{grpc_method}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"legend": {"displayMode": "table", "placement": "right"}},
+          "fieldConfig": {"defaults": {"custom": {"lineWidth": 2, "fillOpacity": 10}, "unit": "reqps"}}
+        },
+        {
+          "title": "gRPC Error Rate",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+          "targets": [{"expr": "sum by (grpc_code) (rate(grpc_server_handled_total{job=~\".*orders.*\", grpc_code!=\"OK\"}[5m]))", "legendFormat": "{{grpc_code}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+          "fieldConfig": {"defaults": {"custom": {"lineWidth": 2, "fillOpacity": 10}, "unit": "reqps"}, "overrides": [{"matcher": {"id": "byRegexp", "options": ".*"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]}]}
+        },
+        {
+          "title": "Order Status Distribution",
+          "type": "piechart",
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 20},
+          "targets": [{"expr": "orders_by_status_current", "legendFormat": "{{status}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"legend": {"displayMode": "table", "placement": "right", "values": ["value", "percent"]}, "pieType": "donut"}
+        },
+        {
+          "title": "Revenue by Status",
+          "type": "bargauge",
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 20},
+          "targets": [{"expr": "sum by (status) (order_revenue_euros_total)", "legendFormat": "{{status}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"displayMode": "gradient", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"unit": "currencyEUR"}}
+        },
+        {
+          "title": "Order Preparation Time",
+          "type": "histogram",
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 20},
+          "targets": [{"expr": "sum(increase(order_prep_time_seconds_bucket[1h])) by (le)", "refId": "A", "format": "heatmap", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "fieldConfig": {"defaults": {"unit": "s"}}
+        }
+      ]
+    }

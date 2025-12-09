@@ -1,0 +1,138 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: oms-overview
+  namespace: grafana
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: dashboard
+    dashboard-tier: tier2-platform
+spec:
+  allowCrossNamespaceImport: true
+  folder: "OMS"
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  json: |
+    {
+      "title": "OMS: Overview",
+      "uid": "oms-overview",
+      "tags": ["oms", "microservices", "overview"],
+      "timezone": "utc",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": {"from": "now-1h", "to": "now"},
+      "panels": [
+        {
+          "title": "Orders Created",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
+          "targets": [{"expr": "sum(orders_orders_created_total)", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}},
+          "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"value": 0, "color": "blue"}]}, "unit": "short"}}
+        },
+        {
+          "title": "Orders Paid",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
+          "targets": [{"expr": "sum(orders_orders_paid_total)", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}},
+          "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"value": 0, "color": "green"}]}, "unit": "short"}}
+        },
+        {
+          "title": "Revenue (EUR)",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0},
+          "targets": [{"expr": "sum(order_revenue_euros_total{status=\"paid\"})", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}},
+          "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"value": 0, "color": "green"}]}, "unit": "currencyEUR"}}
+        },
+        {
+          "title": "Gateway RPS",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0},
+          "targets": [{"expr": "sum(rate(gateway_http_requests_total[5m]))", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}},
+          "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"value": 0, "color": "blue"}, {"value": 100, "color": "green"}]}, "unit": "reqps"}}
+        },
+        {
+          "title": "Error Rate",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0},
+          "targets": [{"expr": "sum(rate(gateway_http_requests_total{status=~\"5..\"}[5m])) / sum(rate(gateway_http_requests_total[5m])) * 100 or vector(0)", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}},
+          "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"value": 0, "color": "green"}, {"value": 1, "color": "yellow"}, {"value": 5, "color": "red"}]}, "unit": "percent", "max": 100}}
+        },
+        {
+          "title": "P99 Latency",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0},
+          "targets": [{"expr": "histogram_quantile(0.99, sum(rate(gateway_http_request_duration_seconds_bucket[5m])) by (le))", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}},
+          "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"value": 0, "color": "green"}, {"value": 0.5, "color": "yellow"}, {"value": 1, "color": "red"}]}, "unit": "s"}}
+        },
+        {
+          "title": "Request Rate by Service",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "targets": [
+            {"expr": "sum(rate(gateway_http_requests_total[5m]))", "legendFormat": "Gateway", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+            {"expr": "sum(rate(grpc_server_handled_total{job=~\".*stock.*\"}[5m]))", "legendFormat": "Stock (gRPC)", "refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+            {"expr": "sum(rate(grpc_server_handled_total{job=~\".*orders.*\"}[5m]))", "legendFormat": "Orders (gRPC)", "refId": "C", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+          "fieldConfig": {"defaults": {"custom": {"lineWidth": 2, "fillOpacity": 10}, "unit": "reqps"}}
+        },
+        {
+          "title": "Latency Distribution (P50/P95/P99)",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "targets": [
+            {"expr": "histogram_quantile(0.50, sum(rate(gateway_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "P50", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+            {"expr": "histogram_quantile(0.95, sum(rate(gateway_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "P95", "refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+            {"expr": "histogram_quantile(0.99, sum(rate(gateway_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "P99", "refId": "C", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+          "fieldConfig": {"defaults": {"custom": {"lineWidth": 2, "fillOpacity": 10}, "unit": "s"}}
+        },
+        {
+          "title": "Orders Over Time",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+          "targets": [
+            {"expr": "sum(increase(orders_orders_created_total[5m]))", "legendFormat": "Created", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+            {"expr": "sum(increase(orders_orders_paid_total[5m]))", "legendFormat": "Paid", "refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+          ],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+          "fieldConfig": {"defaults": {"custom": {"lineWidth": 2, "fillOpacity": 20, "drawStyle": "bars"}, "unit": "short"}}
+        },
+        {
+          "title": "Items Sold",
+          "type": "piechart",
+          "gridPos": {"h": 8, "w": 6, "x": 12, "y": 12},
+          "targets": [{"expr": "sum by (item_name) (items_sold_total)", "legendFormat": "{{item_name}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"legend": {"displayMode": "table", "placement": "right", "values": ["value", "percent"]}, "pieType": "pie"}
+        },
+        {
+          "title": "Order Value Distribution",
+          "type": "histogram",
+          "gridPos": {"h": 8, "w": 6, "x": 18, "y": 12},
+          "targets": [{"expr": "sum(increase(order_value_euros_bucket[1h])) by (le)", "refId": "A", "format": "heatmap", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+          "fieldConfig": {"defaults": {"unit": "currencyEUR"}}
+        },
+        {
+          "title": "Service Health",
+          "type": "table",
+          "gridPos": {"h": 6, "w": 24, "x": 0, "y": 20},
+          "targets": [
+            {"expr": "up{job=~\".*gateway.*|.*stock.*|.*orders.*|.*payments.*|.*kitchen.*\"}", "format": "table", "instant": true, "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+          ],
+          "transformations": [
+            {"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true, "container": true, "endpoint": true, "namespace": true, "pod": true, "service": true}, "renameByName": {"job": "Service", "instance": "Instance", "Value": "Status"}}}
+          ],
+          "fieldConfig": {"overrides": [{"matcher": {"id": "byName", "options": "Status"}, "properties": [{"id": "mappings", "value": [{"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}}]}]}]}
+        }
+      ]
+    }
