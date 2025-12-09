@@ -920,20 +920,20 @@ notifications:
               }]
             }
 
-  # 🚨 TRIGGERS - Production-grade with deduplication
+  # 🚨 TRIGGERS - Production-grade with deduplication and null-safety
   triggers:
     # ✅ PRODUCTION: Deployed = Sync succeeded AND healthy (not just sync)
     trigger.on-deployed: |
       - description: Application is synced and healthy
-        oncePer: app.status.operationState.syncResult.revision  # Deduplicate per deployment
+        oncePer: app.status.operationState.syncResult.revision
         send:
         - app-deployed
-        when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+        when: app.status.operationState != nil and app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
 
-    # ⚠️ PRODUCTION: Health degraded for >1 minute (not flapping)
+    # ⚠️ PRODUCTION: Health degraded (standalone, no operationState dependency)
     trigger.on-health-degraded: |
       - description: Application health is degraded
-        oncePer: app.status.operationState.syncResult.revision  # Don't spam on flapping
+        oncePer: app.metadata.name
         send:
         - app-health-degraded
         when: app.status.health.status == 'Degraded'
@@ -941,44 +941,41 @@ notifications:
     # 🚨 PRODUCTION: Sync failed (critical action needed)
     trigger.on-sync-failed: |
       - description: Application sync failed
-        oncePer: app.status.operationState.syncResult.revision  # One alert per failed sync
+        oncePer: app.status.operationState.syncResult.revision
         send:
         - app-sync-failed
-        when: app.status.operationState.phase in ['Error', 'Failed']
+        when: app.status.operationState != nil and app.status.operationState.phase in ['Error', 'Failed']
 
     # 🔄 DISABLED: Sync running (too verbose for production)
     # trigger.on-sync-running: |
     #   - description: Application is syncing
     #     send:
     #     - app-sync-running
-    #     when: app.status.operationState.phase in ['Running']
+    #     when: app.status.operationState != nil and app.status.operationState.phase in ['Running']
 
-    # ✅ DISABLED: Sync succeeded (on-deployed covers this with health check)
+    # ✅ Sync succeeded (separate from deployed for visibility)
     trigger.on-sync-succeeded: |
       - description: Application sync succeeded
-        oncePer: app.status.operationState.syncResult.revision  # Deduplicate
+        oncePer: app.status.operationState.syncResult.revision
         send:
         - app-sync-succeeded
-        when: app.status.operationState.phase in ['Succeeded']
+        when: app.status.operationState != nil and app.status.operationState.phase in ['Succeeded']
 
-    # 🚨 PRODUCTION FIX: OutOfSync with auto-sync disabled for >5min
-    # Don't alert on transient OutOfSync (auto-sync fixes in seconds)
-    # Only alert if OutOfSync AND auto-sync is disabled (manual intervention needed)
+    # 🚨 PRODUCTION: OutOfSync with auto-sync disabled (manual intervention needed)
     trigger.on-sync-status-unknown: |
       - description: Application out of sync with auto-sync disabled (manual intervention needed)
-        oncePer: app.status.sync.revision  # Prevent duplicate alerts for same revision
+        oncePer: app.metadata.name
         send:
         - app-sync-status-unknown
         when: app.status.sync.status == 'OutOfSync' and app.spec.syncPolicy.automated == nil
 
-    # 🚨 PRODUCTION FIX: Sync Failed + Degraded Health (critical combo)
-    # Alert when sync fails AND health is degraded (double failure)
+    # 🚨 PRODUCTION: Sync Failed + Degraded Health (critical combo)
     trigger.on-sync-failed-degraded: |
       - description: Application sync failed AND health degraded (critical)
-        oncePer: app.status.operationState.syncResult.revision  # Deduplicate per sync
+        oncePer: app.status.operationState.syncResult.revision
         send:
         - app-sync-failed
-        when: app.status.operationState.phase in ['Error', 'Failed'] and app.status.health.status == 'Degraded'
+        when: app.status.operationState != nil and app.status.operationState.phase in ['Error', 'Failed'] and app.status.health.status == 'Degraded'
 
   # 📢 DEFAULT SUBSCRIPTIONS - Production-grade triggers (no noise!)
   # Global subscription for all apps (can override per-app via annotations)
