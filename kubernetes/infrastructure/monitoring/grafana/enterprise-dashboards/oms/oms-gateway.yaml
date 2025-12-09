@@ -1,0 +1,107 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: oms-gateway
+  namespace: grafana
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: dashboard
+    dashboard-tier: tier2-platform
+spec:
+  allowCrossNamespaceImport: true
+  folder: "OMS"
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  json: |
+    {
+      "title": "OMS: Gateway Service",
+      "uid": "oms-gateway",
+      "tags": ["oms", "gateway", "http", "api"],
+      "timezone": "utc",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": {"from": "now-1h", "to": "now"},
+      "panels": [
+        {
+          "title": "Request Rate",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+          "targets": [{"expr": "sum(rate(gateway_http_requests_total[5m]))", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "blue"}]}, "unit": "reqps"}}
+        },
+        {
+          "title": "Error Rate",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+          "targets": [{"expr": "sum(rate(gateway_http_requests_total{status=~\"5..\"}[5m])) / sum(rate(gateway_http_requests_total[5m])) * 100 or vector(0)", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 1, "color": "yellow"}, {"value": 5, "color": "red"}]}, "unit": "percent"}}
+        },
+        {
+          "title": "P50 Latency",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0},
+          "targets": [{"expr": "histogram_quantile(0.50, sum(rate(gateway_http_request_duration_seconds_bucket[5m])) by (le))", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 0.1, "color": "yellow"}, {"value": 0.5, "color": "red"}]}, "unit": "s"}}
+        },
+        {
+          "title": "P95 Latency",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0},
+          "targets": [{"expr": "histogram_quantile(0.95, sum(rate(gateway_http_request_duration_seconds_bucket[5m])) by (le))", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 0.3, "color": "yellow"}, {"value": 1, "color": "red"}]}, "unit": "s"}}
+        },
+        {
+          "title": "P99 Latency",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0},
+          "targets": [{"expr": "histogram_quantile(0.99, sum(rate(gateway_http_request_duration_seconds_bucket[5m])) by (le))", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 0.5, "color": "yellow"}, {"value": 2, "color": "red"}]}, "unit": "s"}}
+        },
+        {
+          "title": "Request Rate by Endpoint",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "targets": [{"expr": "sum by (path) (rate(gateway_http_requests_total[5m]))", "legendFormat": "{{path}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"legend": {"displayMode": "table", "placement": "right", "sortBy": "Last *", "sortDesc": true}},
+          "fieldConfig": {"defaults": {"custom": {"lineWidth": 2, "fillOpacity": 10}, "unit": "reqps"}}
+        },
+        {
+          "title": "Latency by Endpoint",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "targets": [{"expr": "histogram_quantile(0.95, sum by (path, le) (rate(gateway_http_request_duration_seconds_bucket[5m])))", "legendFormat": "{{path}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"legend": {"displayMode": "table", "placement": "right", "sortBy": "Last *", "sortDesc": true}},
+          "fieldConfig": {"defaults": {"custom": {"lineWidth": 2, "fillOpacity": 10}, "unit": "s"}}
+        },
+        {
+          "title": "HTTP Status Codes",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+          "targets": [{"expr": "sum by (status) (rate(gateway_http_requests_total[5m]))", "legendFormat": "{{status}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+          "fieldConfig": {"defaults": {"custom": {"lineWidth": 2, "fillOpacity": 20, "stacking": {"mode": "normal"}}, "unit": "reqps"}, "overrides": [{"matcher": {"id": "byRegexp", "options": "2.."}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}]}, {"matcher": {"id": "byRegexp", "options": "4.."}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "yellow"}}]}, {"matcher": {"id": "byRegexp", "options": "5.."}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]}]}
+        },
+        {
+          "title": "Request Methods",
+          "type": "piechart",
+          "gridPos": {"h": 8, "w": 6, "x": 12, "y": 12},
+          "targets": [{"expr": "sum by (method) (increase(gateway_http_requests_total[1h]))", "legendFormat": "{{method}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"legend": {"displayMode": "table", "placement": "right", "values": ["value", "percent"]}, "pieType": "donut"}
+        },
+        {
+          "title": "Top Endpoints by Traffic",
+          "type": "bargauge",
+          "gridPos": {"h": 8, "w": 6, "x": 18, "y": 12},
+          "targets": [{"expr": "topk(10, sum by (path) (increase(gateway_http_requests_total[1h])))", "legendFormat": "{{path}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+          "options": {"displayMode": "gradient", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"unit": "short"}}
+        }
+      ]
+    }
