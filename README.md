@@ -275,6 +275,11 @@ Core cluster services including GitOps, networking, storage, backup, and observa
         <td><a href="https://ollama.com/">Ollama</a></td>
         <td>Self-hosted LLM inference engine for AI troubleshooting (DSGVO-compliant)</td>
     </tr>
+    <tr>
+        <td><img width="32" src="https://www.vectorlogo.zone/logos/telegram/telegram-icon.svg"></td>
+        <td>Telegram Bot</td>
+        <td>Mobile alerting - receives all Alertmanager notifications (P0-P4) via private bot</td>
+    </tr>
 </table>
 
 ## 🗄️ Platform Services
