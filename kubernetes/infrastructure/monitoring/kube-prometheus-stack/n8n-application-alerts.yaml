@@ -1,0 +1,303 @@
+# ============================================================================
+# N8N APPLICATION ALERTS
+# Enterprise Tier-0: n8n Automation Platform Monitoring
+# Covers: n8n-dev and n8n-prod namespaces
+# ============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: n8n-application-alerts
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+    prometheus: kube-prometheus-stack
+    app: n8n
+    tier: application
+spec:
+  groups:
+    # ========================================================================
+    # N8N CRITICAL ALERTS (P1)
+    # ========================================================================
+    - name: n8n.critical
+      interval: 30s
+      rules:
+        # P1: n8n PROD Pod down - CRITICAL (Production!)
+        - alert: N8NProdDown
+          expr: |
+            absent(kube_pod_status_phase{namespace="n8n-prod", pod=~".*n8n.*", phase="Running"})
+            or
+            sum(kube_pod_status_phase{namespace="n8n-prod", pod=~".*n8n.*", phase="Running"}) == 0
+          for: 2m
+          labels:
+            severity: critical
+            priority: p1
+            component: n8n
+            environment: prod
+            tier: application
+            layer: layer5
+          annotations:
+            summary: "n8n PRODUCTION is DOWN"
+            description: |
+              n8n PRODUCTION pod is not running!
+
+              Namespace: n8n-prod
+              Impact: All PRODUCTION automations/workflows stopped
+              Duration: >2 minutes
+
+              Check: kubectl -n n8n-prod get pods
+              Logs: kubectl -n n8n-prod logs -l app.kubernetes.io/name=n8n --tail=100
+
+        # P1: n8n DEV Pod down - WARNING (Dev environment)
+        - alert: N8NDevDown
+          expr: |
+            absent(kube_pod_status_phase{namespace="n8n-dev", pod=~".*n8n.*", phase="Running"})
+            or
+            sum(kube_pod_status_phase{namespace="n8n-dev", pod=~".*n8n.*", phase="Running"}) == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p2
+            component: n8n
+            environment: dev
+            tier: application
+            layer: layer5
+          annotations:
+            summary: "n8n DEV is DOWN"
+            description: |
+              n8n DEV pod is not running.
+
+              Namespace: n8n-dev
+              Impact: Dev/test automations stopped
+              Duration: >5 minutes
+
+              Check: kubectl -n n8n-dev get pods
+              Logs: kubectl -n n8n-dev logs -l app.kubernetes.io/name=n8n --tail=100
+
+        # P1: n8n Deployment has zero replicas (any namespace)
+        - alert: N8NDeploymentDown
+          expr: |
+            kube_deployment_status_replicas_available{namespace=~"n8n-.*", deployment=~".*n8n.*"} == 0
+            and
+            kube_deployment_spec_replicas{namespace=~"n8n-.*", deployment=~".*n8n.*"} > 0
+          for: 2m
+          labels:
+            severity: critical
+            priority: p1
+            component: n8n
+            tier: application
+            layer: layer5
+          annotations:
+            summary: "n8n Deployment {{ $labels.namespace }}/{{ $labels.deployment }} has 0 replicas"
+            description: |
+              n8n deployment has NO available replicas!
+
+              Namespace: {{ $labels.namespace }}
+              Environment: {{ if eq $labels.namespace "n8n-prod" }}PRODUCTION{{ else }}DEV{{ end }}
+              Deployment: {{ $labels.deployment }}
+              Duration: >2 minutes
+
+              Check: kubectl -n {{ $labels.namespace }} describe deployment {{ $labels.deployment }}
+              Events: kubectl -n {{ $labels.namespace }} get events --sort-by='.lastTimestamp'
+
+    # ========================================================================
+    # N8N WARNING ALERTS (P2)
+    # ========================================================================
+    - name: n8n.warning
+      interval: 60s
+      rules:
+        # P2: n8n Workflow Execution Failures (PROD - higher priority)
+        - alert: N8NProdWorkflowFailures
+          expr: |
+            rate(n8n_workflow_execution_error_total{namespace="n8n-prod"}[5m]) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+            priority: p2
+            component: n8n
+            environment: prod
+            tier: application
+            layer: layer5
+          annotations:
+            summary: "n8n PROD Workflow Execution Failures"
+            description: |
+              n8n PRODUCTION is experiencing workflow execution failures.
+
+              Namespace: n8n-prod
+              Error Rate: {{ $value | printf "%.3f" }} errors/sec
+              Duration: >5 minutes
+
+              Action: Check n8n PROD UI for failed workflows
+
+        # P2: n8n Workflow Execution Failures (DEV - lower priority)
+        - alert: N8NDevWorkflowFailures
+          expr: |
+            rate(n8n_workflow_execution_error_total{namespace="n8n-dev"}[5m]) > 0.1
+          for: 10m
+          labels:
+            severity: info
+            priority: p3
+            component: n8n
+            environment: dev
+            tier: application
+            layer: layer5
+          annotations:
+            summary: "n8n DEV Workflow Execution Failures"
+            description: |
+              n8n DEV is experiencing workflow execution failures.
+
+              Namespace: n8n-dev
+              Error Rate: {{ $value | printf "%.3f" }} errors/sec
+              Duration: >10 minutes
+
+              Action: Check n8n DEV UI for failed workflows
+
+        # P2: n8n High Error Rate (any namespace)
+        - alert: N8NHighErrorRate
+          expr: |
+            (
+              sum by (namespace) (rate(n8n_workflow_execution_error_total{namespace=~"n8n-.*"}[10m]))
+              /
+              sum by (namespace) (rate(n8n_workflow_execution_total{namespace=~"n8n-.*"}[10m]))
+            ) > 0.1
+          for: 10m
+          labels:
+            severity: warning
+            priority: p2
+            component: n8n
+            tier: application
+            layer: layer5
+          annotations:
+            summary: "n8n {{ $labels.namespace }} Error Rate >10%"
+            description: |
+              n8n workflow error rate is {{ $value | humanizePercentage }}.
+
+              Namespace: {{ $labels.namespace }}
+              Environment: {{ if eq $labels.namespace "n8n-prod" }}PRODUCTION{{ else }}DEV{{ end }}
+              Duration: >10 minutes
+
+              Action: Review failed workflows in n8n UI
+
+        # P2: n8n Pod Restart (PROD)
+        - alert: N8NProdRestarting
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="n8n-prod", container=~".*n8n.*"}[1h]) > 2
+          for: 5m
+          labels:
+            severity: warning
+            priority: p2
+            component: n8n
+            environment: prod
+            tier: application
+            layer: layer5
+          annotations:
+            summary: "n8n PROD Pod Restarting"
+            description: |
+              n8n PROD container has restarted {{ $value | printf "%.0f" }} times in the last hour.
+
+              Namespace: n8n-prod
+              Pod: {{ $labels.pod }}
+
+              Action: Check pod logs for crash reasons
+              Logs: kubectl -n n8n-prod logs {{ $labels.pod }} --previous
+
+        # P3: n8n Pod Restart (DEV - less critical)
+        - alert: N8NDevRestarting
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="n8n-dev", container=~".*n8n.*"}[1h]) > 5
+          for: 10m
+          labels:
+            severity: info
+            priority: p3
+            component: n8n
+            environment: dev
+            tier: application
+            layer: layer5
+          annotations:
+            summary: "n8n DEV Pod Restarting Frequently"
+            description: |
+              n8n DEV container has restarted {{ $value | printf "%.0f" }} times in the last hour.
+
+              Namespace: n8n-dev
+              Pod: {{ $labels.pod }}
+
+              Logs: kubectl -n n8n-dev logs {{ $labels.pod }} --previous
+
+    # ========================================================================
+    # N8N INFO ALERTS (P3)
+    # ========================================================================
+    - name: n8n.info
+      interval: 120s
+      rules:
+        # P3: n8n High Memory Usage (any namespace)
+        - alert: N8NHighMemoryUsage
+          expr: |
+            (
+              container_memory_usage_bytes{namespace=~"n8n-.*", container=~".*n8n.*"}
+              /
+              container_spec_memory_limit_bytes{namespace=~"n8n-.*", container=~".*n8n.*"}
+            ) > 0.85
+          for: 10m
+          labels:
+            severity: info
+            priority: p3
+            component: n8n
+            tier: application
+            layer: layer5
+          annotations:
+            summary: "n8n {{ $labels.namespace }} Memory >85%"
+            description: |
+              n8n container memory usage is {{ $value | humanizePercentage }}.
+
+              Namespace: {{ $labels.namespace }}
+              Environment: {{ if eq $labels.namespace "n8n-prod" }}PRODUCTION{{ else }}DEV{{ end }}
+              Pod: {{ $labels.pod }}
+              Duration: >10 minutes
+
+              Consider:
+              - Increasing memory limits
+              - Checking for memory leaks in workflows
+
+        # P3: n8n High CPU Usage (any namespace)
+        - alert: N8NHighCPUUsage
+          expr: |
+            (
+              rate(container_cpu_usage_seconds_total{namespace=~"n8n-.*", container=~".*n8n.*"}[5m])
+              /
+              container_spec_cpu_quota{namespace=~"n8n-.*", container=~".*n8n.*"} * 100000
+            ) > 0.8
+          for: 15m
+          labels:
+            severity: info
+            priority: p3
+            component: n8n
+            tier: application
+            layer: layer5
+          annotations:
+            summary: "n8n {{ $labels.namespace }} CPU >80%"
+            description: |
+              n8n container CPU usage is {{ $value | humanizePercentage }}.
+
+              Namespace: {{ $labels.namespace }}
+              Environment: {{ if eq $labels.namespace "n8n-prod" }}PRODUCTION{{ else }}DEV{{ end }}
+              Pod: {{ $labels.pod }}
+              Duration: >15 minutes
+
+        # P3: n8n Webhook Queue Growing (any namespace)
+        - alert: N8NWebhookQueueGrowing
+          expr: |
+            n8n_webhook_waiting_count{namespace=~"n8n-.*"} > 100
+          for: 10m
+          labels:
+            severity: info
+            priority: p3
+            component: n8n
+            tier: application
+            layer: layer5
+          annotations:
+            summary: "n8n {{ $labels.namespace }} Webhook Queue Growing"
+            description: |
+              n8n has {{ $value }} webhooks waiting to be processed.
+
+              Namespace: {{ $labels.namespace }}
+              Environment: {{ if eq $labels.namespace "n8n-prod" }}PRODUCTION{{ else }}DEV{{ end }}
+              Duration: >10 minutes
