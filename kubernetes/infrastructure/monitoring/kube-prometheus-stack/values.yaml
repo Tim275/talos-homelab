@@ -220,6 +220,7 @@ alertmanager:
               storage: 5Gi
     secrets:
       - slack-webhook-url
+      - telegram-bot-token
     resources:
       requests:
         cpu: 50m
@@ -373,8 +374,24 @@ alertmanager:
     # RECEIVERS - All with unified detailed templates
     # ========================================================================
     receivers:
-      # ============ CRITICAL: P0/P1 ============
+      # ============ CRITICAL: P0/P1 (Slack + Telegram) ============
       - name: 'slack-critical'
+        telegram_configs:
+          - bot_token_file: /etc/alertmanager/secrets/telegram-bot-token/token
+            chat_id: 8449184586
+            parse_mode: HTML
+            send_resolved: true
+            message: |-
+              {{ if eq .Status "firing" }}🔴 <b>CRITICAL</b>{{ else }}✅ <b>RESOLVED</b>{{ end }}
+
+              {{ range .Alerts }}
+              <b>{{ .Labels.alertname }}</b>
+              {{ if .Labels.severity }}Severity: <code>{{ .Labels.severity }}</code>{{ end }}
+              {{ if .Labels.namespace }}Namespace: <code>{{ .Labels.namespace }}</code>{{ end }}
+              {{ if .Labels.pod }}Pod: <code>{{ .Labels.pod }}</code>{{ end }}
+
+              {{ .Annotations.summary }}
+              {{ end }}
         slack_configs:
           - channel: '#alerts'
             send_resolved: true
@@ -411,8 +428,21 @@ alertmanager:
                 text: 'Silence 2h'
                 url: '{{ .ExternalURL }}/#/silences/new?filter=%7Balertname%3D%22{{ .CommonLabels.alertname }}%22%7D'
 
-      # ============ DEFAULT: P2/Warning ============
+      # ============ DEFAULT: P2/Warning (Slack + Telegram) ============
       - name: 'slack-default'
+        telegram_configs:
+          - bot_token_file: /etc/alertmanager/secrets/telegram-bot-token/token
+            chat_id: 8449184586
+            parse_mode: HTML
+            send_resolved: true
+            message: |-
+              {{ if eq .Status "firing" }}🟡 <b>WARNING</b>{{ else }}✅ <b>RESOLVED</b>{{ end }}
+
+              {{ range .Alerts }}
+              <b>{{ .Labels.alertname }}</b>
+              {{ if .Labels.namespace }}NS: <code>{{ .Labels.namespace }}</code>{{ end }}
+              {{ .Annotations.summary }}
+              {{ end }}
         slack_configs:
           - channel: '#alerts'
             send_resolved: true
@@ -444,8 +474,16 @@ alertmanager:
                 text: 'Grafana'
                 url: 'https://grafana.timourhomelab.org'
 
-      # ============ INFO: P3/P4 ============
+      # ============ INFO: P3/P4 (Slack + Telegram) ============
       - name: 'slack-info'
+        telegram_configs:
+          - bot_token_file: /etc/alertmanager/secrets/telegram-bot-token/token
+            chat_id: 8449184586
+            parse_mode: HTML
+            send_resolved: false
+            message: |-
+              ℹ️ <b>{{ .CommonLabels.alertname }}</b>
+              {{ .CommonAnnotations.summary }}
         slack_configs:
           - channel: '#alerts'
             send_resolved: false
