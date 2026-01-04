@@ -89,32 +89,40 @@ spec:
                 - -c
                 - |
                   bin/elasticsearch-plugin install --batch repository-s3
-          # 🏠 HOMELAB SPECS: 3-node cluster with reduced resources
-          # Memory: 2GB per node, Heap: 1GB (50%), CPU: 500m-1000m
-          # Total: 6GB RAM for ES cluster (was 4GB single-node)
+          # 🏠 HOMELAB SPECS: 3-node cluster on large nodes (worker-1/2/3)
+          # Memory: 3GB per node, Heap: 1.5GB (50%), CPU: 500m-1500m
+          # Total: 9GB RAM for ES cluster
           containers:
             - name: elasticsearch
               resources:
                 requests:
-                  memory: 2Gi
+                  memory: 3Gi
                   cpu: 500m
                 limits:
-                  memory: 2Gi
-                  cpu: 1000m
+                  memory: 3Gi
+                  cpu: 1500m
               env:
                 - name: ES_JAVA_OPTS
-                  # 50% of container memory (2GB → 1GB heap)
-                  value: "-Xms1g -Xmx1g"
-          # Affinity - spread across nodes
+                  # 50% of container memory (3GB → 1.5GB heap)
+                  value: "-Xms1536m -Xmx1536m"
+          # Affinity - schedule on large memory nodes (worker-1, worker-2 have 28GB)
           affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: kubernetes.io/hostname
+                        operator: In
+                        values:
+                          - worker-1
+                          - worker-2
+                          - worker-3
             podAntiAffinity:
-              preferredDuringSchedulingIgnoredDuringExecution:
-                - weight: 100
-                  podAffinityTerm:
-                    labelSelector:
-                      matchLabels:
-                        elasticsearch.k8s.elastic.co/cluster-name: production-cluster
-                    topologyKey: kubernetes.io/hostname
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      elasticsearch.k8s.elastic.co/cluster-name: production-cluster
+                  topologyKey: kubernetes.io/hostname
       # Storage mit Rook-Ceph
       volumeClaimTemplates:
         - metadata:
