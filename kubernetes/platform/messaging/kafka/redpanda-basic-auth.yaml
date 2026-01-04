@@ -1,0 +1,52 @@
+---
+# SealedSecret mit htpasswd credentials (admin:kafka2024)
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  name: redpanda-basic-auth
+  namespace: kafka
+spec:
+  encryptedData:
+    .htpasswd: AgCDqZHRQbFJ6p19jSEf/rBqHOajqtp+Vdnuif1UUXzY47lTYfQy/TgoZEvC9zCF6+GvDyCNdtCcGIiPBSULBhoyiZ2Lew6JD3RHN+HBFqVotjRusZdvyLTmyHX7Dn7i5QQCQyZ82X/o/0FiLcX+Axu5c+W9EFm3hfQxEGajYz2xMMByf/fEpr/GeM1E9JuqoQloTk08yCzGD5k24BRFlQrTbiP07eglNSdKoFwjcz7rD/6WQBNb0FPfxlyVVtwAwNRM3Rek0Xb0B4gS5F5orFVsmUf6NtAvJ7y4bp5zJpytsf8SRCArxma50jiCwGmVz0xvJIqVG57D48QgDHX0h/hLG0MAzrZnPYIvRfMt1TuC02gCc4EwaJYLodBglsCet+m27vKKFTboMIoca1qzfMnNEZlFm3vuPfv2cv5NEtLeKKuYNjgwnX/hJ37Iy2m3MPRvXX/ifvU574iX6kSwMaMVrqSBmTPTbI1WJFbkrIW7I5vrjeV47x3P7jz9Nm10FUwdHIh2sIAfVS/JRYWNJHc1YPV1rts18w0JJoTiJjFgjeGiYjL5GNBnnq+e2/HUEm+ndy6Ou5Wd5UurYIOt8W9Gs2QFXHBmV6dZb8v2YLXcMCPHRwtIrA3p7un+Jtv5Frv+OIsv1tVxPtdUR5mRjE4s8y6B8X1aZMg0v++IpPuFtNYjmHZToWeL27csMPW4wQ4lrsC5c+Y/XcL1ol8eYO2fS+lYoWzA0CFMl1TRaL6BDruGNGSPbaQEx19eEg==
+  template:
+    metadata:
+      name: redpanda-basic-auth
+      namespace: kafka
+    type: Opaque
+---
+# SecurityPolicy für Basic Auth
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: redpanda-basic-auth
+  namespace: kafka
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: redpanda-console
+  basicAuth:
+    users:
+      name: redpanda-basic-auth
+---
+# HTTPRoute für Redpanda Console
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: redpanda-console
+  namespace: kafka
+spec:
+  parentRefs:
+    - name: envoy-gateway
+      namespace: gateway
+      sectionName: https
+  hostnames:
+    - kafka.timourhomelab.org
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: redpanda-console
+          port: 8080
