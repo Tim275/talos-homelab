@@ -82,7 +82,7 @@ kind: CiliumClusterwideNetworkPolicy
 metadata:
   name: global-l7-visibility
 spec:
-  endpointSelector: {}  # ⚠️ MATCHED ALLE PODS!
+  endpointSelector: {}  #  MATCHED ALLE PODS!
 
   ingress:
     - toPorts:
@@ -343,12 +343,12 @@ kubectl get pods -n kube-system -l k8s-app=cilium  # Cilium läuft
 
 | Szenario | Cilium allein | + Istio |
 |----------|---------------|---------|
-| Network Policies | ✅ | ✅ |
-| L7 Visibility | ✅ | ✅ |
-| **mTLS (Encryption)** | ❌ | ✅ |
-| **Traffic Splitting** | ❌ | ✅ (Canary, Blue/Green) |
-| **Circuit Breaker** | ❌ | ✅ |
-| **Rate Limiting** | ⚠️ Basic | ✅ Advanced |
+| Network Policies |  |  |
+| L7 Visibility |  |  |
+| **mTLS (Encryption)** |  |  |
+| **Traffic Splitting** |  |  (Canary, Blue/Green) |
+| **Circuit Breaker** |  |  |
+| **Rate Limiting** |  Basic |  Advanced |
 
 **Für dein Homelab:** Cilium reicht für 95% der Fälle. Istio nur wenn du mTLS oder Advanced Traffic Management brauchst.
 

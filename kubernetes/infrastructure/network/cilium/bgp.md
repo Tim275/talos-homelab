@@ -22,11 +22,11 @@ LoadBalancer Service → Cilium L2 Announcements → ARP Broadcast → UniFi Rou
 - Similar to MetalLB L2 mode
 
 **Limitations:**
-- ❌ No true load balancing (only failover to single node)
-- ❌ Client source IP lost (SNAT applied)
-- ❌ Single point of failure per service
-- ❌ ARP broadcast traffic in network
-- ❌ Not scalable for multi-cluster setups
+-  No true load balancing (only failover to single node)
+-  Client source IP lost (SNAT applied)
+-  Single point of failure per service
+-  ARP broadcast traffic in network
+-  Not scalable for multi-cluster setups
 
 ---
 
@@ -52,17 +52,17 @@ LoadBalancer Service → Cilium BGP → eBGP Peering → UniFi Router learns Rou
 - Traffic distributed across all 3 nodes
 
 **Advantages:**
-- ✅ True load balancing via ECMP (3 nodes)
-- ✅ Client source IP preserved (`externalTrafficPolicy: Local`)
-- ✅ No single point of failure
-- ✅ Reduced broadcast traffic
-- ✅ Industry standard (AWS, GCP, Azure use BGP)
-- ✅ Multi-cluster ready
-- ✅ Enterprise skill building
+-  True load balancing via ECMP (3 nodes)
+-  Client source IP preserved (`externalTrafficPolicy: Local`)
+-  No single point of failure
+-  Reduced broadcast traffic
+-  Industry standard (AWS, GCP, Azure use BGP)
+-  Multi-cluster ready
+-  Enterprise skill building
 
 ---
 
-## 💡 Practical Explanation - What Actually Happens?
+##  Practical Explanation - What Actually Happens?
 
 ### 🔴 AKTUELL (L2 ARP) - Current Behavior
 
@@ -101,10 +101,10 @@ LoadBalancer Service → Cilium BGP → eBGP Peering → UniFi Router learns Rou
 ```
 
 **Problems:**
-- ❌ Node 1 does EVERYTHING (overloaded)
-- ❌ Node 2 + 3 do NOTHING (wasted resources)
-- ❌ If Node 1 crashes → Service down (~5-10 seconds until Cilium failover to Node 2)
-- ❌ Client IP is replaced by NAT → Logs show only Node IP
+-  Node 1 does EVERYTHING (overloaded)
+-  Node 2 + 3 do NOTHING (wasted resources)
+-  If Node 1 crashes → Service down (~5-10 seconds until Cilium failover to Node 2)
+-  Client IP is replaced by NAT → Logs show only Node IP
 
 ---
 
@@ -141,14 +141,14 @@ LoadBalancer Service → Cilium BGP → eBGP Peering → UniFi Router learns Rou
 ```
 
 **Advantages:**
-- ✅ Traffic evenly distributed (33% / 33% / 33%)
-- ✅ All nodes working → Better performance
-- ✅ If Node 1 crashes → Router immediately uses Node 2+3 (0 downtime)
-- ✅ Client IP preserved → You see real IPs in logs
+-  Traffic evenly distributed (33% / 33% / 33%)
+-  All nodes working → Better performance
+-  If Node 1 crashes → Router immediately uses Node 2+3 (0 downtime)
+-  Client IP preserved → You see real IPs in logs
 
 ---
 
-## 🎯 Concrete Examples - What You'll Notice
+##  Concrete Examples - What You'll Notice
 
 ### **Example 1: Heavy Load (many requests)**
 
@@ -215,18 +215,18 @@ Your laptop: 192.168.68.50
 
 ---
 
-## 📊 Performance Comparison (Real World)
+##  Performance Comparison (Real World)
 
 | Scenario | L2 ARP | BGP |
 |----------|--------|-----|
 | **100 Requests/sec** | Node 1: 100 req/s<br>Node 2: 0<br>Node 3: 0 | Node 1: 33 req/s<br>Node 2: 33 req/s<br>Node 3: 33 req/s |
 | **Node 1 crashes** | 5-10s Downtime | 0s Downtime |
 | **CPU Load** | Node 1: 80%<br>Node 2: 5%<br>Node 3: 5% | Node 1: 30%<br>Node 2: 30%<br>Node 3: 30% |
-| **Client IP visible?** | ❌ No (NAT) | ✅ Yes |
+| **Client IP visible?** |  No (NAT) |  Yes |
 
 ---
 
-## 💡 Why This Matters for Your Homelab
+##  Why This Matters for Your Homelab
 
 **1. Better Resource Utilization:**
 - You have 3 nodes with 16 cores each
@@ -247,7 +247,7 @@ Your laptop: 192.168.68.50
 
 ---
 
-## ⚠️ Safe Migration - Zero Downtime Strategy
+##  Safe Migration - Zero Downtime Strategy
 
 ### **CRITICAL: Will Cilium Crash During Migration?**
 
@@ -255,14 +255,14 @@ Your laptop: 192.168.68.50
 
 ---
 
-### **❌ DANGER - What Can Go Wrong?**
+### ** DANGER - What Can Go Wrong?**
 
 **Risky Migration Approach:**
 
 ```
 Step 1: Disable L2 in values.yaml
    l2announcements:
-     enabled: false  ❌
+     enabled: false  
 
 Step 2: Enable BGP
    bgp:
@@ -270,14 +270,14 @@ Step 2: Enable BGP
 
 Step 3: ArgoCD sync
 
-❌ PROBLEM: If BGP doesn't work → ALL Services DOWN!
-❌ Router has no routes → Services unreachable
-❌ Downtime until you re-enable L2
+ PROBLEM: If BGP doesn't work → ALL Services DOWN!
+ Router has no routes → Services unreachable
+ Downtime until you re-enable L2
 ```
 
 ---
 
-### **✅ SAFE Migration - Parallel Operation (Zero Downtime)**
+### ** SAFE Migration - Parallel Operation (Zero Downtime)**
 
 The key is to run **L2 and BGP in parallel** during testing, then cut over once BGP is proven.
 
@@ -290,11 +290,11 @@ The key is to run **L2 and BGP in parallel** during testing, then cut over once 
 ```yaml
 # kubernetes/infrastructure/network/cilium/values.yaml
 
-# ✅ L2 STAYS ACTIVE
+#  L2 STAYS ACTIVE
 l2announcements:
   enabled: true  # ← DO NOT disable!
 
-# ✅ BGP ENABLED IN PARALLEL
+#  BGP ENABLED IN PARALLEL
 bgp:
   enabled: true
   announce:
@@ -306,11 +306,11 @@ bgp:
 ```yaml
 # kubernetes/infrastructure/network/cilium/kustomization.yaml
 resources:
-  # ✅ L2 STAYS ACTIVE
+  #  L2 STAYS ACTIVE
   - announce.yaml
   - ip-pool.yaml
 
-  # ✅ BGP ENABLED IN PARALLEL
+  #  BGP ENABLED IN PARALLEL
   - bgp-cluster-config.yaml
   - bgp-peer-config.yaml
   - bgp-advertisement.yaml
@@ -318,9 +318,9 @@ resources:
 ```
 
 **Result:**
-- ✅ L2 announcements continue working (existing services OK)
-- ✅ BGP peering is established (new capability)
-- ✅ **Both systems run in parallel** → Zero Risk
+-  L2 announcements continue working (existing services OK)
+-  BGP peering is established (new capability)
+-  **Both systems run in parallel** → Zero Risk
 
 ---
 
@@ -364,9 +364,9 @@ curl http://172.20.10.X  # BGP IP
 ```
 
 **If this works:**
-- ✅ BGP works correctly
-- ✅ ECMP Load Balancing active
-- ✅ Client IP preservation working
+-  BGP works correctly
+-  ECMP Load Balancing active
+-  Client IP preservation working
 
 ---
 
@@ -377,7 +377,7 @@ curl http://172.20.10.X  # BGP IP
 ```yaml
 # kubernetes/infrastructure/network/cilium/values.yaml
 l2announcements:
-  enabled: false  # ✅ NOW safe to disable
+  enabled: false  #  NOW safe to disable
 
 bgp:
   enabled: true
@@ -386,10 +386,10 @@ bgp:
 ```yaml
 # kubernetes/infrastructure/network/cilium/kustomization.yaml
 resources:
-  # ❌ L2 disabled
+  #  L2 disabled
   # - announce.yaml
 
-  # ✅ BGP stays active
+  #  BGP stays active
   - bgp-cluster-config.yaml
   - bgp-peer-config.yaml
   - bgp-advertisement.yaml
@@ -399,24 +399,24 @@ resources:
 
 ---
 
-### **🚨 Rollback Plan - If BGP Fails**
+### ** Rollback Plan - If BGP Fails**
 
 **Immediately revert to L2:**
 
 ```yaml
 # values.yaml
 l2announcements:
-  enabled: true  # ✅ RE-ENABLE
+  enabled: true  #  RE-ENABLE
 
 bgp:
-  enabled: false  # ❌ DISABLE
+  enabled: false  #  DISABLE
 ```
 
 ```yaml
 # kustomization.yaml
 resources:
-  - announce.yaml  # ✅ RE-ENABLE
-  # - bgp-*.yaml   # ❌ COMMENT OUT
+  - announce.yaml  #  RE-ENABLE
+  # - bgp-*.yaml   #  COMMENT OUT
 ```
 
 ```bash
@@ -428,11 +428,11 @@ argocd app sync infrastructure-cilium
 
 ---
 
-### **📊 Migration Timeline - Zero Downtime**
+### ** Migration Timeline - Zero Downtime**
 
 ```
 Day 1 - Preparation
-├─ BGP YAML files created ✅
+├─ BGP YAML files created 
 ├─ UniFi Router BGP configured
 └─ L2 announcements: ACTIVE
 
@@ -443,20 +443,20 @@ Day 2 - Parallel Operation
 └─ Test Service deployed
 
 Day 3 - Verification
-├─ BGP routes advertised ✅
-├─ ECMP Load Balancing working ✅
-├─ Client IP preservation ✅
+├─ BGP routes advertised 
+├─ ECMP Load Balancing working 
+├─ Client IP preservation 
 └─ All tests passed
 
 Day 4 - Cutover
 ├─ L2 announcements disabled
 ├─ BGP takes over completely
-└─ Monitoring: All OK ✅
+└─ Monitoring: All OK 
 ```
 
 ---
 
-### **⚠️ Important Points**
+### ** Important Points**
 
 **1. Cilium Will NOT Crash:**
 - BGP is just a configuration change
@@ -464,19 +464,19 @@ Day 4 - Cutover
 - CNI continues to function
 
 **2. Services Could Become Unreachable If:**
-- ❌ You disable L2 BEFORE BGP works
-- ❌ UniFi Router BGP is misconfigured
-- ❌ ASN numbers don't match
-- ❌ IP addresses are wrong
+-  You disable L2 BEFORE BGP works
+-  UniFi Router BGP is misconfigured
+-  ASN numbers don't match
+-  IP addresses are wrong
 
 **3. Safe Migration Means:**
-- ✅ Run L2 + BGP in parallel
-- ✅ Verify BGP with test service
-- ✅ Only then disable L2
+-  Run L2 + BGP in parallel
+-  Verify BGP with test service
+-  Only then disable L2
 
 ---
 
-### **🎯 Migration Checklist**
+### ** Migration Checklist**
 
 ```
 □ BGP YAML files created (bgp-*.yaml)
@@ -499,11 +499,11 @@ Day 4 - Cutover
 
 ### **TL;DR**
 
-Cilium won't crash, but you MUST run **L2 and BGP in parallel** while testing. Only disable L2 when BGP is 100% proven. Otherwise all services go down! 🚨
+Cilium won't crash, but you MUST run **L2 and BGP in parallel** while testing. Only disable L2 when BGP is 100% proven. Otherwise all services go down! 
 
 ---
 
-## 🎯 Migration Strategy
+##  Migration Strategy
 
 ### Phase 1: Preparation (5 minutes)
 
@@ -535,10 +535,10 @@ Cilium won't crash, but you MUST run **L2 and BGP in parallel** while testing. O
 2. **Enable in kustomization.yaml:**
    ```yaml
    resources:
-     # ❌ DISABLE L2:
+     #  DISABLE L2:
      # - announce.yaml
 
-     # ✅ ENABLE BGP:
+     #  ENABLE BGP:
      - bgp-cluster-config.yaml
      - bgp-peer-config.yaml
      - bgp-advertisement.yaml
@@ -548,11 +548,11 @@ Cilium won't crash, but you MUST run **L2 and BGP in parallel** while testing. O
 
 3. **Update values.yaml:**
    ```yaml
-   # ❌ DISABLE L2:
+   #  DISABLE L2:
    l2announcements:
      enabled: false
 
-   # ✅ ENABLE BGP:
+   #  ENABLE BGP:
    bgp:
      enabled: true
      announce:
@@ -643,16 +643,16 @@ If BGP doesn't work, rollback to L2:
 1. **Disable BGP in kustomization.yaml:**
    ```yaml
    resources:
-     - announce.yaml  # ✅ RE-ENABLE
-     # - bgp-*.yaml   # ❌ DISABLE
+     - announce.yaml  #  RE-ENABLE
+     # - bgp-*.yaml   #  DISABLE
    ```
 
 2. **Re-enable L2 in values.yaml:**
    ```yaml
    l2announcements:
-     enabled: true  # ✅ RE-ENABLE
+     enabled: true  #  RE-ENABLE
    bgp:
-     enabled: false  # ❌ DISABLE
+     enabled: false  #  DISABLE
    ```
 
 3. **Disable BGP on UniFi:**
@@ -665,7 +665,7 @@ If BGP doesn't work, rollback to L2:
 
 ---
 
-## 📊 Comparison: L2 vs BGP
+##  Comparison: L2 vs BGP
 
 | Feature | L2 Announcements | BGP Peering |
 |---------|-----------------|-------------|
@@ -711,7 +711,7 @@ If BGP doesn't work, rollback to L2:
 
 ---
 
-## 🏆 Status
+##  Status
 
 - **Current:** L2 Announcements (ARP) - Working
 - **Target:** BGP Peering - Ready to migrate (YAML files created)

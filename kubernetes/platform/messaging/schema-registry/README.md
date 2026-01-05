@@ -9,12 +9,12 @@
 ## Why CFK Operator?
 
 Previous Bitnami Helm chart was discontinued (Aug 2025). CFK is the **enterprise-grade solution**:
-- ✅ Native Kubernetes CRDs (GitOps-ready)
-- ✅ Official Confluent solution
-- ✅ Automatic upgrades via operator
-- ✅ Production-grade HA and scaling
-- ✅ Integrated monitoring (Prometheus)
-- ✅ Works with any Kafka (including Strimzi)
+-  Native Kubernetes CRDs (GitOps-ready)
+-  Official Confluent solution
+-  Automatic upgrades via operator
+-  Production-grade HA and scaling
+-  Integrated monitoring (Prometheus)
+-  Works with any Kafka (including Strimzi)
 
 ---
 
@@ -76,9 +76,9 @@ kubernetes/platform/messaging/schema-registry/
 Schema Registry supports Protobuf **out-of-the-box**! No extra configuration needed.
 
 **Supported formats:**
-- ✅ Protobuf (for gRPC)
-- ✅ Avro
-- ✅ JSON Schema
+-  Protobuf (for gRPC)
+-  Avro
+-  JSON Schema
 
 ---
 
@@ -167,4 +167,4 @@ kubectl edit schemaregistry schema-registry -n kafka
 
 ---
 
-**Status**: Ready for Protobuf/gRPC workloads with Golang/Rust/C++! 🚀
+**Status**: Ready for Protobuf/gRPC workloads with Golang/Rust/C++! 
