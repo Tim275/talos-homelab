@@ -2,7 +2,7 @@
 
 LLDAP is a lightweight authentication server that implements a subset of the LDAP protocol, specifically designed for small-scale deployments.
 
-## 🎯 Purpose
+##  Purpose
 
 - **User Directory**: Centralized user management for homelab
 - **LDAP Authentication**: Standard LDAP protocol support
@@ -22,7 +22,7 @@ platform/identity/lldap/
 └── README.md           # This file
 ```
 
-## 🔧 Configuration
+##  Configuration
 
 ### Base Configuration
 - **Base DN**: `dc=homelab,dc=local`
@@ -36,7 +36,7 @@ platform/identity/lldap/
 - **No privileged escalation**
 - **Security context hardening**
 
-## 🚀 Deployment
+##  Deployment
 
 ### Prerequisites
 1. **Sealed Secrets Controller** must be deployed
@@ -77,7 +77,7 @@ authentication_backend:
     password: # From secret
 ```
 
-## 📊 Monitoring
+##  Monitoring
 
 ### Health Checks
 - **Readiness**: `/health` endpoint on port 17170
@@ -87,15 +87,15 @@ authentication_backend:
 - **Requests**: 50m CPU, 64Mi RAM
 - **Limits**: 200m CPU, 256Mi RAM
 
-## 🔄 Next Steps
+##  Next Steps
 
-1. **Deploy LLDAP** ✅
+1. **Deploy LLDAP** 
 2. **Create initial users** via web UI
 3. **Deploy Authelia** with LLDAP backend
 4. **Configure OIDC** in Talos
 5. **Setup RBAC mappings**
 
-## 🛡️ Security Notes
+##  Security Notes
 
 - Uses **SQLite** for simplicity (single replica)
 - Can be migrated to **PostgreSQL** for HA later

@@ -1,4 +1,4 @@
-# 🛡️ Kyverno Policies
+#  Kyverno Policies
 
 **Policy Engine**: Kyverno v3.5.2
 **Mode**: Mixed (2 Audit + 1 Enforce)
@@ -6,9 +6,9 @@
 
 ---
 
-## 📋 DEPLOYED POLICIES
+##  DEPLOYED POLICIES
 
-### **1. require-resource-limits.yaml** 📊
+### **1. require-resource-limits.yaml** 
 **Category**: Best Practices
 **Severity**: Medium
 
@@ -18,14 +18,14 @@
 
 **Example failure**:
 ```yaml
-# ❌ BAD
+#  BAD
 spec:
   containers:
   - name: app
     image: myapp:1.0
     # Missing resource limits!
 
-# ✅ GOOD
+#  GOOD
 spec:
   containers:
   - name: app
@@ -51,22 +51,22 @@ spec:
 
 **Example failure**:
 ```yaml
-# ❌ BAD
+#  BAD
 spec:
   containers:
   - name: app
-    image: myapp:latest  # ❌ Not allowed!
+    image: myapp:latest  #  Not allowed!
 
-# ✅ GOOD
+#  GOOD
 spec:
   containers:
   - name: app
-    image: myapp:1.2.3  # ✅ Specific version
+    image: myapp:1.2.3  #  Specific version
 ```
 
 ---
 
-### **3. disallow-finalizers.yaml** 🚫
+### **3. disallow-finalizers.yaml** 
 **Category**: Cleanup
 **Severity**: Medium
 **Mode**: Enforce (blocks deployments)
@@ -78,20 +78,20 @@ spec:
 
 **Example failure**:
 ```yaml
-# ❌ BAD
+#  BAD
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: myapp
   finalizers:
-    - some.finalizer.io  # ❌ BLOCKED by policy!
+    - some.finalizer.io  #  BLOCKED by policy!
 
-# ✅ GOOD
+#  GOOD
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: myapp
-  # No finalizers at all ✅
+  # No finalizers at all 
 ```
 
 **Affected resources**:
@@ -100,7 +100,7 @@ metadata:
 
 ---
 
-## 🎯 USAGE
+##  USAGE
 
 ### **Check Policy Violations**
 ```bash
@@ -130,7 +130,7 @@ Already excluded in Kyverno values.yaml:
 
 ---
 
-## 📊 POLICY REPORTS
+##  POLICY REPORTS
 
 Kyverno generates two types of reports:
 
@@ -170,10 +170,10 @@ results:
 
 ---
 
-## 🚀 NEXT STEPS
+##  NEXT STEPS
 
 ### **Phase 1: Audit Mode** (Current)
-- ✅ Policies deployed in Audit mode
+-  Policies deployed in Audit mode
 - ⏳ Monitor violations via PolicyReports
 - ⏳ Fix violations in workloads
 
@@ -198,6 +198,6 @@ results:
 
 ---
 
-**Status**: 📝 Policies created, not yet deployed (waiting for Kyverno installation)
+**Status**:  Policies created, not yet deployed (waiting for Kyverno installation)
 **Mode**: Audit only (no blocking yet)
 **Next Action**: Deploy Kyverno, then apply policies

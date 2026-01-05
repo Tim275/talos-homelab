@@ -1,26 +1,26 @@
 # Velero Enterprise Backup System
 
-**Status**: ✅ **PRODUCTION READY**
+**Status**:  **PRODUCTION READY**
 **Last Updated**: 2025-10-28
 **Implementation**: 40+ hours to perfection
 
 ---
 
-## 🎯 **Quick Status**
+##  **Quick Status**
 
 ```
-✅ Restic File System Backup (Production-Approved)
-✅ 3-Tier Schedule Active (6h / 24h / 168h)
-✅ Client-Side AES-256 Encryption
-✅ Latest Backup: 2025-10-28T06:00:11Z
-✅ Errors: 0 | Warnings: 0 | Items: 316
+ Restic File System Backup (Production-Approved)
+ 3-Tier Schedule Active (6h / 24h / 168h)
+ Client-Side AES-256 Encryption
+ Latest Backup: 2025-10-28T06:00:11Z
+ Errors: 0 | Warnings: 0 | Items: 316
 ```
 
 ---
 
 ## 📚 **Documentation**
 
-### **🔥 PRIMARY DOCS (READ THIS FIRST!)**
+### ** PRIMARY DOCS (READ THIS FIRST!)**
 **[PRODUCTION_RESTIC_BACKUP.md](./PRODUCTION_RESTIC_BACKUP.md)** - Complete production setup guide
 - Architecture & data flow
 - Why Restic (not Kopia)
@@ -82,7 +82,7 @@ velero restore create n8n-restore-$(date +%Y%m%d-%H%M) \
 
 ---
 
-## 🔐 **Security**
+##  **Security**
 
 **Multi-Layer Encryption:**
 1. **Client-Side** (Restic AES-256) - BEFORE upload
@@ -93,7 +93,7 @@ velero restore create n8n-restore-$(date +%Y%m%d-%H%M) \
 
 ---
 
-## 📊 **Current Deployment**
+##  **Current Deployment**
 
 ### **Active Schedules:**
 
@@ -111,20 +111,20 @@ velero restore create n8n-restore-$(date +%Y%m%d-%H%M) \
 
 ---
 
-## 🚫 **What We DON'T Use (And Why)**
+##  **What We DON'T Use (And Why)**
 
-### **❌ Kopia**
+### ** Kopia**
 **Why**: Bug #8067 - Permission denied with random UIDs (unresolved since 2023)
 
-### **❌ CSI Volume Snapshots**
+### ** CSI Volume Snapshots**
 **Why**: CSI triggers Kopia instead of Restic (workaround: disable CSI completely)
 
-### **❌ CephFS**
+### ** CephFS**
 **Why**: NOT NEEDED! Restic works with Ceph RBD block storage
 
 ---
 
-## 🛠️ **Configuration Files**
+##  **Configuration Files**
 
 ```
 kubernetes/infrastructure/storage/velero/
@@ -143,7 +143,7 @@ kubernetes/infrastructure/storage/velero-schedules/
 
 ---
 
-## 🔄 **Bootstrap & Credential Management**
+##  **Bootstrap & Credential Management**
 
 ### **Problem gelöst: Credentials nach Bootstrap**
 
@@ -151,10 +151,10 @@ Nach einem neuen `kubectl apply -k kubernetes/bootstrap/` werden neue Rook-Ceph 
 Der `init-velero-buckets-job` löst dieses Problem automatisch:
 
 1. ⏳ Wartet auf Rook-Ceph User Secret `rook-ceph-object-user-homelab-objectstore-velero`
-2. 🔑 Holt aktuelle Credentials vom Rook-generierten Secret
-3. 📝 Erstellt/Updated `velero-s3-credentials` Secret in velero namespace
+2.  Holt aktuelle Credentials vom Rook-generierten Secret
+3.  Erstellt/Updated `velero-s3-credentials` Secret in velero namespace
 4. 🪣 Erstellt S3 Buckets `velero-cluster-backups` und `velero-pv-backups`
-5. 🔄 Restartet Velero Deployment
+5.  Restartet Velero Deployment
 
 ### **Nach Bootstrap prüfen:**
 ```bash
@@ -188,24 +188,24 @@ kubectl rollout restart deployment/velero -n velero
 
 ---
 
-## 🎓 **Key Lessons (40+ Hours)**
+##  **Key Lessons (40+ Hours)**
 
-1. ✅ **Restic > Kopia** for production (no permission issues)
-2. ✅ **Disable CSI** when using Restic (avoid conflicts)
-3. ✅ **No CephFS needed** (works with RBD block storage)
-4. ✅ **Tier-based schedules** better than frequency-based
-5. ✅ **Remove snapshotMoveData** from schedules (requires CSI)
+1.  **Restic > Kopia** for production (no permission issues)
+2.  **Disable CSI** when using Restic (avoid conflicts)
+3.  **No CephFS needed** (works with RBD block storage)
+4.  **Tier-based schedules** better than frequency-based
+5.  **Remove snapshotMoveData** from schedules (requires CSI)
 
 ---
 
-## 📈 **Success Metrics**
+##  **Success Metrics**
 
-- ✅ 8 schedules enabled and running
-- ✅ Latest backup: Completed (0 errors, 0 warnings)
-- ✅ 7 pod volumes backed up for n8n-prod
-- ✅ S3 bucket receiving encrypted data
-- ✅ Production-approved method (VMware Tanzu official)
-- ✅ GitOps managed (ArgoCD IaC)
+-  8 schedules enabled and running
+-  Latest backup: Completed (0 errors, 0 warnings)
+-  7 pod volumes backed up for n8n-prod
+-  S3 bucket receiving encrypted data
+-  Production-approved method (VMware Tanzu official)
+-  GitOps managed (ArgoCD IaC)
 
 ---
 
@@ -217,7 +217,7 @@ kubectl rollout restart deployment/velero -n velero
 
 ---
 
-## 🚀 **Next Steps (Optional)**
+##  **Next Steps (Optional)**
 
 - [ ] Add Prometheus alerts for backup failures
 - [ ] Implement monthly restore testing CronJob
@@ -239,4 +239,4 @@ kubectl rollout restart deployment/velero -n velero
 
 **Maintainer**: Tim275
 **Repo**: [talos-homelab](https://github.com/Tim275/talos-homelab)
-**Status**: 🚀 **LIVE & BACKING UP!**
+**Status**:  **LIVE & BACKING UP!**

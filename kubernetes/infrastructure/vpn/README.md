@@ -43,7 +43,7 @@ sudo brew services start tailscale
 sudo tailscale up
 ```
 
-Browser opens → Login with Google/GitHub/Microsoft → Done! ✅
+Browser opens → Login with Google/GitHub/Microsoft → Done! 
 
 #### 2. Connect Homelab as Subnet Router (Optional)
 

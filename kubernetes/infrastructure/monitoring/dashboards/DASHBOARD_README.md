@@ -1,10 +1,10 @@
-# 📊 Enterprise Grafana Dashboard Management
+#  Enterprise Grafana Dashboard Management
 
-## 🎯 Overview
+##  Overview
 
 This directory contains enterprise-grade Grafana dashboards for comprehensive monitoring of our Kubernetes homelab infrastructure. All dashboards follow GitOps principles and are automatically deployed via ArgoCD.
 
-## 🏗️ Architecture
+##  Architecture
 
 ```
 dashboards/
@@ -12,20 +12,20 @@ dashboards/
 ├── kustomization.yaml               # Kustomize configuration for dashboard deployment
 ├── application.yaml                 # ArgoCD Application for dashboard management
 ├── rook-ceph-dashboards.yaml        # 🗄️ Storage cluster monitoring
-├── cilium-hubble-dashboards.yaml    # 🌐 Network observability & security
+├── cilium-hubble-dashboards.yaml    #  Network observability & security
 ├── istio-dashboards.yaml            # 🕸️ Service mesh monitoring
 ├── kafka-dashboards.yaml            # 📨 Message streaming platform
-├── n8n-dashboards.yaml              # 🔄 Workflow automation & databases
-└── elasticsearch-dashboards.yaml    # 🔍 Search & analytics platform
+├── n8n-dashboards.yaml              #  Workflow automation & databases
+└── elasticsearch-dashboards.yaml    #  Search & analytics platform
 ```
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### Adding a New Dashboard
 
 Du hast **2 Ansätze** zur Auswahl:
 
-#### **🚀 Method 1: GrafanaDashboard CRD (EMPFOHLEN)**
+#### ** Method 1: GrafanaDashboard CRD (EMPFOHLEN)**
 ```yaml
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
@@ -52,14 +52,14 @@ spec:
     }
 ```
 
-**✅ Vorteile:**
+** Vorteile:**
 - Native Kubernetes Resource
 - CRD Validation
 - Bessere ArgoCD Integration
 - Namespace Scoping
 - Automatic folder organization
 
-#### **🔧 Method 2: ConfigMap (Fallback)**
+#### ** Method 2: ConfigMap (Fallback)**
 ```yaml
 apiVersion: v1
 kind: ConfigMap
@@ -67,7 +67,7 @@ metadata:
   name: my-service-dashboard
   namespace: monitoring
   labels:
-    grafana_dashboard: "1"  # ⚠️ CRITICAL: Required for Grafana discovery
+    grafana_dashboard: "1"  #  CRITICAL: Required for Grafana discovery
     app.kubernetes.io/component: monitoring-dashboards
     app.kubernetes.io/part-of: monitoring-stack
   annotations:
@@ -84,7 +84,7 @@ data:
     }
 ```
 
-**✅ Wann verwenden:**
+** Wann verwenden:**
 - Wenn GrafanaDashboard CRD nicht verfügbar
 - Legacy Systeme
 - Einfache Test-Dashboards
@@ -97,9 +97,9 @@ resources:
   - my-service-dashboard.yaml  # Add your new dashboard
 ```
 
-3. **Commit & Push** - ArgoCD will automatically deploy! 🎉
+3. **Commit & Push** - ArgoCD will automatically deploy! 
 
-## 📋 Best Practices
+##  Best Practices
 
 ### 🏷️ Labeling Standards
 
@@ -150,7 +150,7 @@ labels:
 }
 ```
 
-### 📊 Dashboard Structure Template
+###  Dashboard Structure Template
 
 ```json
 {
@@ -203,42 +203,42 @@ labels:
 }
 ```
 
-### 🎯 Metric Query Best Practices
+###  Metric Query Best Practices
 
 #### **Rate Calculations**
 ```promql
-# ✅ CORRECT: 5-minute rate for smoothing
+#  CORRECT: 5-minute rate for smoothing
 rate(http_requests_total[5m])
 
-# ✅ CORRECT: Increase for counters over time
+#  CORRECT: Increase for counters over time
 increase(errors_total[1h])
 
-# ❌ AVOID: Instant values for rates
+#  AVOID: Instant values for rates
 http_requests_total
 ```
 
 #### **Aggregation Patterns**
 ```promql
-# ✅ Service-level aggregation
+#  Service-level aggregation
 sum by (service) (rate(requests_total[5m]))
 
-# ✅ Environment filtering with templating
+#  Environment filtering with templating
 sum by (pod) (container_memory_usage_bytes{namespace=~"$namespace"})
 
-# ✅ Percentiles for latency
+#  Percentiles for latency
 histogram_quantile(0.95, rate(request_duration_seconds_bucket[5m]))
 ```
 
 #### **Alerting-Ready Queries**
 ```promql
-# ✅ Error rate (percentage)
+#  Error rate (percentage)
 (rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m])) * 100
 
-# ✅ Availability (SLI)
+#  Availability (SLI)
 (rate(http_requests_total{status!~"5.."}[5m]) / rate(http_requests_total[5m])) * 100
 ```
 
-### 🔧 Field Configuration Examples
+###  Field Configuration Examples
 
 #### **Status Panels with Color Thresholds**
 ```json
@@ -293,7 +293,7 @@ data:
     { "dashboard": ... }
 ```
 
-## 🔍 Dashboard Categories
+##  Dashboard Categories
 
 ### **🗄️ Infrastructure Dashboards**
 - **Storage**: Rook Ceph cluster health, capacity, IOPS
@@ -310,25 +310,25 @@ data:
 - **Search Platform**: Elasticsearch cluster health
 - **Web Services**: HTTP metrics, response times
 
-## 🚨 Troubleshooting
+##  Troubleshooting
 
 ### **Dashboard Not Appearing**
-1. ✅ Check `grafana_dashboard: "1"` label
-2. ✅ Verify JSON syntax with `jq .`
-3. ✅ Check ArgoCD Application sync status
-4. ✅ Verify ConfigMap exists in `monitoring` namespace
+1.  Check `grafana_dashboard: "1"` label
+2.  Verify JSON syntax with `jq .`
+3.  Check ArgoCD Application sync status
+4.  Verify ConfigMap exists in `monitoring` namespace
 
 ### **Queries Not Working**
-1. ✅ Test queries in Grafana Query Explorer
-2. ✅ Verify ServiceMonitor exists and is scraping
-3. ✅ Check Prometheus targets page
-4. ✅ Validate metric names in Prometheus
+1.  Test queries in Grafana Query Explorer
+2.  Verify ServiceMonitor exists and is scraping
+3.  Check Prometheus targets page
+4.  Validate metric names in Prometheus
 
 ### **Performance Issues**
-1. ✅ Use appropriate time ranges (`[5m]` for rates)
-2. ✅ Limit high-cardinality labels
-3. ✅ Use `rate()` instead of raw counters
-4. ✅ Optimize panel refresh intervals
+1.  Use appropriate time ranges (`[5m]` for rates)
+2.  Limit high-cardinality labels
+3.  Use `rate()` instead of raw counters
+4.  Optimize panel refresh intervals
 
 ## 📚 Resources
 
@@ -358,6 +358,6 @@ data:
 
 ---
 
-**🚀 Happy Monitoring!**
+** Happy Monitoring!**
 
 *For questions about dashboard development, reach out to the Platform Team or check our [monitoring documentation](../README.md).*
