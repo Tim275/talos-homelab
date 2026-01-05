@@ -22,10 +22,10 @@ Keycloak 25.0.0 (OIDC/SAML provider)
 ## Why Keycloak?
 
 **vs Authelia:**
-- ✅ Social login (Google, GitHub, Microsoft, Facebook)
-- ✅ User management UI (admin console)
-- ✅ Advanced MFA (TOTP, WebAuthn, SMS)
-- ✅ Identity brokering (SAML, OIDC federation)
+-  Social login (Google, GitHub, Microsoft, Facebook)
+-  User management UI (admin console)
+-  Advanced MFA (TOTP, WebAuthn, SMS)
+-  Identity brokering (SAML, OIDC federation)
 
 **Use together:**
 - Authelia: Internal services, lightweight
@@ -157,17 +157,17 @@ kubectl logs -n keycloak -l app.kubernetes.io/name=keycloak --tail=100 -f
 
 ## Status
 
-- ✅ PostgreSQL cluster configured (single instance, 10Gi)
-- ✅ Keycloak deployment with production fixes
-- ✅ Database credentials sealed secret
-- ✅ Gateway HTTPRoute configured
-- ✅ Google OAuth + MFA configured
-- ✅ LDAP User Federation configured
-- ✅ Authelia replaced (disabled in kustomization.yaml)
+-  PostgreSQL cluster configured (single instance, 10Gi)
+-  Keycloak deployment with production fixes
+-  Database credentials sealed secret
+-  Gateway HTTPRoute configured
+-  Google OAuth + MFA configured
+-  LDAP User Federation configured
+-  Authelia replaced (disabled in kustomization.yaml)
 
 ---
 
-## 🏗️ Enterprise Identity Architecture (Production 2025)
+##  Enterprise Identity Architecture (Production 2025)
 
 ### Overview
 
@@ -185,9 +185,9 @@ kubectl logs -n keycloak -l app.kubernetes.io/name=keycloak --tail=100 -f
                 │
 ┌─────────────────────────────────────────┐
 │  Keycloak (Central Identity Provider)   │
-│  ├─ Google OAuth ✅                      │
-│  ├─ MFA/2FA (TOTP) ✅                    │
-│  ├─ LDAP User Federation ✅              │
+│  ├─ Google OAuth                       │
+│  ├─ MFA/2FA (TOTP)                     │
+│  ├─ LDAP User Federation               │
 │  └─ OIDC Provider for:                  │
 │     ├─ kubectl (kubernetes realm)       │
 │     ├─ Grafana                          │
@@ -200,8 +200,8 @@ kubectl logs -n keycloak -l app.kubernetes.io/name=keycloak --tail=100 -f
 ### Why This Architecture?
 
 **Keycloak vs Authelia:**
-- ✅ **Keycloak**: Enterprise IAM, OAuth/OIDC/SAML, LDAP Federation, Social Login, Scalable
-- ⚠️ **Authelia**: Lightweight reverse proxy auth, no LDAP write, limited to home labs
+-  **Keycloak**: Enterprise IAM, OAuth/OIDC/SAML, LDAP Federation, Social Login, Scalable
+-  **Authelia**: Lightweight reverse proxy auth, no LDAP write, limited to home labs
 
 **Benefits:**
 1. **One Login for Everything** - Google OAuth → Keycloak → All Apps
@@ -229,15 +229,15 @@ Base DN: dc=homelab,dc=local
 Users DN: ou=people,dc=homelab,dc=local
 Groups DN: ou=groups,dc=homelab,dc=local
 Bind DN: uid=admin,ou=people,dc=homelab,dc=local
-Edit Mode: WRITABLE  # ✅ Google OAuth users sync to LDAP!
+Edit Mode: WRITABLE  #  Google OAuth users sync to LDAP!
 Sync Period: 86400s (24 hours)
 ```
 
 **Mappers:**
-- ✅ **Group Mapper**: LDAP Groups → Keycloak Roles
-- ✅ **Email Mapper**: mail → email
-- ✅ **First Name Mapper**: givenName → firstName
-- ✅ **Last Name Mapper**: sn → lastName
+-  **Group Mapper**: LDAP Groups → Keycloak Roles
+-  **Email Mapper**: mail → email
+-  **First Name Mapper**: givenName → firstName
+-  **Last Name Mapper**: sn → lastName
 
 ### Deploy LDAP Federation
 
@@ -260,25 +260,25 @@ kubectl logs -n keycloak job/keycloak-ldap-federation-setup
 
 Based on industry standards:
 
-1. **Edit Mode = WRITABLE** ✅
+1. **Edit Mode = WRITABLE** 
    - Google OAuth users automatically sync to LDAP
    - One user database for all apps
 
-2. **Periodic Sync = 86400s (24h)** ✅
+2. **Periodic Sync = 86400s (24h)** 
    - Changed users sync only (efficient)
    - On-demand sync available via API
 
-3. **Password Validation = LDAP Server** ✅
+3. **Password Validation = LDAP Server** 
    - Keycloak NEVER imports passwords
    - Security best practice
 
-4. **Trust Email = true** ✅
+4. **Trust Email = true** 
    - Emails from LDAP are pre-verified
    - No email verification needed for LDAP users
 
 ---
 
-## 🔐 Google OAuth + MFA Setup
+##  Google OAuth + MFA Setup
 
 ### Architecture
 
@@ -350,7 +350,7 @@ kubectl logs -n keycloak job/keycloak-google-oauth-setup
 
 ---
 
-## 🔄 Migration from Authelia
+##  Migration from Authelia
 
 ### What We Did
 
@@ -392,7 +392,7 @@ kubectl delete namespace authelia
 
 ---
 
-## 📊 Testing & Verification
+##  Testing & Verification
 
 ### Test LDAP Federation
 
@@ -454,12 +454,12 @@ infrastructure/authentication/keycloak/
 
 ---
 
-## 🎯 Production Checklist
+##  Production Checklist
 
-- ✅ **LDAP Federation**: Keycloak ↔ LLDAP sync enabled
-- ✅ **Google OAuth**: Social login configured
-- ✅ **MFA/2FA**: TOTP enforced for all users
-- ✅ **kubectl OIDC**: Kubernetes authentication working
-- ✅ **Authelia**: Disabled (replaced by Keycloak)
-- ✅ **Realm Backup**: Automated export job configured
-- ✅ **GitOps**: All credentials encrypted with SealedSecrets
+-  **LDAP Federation**: Keycloak ↔ LLDAP sync enabled
+-  **Google OAuth**: Social login configured
+-  **MFA/2FA**: TOTP enforced for all users
+-  **kubectl OIDC**: Kubernetes authentication working
+-  **Authelia**: Disabled (replaced by Keycloak)
+-  **Realm Backup**: Automated export job configured
+-  **GitOps**: All credentials encrypted with SealedSecrets

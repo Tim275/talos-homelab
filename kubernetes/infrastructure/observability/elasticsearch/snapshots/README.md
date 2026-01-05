@@ -9,24 +9,24 @@ Enterprise-grade automated backup solution for Elasticsearch cluster using Rook 
 ```
 ┌─────────────────────────────────────────────────────┐
 │ Elasticsearch Cluster (3 Nodes)                    │
-│ ✅ S3 Credentials in Keystore                       │
-│ ✅ SLM Policy: daily-snapshots                      │
+│  S3 Credentials in Keystore                       │
+│  SLM Policy: daily-snapshots                      │
 └──────────────────┬──────────────────────────────────┘
                    │
                    │ S3 API (HTTP)
                    ▼
 ┌─────────────────────────────────────────────────────┐
 │ Rook Ceph RGW (S3-compatible Object Storage)       │
-│ ✅ Bucket: elasticsearch-snapshots-5a264d68...      │
-│ ✅ Endpoint: rook-ceph-rgw-homelab-objectstore      │
+│  Bucket: elasticsearch-snapshots-5a264d68...      │
+│  Endpoint: rook-ceph-rgw-homelab-objectstore      │
 └──────────────────┬──────────────────────────────────┘
                    │
                    │ RBD (RADOS Block Device)
                    ▼
 ┌─────────────────────────────────────────────────────┐
 │ Ceph Storage Cluster (6 OSDs)                      │
-│ ✅ 3x Replication                                   │
-│ ✅ Enterprise-grade Reliability                     │
+│  3x Replication                                   │
+│  Enterprise-grade Reliability                     │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -415,9 +415,9 @@ kubectl delete jobs -n elastic-system -l app.kubernetes.io/component=backup \
 
 ## Success Metrics
 
-- ✅ **113 Data Streams** backed up
-- ✅ **0 Failures** in snapshot process
-- ✅ **Daily Automated** backups at 2 AM UTC
-- ✅ **30-Day Retention** with min/max bounds
-- ✅ **S3-Compatible** storage on enterprise Ceph cluster
-- ✅ **GitOps Managed** via ArgoCD Infrastructure as Code
+-  **113 Data Streams** backed up
+-  **0 Failures** in snapshot process
+-  **Daily Automated** backups at 2 AM UTC
+-  **30-Day Retention** with min/max bounds
+-  **S3-Compatible** storage on enterprise Ceph cluster
+-  **GitOps Managed** via ArgoCD Infrastructure as Code

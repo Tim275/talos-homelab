@@ -1,6 +1,6 @@
 # Talos K8s Devcontainer
 
-## 🚀 Quick Start
+##  Quick Start
 
 ```bash
 # Build container
@@ -8,7 +8,7 @@
 
 
 # Start container with auto-trust
-echo "🚀 Starting Talos K8s DevContainer..."
+echo " Starting Talos K8s DevContainer..."
 docker run -it --rm \
     --name talos-dev \
     --user vscode \
@@ -20,7 +20,7 @@ docker run -it --rm \
     talos-dev bash -c "mise trust 2>/dev/null || true; exec bash"
 ``` (auch mit talos bash :)
 
-## 🔧 What's Included
+##  What's Included
 
 - **mise** - Tool version manager
 - **kubectl** - Kubernetes CLI (via mise)

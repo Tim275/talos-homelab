@@ -58,10 +58,10 @@ issuerRef:
 ## Current Setup
 
 The Envoy Gateway uses a **wildcard production certificate** (`*.timourhomelab.org`) that covers ALL environments:
-- ✅ `n8n.timourhomelab.org` (prod)
-- ✅ `n8n-dev.timourhomelab.org` (dev)
-- ✅ `ceph.timourhomelab.org` (prod)
-- ✅ Any `*.timourhomelab.org` subdomain
+-  `n8n.timourhomelab.org` (prod)
+-  `n8n-dev.timourhomelab.org` (dev)
+-  `ceph.timourhomelab.org` (prod)
+-  Any `*.timourhomelab.org` subdomain
 
 This is the **recommended approach for homelabs** because:
 1. Single trusted certificate for all environments
