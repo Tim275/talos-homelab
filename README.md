@@ -1,11 +1,11 @@
-# 🚀 Enterprise Kubernetes Homelab
+#  Enterprise Kubernetes Homelab
 
 [![Talos](https://img.shields.io/badge/OS-Talos%20Linux-FF7300?style=for-the-badge&logo=linux&logoColor=white)](https://www.talos.dev/)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-v1.33.2-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)](https://kubernetes.io/)
 [![OpenTofu](https://img.shields.io/badge/IaC-OpenTofu-844FBA?style=for-the-badge&logo=opentofu&logoColor=white)](https://opentofu.org/)
 [![ArgoCD](https://img.shields.io/badge/GitOps-ArgoCD-00D4AA?style=for-the-badge&logo=argo&logoColor=white)](https://argo-cd.readthedocs.io/)
 
-## 🏠 Welcome to my Homelab
+##  Welcome to my Homelab
 
 This repository contains the complete configuration and documentation of my enterprise-grade Kubernetes homelab.
 
@@ -68,7 +68,7 @@ End-user applications deployed in dev, staging, and production environments:
     </tr>
 </table>
 
-## 🎛️ Kubernetes Operators
+##  Kubernetes Operators
 
 Enterprise operators managing lifecycle, scaling, and HA for complex stateful workloads:
 
@@ -334,7 +334,7 @@ Databases, messaging platforms, and identity management:
     </tr>
 </table>
 
-## 🔐 Security
+##  Security
 
 Zero Trust foundation and policy enforcement:
 
@@ -350,7 +350,7 @@ Zero Trust foundation and policy enforcement:
         <td>Kubernetes-native policy engine for security, compliance and governance automation</td>
     </tr>
     <tr>
-        <td>🔒</td>
+        <td></td>
         <td><a href="https://sealed-secrets.netlify.app/">Sealed Secrets</a></td>
         <td>Kubernetes controller for one-way encrypted secrets in Git</td>
     </tr>

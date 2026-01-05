@@ -1,6 +1,6 @@
 # EFK Stack (Elasticsearch, Fluentd, Kibana) - Production Guide
 
-## 🏗️ Architecture Overview
+##  Architecture Overview
 
 ```mermaid
 graph TB
@@ -56,7 +56,7 @@ graph TB
     style CEPH fill:#fff8e1
 ```
 
-## 📊 Current Log Data
+##  Current Log Data
 
 **Indices Status:**
 - **`logstash-2025.09.14`**: 64,086 logs, 50.35MB
@@ -70,7 +70,7 @@ graph TB
 - **Kubernetes Metadata**: Pod names, namespaces, labels, containers, hosts
 - **Examples**: ArgoCD repo-server, Elasticsearch, Fluentd, FluentBit, etc.
 
-## 🎯 Why EFK over ELK?
+##  Why EFK over ELK?
 
 | Feature | EFK (FluentBit + Fluentd) | ELK (Logstash) |
 |---------|---------------------------|----------------|
@@ -86,7 +86,7 @@ graph TB
 **Fluentd**: Reliable data collector and aggregator  
 **Result**: Lower resource usage, better Kubernetes integration, more reliable
 
-## 🚀 Step-by-Step Installation Guide
+##  Step-by-Step Installation Guide
 
 ### Prerequisites
 - **ECK Operator** installed (`elastic-system` namespace)
@@ -139,7 +139,7 @@ kubectl logs -n elastic-system -l app.kubernetes.io/name=fluent-bit --tail=5
 kubectl apply -f kubernetes/infra/observability/rbac/
 ```
 
-## 🧪 Pipeline Testing & Validation
+##  Pipeline Testing & Validation
 
 ### Test 1: Verify Component Health
 ```bash
@@ -207,7 +207,7 @@ kubectl run es-search --image=curlimages/curl --rm -i --restart=Never -- \
    - Select your **logstash-*** index pattern
    - You should see all your container logs with Kubernetes metadata!
 
-## 🔧 Configuration Details
+##  Configuration Details
 
 ### FluentBit Configuration
 - **Input**: Tail `/var/log/containers/*.log` and `/var/log/syslog`
@@ -235,7 +235,7 @@ kubectl run es-search --image=curlimages/curl --rm -i --restart=Never -- \
 - **Resources**: 1-2Gi memory, 500m-1 CPU
 - **Authentication**: Connected to Elasticsearch security
 
-## 🚨 Troubleshooting
+##  Troubleshooting
 
 ### Issue: No logs appearing in Elasticsearch
 ```bash
@@ -267,7 +267,7 @@ kubectl run es-test --image=curlimages/curl --rm -i --restart=Never -- \
   curl -k -u "elastic:PASSWORD" "https://production-cluster-es-http.elastic-system:9200/_cluster/health"
 ```
 
-## 📈 Monitoring & Maintenance
+##  Monitoring & Maintenance
 
 ### Log Retention
 Elasticsearch will automatically create daily indices (`logstash-YYYY.MM.DD`). Configure Index Lifecycle Management (ILM) for automatic cleanup:
@@ -299,35 +299,35 @@ curl -X PUT "localhost:9200/_ilm/policy/logstash-policy" -H 'Content-Type: appli
 - **Configuration backup**: All YAML files in Git (Infrastructure as Code)
 - **Disaster recovery**: ECK operator handles most recovery scenarios
 
-## 🎉 Success Indicators
+##  Success Indicators
 
-✅ **Current Pipeline Status:**
+ **Current Pipeline Status:**
 - FluentBit pods running on all nodes
 - Fluentd receiving logs from FluentBit (no connection errors)
 - Elasticsearch indices being created daily (`logstash-YYYY.MM.DD`)
 - Kibana can create index patterns and show logs
 - Search in Kibana returns container logs with Kubernetes metadata
 
-**Current Status**: 64,086+ logs successfully flowing through the complete EFK pipeline! 🚀
+**Current Status**: 64,086+ logs successfully flowing through the complete EFK pipeline! 
 
 ## 🏢 Enterprise Log Sources - Beyond Basic Container Logs
 
-### 🎯 **Current Implementation (Phase 1)**
-✅ **kubernetes-logs-YYYY.MM.DD**: Pod/Container logs with K8s metadata  
-🔄 **talos-system-logs-YYYY.MM.DD**: Talos host system logs (etcd, kubelet, kube-apiserver)
+###  **Current Implementation (Phase 1)**
+ **kubernetes-logs-YYYY.MM.DD**: Pod/Container logs with K8s metadata  
+ **talos-system-logs-YYYY.MM.DD**: Talos host system logs (etcd, kubelet, kube-apiserver)
 
-### 🚀 **Enterprise Roadmap (Phase 2)**
+###  **Enterprise Roadmap (Phase 2)**
 
 | Log Category | Status | Index Pattern | Enterprise Use Cases |
 |-------------|---------|---------------|---------------------|
-| **🔐 Security & Audit** | ❌ **PLANNED** | `security-audit-logs-*` | API calls, RBAC violations, login attempts |
-| **🌐 Ingress & Traffic** | ⚠️ **BASIC** | `network-traffic-logs-*` | HTTP/gRPC requests, rate limiting, DDoS |  
-| **📊 Infrastructure Metrics** | ❌ **PLANNED** | `infra-metrics-logs-*` | Node health, disk usage, network stats |
-| **💾 Storage Events** | ❌ **PLANNED** | `storage-operations-logs-*` | PV provisioning, backup status, Ceph events |
-| **🤖 GitOps Events** | ⚠️ **PARTIAL** | `gitops-deployment-logs-*` | ArgoCD sync events, drift detection |
-| **🚨 Alert Events** | ❌ **PLANNED** | `alert-events-logs-*` | Prometheus alerts, escalations, acknowledgments |
+| ** Security & Audit** |  **PLANNED** | `security-audit-logs-*` | API calls, RBAC violations, login attempts |
+| ** Ingress & Traffic** |  **BASIC** | `network-traffic-logs-*` | HTTP/gRPC requests, rate limiting, DDoS |  
+| ** Infrastructure Metrics** |  **PLANNED** | `infra-metrics-logs-*` | Node health, disk usage, network stats |
+| ** Storage Events** |  **PLANNED** | `storage-operations-logs-*` | PV provisioning, backup status, Ceph events |
+| ** GitOps Events** |  **PARTIAL** | `gitops-deployment-logs-*` | ArgoCD sync events, drift detection |
+| ** Alert Events** |  **PLANNED** | `alert-events-logs-*` | Prometheus alerts, escalations, acknowledgments |
 
-### 🏆 **Industry Standards (Netflix, Google, Meta)**
+###  **Industry Standards (Netflix, Google, Meta)**
 
 ```yaml
 # Netflix Index Strategy
@@ -349,7 +349,7 @@ security-logs-*            # Security events
 performance-*              # Performance metrics
 ```
 
-## 🏛️ **Enterprise Architecture Decision: Single-Index vs Dual-Index**
+##  **Enterprise Architecture Decision: Single-Index vs Dual-Index**
 
 Based on industry research and enterprise best practices from Netflix, Google, Meta, and Elasticsearch.com:
 
@@ -359,14 +359,14 @@ Based on industry research and enterprise best practices from Netflix, Google, M
 
 | **Approach** | **Single-Index (`kubernetes-*`)** | **Dual-Index (`kubernetes-*` + `talos-*`)** |
 |-------------|----------------------------------|------------------------------------------|
-| **🎯 Simplicity** | ✅ **SIMPLE** - One index pattern | ❌ **COMPLEX** - Multiple patterns |
-| **🔍 Query Performance** | ⚠️ Slower on large datasets | ✅ **FASTER** - Query only relevant data |
-| **💾 Storage Management** | ⚠️ One ILM policy for all data | ✅ **FLEXIBLE** - Separate retention policies |
-| **🚀 Operational Overhead** | ✅ **LOW** - Single configuration | ❌ **HIGH** - Multiple configs to maintain |
-| **🔐 Access Control** | ❌ All-or-nothing access | ✅ **GRANULAR** - Role-based index access |
-| **📊 Use Case Fit** | ✅ Small-medium deployments | ✅ **ENTERPRISE** - Large scale operations |
+| ** Simplicity** |  **SIMPLE** - One index pattern |  **COMPLEX** - Multiple patterns |
+| ** Query Performance** |  Slower on large datasets |  **FASTER** - Query only relevant data |
+| ** Storage Management** |  One ILM policy for all data |  **FLEXIBLE** - Separate retention policies |
+| ** Operational Overhead** |  **LOW** - Single configuration |  **HIGH** - Multiple configs to maintain |
+| ** Access Control** |  All-or-nothing access |  **GRANULAR** - Role-based index access |
+| ** Use Case Fit** |  Small-medium deployments |  **ENTERPRISE** - Large scale operations |
 
-### 🏆 **Industry Standards Analysis**
+###  **Industry Standards Analysis**
 
 **Google Cloud Logging** (GKE):
 ```bash
@@ -388,14 +388,14 @@ logs-security-*             # Audit & security events
 **Elasticsearch.com Best Practice**:
 > *"Think in terms of data retention per microservice and/or per log type. If you need to keep data around during 30 days for microservice A and during 90 days for microservice B, it makes sense to separate data for both microservice in two different indexes so that each can have its own index lifecycle policy."*
 
-### 🎯 **Current Implementation Status**
+###  **Current Implementation Status**
 
 | Index Pattern | Current Status | Purpose | Size |
 |---------------|----------------|---------|------|
-| **`kubernetes-2025.09.14`** | ✅ **ACTIVE** - 64,086+ logs | Pod & host logs combined | ~50MB |
-| **`homelab-logs-2025.09.14`** | ⚠️ **FLUENTD INTERNALS** | Internal Fluentd retry/error logs | 97KB (18 logs) |
+| **`kubernetes-2025.09.14`** |  **ACTIVE** - 64,086+ logs | Pod & host logs combined | ~50MB |
+| **`homelab-logs-2025.09.14`** |  **FLUENTD INTERNALS** | Internal Fluentd retry/error logs | 97KB (18 logs) |
 
-### 💡 **Homelab-Logs Index Mystery SOLVED!**
+###  **Homelab-Logs Index Mystery SOLVED!**
 
 **Das `homelab-logs-*` Index contains:**
 - **Internal Fluentd warning logs** (`@log_name: fluent.warn`) 
@@ -403,17 +403,17 @@ logs-security-*             # Audit & security events
 - **NOT application/system logs** - just Fluentd's own diagnostics
 - **Can be safely ignored or deleted**
 
-### 🚀 **Enterprise Recommendation for Your Homelab**
+###  **Enterprise Recommendation for Your Homelab**
 
 **For your current scale (64k logs/day):**
 
-**Option A: Keep Simple** ✅ **RECOMMENDED**
+**Option A: Keep Simple**  **RECOMMENDED**
 ```bash
 kubernetes-*        # All logs (pods + Talos host)
 ```
 **Pros:** Simple, working, low maintenance, perfect for homelab scale
 
-**Option B: Enterprise Dual-Index** ⚠️ **COMPLEX**
+**Option B: Enterprise Dual-Index**  **COMPLEX**
 ```bash
 kubernetes-logs-*   # Pod/container logs with K8s metadata
 talos-system-logs-* # Host system logs (etcd, kubelet, api-server)
@@ -421,7 +421,7 @@ talos-system-logs-* # Host system logs (etcd, kubelet, api-server)
 **Pros:** Enterprise-like, better separation, granular control
 **Cons:** Complex configuration that caused 4+ hours of issues
 
-### 🎯 **Current Focus: KISS Principle**
+###  **Current Focus: KISS Principle**
 
 **Current Working Solution**: Single-index architecture
 - **Benefits**: Reliable, simple, working perfectly
