@@ -232,4 +232,3 @@ All three use Ceph S3 backend for cost-effective long-term storage!
 
 **Created**: 2025-10-31
 **Version**: tempo-distributed v1.23.3
-**Author**: Tim275 + Claude
