@@ -165,3 +165,119 @@ spec:
 
               Duration: >15 minutes
               Action: Consider increasing broker resources or adding brokers
+
+        # ====== P3: MEDIUM - Kafka Disk Usage High ======
+        - alert: KafkaDiskUsageHigh
+          expr: |
+            kubelet_volume_stats_used_bytes{persistentvolumeclaim=~"data-my-cluster.*"}
+            / kubelet_volume_stats_capacity_bytes > 0.8
+          for: 10m
+          labels:
+            severity: warning
+            priority: p3
+            component: kafka
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Kafka disk usage > 80% on {{ $labels.persistentvolumeclaim }}"
+            description: |
+              Kafka broker PVC {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full.
+              Risk of broker failure if disk fills up!
+
+              Duration: >10 minutes
+              Action: Reduce retention or expand storage
+
+              Check: kubectl -n kafka exec my-cluster-dual-role-0 -- df -h /var/lib/kafka
+
+        # ====== P3: MEDIUM - Kafka Disk Usage Critical ======
+        - alert: KafkaDiskUsageCritical
+          expr: |
+            kubelet_volume_stats_used_bytes{persistentvolumeclaim=~"data-my-cluster.*"}
+            / kubelet_volume_stats_capacity_bytes > 0.9
+          for: 5m
+          labels:
+            severity: critical
+            priority: p1
+            component: kafka
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Kafka disk usage > 90% on {{ $labels.persistentvolumeclaim }}"
+            description: |
+              Kafka broker PVC {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full.
+              IMMEDIATE ACTION REQUIRED - Broker will crash!
+
+              Duration: >5 minutes
+              Action: Reduce retention immediately
+
+              Fix: kubectl -n kafka exec my-cluster-dual-role-0 -- \
+                kafka-configs.sh --bootstrap-server localhost:9092 \
+                --entity-type topics --entity-name orders \
+                --alter --add-config retention.ms=86400000
+
+        # ====== P3: MEDIUM - Kafka Partition Imbalance ======
+        - alert: KafkaPartitionImbalance
+          expr: |
+            stddev(kafka_server_replicamanager_partitioncount) by (strimzi_io_cluster) > 10
+          for: 15m
+          labels:
+            severity: info
+            priority: p3
+            component: kafka
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Kafka partition distribution is uneven"
+            description: |
+              Partition distribution across brokers has high variance (stddev > 10).
+              Some brokers are overloaded while others are idle.
+
+              Duration: >15 minutes
+              Action: Consider running Cruise Control rebalance
+
+              Check: kubectl -n kafka exec my-cluster-dual-role-0 -- \
+                kafka-topics.sh --bootstrap-server localhost:9092 --describe | grep Leader
+
+        # ====== P3: MEDIUM - Kafka Consumer Rebalancing Frequent ======
+        - alert: KafkaConsumerRebalancingFrequent
+          expr: |
+            increase(kafka_consumer_coordinator_rebalance_total[10m]) > 5
+          for: 10m
+          labels:
+            severity: warning
+            priority: p3
+            component: kafka
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Kafka consumer group rebalancing too frequently"
+            description: |
+              Consumer group is rebalancing more than 5 times in 10 minutes.
+              During rebalancing, no messages are processed!
+
+              Duration: >10 minutes
+              Causes: Unstable consumers, too short session timeout, slow processing
+
+              Fix: Increase session.timeout.ms, reduce max.poll.records, or use static membership
+
+        # ====== P3: MEDIUM - Kafka Deserialization Errors ======
+        - alert: KafkaDeserializationErrors
+          expr: |
+            increase(spring_kafka_listener_seconds_count{exception!="none"}[5m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p3
+            component: kafka
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Kafka consumer deserialization errors detected"
+            description: |
+              Consumer is failing to deserialize messages.
+              Likely schema incompatibility between producer and consumer!
+
+              Duration: >5 minutes
+              Action: Check schema compatibility, review recent producer changes
+
+              Check: kubectl logs -l app=payment-service -n kafka-saga | grep -i deserialize
