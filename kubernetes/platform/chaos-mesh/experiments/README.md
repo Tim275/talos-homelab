@@ -1,8 +1,8 @@
-# 🔥 Chaos Engineering Experiments
+#  Chaos Engineering Experiments
 
 This directory contains chaos experiments to test system resilience.
 
-## 🎯 **What is Chaos Engineering?**
+##  **What is Chaos Engineering?**
 
 **Definition**: "Discipline of experimenting on a system to build confidence in its capability to withstand turbulent conditions in production."
 
@@ -12,7 +12,7 @@ This directory contains chaos experiments to test system resilience.
 
 ---
 
-## 📋 **Available Experiments**
+##  **Available Experiments**
 
 ### 1. **Pod Kill Chaos** (`pod-kill-n8n-dev.yaml`)
 **What**: Randomly kills N8N pods every 5 minutes
@@ -51,7 +51,7 @@ This directory contains chaos experiments to test system resilience.
 
 ---
 
-## 🚀 **How to Run Experiments**
+##  **How to Run Experiments**
 
 ### **Option 1: Manual One-Time Test**
 ```bash
@@ -87,7 +87,7 @@ kubectl port-forward -n chaos-mesh svc/chaos-dashboard 2333:2333
 
 ---
 
-## 📊 **Experiment Lifecycle**
+##  **Experiment Lifecycle**
 
 1. **Inject** → Chaos Mesh injects failure
 2. **Monitor** → Prometheus + Grafana show impact
@@ -96,26 +96,26 @@ kubectl port-forward -n chaos-mesh svc/chaos-dashboard 2333:2333
 
 ---
 
-## 🔧 **Safety Guidelines**
+##  **Safety Guidelines**
 
-### ✅ **Safe to Run:**
+###  **Safe to Run:**
 - Pod kill in **dev** namespaces (`n8n-dev`, `boutique-dev`)
 - Network delays < 500ms
 - CPU stress < 80%
 
-### ⚠️ **Be Careful:**
+###  **Be Careful:**
 - Pod kill in **prod** namespaces (test backup/restore!)
 - Network partitions (can cause split-brain!)
 - Disk failures (test Velero backups!)
 
-### 🚨 **NEVER DO:**
+###  **NEVER DO:**
 - Kill all replicas at once (use `mode: one`)
 - Permanent failures without timeout (always set `duration: 2m`)
 - Chaos in `kube-system` or `istio-system`
 
 ---
 
-## 📈 **Monitoring Chaos**
+##  **Monitoring Chaos**
 
 ### **Grafana Dashboards:**
 ```
@@ -142,19 +142,19 @@ rate(container_cpu_usage_seconds_total{namespace="n8n-dev"}[5m])
 
 ---
 
-## 🎓 **Learning Outcomes**
+##  **Learning Outcomes**
 
 After running these experiments, you'll know:
-- ✅ Does N8N handle pod kills gracefully?
-- ✅ Can Kafka survive broker failures?
-- ✅ Do apps timeout correctly with slow database?
-- ✅ Does HPA autoscale under CPU stress?
-- ✅ Can Velero restore after disk failure?
-- ✅ Do workflows fail gracefully with external API down?
+-  Does N8N handle pod kills gracefully?
+-  Can Kafka survive broker failures?
+-  Do apps timeout correctly with slow database?
+-  Does HPA autoscale under CPU stress?
+-  Can Velero restore after disk failure?
+-  Do workflows fail gracefully with external API down?
 
 ---
 
-## 🏆 **Advanced Chaos Patterns**
+##  **Advanced Chaos Patterns**
 
 ### **1. Chaos Schedule (GameDay)**
 ```bash
@@ -192,4 +192,4 @@ spec:
 
 ---
 
-**Remember**: "Hope is not a strategy" - Test failures BEFORE production! 🔥
+**Remember**: "Hope is not a strategy" - Test failures BEFORE production! 

@@ -1,10 +1,10 @@
 # 🏢 Enterprise Jaeger Operator Manifests
 
-## 🎯 **Why Local Manifests?**
+##  **Why Local Manifests?**
 
 **Enterprise-Grade Principle:** Never depend on external URLs in production deployments.
 
-### ❌ **Anti-Pattern:**
+###  **Anti-Pattern:**
 ```yaml
 resources:
   - https://github.com/jaegertracing/jaeger-operator/releases/download/v1.65.0/jaeger-operator.yaml
@@ -16,7 +16,7 @@ resources:
 - **No Version Control:** Manifest changes without notice
 - **Network Dependencies:** Fragile during deployment
 
-### ✅ **Enterprise Solution:**
+###  **Enterprise Solution:**
 ```yaml
 resources:
   - manifests/jaeger-operator-v1.65.0.yaml  # Local versioned manifests
@@ -28,13 +28,13 @@ resources:
 - **Reproducibility:** Exact same manifests every deployment
 - **Audit Trail:** Git history of all changes
 
-## 📦 **Manifest Versioning**
+##  **Manifest Versioning**
 
 | File | Version | Source | Date |
 |------|---------|--------|------|
 | `jaeger-operator-v1.65.0.yaml` | v1.65.0 | [GitHub Release](https://github.com/jaegertracing/jaeger-operator/releases/tag/v1.65.0) | 2025-09-19 |
 
-## 🔄 **Update Process**
+##  **Update Process**
 
 ```bash
 # 1. Download new version
@@ -50,4 +50,4 @@ git add kubernetes/infra/monitoring/jaeger/manifests/jaeger-operator-v1.66.0.yam
 git commit -m "feat: Update Jaeger operator to v1.66.0"
 ```
 
-This follows Netflix/Uber enterprise practices! 🚀
+This follows Netflix/Uber enterprise practices! 

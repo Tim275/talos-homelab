@@ -5,37 +5,37 @@ This directory contains **all** Istio features tested in the CNCF Certified Isti
 ## Exam Topics Coverage:
 
 ### 1. Traffic Management (25% of exam)
-- ✅ Canary Deployments (traffic splitting)
-- ✅ A/B Testing (header-based routing)
-- ✅ Traffic Mirroring (dark launch)
-- ✅ Retry Policies
-- ✅ Timeout Configuration
-- ✅ Circuit Breaking
-- ✅ Load Balancing strategies
+-  Canary Deployments (traffic splitting)
+-  A/B Testing (header-based routing)
+-  Traffic Mirroring (dark launch)
+-  Retry Policies
+-  Timeout Configuration
+-  Circuit Breaking
+-  Load Balancing strategies
 
 ### 2. Security (25% of exam)
-- ✅ mTLS (Strict mode)
-- ✅ AuthorizationPolicies (service-to-service RBAC)
-- ✅ RequestAuthentication (JWT validation)
-- ✅ PeerAuthentication modes
+-  mTLS (Strict mode)
+-  AuthorizationPolicies (service-to-service RBAC)
+-  RequestAuthentication (JWT validation)
+-  PeerAuthentication modes
 
 ### 3. Observability (20% of exam)
-- ✅ Distributed Tracing (Jaeger)
-- ✅ Metrics (Prometheus + Grafana)
-- ✅ Service Graph (Kiali)
-- ✅ Access Logs
+-  Distributed Tracing (Jaeger)
+-  Metrics (Prometheus + Grafana)
+-  Service Graph (Kiali)
+-  Access Logs
 
 ### 4. Troubleshooting (15% of exam)
-- ✅ `istioctl analyze`
-- ✅ Envoy config dump
-- ✅ Proxy logs
-- ✅ Debugging traffic issues
+-  `istioctl analyze`
+-  Envoy config dump
+-  Proxy logs
+-  Debugging traffic issues
 
 ### 5. Architecture & Installation (15% of exam)
-- ✅ Ambient vs Sidecar mode
-- ✅ Control Plane components
-- ✅ Data Plane (ztunnel, waypoint)
-- ✅ Gateway configuration
+-  Ambient vs Sidecar mode
+-  Control Plane components
+-  Data Plane (ztunnel, waypoint)
+-  Gateway configuration
 
 ## Files in this directory:
 

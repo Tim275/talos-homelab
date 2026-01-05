@@ -30,11 +30,11 @@ git add sealed-secret.yaml
 
 **Certificate location:** `certificate/sealed-secrets.crt`
 
-**⚠️ Never commit plaintext secrets - only SealedSecrets!**
+** Never commit plaintext secrets - only SealedSecrets!**
 
 ---
 
-## 🚨 CRITICAL: SealedSecrets Key Management for tofu destroy/apply
+##  CRITICAL: SealedSecrets Key Management for tofu destroy/apply
 
 ### Problem
 When you run `tofu destroy` and `tofu apply`, the SealedSecrets controller generates **NEW** private/public keys, making **ALL existing SealedSecrets unreadable**!
@@ -86,7 +86,7 @@ kubectl get sealedsecrets --all-namespaces
    ```bash
    #!/bin/bash
    set -e
-   echo "🔧 Restoring SealedSecrets keys..."
+   echo " Restoring SealedSecrets keys..."
    kubectl delete secret sealed-secrets-key* -n sealed-secrets --ignore-not-found
    kubectl create secret tls sealed-secrets-key \
      --cert=tofu/bootstrap/sealed-secrets/certificate/sealed-secrets.crt \
@@ -95,9 +95,9 @@ kubectl get sealedsecrets --all-namespaces
    kubectl label secret sealed-secrets-key -n sealed-secrets \
      sealedsecrets.bitnami.com/sealed-secrets-key=active
    kubectl rollout restart deployment sealed-secrets-controller -n sealed-secrets
-   echo "✅ SealedSecrets keys restored - waiting for pods..."
+   echo " SealedSecrets keys restored - waiting for pods..."
    kubectl rollout status deployment sealed-secrets-controller -n sealed-secrets
-   echo "🎉 All SealedSecrets should work now!"
+   echo " All SealedSecrets should work now!"
    ```
 
 3. **Alternative: Persistent Storage for Keys** (Advanced)
@@ -113,10 +113,10 @@ kubectl get sealedsecrets --all-namespaces
 
 ### Critical Services Affected
 When keys mismatch, these services FAIL:
-- 🔒 **Certificate Issuance** (TLS/SSL certs)
-- 🌐 **Cloudflare Tunnel** (External access)  
-- 💾 **Storage Provisioning** (PVCs fail)
+-  **Certificate Issuance** (TLS/SSL certs)
+-  **Cloudflare Tunnel** (External access)  
+-  **Storage Provisioning** (PVCs fail)
 - 📢 **Monitoring Alerts** (Slack notifications)
 - 💿 **Backup Systems** (Velero)
 
-**⚠️ ALWAYS restore keys immediately after cluster recreation!**
+** ALWAYS restore keys immediately after cluster recreation!**
