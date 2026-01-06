@@ -1,0 +1,113 @@
+# Apicurio Registry - Open Source Schema Registry for Kafka
+# Compatible with Confluent Schema Registry API
+# Supports: Avro, Protobuf, JSON Schema, OpenAPI, AsyncAPI
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apicurio-registry
+  namespace: kafka
+  labels:
+    app: apicurio-registry
+    app.kubernetes.io/name: apicurio-registry
+    app.kubernetes.io/component: schema-registry
+    app.kubernetes.io/part-of: kafka
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apicurio-registry
+  template:
+    metadata:
+      labels:
+        app: apicurio-registry
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: apicurio-registry
+          image: apicurio/apicurio-registry:3.0.4
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            # Storage: In-Memory (für Homelab, Production: PostgreSQL/Kafka)
+            - name: APICURIO_STORAGE_KIND
+              value: "kafkasql"
+            # Kafka Bootstrap für KafkaSQL Storage
+            - name: APICURIO_KAFKASQL_BOOTSTRAP_SERVERS
+              value: "my-cluster-kafka-bootstrap.kafka.svc:9092"
+            # UI aktivieren
+            - name: APICURIO_UI_ENABLED
+              value: "true"
+            # Confluent API Kompatibilität (für Spring Boot)
+            - name: APICURIO_REST_ARTIFACT_DELETION_ENABLED
+              value: "true"
+            # CORS für UI
+            - name: APICURIO_CORS_ALLOWED_ORIGINS
+              value: "*"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 768Mi
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: apicurio-registry
+  namespace: kafka
+  labels:
+    app: apicurio-registry
+spec:
+  selector:
+    app: apicurio-registry
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
+---
+# Service für Confluent API Kompatibilität (Spring Boot erwartet /ccompat/v7)
+apiVersion: v1
+kind: Service
+metadata:
+  name: schema-registry
+  namespace: kafka
+  labels:
+    app: apicurio-registry
+    app.kubernetes.io/name: schema-registry
+spec:
+  selector:
+    app: apicurio-registry
+  ports:
+    - name: http
+      port: 8081
+      targetPort: 8080
+  type: ClusterIP
