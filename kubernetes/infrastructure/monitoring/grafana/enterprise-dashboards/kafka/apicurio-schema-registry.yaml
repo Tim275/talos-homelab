@@ -1,0 +1,321 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: apicurio-schema-registry
+  namespace: grafana
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: dashboard
+    dashboard-tier: tier2-platform
+spec:
+  allowCrossNamespaceImport: true
+  folder: "Kafka"
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  json: |
+    {
+      "title": "Apicurio Schema Registry",
+      "uid": "apicurio-schema-registry",
+      "tags": ["kafka", "schema-registry", "apicurio"],
+      "timezone": "utc",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "panels": [
+        {
+          "title": "Schema Registry Overview",
+          "type": "row",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+          "collapsed": false
+        },
+        {
+          "title": "Registry Status",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 0, "y": 1},
+          "targets": [
+            {
+              "expr": "up{job=~\".*apicurio.*\"}",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {"calcs": ["lastNotNull"]}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                {"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}}},
+                {"type": "value", "options": {"1": {"text": "UP", "color": "green"}}}
+              ]
+            }
+          }
+        },
+        {
+          "title": "Artifacts (Schemas)",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 5, "x": 4, "y": 1},
+          "targets": [
+            {
+              "expr": "apicurio_registry_artifact_count",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "reduceOptions": {"calcs": ["lastNotNull"]}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {"steps": [{"value": 0, "color": "blue"}]}
+            }
+          }
+        },
+        {
+          "title": "Schema Versions",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 5, "x": 9, "y": 1},
+          "targets": [
+            {
+              "expr": "apicurio_registry_artifact_version_count",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "reduceOptions": {"calcs": ["lastNotNull"]}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {"steps": [{"value": 0, "color": "purple"}]}
+            }
+          }
+        },
+        {
+          "title": "API Requests/sec",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 5, "x": 14, "y": 1},
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_requests_seconds_count{job=~\".*apicurio.*\"}[5m]))",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "reduceOptions": {"calcs": ["lastNotNull"]}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "thresholds": {"steps": [{"value": 0, "color": "green"}]}
+            }
+          }
+        },
+        {
+          "title": "Error Rate",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 5, "x": 19, "y": 1},
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_requests_seconds_count{job=~\".*apicurio.*\", status=~\"5..\"}[5m])) or vector(0)",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "reduceOptions": {"calcs": ["lastNotNull"]}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "thresholds": {
+                "steps": [
+                  {"value": 0, "color": "green"},
+                  {"value": 0.1, "color": "red"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "API Performance",
+          "type": "row",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5},
+          "collapsed": false
+        },
+        {
+          "title": "Request Rate by Endpoint",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+          "targets": [
+            {
+              "expr": "rate(http_server_requests_seconds_count{job=~\".*apicurio.*\"}[5m])",
+              "refId": "A",
+              "legendFormat": "{{method}} {{uri}}",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "fillOpacity": 20
+              },
+              "unit": "reqps"
+            }
+          }
+        },
+        {
+          "title": "Response Time (p99)",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{job=~\".*apicurio.*\"}[5m])) by (le, uri))",
+              "refId": "A",
+              "legendFormat": "{{uri}}",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "fillOpacity": 10
+              },
+              "unit": "s"
+            }
+          }
+        },
+        {
+          "title": "JVM & Resources",
+          "type": "row",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 14},
+          "collapsed": false
+        },
+        {
+          "title": "JVM Heap Usage",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 15},
+          "targets": [
+            {
+              "expr": "jvm_memory_used_bytes{job=~\".*apicurio.*\", area=\"heap\"}",
+              "refId": "A",
+              "legendFormat": "Used",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            },
+            {
+              "expr": "jvm_memory_max_bytes{job=~\".*apicurio.*\", area=\"heap\"}",
+              "refId": "B",
+              "legendFormat": "Max",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "fillOpacity": 20
+              },
+              "unit": "bytes"
+            }
+          }
+        },
+        {
+          "title": "GC Pause Time",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 15},
+          "targets": [
+            {
+              "expr": "rate(jvm_gc_pause_seconds_sum{job=~\".*apicurio.*\"}[5m])",
+              "refId": "A",
+              "legendFormat": "{{gc}} {{action}}",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "bars",
+                "fillOpacity": 50
+              },
+              "unit": "s"
+            }
+          }
+        },
+        {
+          "title": "Schema Operations",
+          "type": "row",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 23},
+          "collapsed": false
+        },
+        {
+          "title": "Schema Registrations",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+          "targets": [
+            {
+              "expr": "rate(http_server_requests_seconds_count{job=~\".*apicurio.*\", uri=~\".*artifacts.*\", method=\"POST\"}[5m])",
+              "refId": "A",
+              "legendFormat": "New Schemas",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "bars",
+                "fillOpacity": 50
+              },
+              "color": {"fixedColor": "green", "mode": "fixed"},
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "title": "Schema Lookups",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+          "targets": [
+            {
+              "expr": "rate(http_server_requests_seconds_count{job=~\".*apicurio.*\", uri=~\".*artifacts.*\", method=\"GET\"}[5m])",
+              "refId": "A",
+              "legendFormat": "Schema Fetches",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "fillOpacity": 20
+              },
+              "color": {"fixedColor": "blue", "mode": "fixed"},
+              "unit": "short"
+            }
+          }
+        }
+      ]
+    }
