@@ -8,8 +8,10 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "12"
 spec:
-  # HOMELAB: Single node to reduce resource usage (saves 1 core, 4Gi RAM)
-  replicas: 1
+  # HOMELAB: Single node to reduce resource usage
+  # replicas: 1
+  # PRODUCTION: 3 Broker für HA (verteilt auf 3 Nodes)
+  replicas: 3
   roles:
     - controller
     - broker
@@ -23,12 +25,20 @@ spec:
         deleteClaim: true
         kraftMetadata: shared
   resources:
+    # HOMELAB: Single node resources
+    # requests:
+    #   memory: "2Gi"
+    #   cpu: "500m"
+    # limits:
+    #   memory: "5Gi"
+    #   cpu: "1000m"
+    # PRODUCTION: 3 Broker resources (each)
     requests:
-      memory: "2Gi"
-      cpu: "500m"
+      memory: "1Gi"
+      cpu: "250m"
     limits:
-      memory: "5Gi"      # Increased from 3Gi - pod was using 3045Mi (99% utilization)
-      cpu: "1000m"
+      memory: "3Gi"
+      cpu: "500m"
   template:
     pod:
       securityContext:
@@ -39,14 +49,22 @@ spec:
           type: RuntimeDefault
       affinity:
         podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchLabels:
-                    strimzi.io/cluster: my-cluster
-                    strimzi.io/pool-name: dual-role
-                topologyKey: kubernetes.io/hostname
+          # HOMELAB: Preferred (kann auf gleichem Node laufen)
+          # preferredDuringSchedulingIgnoredDuringExecution:
+          #   - weight: 100
+          #     podAffinityTerm:
+          #       labelSelector:
+          #         matchLabels:
+          #           strimzi.io/cluster: my-cluster
+          #           strimzi.io/pool-name: dual-role
+          #       topologyKey: kubernetes.io/hostname
+          # PRODUCTION: Required (Broker MÜSSEN auf verschiedenen Nodes laufen)
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  strimzi.io/cluster: my-cluster
+                  strimzi.io/pool-name: dual-role
+              topologyKey: kubernetes.io/hostname
 ---
 apiVersion: kafka.strimzi.io/v1
 kind: Kafka
@@ -71,11 +89,17 @@ spec:
         tls: true
     config:
       # HOMELAB: Single node settings (no HA)
-      offsets.topic.replication.factor: 1
-      transaction.state.log.replication.factor: 1
-      transaction.state.log.min.isr: 1
-      default.replication.factor: 1
-      min.insync.replicas: 1
+      # offsets.topic.replication.factor: 1
+      # transaction.state.log.replication.factor: 1
+      # transaction.state.log.min.isr: 1
+      # default.replication.factor: 1
+      # min.insync.replicas: 1
+      # PRODUCTION: HA Settings (3 Broker)
+      offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
+      default.replication.factor: 3
+      min.insync.replicas: 2
       # KRaft controller settings (request.timeout.ms removed - forbidden by Strimzi)
       controller.quorum.election.timeout.ms: 20000
       controller.quorum.fetch.timeout.ms: 10000
