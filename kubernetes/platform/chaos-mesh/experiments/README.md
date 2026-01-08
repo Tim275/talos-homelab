@@ -183,7 +183,7 @@ spec:
 
 ---
 
-## 📚 **Resources**
+##  **Resources**
 
 - [Chaos Mesh Docs](https://chaos-mesh.org/docs/)
 - [Netflix Chaos Engineering](https://netflixtechblog.com/tagged/chaos-engineering)

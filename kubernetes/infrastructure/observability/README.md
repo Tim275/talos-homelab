@@ -1,4 +1,4 @@
-# 🏢 Enterprise-Grade Observability Stack
+#  Enterprise-Grade Observability Stack
 
 ##  Overview
 
@@ -31,7 +31,7 @@ This observability stack implements enterprise-grade logging patterns inspired b
 
 ---
 
-### 🏢 Microsoft-Style: Workspace Separation Strategy  
+###  Microsoft-Style: Workspace Separation Strategy  
 
 **Philosophy**: "Isolated workspaces with controlled sharing"
 
@@ -319,7 +319,7 @@ Federated Search:
 2. **💰 Cost Optimized**: Service ownership for critical apps, shared indices for others  
 3. ** Debugging Friendly**: Cross-service search when needed, isolation when desired
 4. ** Scales with Growth**: Easy to add new services to appropriate layer
-5. **👥 Team Friendly**: Clear ownership model without excessive complexity
+5. ** Team Friendly**: Clear ownership model without excessive complexity
 6. ** Enterprise Ready**: Follows proven patterns from industry leaders
 
 ---
@@ -329,7 +329,7 @@ Federated Search:
 **Enterprise-grade logging that doesn't break the bank or your sanity!**
 
 Our implementation gives you:
-- 🏢 **Google-scale unified search** for system-wide debugging
+-  **Google-scale unified search** for system-wide debugging
 -  **Microsoft-style access control** with domain separation  
 -  **Uber-style service ownership** for your critical applications
 - 💰 **Cost-effective scaling** as you grow from 8 to 80 microservices
@@ -337,4 +337,4 @@ Our implementation gives you:
 
 ---
 
-*Built with ❤️ for enterprise microservice architectures*
+*Built with ❤ for enterprise microservice architectures*

@@ -1,4 +1,4 @@
-# Cilium L7 Visibility - Best Practices
+# Cilium L7 Visibility - s
 
 ## Was ist L7 Visibility?
 
@@ -23,7 +23,7 @@ DELETE /api/orders/123 → 204 No Content (8ms)
 
 ---
 
-## Best Practice: L7 Rules in CiliumNetworkPolicy
+## : L7 Rules in CiliumNetworkPolicy
 
 ### Empfohlener Ansatz (Namespace-scoped)
 
