@@ -1,0 +1,381 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: spring-kafka-microservices
+  namespace: grafana
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: dashboard
+    dashboard-tier: tier2-platform
+spec:
+  allowCrossNamespaceImport: true
+  folder: "Kafka"
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  json: |
+    {
+      "title": "Spring Kafka Microservices",
+      "uid": "spring-kafka-microservices",
+      "tags": ["kafka", "spring-boot", "microservices", "tier2"],
+      "timezone": "utc",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "namespace",
+            "type": "query",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "query": "label_values(spring_kafka_listener_seconds_count, namespace)",
+            "refresh": 2,
+            "includeAll": true,
+            "current": {"text": "All", "value": "$__all"}
+          },
+          {
+            "name": "application",
+            "type": "query",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "query": "label_values(spring_kafka_listener_seconds_count{namespace=~\"$namespace\"}, application)",
+            "refresh": 2,
+            "includeAll": true,
+            "current": {"text": "All", "value": "$__all"}
+          }
+        ]
+      },
+      "panels": [
+        {
+          "title": "Overview",
+          "type": "row",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+          "collapsed": false
+        },
+        {
+          "title": "Kafka Listener - Messages/sec",
+          "type": "stat",
+          "gridPos": {"h": 6, "w": 6, "x": 0, "y": 1},
+          "targets": [
+            {
+              "expr": "sum(rate(spring_kafka_listener_seconds_count{namespace=~\"$namespace\", application=~\"$application\"}[5m]))",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "reduceOptions": {"calcs": ["lastNotNull"]}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "msg/s",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "blue"},
+                  {"value": 100, "color": "green"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "Kafka Template - Sends/sec",
+          "type": "stat",
+          "gridPos": {"h": 6, "w": 6, "x": 6, "y": 1},
+          "targets": [
+            {
+              "expr": "sum(rate(spring_kafka_template_seconds_count{namespace=~\"$namespace\", application=~\"$application\"}[5m]))",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "reduceOptions": {"calcs": ["lastNotNull"]}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "msg/s",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "blue"},
+                  {"value": 100, "color": "green"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "Consumer Records Consumed/sec",
+          "type": "stat",
+          "gridPos": {"h": 6, "w": 6, "x": 12, "y": 1},
+          "targets": [
+            {
+              "expr": "sum(rate(kafka_consumer_fetch_manager_records_consumed_total{namespace=~\"$namespace\"}[5m]))",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "reduceOptions": {"calcs": ["lastNotNull"]}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "rec/s"
+            }
+          }
+        },
+        {
+          "title": "Producer Records Sent/sec",
+          "type": "stat",
+          "gridPos": {"h": 6, "w": 6, "x": 18, "y": 1},
+          "targets": [
+            {
+              "expr": "sum(rate(kafka_producer_record_send_total{namespace=~\"$namespace\"}[5m]))",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "reduceOptions": {"calcs": ["lastNotNull"]}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "rec/s"
+            }
+          }
+        },
+        {
+          "title": "Kafka Listener Performance",
+          "type": "row",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 7},
+          "collapsed": false
+        },
+        {
+          "title": "Listener Processing Rate by App",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "targets": [
+            {
+              "expr": "sum by (application) (rate(spring_kafka_listener_seconds_count{namespace=~\"$namespace\", application=~\"$application\"}[5m]))",
+              "legendFormat": "{{application}}",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "msg/s",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "gradientMode": "scheme"
+              }
+            }
+          }
+        },
+        {
+          "title": "Listener Latency (avg)",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "targets": [
+            {
+              "expr": "sum by (application) (rate(spring_kafka_listener_seconds_sum{namespace=~\"$namespace\", application=~\"$application\"}[5m])) / sum by (application) (rate(spring_kafka_listener_seconds_count{namespace=~\"$namespace\", application=~\"$application\"}[5m]))",
+              "legendFormat": "{{application}}",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "gradientMode": "scheme"
+              }
+            }
+          }
+        },
+        {
+          "title": "Producer Metrics",
+          "type": "row",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 16},
+          "collapsed": false
+        },
+        {
+          "title": "Producer - Records Sent by App",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 17},
+          "targets": [
+            {
+              "expr": "sum by (pod) (rate(kafka_producer_record_send_total{namespace=~\"$namespace\"}[5m]))",
+              "legendFormat": "{{pod}}",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "rec/s",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "gradientMode": "scheme"
+              }
+            }
+          }
+        },
+        {
+          "title": "Producer - Batch Size (avg)",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 17},
+          "targets": [
+            {
+              "expr": "kafka_producer_batch_size_avg{namespace=~\"$namespace\"}",
+              "legendFormat": "{{pod}}",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "gradientMode": "scheme"
+              }
+            }
+          }
+        },
+        {
+          "title": "Consumer Metrics",
+          "type": "row",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 25},
+          "collapsed": false
+        },
+        {
+          "title": "Consumer - Records Consumed by App",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 26},
+          "targets": [
+            {
+              "expr": "sum by (pod) (rate(kafka_consumer_fetch_manager_records_consumed_total{namespace=~\"$namespace\"}[5m]))",
+              "legendFormat": "{{pod}}",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "rec/s",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "gradientMode": "scheme"
+              }
+            }
+          }
+        },
+        {
+          "title": "Consumer - Lag (max)",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 26},
+          "targets": [
+            {
+              "expr": "kafka_consumer_fetch_manager_records_lag_max{namespace=~\"$namespace\"}",
+              "legendFormat": "{{pod}}",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "gradientMode": "scheme"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "green"},
+                  {"value": 1000, "color": "yellow"},
+                  {"value": 10000, "color": "red"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "JVM Metrics",
+          "type": "row",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 34},
+          "collapsed": false
+        },
+        {
+          "title": "JVM Heap Used",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 35},
+          "targets": [
+            {
+              "expr": "jvm_memory_used_bytes{namespace=~\"$namespace\", area=\"heap\"}",
+              "legendFormat": "{{pod}}",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "gradientMode": "scheme"
+              }
+            }
+          }
+        },
+        {
+          "title": "JVM GC Pause Duration",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 35},
+          "targets": [
+            {
+              "expr": "rate(jvm_gc_pause_seconds_sum{namespace=~\"$namespace\"}[5m])",
+              "legendFormat": "{{pod}} - {{action}}",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "gradientMode": "scheme"
+              }
+            }
+          }
+        }
+      ]
+    }
