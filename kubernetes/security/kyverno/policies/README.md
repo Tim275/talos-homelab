@@ -9,7 +9,7 @@
 ##  DEPLOYED POLICIES
 
 ### **1. require-resource-limits.yaml** 
-**Category**: Best Practices
+**Category**: s
 **Severity**: Medium
 
 **What it does**:
@@ -41,8 +41,8 @@ spec:
 
 ---
 
-### **2. disallow-latest-tag.yaml** 🏷️
-**Category**: Best Practices
+### **2. disallow-latest-tag.yaml** 
+**Category**: s
 **Severity**: Medium
 
 **What it does**:
@@ -189,12 +189,12 @@ results:
 
 ---
 
-## 📚 RESOURCES
+##  RESOURCES
 
 - **Kyverno Docs**: https://kyverno.io/docs/
 - **Policy Library**: https://kyverno.io/policies/
 - **PSS Policies**: https://kyverno.io/policies/pod-security/
-- **Best Practices**: https://kyverno.io/policies/best-practices/
+- **s**: https://kyverno.io/policies/best-practices/
 
 ---
 
