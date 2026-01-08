@@ -18,7 +18,7 @@
 
 ---
 
-## 📚 **Documentation**
+##  **Documentation**
 
 ### ** PRIMARY DOCS (READ THIS FIRST!)**
 **[PRODUCTION_RESTIC_BACKUP.md](./PRODUCTION_RESTIC_BACKUP.md)** - Complete production setup guide
@@ -37,7 +37,7 @@
 
 ---
 
-## ⚡ **Quick Commands**
+##  **Quick Commands**
 
 ### **Check Backup Status:**
 ```bash
@@ -99,9 +99,9 @@ velero restore create n8n-restore-$(date +%Y%m%d-%H%M) \
 
 | Tier | Application | Schedule | Retention |
 |------|-------------|----------|-----------|
-| 🔴 **Tier-0** | n8n-prod, Keycloak, Infisical, Authelia, LLDAP | Every 6h | 7 days |
-| 🟡 **Tier-1** | n8n-dev, Grafana | Daily | 30 days |
-| 🟢 **Tier-2** | Sealed Secrets, Cert Manager | Weekly | 90 days |
+|  **Tier-0** | n8n-prod, Keycloak, Infisical, Authelia, LLDAP | Every 6h | 7 days |
+|  **Tier-1** | n8n-dev, Grafana | Daily | 30 days |
+|  **Tier-2** | Sealed Secrets, Cert Manager | Weekly | 90 days |
 
 ### **Storage:**
 - **Backend**: Ceph RGW S3 (on-premises)
@@ -209,7 +209,7 @@ kubectl rollout restart deployment/velero -n velero
 
 ---
 
-## 🔗 **Related Systems**
+##  **Related Systems**
 
 - **Storage Backend**: [Rook-Ceph](../rook-ceph/) (RBD block storage)
 - **GitOps**: [ArgoCD](../../argocd/) (automated sync)

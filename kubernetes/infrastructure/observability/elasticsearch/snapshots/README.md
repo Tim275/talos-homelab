@@ -386,7 +386,7 @@ ceph_pool_bytes_used{pool="default.rgw.buckets.data"}
     summary: "No successful snapshot in 48 hours"
 ```
 
-## Backup Best Practices
+## Backup s
 
 1. **Test Restores Regularly**: Schedule quarterly restore drills
 2. **Monitor Storage Growth**: Set up alerts for bucket size
