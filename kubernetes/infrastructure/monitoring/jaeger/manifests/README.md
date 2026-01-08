@@ -1,4 +1,4 @@
-# 🏢 Enterprise Jaeger Operator Manifests
+#  Enterprise Jaeger Operator Manifests
 
 ##  **Why Local Manifests?**
 

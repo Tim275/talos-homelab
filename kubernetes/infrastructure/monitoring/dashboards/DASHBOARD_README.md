@@ -11,9 +11,9 @@ dashboards/
 ├── DASHBOARD_README.md              # This file - documentation & best practices
 ├── kustomization.yaml               # Kustomize configuration for dashboard deployment
 ├── application.yaml                 # ArgoCD Application for dashboard management
-├── rook-ceph-dashboards.yaml        # 🗄️ Storage cluster monitoring
+├── rook-ceph-dashboards.yaml        # 🗄 Storage cluster monitoring
 ├── cilium-hubble-dashboards.yaml    #  Network observability & security
-├── istio-dashboards.yaml            # 🕸️ Service mesh monitoring
+├── istio-dashboards.yaml            #  Service mesh monitoring
 ├── kafka-dashboards.yaml            # 📨 Message streaming platform
 ├── n8n-dashboards.yaml              #  Workflow automation & databases
 └── elasticsearch-dashboards.yaml    #  Search & analytics platform
@@ -99,9 +99,9 @@ resources:
 
 3. **Commit & Push** - ArgoCD will automatically deploy! 
 
-##  Best Practices
+##  s
 
-### 🏷️ Labeling Standards
+###  Labeling Standards
 
 **ALWAYS include these labels**:
 ```yaml
@@ -112,7 +112,7 @@ labels:
   team: platform                           # Optional: Team ownership
 ```
 
-### 🎨 Dashboard Design Principles
+###  Dashboard Design Principles
 
 #### **1. Enterprise Color Scheme**
 ```json
@@ -203,7 +203,7 @@ labels:
 }
 ```
 
-###  Metric Query Best Practices
+###  Metric Query s
 
 #### **Rate Calculations**
 ```promql
@@ -295,17 +295,17 @@ data:
 
 ##  Dashboard Categories
 
-### **🗄️ Infrastructure Dashboards**
+### **🗄 Infrastructure Dashboards**
 - **Storage**: Rook Ceph cluster health, capacity, IOPS
 - **Networking**: Cilium/Hubble flows, network policies
 - **Compute**: Node resources, Kubernetes cluster health
 
-### **🕸️ Platform Dashboards**
+### ** Platform Dashboards**
 - **Service Mesh**: Istio control plane, traffic management
 - **Messaging**: Kafka cluster, consumer lag, topics
 - **Databases**: PostgreSQL performance, backup status
 
-### **📱 Application Dashboards**
+### ** Application Dashboards**
 - **Workflow Automation**: N8N execution metrics
 - **Search Platform**: Elasticsearch cluster health
 - **Web Services**: HTTP metrics, response times
@@ -330,7 +330,7 @@ data:
 3.  Use `rate()` instead of raw counters
 4.  Optimize panel refresh intervals
 
-## 📚 Resources
+##  Resources
 
 ### **Official Documentation**
 - [Grafana Dashboard API](https://grafana.com/docs/grafana/latest/dashboards/)

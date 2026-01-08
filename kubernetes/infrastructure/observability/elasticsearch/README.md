@@ -74,13 +74,13 @@ graph TB
 
 | Feature | EFK (FluentBit + Fluentd) | ELK (Logstash) |
 |---------|---------------------------|----------------|
-| **Memory Usage** | 🟢 Low (50-100MB per node) | 🔴 High (500MB+ per instance) |
-| **CPU Usage** | 🟢 Low | 🔴 High |
-| **Kubernetes Native** | 🟢 Purpose-built for K8s | 🟡 General purpose |
-| **Configuration** | 🟢 Simple YAML configs | 🔴 Complex Ruby-based |
-| **Cloud Native** | 🟢 CNCF project | 🟡 Elastic proprietary |
-| **Scalability** | 🟢 Better horizontal scaling | 🔴 Vertical scaling focus |
-| **Reliability** | 🟢 Built-in buffering/retry | 🟡 Requires configuration |
+| **Memory Usage** |  Low (50-100MB per node) |  High (500MB+ per instance) |
+| **CPU Usage** |  Low |  High |
+| **Kubernetes Native** |  Purpose-built for K8s |  General purpose |
+| **Configuration** |  Simple YAML configs |  Complex Ruby-based |
+| **Cloud Native** |  CNCF project |  Elastic proprietary |
+| **Scalability** |  Better horizontal scaling |  Vertical scaling focus |
+| **Reliability** |  Built-in buffering/retry |  Requires configuration |
 
 **FluentBit**: Ultra-lightweight log processor and forwarder
 **Fluentd**: Reliable data collector and aggregator  
@@ -310,7 +310,7 @@ curl -X PUT "localhost:9200/_ilm/policy/logstash-policy" -H 'Content-Type: appli
 
 **Current Status**: 64,086+ logs successfully flowing through the complete EFK pipeline! 
 
-## 🏢 Enterprise Log Sources - Beyond Basic Container Logs
+## Log Sources - Beyond Basic Container Logs
 
 ###  **Current Implementation (Phase 1)**
  **kubernetes-logs-YYYY.MM.DD**: Pod/Container logs with K8s metadata  
@@ -351,9 +351,9 @@ performance-*              # Performance metrics
 
 ##  **Enterprise Architecture Decision: Single-Index vs Dual-Index**
 
-Based on industry research and enterprise best practices from Netflix, Google, Meta, and Elasticsearch.com:
+Based on industry research from Netflix, Google, Meta, and Elasticsearch.com:
 
-### 🤔 **Your Question: "Best Practice oder Nicht?"**
+### **Your Question: Single oder Dual Index?**
 
 **Answer: It depends on your scale and requirements!** Here's the enterprise analysis:
 
@@ -385,7 +385,7 @@ logs-infrastructure-*       # Host/system logs
 logs-security-*             # Audit & security events
 ```
 
-**Elasticsearch.com Best Practice**:
+**Elasticsearch.com **:
 > *"Think in terms of data retention per microservice and/or per log type. If you need to keep data around during 30 days for microservice A and during 90 days for microservice B, it makes sense to separate data for both microservice in two different indexes so that each can have its own index lifecycle policy."*
 
 ###  **Current Implementation Status**
@@ -430,7 +430,7 @@ talos-system-logs-* # Host system logs (etcd, kubelet, api-server)
 
 **If you want enterprise separation later**, we can implement it properly with a simpler approach than the failed `index_pattern` field routing.
 
-## 📚 Additional Resources
+##  Additional Resources
 
 - [ECK Documentation](https://www.elastic.co/guide/en/cloud-on-k8s/current/index.html)
 - [FluentBit Kubernetes Guide](https://docs.fluentbit.io/manual/installation/kubernetes)
