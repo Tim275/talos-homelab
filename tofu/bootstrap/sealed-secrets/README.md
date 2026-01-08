@@ -71,7 +71,7 @@ kubectl get sealedsecrets --all-namespaces
 # Should show "True" in SYNCED column for all secrets
 ```
 
-### Prevention Best Practices
+### Prevention s
 
 1. **Backup Keys Before Destroy:**
    ```bash

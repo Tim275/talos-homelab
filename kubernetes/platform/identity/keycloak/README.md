@@ -211,7 +211,7 @@ kubectl logs -n keycloak -l app.kubernetes.io/name=keycloak --tail=100 -f
 
 ---
 
-## 🔗 LDAP User Federation Setup
+##  LDAP User Federation Setup
 
 ### Architecture
 
@@ -256,7 +256,7 @@ kubectl logs -n keycloak job/keycloak-ldap-federation-setup
 # 2. Check LLDAP UI: http://lldap:17170
 ```
 
-### Best Practices (2025 Production)
+### s (2025 Production)
 
 Based on industry standards:
 

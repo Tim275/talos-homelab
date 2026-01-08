@@ -41,14 +41,14 @@ This directory contains **all** Istio features tested in the CNCF Certified Isti
 
 | File | Exam Topic | Weight |
 |------|------------|--------|
-| `canary-deployment.yaml` | Traffic splitting 90/10 | ⭐⭐⭐⭐⭐ |
-| `ab-testing.yaml` | Header-based routing | ⭐⭐⭐⭐ |
-| `traffic-mirroring.yaml` | Dark launch pattern | ⭐⭐⭐ |
-| `retry-timeout.yaml` | Resilience patterns | ⭐⭐⭐⭐⭐ |
-| `circuit-breaking.yaml` | Fault tolerance | ⭐⭐⭐⭐⭐ |
-| `mtls-strict.yaml` | Zero-trust security | ⭐⭐⭐⭐⭐ |
-| `authorization-jwt.yaml` | Request authentication | ⭐⭐⭐⭐ |
-| `fault-injection.yaml` | Chaos engineering | ⭐⭐⭐ |
+| `canary-deployment.yaml` | Traffic splitting 90/10 |  |
+| `ab-testing.yaml` | Header-based routing |  |
+| `traffic-mirroring.yaml` | Dark launch pattern |  |
+| `retry-timeout.yaml` | Resilience patterns |  |
+| `circuit-breaking.yaml` | Fault tolerance |  |
+| `mtls-strict.yaml` | Zero-trust security |  |
+| `authorization-jwt.yaml` | Request authentication |  |
+| `fault-injection.yaml` | Chaos engineering |  |
 
 ## Usage:
 

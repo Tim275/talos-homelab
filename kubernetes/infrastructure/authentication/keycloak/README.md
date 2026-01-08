@@ -16,7 +16,7 @@
 - **Keycloak URL:** https://iam.timourhomelab.org
 - **OIDC Issuer:** https://iam.timourhomelab.org/realms/kubernetes
 
-## Security Best Practices - TODO
+## Security s - TODO
 
 ### Tier 0 (MUST HAVE)
 - [ ] Brute Force Protection

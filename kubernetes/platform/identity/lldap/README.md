@@ -8,7 +8,7 @@ LLDAP is a lightweight authentication server that implements a subset of the LDA
 - **LDAP Authentication**: Standard LDAP protocol support
 - **Authelia Integration**: Provides user backend for OIDC provider
 
-## 📂 Architecture
+##  Architecture
 
 ```
 platform/identity/lldap/
@@ -61,7 +61,7 @@ kubectl create secret generic lldap-secrets \
 ### Deploy via ArgoCD
 The application will be automatically deployed through the platform ApplicationSet.
 
-## 🔗 Integration
+##  Integration
 
 ### Service Endpoints
 - **LDAP Protocol**: `lldap-ldap.lldap.svc.cluster.local:389`
