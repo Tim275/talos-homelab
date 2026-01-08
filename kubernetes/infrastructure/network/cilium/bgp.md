@@ -4,7 +4,7 @@ This document explains the migration from **L2 Announcements (ARP)** to **BGP pe
 
 ---
 
-## 🔴 Current Setup - L2 Announcements (ARP)
+##  Current Setup - L2 Announcements (ARP)
 
 **Architecture:**
 ```
@@ -30,7 +30,7 @@ LoadBalancer Service → Cilium L2 Announcements → ARP Broadcast → UniFi Rou
 
 ---
 
-## 🟢 Target Setup - BGP Peering
+##  Target Setup - BGP Peering
 
 **Architecture:**
 ```
@@ -64,7 +64,7 @@ LoadBalancer Service → Cilium BGP → eBGP Peering → UniFi Router learns Rou
 
 ##  Practical Explanation - What Actually Happens?
 
-### 🔴 AKTUELL (L2 ARP) - Current Behavior
+###  AKTUELL (L2 ARP) - Current Behavior
 
 **Example:** You access `https://n8n.timourhomelab.org`
 
@@ -108,7 +108,7 @@ LoadBalancer Service → Cilium BGP → eBGP Peering → UniFi Router learns Rou
 
 ---
 
-### 🟢 NEU (BGP) - New Behavior
+###  NEU (BGP) - New Behavior
 
 **Example:** You access `https://n8n.timourhomelab.org`
 
@@ -702,7 +702,7 @@ If BGP doesn't work, rollback to L2:
 
 ---
 
-## 📚 References
+##  References
 
 - [Cilium BGP Documentation](https://docs.cilium.io/en/stable/network/bgp-control-plane/)
 - [UniFi BGP Configuration](https://help.ui.com/hc/en-us/articles/115000166827-UniFi-UDM-USG-Advanced-Routing-BGP)
