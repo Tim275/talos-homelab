@@ -1,0 +1,181 @@
+# ============================================================================
+# KAFKA-SAGA MICROSERVICES ALERTS
+# Spring Boot + Kafka Application Metrics (via Micrometer/Actuator)
+# ============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kafka-saga-application-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+    release: kube-prometheus-stack
+    layer: application
+spec:
+  groups:
+    # ========================================================================
+    # KAFKA-SAGA CRITICAL ALERTS
+    # ========================================================================
+    - name: application.kafka-saga.critical
+      interval: 30s
+      rules:
+        # ====== P1: CRITICAL - Kafka Producer Errors ======
+        - alert: KafkaSagaProducerErrors
+          expr: |
+            sum(rate(kafka_producer_record_error_total{namespace="kafka-saga"}[5m])) by (service) > 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: p1
+            component: kafka-saga
+            tier: application
+            layer: layer6
+          annotations:
+            summary: "Kafka producer errors in {{ $labels.service }}"
+            description: |
+              Service {{ $labels.service }} is experiencing Kafka producer errors.
+              Messages may be lost!
+
+              Rate: {{ $value }}/sec
+              Duration: >5 minutes
+
+              Check: kubectl -n kafka-saga logs -l app={{ $labels.service }} --tail=100
+
+        # ====== P1: CRITICAL - Application Down (Spring Boot Health) ======
+        - alert: KafkaSagaApplicationDown
+          expr: |
+            up{namespace="kafka-saga", job=~".*kafka-saga.*"} == 0
+          for: 3m
+          labels:
+            severity: critical
+            priority: p1
+            component: kafka-saga
+            tier: application
+            layer: layer6
+          annotations:
+            summary: "Kafka-Saga service {{ $labels.pod }} is DOWN"
+            description: |
+              Spring Boot application {{ $labels.pod }} is not responding.
+              Prometheus cannot scrape metrics!
+
+              Duration: >3 minutes
+              Action: Check pod health and logs
+
+    # ========================================================================
+    # KAFKA-SAGA HIGH ALERTS
+    # ========================================================================
+    - name: application.kafka-saga.high
+      interval: 30s
+      rules:
+        # ====== P2: HIGH - Consumer Records Lag Per Partition ======
+        - alert: KafkaSagaConsumerLagHigh
+          expr: |
+            sum(kafka_consumer_records_lag{namespace="kafka-saga"}) by (service, topic) > 5000
+          for: 10m
+          labels:
+            severity: warning
+            priority: p2
+            component: kafka-saga
+            tier: application
+            layer: layer6
+          annotations:
+            summary: "Consumer lag {{ $value }} in {{ $labels.service }} for topic {{ $labels.topic }}"
+            description: |
+              Service {{ $labels.service }} has high consumer lag on topic {{ $labels.topic }}.
+              Consumer not keeping up with message rate!
+
+              Lag: {{ $value }} messages
+              Duration: >10 minutes
+
+              Action: Scale consumers or investigate processing delays
+
+        # ====== P2: HIGH - JVM Heap Usage High ======
+        - alert: KafkaSagaJvmHeapHigh
+          expr: |
+            (jvm_memory_used_bytes{namespace="kafka-saga", area="heap"}
+            / jvm_memory_max_bytes{namespace="kafka-saga", area="heap"}) > 0.9
+          for: 10m
+          labels:
+            severity: warning
+            priority: p2
+            component: kafka-saga
+            tier: application
+            layer: layer6
+          annotations:
+            summary: "JVM heap usage > 90% in {{ $labels.pod }}"
+            description: |
+              Pod {{ $labels.pod }} JVM heap is {{ $value | humanizePercentage }} full.
+              May cause OOM or GC pauses!
+
+              Duration: >10 minutes
+              Action: Increase memory limits or investigate memory leak
+
+        # ====== P2: HIGH - HTTP Error Rate High ======
+        - alert: KafkaSagaHttpErrorRateHigh
+          expr: |
+            sum(rate(http_server_requests_seconds_count{namespace="kafka-saga", status=~"5.."}[5m])) by (service)
+            / sum(rate(http_server_requests_seconds_count{namespace="kafka-saga"}[5m])) by (service) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+            priority: p2
+            component: kafka-saga
+            tier: application
+            layer: layer6
+          annotations:
+            summary: "HTTP 5xx error rate > 5% in {{ $labels.service }}"
+            description: |
+              Service {{ $labels.service }} has {{ $value | humanizePercentage }} error rate.
+              Application is returning server errors!
+
+              Duration: >5 minutes
+              Action: Check application logs for exceptions
+
+    # ========================================================================
+    # KAFKA-SAGA MEDIUM ALERTS
+    # ========================================================================
+    - name: application.kafka-saga.medium
+      interval: 60s
+      rules:
+        # ====== P3: MEDIUM - GC Pause Time High ======
+        - alert: KafkaSagaGcPauseHigh
+          expr: |
+            rate(jvm_gc_pause_seconds_sum{namespace="kafka-saga"}[5m])
+            / rate(jvm_gc_pause_seconds_count{namespace="kafka-saga"}[5m]) > 0.5
+          for: 15m
+          labels:
+            severity: info
+            priority: p3
+            component: kafka-saga
+            tier: application
+            layer: layer6
+          annotations:
+            summary: "High GC pause time in {{ $labels.pod }}"
+            description: |
+              Pod {{ $labels.pod }} average GC pause is {{ $value }}s.
+              May cause latency spikes!
+
+              Duration: >15 minutes
+              Action: Review heap settings and GC algorithm
+
+        # ====== P3: MEDIUM - Slow Kafka Produce Requests ======
+        - alert: KafkaSagaSlowProduceRequests
+          expr: |
+            histogram_quantile(0.99,
+              sum(rate(kafka_producer_request_latency_avg{namespace="kafka-saga"}[5m])) by (le, service)
+            ) > 500
+          for: 10m
+          labels:
+            severity: info
+            priority: p3
+            component: kafka-saga
+            tier: application
+            layer: layer6
+          annotations:
+            summary: "Kafka produce latency p99 > 500ms in {{ $labels.service }}"
+            description: |
+              Service {{ $labels.service }} Kafka produce p99 latency is {{ $value }}ms.
+              May indicate broker overload or network issues.
+
+              Duration: >10 minutes
+              Action: Check Kafka broker health

@@ -79,9 +79,101 @@ spec:
               Impact: Message writes and reads FAILING
               Team: @platform-oncall
 
+        # ====== P1: CRITICAL - Unclean Leader Election (DATA LOSS!) ======
+        - alert: KafkaUncleanLeaderElection
+          expr: |
+            rate(kafka_controller_kafkacontroller_uncleanleaderelectionspersec[5m]) > 0
+          for: 1m
+          labels:
+            severity: critical
+            priority: p1
+            component: kafka
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "UNCLEAN LEADER ELECTION DETECTED - DATA LOSS!"
+            description: |
+              Kafka cluster experienced an unclean leader election!
+              An out-of-sync replica became leader - MESSAGES LOST FOREVER!
+
+              Impact: PERMANENT DATA LOSS
+              Team: @platform-oncall IMMEDIATELY
+
+              This happens when no in-sync replica is available and
+              unclean.leader.election.enable=true (should be false in production!)
+
+              Check: Review broker logs for election events
+
+        # ====== P1: CRITICAL - Kafka Disk Usage Critical ======
+        - alert: KafkaDiskUsageCritical
+          expr: |
+            kubelet_volume_stats_used_bytes{persistentvolumeclaim=~"data-my-cluster.*"}
+            / kubelet_volume_stats_capacity_bytes > 0.9
+          for: 5m
+          labels:
+            severity: critical
+            priority: p1
+            component: kafka
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Kafka disk usage > 90% on {{ $labels.persistentvolumeclaim }}"
+            description: |
+              Kafka broker PVC {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full.
+              IMMEDIATE ACTION REQUIRED - Broker will crash!
+
+              Action: Reduce retention or expand storage NOW
+
+              Fix: kubectl -n kafka exec my-cluster-dual-role-0 -- \
+                kafka-configs.sh --bootstrap-server localhost:9092 \
+                --entity-type topics --entity-name orders \
+                --alter --add-config retention.ms=86400000
+
     - name: platform.kafka.high
       interval: 30s
       rules:
+        # ====== P2: HIGH - Kafka Disk Usage High (Warning) ======
+        - alert: KafkaDiskUsageHigh
+          expr: |
+            kubelet_volume_stats_used_bytes{persistentvolumeclaim=~"data-my-cluster.*"}
+            / kubelet_volume_stats_capacity_bytes > 0.8
+          for: 10m
+          labels:
+            severity: warning
+            priority: p2
+            component: kafka
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Kafka disk usage > 80% on {{ $labels.persistentvolumeclaim }}"
+            description: |
+              Kafka broker PVC {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full.
+              Plan storage expansion or reduce retention soon.
+
+              Action: Monitor closely, will become critical at 90%
+
+        # ====== P2: HIGH - Kafka Request Latency High ======
+        - alert: KafkaHighRequestLatency
+          expr: |
+            histogram_quantile(0.99,
+              sum(rate(kafka_network_requestmetrics_totaltimems_bucket[5m])) by (le, request)
+            ) > 1000
+          for: 10m
+          labels:
+            severity: warning
+            priority: p2
+            component: kafka
+            tier: platform
+            layer: layer5
+          annotations:
+            summary: "Kafka {{ $labels.request }} request latency p99 > 1s"
+            description: |
+              Kafka request type {{ $labels.request }} has p99 latency of {{ $value }}ms.
+              Broker may be overloaded or experiencing I/O issues.
+
+              Duration: >10 minutes
+              Action: Check broker resources, disk I/O, network
+
         # ====== P2: HIGH - Kafka Consumer Lag High ======
         - alert: KafkaConsumerLagHigh
           expr: |
@@ -168,54 +260,45 @@ spec:
               Duration: >15 minutes
               Action: Consider increasing broker resources or adding brokers
 
-        # ====== P3: MEDIUM - Kafka Disk Usage High ======
-        - alert: KafkaDiskUsageHigh
+        # ====== P3: MEDIUM - Kafka Network Processor Idle Low ======
+        - alert: KafkaNetworkProcessorIdleLow
           expr: |
-            kubelet_volume_stats_used_bytes{persistentvolumeclaim=~"data-my-cluster.*"}
-            / kubelet_volume_stats_capacity_bytes > 0.8
-          for: 10m
+            avg(kafka_network_socketserver_networkprocessoravgidlepercent) < 0.3
+          for: 15m
           labels:
-            severity: warning
+            severity: info
             priority: p3
             component: kafka
             tier: platform
             layer: layer5
           annotations:
-            summary: "Kafka disk usage > 80% on {{ $labels.persistentvolumeclaim }}"
+            summary: "Kafka network processors are {{ $value | humanizePercentage }} idle"
             description: |
-              Kafka broker PVC {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full.
-              Risk of broker failure if disk fills up!
+              Kafka network processors are only {{ $value | humanizePercentage }} idle.
+              Network layer is saturated - may need more network threads.
 
-              Duration: >10 minutes
-              Action: Reduce retention or expand storage
+              Duration: >15 minutes
+              Action: Consider increasing num.network.threads
 
-              Check: kubectl -n kafka exec my-cluster-dual-role-0 -- df -h /var/lib/kafka
-
-        # ====== P3: MEDIUM - Kafka Disk Usage Critical ======
-        - alert: KafkaDiskUsageCritical
+        # ====== P3: MEDIUM - Kafka Log Directory Offline ======
+        - alert: KafkaLogDirectoryOffline
           expr: |
-            kubelet_volume_stats_used_bytes{persistentvolumeclaim=~"data-my-cluster.*"}
-            / kubelet_volume_stats_capacity_bytes > 0.9
+            kafka_log_logmanager_offlinelogdirectorycount > 0
           for: 5m
           labels:
-            severity: critical
-            priority: p1
+            severity: info
+            priority: p3
             component: kafka
             tier: platform
             layer: layer5
           annotations:
-            summary: "Kafka disk usage > 90% on {{ $labels.persistentvolumeclaim }}"
+            summary: "Kafka has {{ $value }} offline log directories on {{ $labels.pod }}"
             description: |
-              Kafka broker PVC {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full.
-              IMMEDIATE ACTION REQUIRED - Broker will crash!
+              Kafka broker {{ $labels.pod }} has {{ $value }} offline log directories.
+              Disk failure or mount issue detected!
 
               Duration: >5 minutes
-              Action: Reduce retention immediately
-
-              Fix: kubectl -n kafka exec my-cluster-dual-role-0 -- \
-                kafka-configs.sh --bootstrap-server localhost:9092 \
-                --entity-type topics --entity-name orders \
-                --alter --add-config retention.ms=86400000
+              Action: Check disk health and mount points
 
         # ====== P3: MEDIUM - Kafka Partition Imbalance ======
         - alert: KafkaPartitionImbalance
