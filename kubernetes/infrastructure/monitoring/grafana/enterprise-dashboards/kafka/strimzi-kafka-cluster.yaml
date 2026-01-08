@@ -1,0 +1,447 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: strimzi-kafka-cluster
+  namespace: grafana
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: dashboard
+    dashboard-tier: tier2-platform
+spec:
+  allowCrossNamespaceImport: true
+  folder: "Kafka"
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  json: |
+    {
+      "title": "Kafka Cluster Metrics (Strimzi)",
+      "uid": "strimzi-kafka-cluster-metrics",
+      "tags": ["kafka", "strimzi", "platform", "tier2"],
+      "timezone": "utc",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "namespace",
+            "type": "query",
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "query": "label_values(kafka_brokers, namespace)",
+            "refresh": 2,
+            "includeAll": false,
+            "current": {"text": "kafka", "value": "kafka"}
+          }
+        ]
+      },
+      "panels": [
+        {
+          "title": "Cluster Overview",
+          "type": "row",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+          "collapsed": false
+        },
+        {
+          "title": "Active Brokers",
+          "type": "stat",
+          "gridPos": {"h": 6, "w": 4, "x": 0, "y": 1},
+          "targets": [
+            {
+              "expr": "kafka_brokers{namespace=\"$namespace\"}",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "reduceOptions": {"calcs": ["lastNotNull"]}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "red"},
+                  {"value": 3, "color": "green"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "Active Controller",
+          "type": "stat",
+          "gridPos": {"h": 6, "w": 4, "x": 4, "y": 1},
+          "targets": [
+            {
+              "expr": "sum(kafka_controller_kafkacontroller_activecontrollercount{namespace=\"$namespace\"})",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "reduceOptions": {"calcs": ["lastNotNull"]}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "red"},
+                  {"value": 1, "color": "green"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "Total Topics",
+          "type": "stat",
+          "gridPos": {"h": 6, "w": 4, "x": 8, "y": 1},
+          "targets": [
+            {
+              "expr": "count(kafka_topic_partitions{namespace=\"$namespace\"})",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "reduceOptions": {"calcs": ["lastNotNull"]}
+          }
+        },
+        {
+          "title": "Total Partitions",
+          "type": "stat",
+          "gridPos": {"h": 6, "w": 4, "x": 12, "y": 1},
+          "targets": [
+            {
+              "expr": "sum(kafka_topic_partitions{namespace=\"$namespace\"})",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "reduceOptions": {"calcs": ["lastNotNull"]}
+          }
+        },
+        {
+          "title": "Offline Partitions",
+          "type": "stat",
+          "gridPos": {"h": 6, "w": 4, "x": 16, "y": 1},
+          "targets": [
+            {
+              "expr": "sum(kafka_controller_kafkacontroller_offlinepartitionscount{namespace=\"$namespace\"}) or vector(0)",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "reduceOptions": {"calcs": ["lastNotNull"]}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "green"},
+                  {"value": 1, "color": "red"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "Under-Replicated Partitions",
+          "type": "stat",
+          "gridPos": {"h": 6, "w": 4, "x": 20, "y": 1},
+          "targets": [
+            {
+              "expr": "sum(kafka_server_replicamanager_underreplicatedpartitions{namespace=\"$namespace\"}) or vector(0)",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "reduceOptions": {"calcs": ["lastNotNull"]}
+          },
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "green"},
+                  {"value": 1, "color": "red"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "Throughput",
+          "type": "row",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 7},
+          "collapsed": false
+        },
+        {
+          "title": "Messages In/Sec",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "targets": [
+            {
+              "expr": "sum(rate(kafka_server_brokertopicmetrics_messagesin_total{namespace=\"$namespace\"}[5m]))",
+              "legendFormat": "Messages/sec",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "msg/s",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "gradientMode": "scheme"
+              }
+            }
+          }
+        },
+        {
+          "title": "Bytes In/Out per Sec",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "targets": [
+            {
+              "expr": "sum(rate(kafka_server_brokertopicmetrics_bytesin_total{namespace=\"$namespace\"}[5m]))",
+              "legendFormat": "Bytes In",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            },
+            {
+              "expr": "sum(rate(kafka_server_brokertopicmetrics_bytesout_total{namespace=\"$namespace\"}[5m]))",
+              "legendFormat": "Bytes Out",
+              "refId": "B",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "Bps",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "gradientMode": "scheme"
+              }
+            }
+          }
+        },
+        {
+          "title": "Producer Requests/Sec",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+          "targets": [
+            {
+              "expr": "sum(rate(kafka_server_brokertopicmetrics_totalproducerequests_total{namespace=\"$namespace\"}[5m]))",
+              "legendFormat": "Produce Requests",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "gradientMode": "scheme"
+              }
+            }
+          }
+        },
+        {
+          "title": "Fetch Requests/Sec",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+          "targets": [
+            {
+              "expr": "sum(rate(kafka_server_brokertopicmetrics_totalfetchrequests_total{namespace=\"$namespace\"}[5m]))",
+              "legendFormat": "Fetch Requests",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "gradientMode": "scheme"
+              }
+            }
+          }
+        },
+        {
+          "title": "Consumer Lag",
+          "type": "row",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 24},
+          "collapsed": false
+        },
+        {
+          "title": "Consumer Group Lag",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 25},
+          "targets": [
+            {
+              "expr": "sum by (consumergroup, topic) (kafka_consumergroup_lag{namespace=\"$namespace\"})",
+              "legendFormat": "{{consumergroup}} - {{topic}}",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "gradientMode": "scheme"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"value": 0, "color": "green"},
+                  {"value": 1000, "color": "yellow"},
+                  {"value": 10000, "color": "red"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "Broker Metrics",
+          "type": "row",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 33},
+          "collapsed": false
+        },
+        {
+          "title": "Leader Count per Broker",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 34},
+          "targets": [
+            {
+              "expr": "kafka_server_replicamanager_leadercount{namespace=\"$namespace\"}",
+              "legendFormat": "{{pod}}",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "gradientMode": "scheme"
+              }
+            }
+          }
+        },
+        {
+          "title": "Partition Count per Broker",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 34},
+          "targets": [
+            {
+              "expr": "kafka_server_replicamanager_partitioncount{namespace=\"$namespace\"}",
+              "legendFormat": "{{pod}}",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "gradientMode": "scheme"
+              }
+            }
+          }
+        },
+        {
+          "title": "Request Latency",
+          "type": "row",
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 42},
+          "collapsed": false
+        },
+        {
+          "title": "Produce Request Latency (p99)",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 43},
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(kafka_network_requestmetrics_totaltimems_bucket{request=\"Produce\",namespace=\"$namespace\"}[5m])) by (le))",
+              "legendFormat": "p99 Produce Latency",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "gradientMode": "scheme"
+              }
+            }
+          }
+        },
+        {
+          "title": "Fetch Request Latency (p99)",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 43},
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(kafka_network_requestmetrics_totaltimems_bucket{request=\"Fetch\",namespace=\"$namespace\"}[5m])) by (le))",
+              "legendFormat": "p99 Fetch Latency",
+              "refId": "A",
+              "datasource": {"type": "prometheus", "uid": "prometheus"}
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "gradientMode": "scheme"
+              }
+            }
+          }
+        }
+      ]
+    }
