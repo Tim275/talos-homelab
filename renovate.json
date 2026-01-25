@@ -5,7 +5,6 @@
     ":rebaseStalePrs",
     ":dependencyDashboard",
     ":semanticCommits",
-    ":enablePreCommit",
     "docker:enableMajor",
     "helpers:pinGitHubActionDigests"
   ],
@@ -20,44 +19,45 @@
     "enabled": true,
     "labels": ["security", "vulnerability"]
   },
-  "terraform": {
-    "managerFilePatterns": [
-      "/\\.tf$/",
-      "/\\.tofu$/"
-    ]
+  "registryAliases": {
+    "ghcr.io/siderolabs": "https://ghcr.io/siderolabs",
+    "quay.io/rook": "https://quay.io/rook"
+  },
+  "hostRules": [
+    {
+      "matchHost": "ghcr.io",
+      "hostType": "docker"
+    }
+  ],
+  "helmv3": {
+    "registryAliases": {
+      "grafana": "https://grafana.github.io/helm-charts",
+      "prometheus-community": "https://prometheus-community.github.io/helm-charts",
+      "bitnami": "https://charts.bitnami.com/bitnami",
+      "jetstack": "https://charts.jetstack.io",
+      "argo": "https://argoproj.github.io/argo-helm",
+      "istio": "https://istio-release.storage.googleapis.com/charts",
+      "cilium": "https://helm.cilium.io"
+    }
   },
   "kubernetes": {
-    "fileMatch": [
-      "\\.yaml$",
-      "\\.yml$"
-    ]
-  },
-  "kustomize": {
-    "managerFilePatterns": [
-      "/(^|/)kustomization\\.ya?ml(\\.j2)?$/"
-    ]
+    "fileMatch": ["\\.yaml$", "\\.yml$"]
   },
   "customManagers": [
     {
       "customType": "regex",
-      "managerFilePatterns": [
-        "/\\.tf$/",
-        "/\\.tofu$/",
-        "/\\.tftpl$/",
-        "/\\.yaml$/",
-        "/\\.sh$/",
-        "/\\.tfvars/"
-      ],
+      "description": "Generic renovate comments",
+      "fileMatch": ["\\.tf$", "\\.tofu$", "\\.yaml$", "\\.sh$", "\\.tfvars$"],
       "matchStrings": [
         "(?<currentValue>[\\w+\\.\\-]*)['\",;]*\\s*#\\s?renovate: (?<datasource>\\S+)=(?<depName>\\S+)\\s?(registry=(?<registryUrl>\\S+))?\\s?(versioning=(?<versioning>\\S+))?"
       ]
     },
     {
       "customType": "regex",
-      "description": "Update Talos Docker images",
+      "description": "Update Talos Docker images from ghcr.io",
       "fileMatch": ["\\.yaml$"],
       "matchStrings": [
-        "image:\\s*(?:ghcr\\.io/)?siderolabs/talos:(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)"
+        "image:\\s*ghcr\\.io/siderolabs/talos:(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)"
       ],
       "datasourceTemplate": "docker",
       "depNameTemplate": "ghcr.io/siderolabs/talos",
@@ -76,155 +76,48 @@
     },
     {
       "customType": "regex",
-      "description": "Update Helm chart versions in kustomization.yaml",
+      "description": "Update Grafana Helm charts in kustomization.yaml",
       "fileMatch": ["kustomization\\.yaml$"],
       "matchStrings": [
-        "version:\\s*\"(?<currentValue>[0-9.]+)\"\\s*#\\s*renovate:\\s*helm=(?<depName>[^\\s]+)"
+        "version:\\s*[\"']?(?<currentValue>[0-9.]+)[\"']?\\s*#\\s*renovate:\\s*helm=grafana/(?<depName>[^\\s]+)"
       ],
       "datasourceTemplate": "helm",
       "registryUrlTemplate": "https://grafana.github.io/helm-charts"
     },
     {
       "customType": "regex",
-      "description": "Update Talos versions in tfvars files",
-      "fileMatch": [
-        "\\.tfvars$"
-      ],
+      "description": "Update Prometheus Helm charts",
+      "fileMatch": ["kustomization\\.yaml$"],
       "matchStrings": [
-        "version\\s*=\\s*\"(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)\"",
-        "talos_machine_config_version\\s*=\\s*\"(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)\""
+        "version:\\s*[\"']?(?<currentValue>[0-9.]+)[\"']?\\s*#\\s*renovate:\\s*helm=prometheus-community/(?<depName>[^\\s]+)"
       ],
-      "datasourceTemplate": "github-releases",
-      "depNameTemplate": "siderolabs/talos"
-    },
-    {
-      "customType": "regex",
-      "description": "Update Kubernetes versions in tfvars files",
-      "fileMatch": [
-        "\\.tfvars$"
-      ],
-      "matchStrings": [
-        "kubernetes_version\\s*=\\s*\"(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)\""
-      ],
-      "datasourceTemplate": "github-releases",
-      "depNameTemplate": "kubernetes/kubernetes"
-    },
-    {
-      "customType": "regex",
-      "description": "Update Gateway API versions in tfvars files",
-      "fileMatch": [
-        "\\.tfvars$"
-      ],
-      "matchStrings": [
-        "gateway_api_version\\s*=\\s*\"(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)\""
-      ],
-      "datasourceTemplate": "github-releases",
-      "depNameTemplate": "kubernetes-sigs/gateway-api"
+      "datasourceTemplate": "helm",
+      "registryUrlTemplate": "https://prometheus-community.github.io/helm-charts"
     }
   ],
   "packageRules": [
     {
       "groupName": "Talos System",
-      "matchPackageNames": [
-        "siderolabs/talos"
-      ]
-    },
-    {
-      "groupName": "Kubernetes Core",
-      "matchPackageNames": [
-        "kubernetes/kubernetes",
-        "kubernetes-sigs/gateway-api"
-      ]
-    },
-    {
-      "groupName": "Cilium",
-      "matchPackageNames": [
-        "cilium/**"
-      ]
+      "matchPackageNames": ["ghcr.io/siderolabs/talos", "siderolabs/talos"]
     },
     {
       "groupName": "Monitoring Stack",
-      "matchPackageNames": [
-        "prometheus-community/**",
-        "grafana/**"
-      ]
-    },
-    {
-      "groupName": "Storage & Backup",
-      "matchPackageNames": [
-        "**/rook**",
-        "**/velero**"
-      ]
+      "matchPackagePatterns": ["prometheus", "grafana", "loki", "tempo"]
     },
     {
       "groupName": "ArgoCD Ecosystem",
-      "matchPackageNames": [
-        "argoproj/**",
-        "**/argo-rollouts**"
-      ]
-    },
-    {
-      "groupName": "Istio Service Mesh",
-      "matchPackageNames": [
-        "**/istio**",
-        "istio/**"
-      ]
+      "matchPackagePatterns": ["argo"]
     },
     {
       "groupName": "Security Tools",
-      "matchPackageNames": [
-        "jetstack/**",
-        "**/cert-manager**",
-        "bitnami-labs/**",
-        "**/sealed-secrets**",
-        "**/kyverno**"
-      ]
+      "matchPackagePatterns": ["cert-manager", "sealed-secrets", "kyverno"]
     },
     {
-      "groupName": "Database & Platform",
-      "matchPackageNames": [
-        "**/mongodb**",
-        "**/postgresql**",
-        "**/cloudnative-pg**",
-        "**/kafka**",
-        "**/strimzi**",
-        "**/n8n**"
-      ]
-    },
-    {
-      "matchManagers": [
-        "terraform"
-      ],
-      "matchDepTypes": [
-        "provider",
-        "required_provider"
-      ]
-    },
-    {
-      "matchManagers": [
-        "github-actions"
-      ],
-      "groupName": "GitHub Actions",
-      "groupSlug": "github-actions"
-    },
-    {
-      "description": "Auto-merge patch updates (security fixes)",
+      "description": "Auto-merge patch updates",
       "matchUpdateTypes": ["patch"],
       "automerge": true,
       "automergeType": "pr",
       "labels": ["auto-merge", "patch"]
-    },
-    {
-      "description": "Minor updates for trusted packages",
-      "matchUpdateTypes": ["minor"],
-      "matchPackagePatterns": [
-        "grafana",
-        "prometheus",
-        "loki",
-        "tempo"
-      ],
-      "automerge": true,
-      "labels": ["auto-merge", "minor"]
     },
     {
       "description": "Hold major updates for manual review",
