@@ -1,142 +1,155 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended",
-    ":rebaseStalePrs",
+    "config:best-practices",
     ":dependencyDashboard",
     ":semanticCommits",
+    ":separateMajorReleases",
     "docker:enableMajor",
-    "helpers:pinGitHubActionDigests"
+    "helpers:pinGitHubActionDigests",
+    "group:monorepos",
+    "group:recommended"
   ],
+
   "dependencyDashboard": true,
   "dependencyDashboardTitle": "Renovate Dashboard",
+  "dependencyDashboardLabels": ["renovate", "dependencies"],
+
   "schedule": ["before 6am every weekday"],
   "timezone": "Europe/Berlin",
-  "prConcurrentLimit": 20,
-  "prHourlyLimit": 10,
+
+  "prConcurrentLimit": 10,
+  "prHourlyLimit": 5,
+  "branchConcurrentLimit": 15,
+
   "labels": ["dependencies", "renovate"],
+
   "vulnerabilityAlerts": {
     "enabled": true,
-    "labels": ["security", "vulnerability"]
+    "labels": ["security", "vulnerability", "priority-high"]
   },
-  "registryAliases": {
-    "ghcr.io/siderolabs": "https://ghcr.io/siderolabs",
-    "quay.io/rook": "https://quay.io/rook"
+
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 5am on monday"]
   },
-  "hostRules": [
-    {
-      "matchHost": "ghcr.io",
-      "hostType": "docker"
-    }
-  ],
-  "helmv3": {
-    "registryAliases": {
-      "grafana": "https://grafana.github.io/helm-charts",
-      "prometheus-community": "https://prometheus-community.github.io/helm-charts",
-      "bitnami": "https://charts.bitnami.com/bitnami",
-      "jetstack": "https://charts.jetstack.io",
-      "argo": "https://argoproj.github.io/argo-helm",
-      "istio": "https://istio-release.storage.googleapis.com/charts",
-      "cilium": "https://helm.cilium.io"
-    }
-  },
+
   "kubernetes": {
     "fileMatch": ["\\.yaml$", "\\.yml$"]
   },
-  "customManagers": [
-    {
-      "customType": "regex",
-      "description": "Generic renovate comments",
-      "fileMatch": ["\\.tf$", "\\.tofu$", "\\.yaml$", "\\.sh$", "\\.tfvars$"],
-      "matchStrings": [
-        "(?<currentValue>[\\w+\\.\\-]*)['\",;]*\\s*#\\s?renovate: (?<datasource>\\S+)=(?<depName>\\S+)\\s?(registry=(?<registryUrl>\\S+))?\\s?(versioning=(?<versioning>\\S+))?"
-      ]
-    },
-    {
-      "customType": "regex",
-      "description": "Update Talos Docker images from ghcr.io",
-      "fileMatch": ["\\.yaml$"],
-      "matchStrings": [
-        "image:\\s*ghcr\\.io/siderolabs/talos:(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)"
-      ],
-      "datasourceTemplate": "docker",
-      "depNameTemplate": "ghcr.io/siderolabs/talos",
-      "versioningTemplate": "semver"
-    },
-    {
-      "customType": "regex",
-      "description": "Update Rook Ceph Docker images",
-      "fileMatch": ["\\.yaml$"],
-      "matchStrings": [
-        "image:\\s*(?:quay\\.io/)?rook/ceph:(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)"
-      ],
-      "datasourceTemplate": "docker",
-      "depNameTemplate": "quay.io/rook/ceph",
-      "versioningTemplate": "semver"
-    },
-    {
-      "customType": "regex",
-      "description": "Update Grafana Helm charts in kustomization.yaml",
-      "fileMatch": ["kustomization\\.yaml$"],
-      "matchStrings": [
-        "version:\\s*[\"']?(?<currentValue>[0-9.]+)[\"']?\\s*#\\s*renovate:\\s*helm=grafana/(?<depName>[^\\s]+)"
-      ],
-      "datasourceTemplate": "helm",
-      "registryUrlTemplate": "https://grafana.github.io/helm-charts"
-    },
-    {
-      "customType": "regex",
-      "description": "Update Prometheus Helm charts",
-      "fileMatch": ["kustomization\\.yaml$"],
-      "matchStrings": [
-        "version:\\s*[\"']?(?<currentValue>[0-9.]+)[\"']?\\s*#\\s*renovate:\\s*helm=prometheus-community/(?<depName>[^\\s]+)"
-      ],
-      "datasourceTemplate": "helm",
-      "registryUrlTemplate": "https://prometheus-community.github.io/helm-charts"
-    }
-  ],
+
   "packageRules": [
     {
       "description": "Grafana Helm Charts registry",
       "matchDatasources": ["helm"],
-      "matchPackageNames": ["loki", "tempo-distributed", "grafana", "promtail"],
+      "matchPackageNames": ["loki", "tempo-distributed", "grafana", "promtail", "grafana-operator"],
       "registryUrls": ["https://grafana.github.io/helm-charts"]
     },
     {
-      "description": "Talos Docker images",
+      "description": "Talos Docker images - use ghcr.io",
       "matchDatasources": ["docker"],
-      "matchPackageNames": ["siderolabs/talos"],
-      "replacementName": "ghcr.io/siderolabs/talos",
-      "replacementVersion": "v1.10.6"
+      "matchPackagePatterns": ["siderolabs/talos"],
+      "registryUrls": ["https://ghcr.io"]
+    },
+
+    {
+      "description": "Group Cilium updates",
+      "groupName": "Cilium CNI",
+      "matchPackagePatterns": ["cilium"]
     },
     {
-      "groupName": "Talos System",
-      "matchPackageNames": ["ghcr.io/siderolabs/talos", "siderolabs/talos"]
-    },
-    {
-      "groupName": "Monitoring Stack",
-      "matchPackagePatterns": ["prometheus", "grafana", "loki", "tempo"]
-    },
-    {
+      "description": "Group ArgoCD ecosystem",
       "groupName": "ArgoCD Ecosystem",
-      "matchPackagePatterns": ["argo"]
+      "matchPackagePatterns": ["argo", "argocd"]
     },
     {
+      "description": "Group monitoring stack",
+      "groupName": "Monitoring Stack",
+      "matchPackagePatterns": ["prometheus", "grafana", "loki", "tempo", "victoriametrics"]
+    },
+    {
+      "description": "Group security tools",
       "groupName": "Security Tools",
-      "matchPackagePatterns": ["cert-manager", "sealed-secrets", "kyverno"]
+      "matchPackagePatterns": ["cert-manager", "sealed-secrets", "kyverno", "trivy"]
     },
     {
-      "description": "Auto-merge patch updates",
+      "description": "Group storage tools",
+      "groupName": "Storage Stack",
+      "matchPackagePatterns": ["rook", "ceph", "velero", "longhorn", "minio"]
+    },
+    {
+      "description": "Group Kafka/messaging",
+      "groupName": "Messaging Stack",
+      "matchPackagePatterns": ["kafka", "strimzi", "redpanda", "rabbitmq"]
+    },
+
+    {
+      "description": "PATCH updates - PRs created, NO automerge (n8n decides)",
       "matchUpdateTypes": ["patch"],
-      "automerge": true,
-      "automergeType": "pr",
-      "labels": ["auto-merge", "patch"]
+      "automerge": false,
+      "labels": ["patch", "low-risk"]
     },
     {
-      "description": "Hold major updates for manual review",
+      "description": "MINOR updates - PRs created, NO automerge (n8n decides)",
+      "matchUpdateTypes": ["minor"],
+      "automerge": false,
+      "labels": ["minor", "medium-risk"]
+    },
+    {
+      "description": "MAJOR updates - require manual review",
       "matchUpdateTypes": ["major"],
       "automerge": false,
-      "labels": ["major-update", "needs-review"]
+      "labels": ["major", "high-risk", "breaking-change"]
+    },
+    {
+      "description": "Security updates - high priority",
+      "matchDepTypes": ["security"],
+      "labels": ["security", "priority-high"],
+      "automerge": false
+    },
+
+    {
+      "description": "Critical infrastructure - never automerge",
+      "matchPackagePatterns": ["cilium", "cert-manager", "cloudnative-pg", "postgresql", "etcd"],
+      "automerge": false,
+      "labels": ["critical-infrastructure"]
+    },
+    {
+      "description": "Databases - extra careful",
+      "matchPackagePatterns": ["postgres", "mysql", "mongodb", "redis", "elasticsearch"],
+      "automerge": false,
+      "labels": ["database", "high-risk"]
+    }
+  ],
+
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Generic renovate comments",
+      "fileMatch": ["\\.tf$", "\\.yaml$", "\\.yml$", "\\.sh$"],
+      "matchStrings": [
+        "(?<currentValue>[\\w+\\.\\-]*)['\",;]*\\s*#\\s*renovate:\\s*(?<datasource>\\S+)=(?<depName>\\S+)"
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": "Talos Docker images",
+      "fileMatch": ["\\.yaml$"],
+      "matchStrings": [
+        "image:\\s*(?:ghcr\\.io/)?siderolabs/talos:(?<currentValue>v?[\\d.]+)"
+      ],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "ghcr.io/siderolabs/talos"
+    },
+    {
+      "customType": "regex",
+      "description": "Helm charts in kustomization with renovate comment",
+      "fileMatch": ["kustomization\\.yaml$"],
+      "matchStrings": [
+        "version:\\s*[\"']?(?<currentValue>[\\d.]+)[\"']?\\s*#\\s*renovate:\\s*helm=(?<registryUrl>[^/]+)/(?<depName>\\S+)"
+      ],
+      "datasourceTemplate": "helm",
+      "registryUrlTemplate": "https://{{registryUrl}}.github.io/helm-charts"
     }
   ]
 }
