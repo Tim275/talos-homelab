@@ -1,0 +1,441 @@
+{
+  "name": "GitHub Homelab Auto Updater",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [1]
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every Week (Monday)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 384]
+    },
+    {
+      "parameters": {
+        "url": "https://api.github.com/repos/Tim275/talos-homelab/pulls",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "state", "value": "open" },
+            { "name": "per_page", "value": "50" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Accept", "value": "application/vnd.github+json" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-prs",
+      "name": "Get Open PRs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [224, 384],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "",
+          "name": "Github Token n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.head.ref }}",
+              "rightValue": "renovate",
+              "operator": { "type": "string", "operation": "contains" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-renovate",
+      "name": "Filter Renovate PRs",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [448, 384]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Store the current PR data for later use\nconst pr = $input.item.json;\n\nreturn {\n  pr_number: pr.number,\n  pr_title: pr.title,\n  pr_url: pr.html_url,\n  pr_body: pr.body || '',\n  pr_author: pr.user.login,\n  target_branch: pr.base.ref,\n  comments_url: `https://api.github.com/repos/Tim275/talos-homelab/issues/${pr.number}/comments`\n};"
+      },
+      "id": "store-pr-data",
+      "name": "Store PR Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [896, 384]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.comments_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Accept", "value": "application/vnd.github+json" }
+          ]
+        },
+        "options": {
+          "response": { "response": { "neverError": true } }
+        }
+      },
+      "id": "get-comments",
+      "name": "Get PR Comments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 384],
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "",
+          "name": "Github Token n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get PR data from the previous Store PR Data node\nconst prData = $('Store PR Data').item.json;\n\n// Get comments - could be array or single object depending on response\nconst rawComments = $input.item.json;\n\n// Normalize comments to array\nlet comments = [];\nif (Array.isArray(rawComments)) {\n  comments = rawComments;\n} else if (rawComments && typeof rawComments === 'object' && Object.keys(rawComments).length > 0) {\n  // Single comment object or response wrapper\n  if (rawComments.body) {\n    comments = [rawComments];\n  } else if (Array.isArray(rawComments.data)) {\n    comments = rawComments.data;\n  }\n}\n\n// Check for our marker in comments\nconst alreadyProcessed = comments.some(\n  comment => comment.body && comment.body.includes('<!-- n8n-ai-assessment -->')\n);\n\nreturn {\n  ...prData,\n  already_processed: alreadyProcessed,\n  comment_count: comments.length\n};"
+      },
+      "id": "check-processed",
+      "name": "Check If Processed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1344, 384]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.already_processed }}",
+              "rightValue": "={{ false }}",
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-new",
+      "name": "Only New PRs",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [1568, 384]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=# PR Analysis Task\n\nYou are a DevOps engineer analyzing a pull request from Renovate Bot for a Kubernetes homelab.\n\n## Input Information\n\n- **PR URL:** {{ $json.pr_url }}\n- **PR Title:** {{ $json.pr_title }}\n- **PR Author:** {{ $json.pr_author }}\n- **Target Branch:** {{ $json.target_branch }}\n- **PR Description:**\n{{ $json.pr_body }}\n\n## Assessment Instructions\n\n### Step 1: Verify Source\nConfirm this is a legitimate Renovate Bot PR for dependency updates.\n\n### Step 2: Analyze Changes\n- Identify what dependencies are being updated\n- Determine if this is a PATCH, MINOR, or MAJOR version update\n- Check for breaking changes mentioned in the changelog or PR description\n\n### Step 3: Impact Evaluation\nAssess risk level (LOW, MEDIUM, HIGH) based on:\n- **LOW:** Patch updates, minor bug fixes, no breaking changes\n- **MEDIUM:** Minor version updates with new features but no breaking changes\n- **HIGH:** Major version updates, database updates, breaking changes, infrastructure components\n\n### Special Rules for this Homelab:\n- Database updates (PostgreSQL, CloudNativePG) are ALWAYS HIGH risk\n- Core infrastructure (Cilium, Flux CD, cert-manager, external-secrets) are HIGH risk\n- Simple application updates without breaking changes are LOW risk\n- Helm chart minor updates are MEDIUM risk\n\n### Step 4: Decision\n- **APPROVED:** Safe to merge automatically (LOW risk, no breaking changes)\n- **NEEDS_REVIEW:** Requires manual review (MEDIUM risk or unclear impact)\n- **REJECTED:** Should not be auto-merged (HIGH risk, breaking changes, databases)\n\n## Output Format\n\nRespond with a JSON object:\n\n```json\n{\n  \"decision\": \"APPROVED|NEEDS_REVIEW|REJECTED\",\n  \"risk_level\": \"LOW|MEDIUM|HIGH\",\n  \"update_type\": \"PATCH|MINOR|MAJOR\",\n  \"component\": \"name of the component being updated\",\n  \"from_version\": \"current version\",\n  \"to_version\": \"new version\",\n  \"breaking_changes\": true|false,\n  \"breaking_changes_details\": \"description if any\",\n  \"reasoning\": \"brief explanation of the decision\",\n  \"recommendation\": \"what action to take\"\n}\n```",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an expert DevOps engineer specialized in Kubernetes, GitOps, and infrastructure automation. You analyze pull requests for security and stability risks. Be conservative - when in doubt, recommend manual review. Never auto-approve database migrations or breaking changes."
+        }
+      },
+      "id": "agent",
+      "name": "AI PR Analyzer",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [1792, 384]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-sonnet-4-5-20250929",
+          "mode": "list",
+          "cachedResultName": "Claude Sonnet 4.5"
+        },
+        "options": {
+          "maxTokensToSample": 2048
+        }
+      },
+      "id": "chatModel",
+      "name": "Anthropic Claude",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [1800, 608],
+      "credentials": {
+        "anthropicApi": {
+          "id": "",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"decision\": \"APPROVED\",\n  \"risk_level\": \"LOW\",\n  \"update_type\": \"PATCH\",\n  \"component\": \"linkding\",\n  \"from_version\": \"1.0.0\",\n  \"to_version\": \"1.0.1\",\n  \"breaking_changes\": false,\n  \"breaking_changes_details\": \"\",\n  \"reasoning\": \"Simple patch update with bug fixes only\",\n  \"recommendation\": \"Safe to merge automatically\"\n}"
+      },
+      "id": "outputParser",
+      "name": "JSON Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [1928, 608]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.github.com/repos/Tim275/talos-homelab/issues/{{ $('Only New PRs').item.json.pr_number }}/comments",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Accept", "value": "application/vnd.github+json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"body\": \"<!-- n8n-ai-assessment -->\\n## AI Assessment\\n\\n| Field | Value |\\n|-------|-------|\\n| **Decision** | {{ $json.output.decision }} |\\n| **Risk Level** | {{ $json.output.risk_level }} |\\n| **Update Type** | {{ $json.output.update_type }} |\\n| **Component** | {{ $json.output.component }} |\\n| **Version** | {{ $json.output.from_version }} -> {{ $json.output.to_version }} |\\n| **Breaking Changes** | {{ $json.output.breaking_changes }} |\\n\\n### Analysis\\n{{ $json.output.reasoning }}\\n\\n### Recommendation\\n{{ $json.output.recommendation }}\\n\\n---\\n*Analyzed by n8n AI Agent using Claude*\"\n}",
+        "options": {}
+      },
+      "id": "addComment",
+      "name": "Add PR Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2144, 384],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "",
+          "name": "Github Token n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "" },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('AI PR Analyzer').item.json.output.decision }}",
+                    "rightValue": "APPROVED",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "" },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('AI PR Analyzer').item.json.output.decision }}",
+                    "rightValue": "NEEDS_REVIEW",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "" },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('AI PR Analyzer').item.json.output.decision }}",
+                    "rightValue": "REJECTED",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "switch",
+      "name": "Decision Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [2368, 368]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.github.com/repos/Tim275/talos-homelab/pulls/{{ $('Only New PRs').item.json.pr_number }}/merge",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Accept", "value": "application/vnd.github+json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"commit_title\": \"{{ $('Only New PRs').item.json.pr_title }}\",\n  \"merge_method\": \"squash\"\n}",
+        "options": {}
+      },
+      "id": "mergePR",
+      "name": "Merge PR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2592, 192],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "",
+          "name": "Github Token n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "8449184586",
+        "text": "=Auto-merged Renovate PR\n\nComponent: {{ $('AI PR Analyzer').item.json.output.component }}\nUpdate: {{ $('AI PR Analyzer').item.json.output.from_version }} -> {{ $('AI PR Analyzer').item.json.output.to_version }}\nType: {{ $('AI PR Analyzer').item.json.output.update_type }}\nRisk: {{ $('AI PR Analyzer').item.json.output.risk_level }}\n\n{{ $('AI PR Analyzer').item.json.output.reasoning }}\n\nView PR: {{ $('Only New PRs').item.json.pr_url }}",
+        "additionalFields": {}
+      },
+      "id": "notifyApproved",
+      "name": "Notify Approved",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2816, 192],
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "8449184586",
+        "text": "=Renovate PR Needs Review\n\nComponent: {{ $('AI PR Analyzer').item.json.output.component }}\nUpdate: {{ $('AI PR Analyzer').item.json.output.from_version }} -> {{ $('AI PR Analyzer').item.json.output.to_version }}\nType: {{ $('AI PR Analyzer').item.json.output.update_type }}\nRisk: {{ $('AI PR Analyzer').item.json.output.risk_level }}\n\nReason: {{ $('AI PR Analyzer').item.json.output.reasoning }}\nRecommendation: {{ $('AI PR Analyzer').item.json.output.recommendation }}\n\nReview PR: {{ $('Only New PRs').item.json.pr_url }}",
+        "additionalFields": {}
+      },
+      "id": "notifyReview",
+      "name": "Notify Needs Review",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2592, 384],
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "8449184586",
+        "text": "=Renovate PR Rejected for Auto-Merge\n\nComponent: {{ $('AI PR Analyzer').item.json.output.component }}\nUpdate: {{ $('AI PR Analyzer').item.json.output.from_version }} -> {{ $('AI PR Analyzer').item.json.output.to_version }}\nType: {{ $('AI PR Analyzer').item.json.output.update_type }}\nRisk: {{ $('AI PR Analyzer').item.json.output.risk_level }}\n\nBreaking Changes: {{ $('AI PR Analyzer').item.json.output.breaking_changes_details }}\n\nReason: {{ $('AI PR Analyzer').item.json.output.reasoning }}\n\nReview PR: {{ $('Only New PRs').item.json.pr_url }}",
+        "additionalFields": {}
+      },
+      "id": "notifyRejected",
+      "name": "Notify Rejected",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2592, 576],
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": "=1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [672, 384],
+      "id": "2d3f7538-b9c6-4a99-9a35-482753767dee",
+      "name": "Loop Over Items"
+    }
+  ],
+  "connections": {
+    "Every Hour": {
+      "main": [[{ "node": "Get Open PRs", "type": "main", "index": 0 }]]
+    },
+    "Get Open PRs": {
+      "main": [[{ "node": "Filter Renovate PRs", "type": "main", "index": 0 }]]
+    },
+    "Filter Renovate PRs": {
+      "main": [[{ "node": "Loop Over Items", "type": "main", "index": 0 }]]
+    },
+    "Store PR Data": {
+      "main": [
+        [
+          { "node": "Get PR Comments", "type": "main", "index": 0 },
+          { "node": "Loop Over Items", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Get PR Comments": {
+      "main": [[{ "node": "Check If Processed", "type": "main", "index": 0 }]]
+    },
+    "Check If Processed": {
+      "main": [[{ "node": "Only New PRs", "type": "main", "index": 0 }]]
+    },
+    "Only New PRs": {
+      "main": [[{ "node": "AI PR Analyzer", "type": "main", "index": 0 }]]
+    },
+    "AI PR Analyzer": {
+      "main": [[{ "node": "Add PR Comment", "type": "main", "index": 0 }]]
+    },
+    "Anthropic Claude": {
+      "ai_languageModel": [
+        [{ "node": "AI PR Analyzer", "type": "ai_languageModel", "index": 0 }]
+      ]
+    },
+    "JSON Output Parser": {
+      "ai_outputParser": [
+        [{ "node": "AI PR Analyzer", "type": "ai_outputParser", "index": 0 }]
+      ]
+    },
+    "Add PR Comment": {
+      "main": [[{ "node": "Decision Router", "type": "main", "index": 0 }]]
+    },
+    "Decision Router": {
+      "main": [
+        [{ "node": "Merge PR", "type": "main", "index": 0 }],
+        [{ "node": "Notify Needs Review", "type": "main", "index": 0 }],
+        [{ "node": "Notify Rejected", "type": "main", "index": 0 }]
+      ]
+    },
+    "Merge PR": {
+      "main": [[{ "node": "Notify Approved", "type": "main", "index": 0 }]]
+    },
+    "Loop Over Items": {
+      "main": [[], [{ "node": "Store PR Data", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
