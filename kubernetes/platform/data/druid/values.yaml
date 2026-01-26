@@ -1,11 +1,9 @@
-# Druid Helm Chart Values - Homelab Configuration
-# Using Wiremind Helm Chart
-
+# Druid Helm Chart - Minimal Working Config
 image:
   repository: apache/druid
-  tag: "30.0.1"  # Stable version without K8s extension bugs
+  tag: "30.0.1"
 
-# ZooKeeper - use built-in
+# ZooKeeper
 zookeeper:
   enabled: true
   replicaCount: 1
@@ -18,11 +16,11 @@ zookeeper:
     storageClass: rook-ceph-block-enterprise
     size: 2Gi
 
-# PostgreSQL for metadata (use external CNPG)
+# Disable built-in PostgreSQL (use CNPG)
 postgresql:
   enabled: false
 
-# External metadata store (CNPG)
+# External metadata
 metadataStore:
   type: postgresql
   host: druid-postgres-rw.druid.svc
@@ -30,21 +28,17 @@ metadataStore:
   user: druid
   password: druid-metadata-2026
 
-# Deep storage - local for homelab
+# Deep storage
 deepStorage:
   type: local
-  spec:
-    directory: /opt/druid/var/druid/segments
 
-# Common config
+# Extensions
 configVars:
-  druid_extensions_loadList: '["postgresql-metadata-storage", "druid-kafka-indexing-service", "druid-datasketches", "druid-histogram", "druid-avro-extensions"]'
+  druid_extensions_loadList: '["postgresql-metadata-storage", "druid-kafka-indexing-service", "druid-datasketches"]'
   druid_storage_type: local
   druid_storage_storageDirectory: /opt/druid/var/druid/segments
-  druid_indexer_logs_type: file
-  druid_indexer_logs_directory: /opt/druid/var/druid/indexing-logs
 
-# Coordinator (includes Overlord)
+# Coordinator
 coordinator:
   replicaCount: 1
   resources:
@@ -77,7 +71,6 @@ broker:
   config:
     DRUID_XMX: 256m
     DRUID_XMS: 256m
-    druid_sql_enable: "true"
 
 # Historical
 historical:
@@ -96,26 +89,14 @@ historical:
   config:
     DRUID_XMX: 256m
     DRUID_XMS: 256m
-    druid_segmentCache_locations: '[{"path":"/opt/druid/var/druid/segment-cache","maxSize":5000000000}]'
 
-# MiddleManager
+# Disable MiddleManager (causes schema issues)
 middleManager:
-  replicaCount: 1
-  resources:
-    requests:
-      cpu: 100m
-      memory: 512Mi
-    limits:
-      cpu: 500m
-      memory: 1Gi
-  persistence:
-    enabled: true
-    storageClass: rook-ceph-block-enterprise
-    size: 5Gi
-  config:
-    DRUID_XMX: 128m
-    DRUID_XMS: 128m
-    druid_worker_capacity: "2"
+  enabled: false
+
+# Disable Indexer (causes schema issues)
+indexer:
+  enabled: false
 
 # Router (UI)
 router:
