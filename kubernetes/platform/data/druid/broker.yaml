@@ -1,0 +1,67 @@
+# Druid Broker (query routing)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: druid-broker
+  namespace: druid
+  labels:
+    app.kubernetes.io/name: druid-broker
+    app.kubernetes.io/part-of: druid
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: druid-broker
+      app.kubernetes.io/part-of: druid
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: druid-broker
+        app.kubernetes.io/part-of: druid
+    spec:
+      serviceAccountName: druid
+      containers:
+        - name: broker
+          image: apache/druid:30.0.1
+          args: ["broker"]
+          ports:
+            - containerPort: 8082
+              name: http
+          env:
+            - name: DRUID_XMX
+              value: "256m"
+            - name: DRUID_XMS
+              value: "128m"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          volumeMounts:
+            - name: config
+              mountPath: /opt/druid/conf/druid/cluster/_common/common.runtime.properties
+              subPath: common.runtime.properties
+          livenessProbe:
+            httpGet:
+              path: /status/health
+              port: 8082
+            initialDelaySeconds: 90
+            periodSeconds: 30
+      volumes:
+        - name: config
+          configMap:
+            name: druid-common-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: druid-broker
+  namespace: druid
+spec:
+  selector:
+    app.kubernetes.io/name: druid-broker
+  ports:
+    - port: 8082
+      name: http
