@@ -1,0 +1,92 @@
+# Druid Historical (stores queryable data)
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: druid-historical
+  namespace: druid
+  labels:
+    app.kubernetes.io/name: druid-historical
+    app.kubernetes.io/part-of: druid
+spec:
+  serviceName: druid-historical
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: druid-historical
+      app.kubernetes.io/part-of: druid
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: druid-historical
+        app.kubernetes.io/part-of: druid
+    spec:
+      serviceAccountName: druid
+      containers:
+        - name: historical
+          image: apache/druid:30.0.1
+          args: ["historical"]
+          ports:
+            - containerPort: 8083
+              name: http
+          env:
+            - name: DRUID_XMX
+              value: "512m"
+            - name: DRUID_XMS
+              value: "256m"
+            - name: druid_processing_numThreads
+              value: "1"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          volumeMounts:
+            - name: config
+              mountPath: /opt/druid/conf/druid/cluster/_common/common.runtime.properties
+              subPath: common.runtime.properties
+            - name: segment-cache
+              mountPath: /opt/druid/var/druid/segment-cache
+            - name: segments
+              mountPath: /opt/druid/var/druid/segments
+          livenessProbe:
+            httpGet:
+              path: /status/health
+              port: 8083
+            initialDelaySeconds: 90
+            periodSeconds: 30
+      volumes:
+        - name: config
+          configMap:
+            name: druid-common-config
+  volumeClaimTemplates:
+    - metadata:
+        name: segment-cache
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: proxmox-csi
+        resources:
+          requests:
+            storage: 10Gi
+    - metadata:
+        name: segments
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: proxmox-csi
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: druid-historical
+  namespace: druid
+spec:
+  selector:
+    app.kubernetes.io/name: druid-historical
+  ports:
+    - port: 8083
+      name: http
+  clusterIP: None
