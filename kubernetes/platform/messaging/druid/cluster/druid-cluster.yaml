@@ -1,0 +1,195 @@
+apiVersion: druid.apache.org/v1alpha1
+kind: Druid
+metadata:
+  name: druid-cluster
+  namespace: druid
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  image: apache/druid:31.0.0
+  startScript: /druid.sh
+  podLabels:
+    app.kubernetes.io/name: druid
+  securityContext:
+    fsGroup: 1000
+    runAsUser: 1000
+    runAsGroup: 1000
+  serviceAccount: druid
+
+  jvm.options: |-
+    -server
+    -XX:+UseG1GC
+    -XX:+ExitOnOutOfMemoryError
+    -Duser.timezone=UTC
+    -Dfile.encoding=UTF-8
+    -Djava.io.tmpdir=/opt/druid/var/tmp
+    -Djava.util.logging.manager=org.apache.logging.log4j.jul.LogManager
+
+  log4j.config: |-
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Configuration status="WARN">
+      <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+          <PatternLayout pattern="%d{ISO8601} %p [%t] %c - %m%n"/>
+        </Console>
+      </Appenders>
+      <Loggers>
+        <Root level="info"><AppenderRef ref="Console"/></Root>
+      </Loggers>
+    </Configuration>
+
+  common.runtime.properties: |
+    druid.extensions.loadList=["druid-kubernetes-extensions", "postgresql-metadata-storage", "druid-kafka-indexing-service", "druid-datasketches", "druid-histogram", "druid-lookups-cached-global", "druid-parquet-extensions", "druid-avro-extensions", "druid-s3-extensions", "druid-stats"]
+    druid.discovery.type=k8s
+    druid.discovery.k8s.clusterIdentifier=druid-cluster
+    druid.discovery.k8s.podNameEnvKey=POD_NAME
+    druid.discovery.k8s.podNamespaceEnvKey=POD_NAMESPACE
+    druid.serverview.type=http
+    druid.coordinator.loadqueuepeon.type=http
+    druid.indexer.runner.type=httpRemote
+    druid.metadata.storage.type=postgresql
+    druid.metadata.storage.connector.connectURI=jdbc:postgresql://druid-postgres-rw.druid.svc:5432/druid
+    druid.metadata.storage.connector.user=druid
+    druid.metadata.storage.connector.password=druid-metadata-2026
+    druid.metadata.storage.connector.createTables=true
+    druid.storage.type=local
+    druid.storage.storageDirectory=/opt/druid/var/druid/segments
+    druid.indexer.logs.type=file
+    druid.indexer.logs.directory=/opt/druid/var/druid/indexing-logs
+    druid.emitter=noop
+
+  env:
+    - name: POD_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.name
+    - name: POD_NAMESPACE
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.namespace
+
+  volumeClaimTemplates:
+    - metadata:
+        name: data-volume
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+        storageClassName: rook-ceph-block-enterprise
+
+  volumeMounts:
+    - mountPath: /opt/druid/var
+      name: data-volume
+
+  nodes:
+    coordinators:
+      nodeType: coordinator
+      kind: StatefulSet
+      replicas: 1
+      nodeConfigMountPath: /opt/druid/conf/druid/cluster/master/coordinator-overlord
+      ports:
+        - name: http
+          containerPort: 8081
+      resources:
+        requests: {cpu: "200m", memory: "512Mi"}
+        limits: {cpu: "1", memory: "1Gi"}
+      extra.jvm.options: |-
+        -Xms384m
+        -Xmx384m
+        -XX:MaxDirectMemorySize=256m
+      runtime.properties: |
+        druid.service=druid/coordinator
+        druid.plaintextPort=8081
+        druid.coordinator.asOverlord.enabled=true
+        druid.coordinator.asOverlord.overlordService=druid/overlord
+        druid.coordinator.startDelay=PT10S
+        druid.coordinator.period=PT30S
+
+    brokers:
+      nodeType: broker
+      kind: StatefulSet
+      replicas: 1
+      nodeConfigMountPath: /opt/druid/conf/druid/cluster/query/broker
+      ports:
+        - name: http
+          containerPort: 8082
+      resources:
+        requests: {cpu: "200m", memory: "512Mi"}
+        limits: {cpu: "1", memory: "1Gi"}
+      extra.jvm.options: |-
+        -Xms256m
+        -Xmx256m
+        -XX:MaxDirectMemorySize=256m
+      runtime.properties: |
+        druid.service=druid/broker
+        druid.plaintextPort=8082
+        druid.broker.http.numConnections=10
+        druid.server.http.numThreads=20
+        druid.sql.enable=true
+
+    historicals:
+      nodeType: historical
+      kind: StatefulSet
+      replicas: 1
+      nodeConfigMountPath: /opt/druid/conf/druid/cluster/data/historical
+      ports:
+        - name: http
+          containerPort: 8083
+      resources:
+        requests: {cpu: "200m", memory: "512Mi"}
+        limits: {cpu: "1", memory: "1Gi"}
+      extra.jvm.options: |-
+        -Xms256m
+        -Xmx256m
+        -XX:MaxDirectMemorySize=256m
+      runtime.properties: |
+        druid.service=druid/historical
+        druid.plaintextPort=8083
+        druid.segmentCache.locations=[{"path":"/opt/druid/var/druid/segment-cache","maxSize":5000000000}]
+        druid.processing.buffer.sizeBytes=50000000
+        druid.processing.numThreads=2
+        druid.server.maxSize=5000000000
+
+    middlemanagers:
+      nodeType: middleManager
+      kind: StatefulSet
+      replicas: 1
+      nodeConfigMountPath: /opt/druid/conf/druid/cluster/data/middleManager
+      ports:
+        - name: http
+          containerPort: 8091
+      resources:
+        requests: {cpu: "200m", memory: "512Mi"}
+        limits: {cpu: "1", memory: "1Gi"}
+      extra.jvm.options: |-
+        -Xms128m
+        -Xmx128m
+        -XX:MaxDirectMemorySize=128m
+      runtime.properties: |
+        druid.service=druid/middleManager
+        druid.plaintextPort=8091
+        druid.worker.capacity=2
+        druid.indexer.task.baseTaskDir=/opt/druid/var/druid/task
+
+    routers:
+      nodeType: router
+      kind: StatefulSet
+      replicas: 1
+      nodeConfigMountPath: /opt/druid/conf/druid/cluster/query/router
+      ports:
+        - name: http
+          containerPort: 8888
+      resources:
+        requests: {cpu: "100m", memory: "256Mi"}
+        limits: {cpu: "500m", memory: "512Mi"}
+      extra.jvm.options: |-
+        -Xms128m
+        -Xmx128m
+        -XX:MaxDirectMemorySize=128m
+      runtime.properties: |
+        druid.service=druid/router
+        druid.plaintextPort=8888
+        druid.router.defaultBrokerServiceName=druid/broker
+        druid.router.coordinatorServiceName=druid/coordinator
+        druid.router.managementProxy.enabled=true
