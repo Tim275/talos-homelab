@@ -23,8 +23,6 @@ spec:
             - --provider=oidc
             - --oidc-issuer-url=https://iam.timourhomelab.org/realms/kubernetes
             - --client-id=druid
-            - --client-secret-file=/etc/oauth2-proxy/client-secret
-            - --cookie-secret-file=/etc/oauth2-proxy/cookie-secret
             - --cookie-secure=true
             - --cookie-samesite=lax
             - --cookie-name=_druid_oauth2
@@ -41,16 +39,20 @@ spec:
             - --cookie-expire=4h
             - --session-store-type=cookie
             - --skip-jwt-bearer-tokens=true
-            - --allowed-group=druid-users
-            - --allowed-group=druid-admins
-            - --allowed-group=oms-admins
+          env:
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: druid-oauth2-proxy
+                  key: client-secret
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: druid-oauth2-proxy
+                  key: cookie-secret
           ports:
             - containerPort: 4180
               name: http
-          volumeMounts:
-            - name: oauth2-secrets
-              mountPath: /etc/oauth2-proxy
-              readOnly: true
           resources:
             requests:
               cpu: 10m
@@ -70,15 +72,6 @@ spec:
               port: 4180
             initialDelaySeconds: 5
             periodSeconds: 5
-      volumes:
-        - name: oauth2-secrets
-          secret:
-            secretName: druid-oauth2-proxy
-            items:
-              - key: client-secret
-                path: client-secret
-              - key: cookie-secret
-                path: cookie-secret
 ---
 apiVersion: v1
 kind: Service
