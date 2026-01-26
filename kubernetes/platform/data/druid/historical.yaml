@@ -17,6 +17,21 @@ spec:
         app.kubernetes.io/part-of: druid
     spec:
       serviceAccountName: druid
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+        runAsGroup: 1000
+      initContainers:
+        - name: init-permissions
+          image: busybox
+          command: ['sh', '-c', 'chown -R 1000:1000 /opt/druid/var']
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: segment-cache
+              mountPath: /opt/druid/var/druid/segment-cache
+            - name: segments
+              mountPath: /opt/druid/var/druid/segments
       containers:
         - name: historical
           image: apache/druid:30.0.1
@@ -56,7 +71,7 @@ spec:
             httpGet:
               path: /status/health
               port: 8083
-            initialDelaySeconds: 90
+            initialDelaySeconds: 120
             periodSeconds: 30
       volumes:
         - name: config
