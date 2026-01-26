@@ -1,0 +1,41 @@
+# Druid Common Configuration
+# ZooKeeper-less setup using Kubernetes Extensions (2025 Best Practice)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: druid-common-config
+  namespace: druid
+data:
+  common.runtime.properties: |
+    # ===== KUBERNETES EXTENSIONS (NO ZOOKEEPER!) =====
+    # Service discovery via K8s API instead of ZooKeeper
+    druid.zk.service.enabled=false
+    druid.discovery.type=k8s
+    druid.serverview.type=http
+    druid.coordinator.loadqueuepeon.type=http
+    druid.indexer.runner.type=httpRemote
+
+    # Kubernetes namespace
+    druid.discovery.k8s.clusterIdentifier=druid
+    druid.discovery.k8s.podLabels={app.kubernetes.io/part-of: druid}
+
+    # ===== METADATA STORAGE (PostgreSQL) =====
+    druid.metadata.storage.type=postgresql
+    druid.metadata.storage.connector.connectURI=jdbc:postgresql://druid-postgres.druid.svc:5432/druid
+    druid.metadata.storage.connector.user=druid
+    druid.metadata.storage.connector.password=druidpass123
+
+    # ===== DEEP STORAGE (Local for learning) =====
+    # For production: use S3, HDFS, or cloud storage
+    druid.storage.type=local
+    druid.storage.storageDirectory=/opt/druid/var/druid/segments
+
+    # ===== EXTENSIONS =====
+    druid.extensions.loadList=["druid-kubernetes-extensions", "postgresql-metadata-storage", "druid-kafka-indexing-service", "druid-datasketches"]
+
+    # ===== SERVICE DISCOVERY =====
+    druid.selectors.indexing.serviceName=druid/overlord
+    druid.selectors.coordinator.serviceName=druid/coordinator
+
+    # ===== LOGGING =====
+    druid.startup.logging.logProperties=true
