@@ -24,14 +24,12 @@ spec:
       initContainers:
         - name: init-permissions
           image: busybox
-          command: ['sh', '-c', 'chown -R 1000:1000 /opt/druid/var']
+          command: ['sh', '-c', 'mkdir -p /opt/druid/var/druid/segment-cache /opt/druid/var/druid/segments /opt/druid/var/druid/indexing-logs /opt/druid/var/druid/task /opt/druid/var/druid/hadoop-tmp && chown -R 1000:1000 /opt/druid/var']
           securityContext:
             runAsUser: 0
           volumeMounts:
-            - name: segment-cache
-              mountPath: /opt/druid/var/druid/segment-cache
-            - name: segments
-              mountPath: /opt/druid/var/druid/segments
+            - name: druid-data
+              mountPath: /opt/druid/var
       containers:
         - name: historical
           image: apache/druid:30.0.1
@@ -63,10 +61,8 @@ spec:
             - name: config
               mountPath: /opt/druid/conf/druid/cluster/_common/common.runtime.properties
               subPath: common.runtime.properties
-            - name: segment-cache
-              mountPath: /opt/druid/var/druid/segment-cache
-            - name: segments
-              mountPath: /opt/druid/var/druid/segments
+            - name: druid-data
+              mountPath: /opt/druid/var
           livenessProbe:
             httpGet:
               path: /status/health
@@ -79,21 +75,13 @@ spec:
             name: druid-common-config
   volumeClaimTemplates:
     - metadata:
-        name: segment-cache
+        name: druid-data
       spec:
         accessModes: ["ReadWriteOnce"]
         storageClassName: rook-ceph-block-enterprise
         resources:
           requests:
-            storage: 10Gi
-    - metadata:
-        name: segments
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        storageClassName: rook-ceph-block-enterprise
-        resources:
-          requests:
-            storage: 10Gi
+            storage: 20Gi
 ---
 apiVersion: v1
 kind: Service
