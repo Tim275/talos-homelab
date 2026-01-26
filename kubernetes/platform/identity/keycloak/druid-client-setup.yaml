@@ -1,0 +1,178 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-druid-client-setup
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak-druid-client-setup
+    app.kubernetes.io/part-of: platform-identity
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: keycloak-druid-client-setup
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: setup
+          image: quay.io/keycloak/keycloak:25.0.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: KEYCLOAK_ADMIN
+              value: admin
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: password
+            - name: KEYCLOAK_URL
+              value: "http://keycloak.keycloak.svc.cluster.local:8080"
+            - name: DRUID_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: druid-oidc-client-secret
+                  key: clientSecret
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              echo "=== Waiting for Keycloak to be ready (20s) ==="
+              sleep 20
+
+              echo ""
+              echo "=== Logging in to Keycloak ==="
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --server "$KEYCLOAK_URL" \
+                --realm master \
+                --user "$KEYCLOAK_ADMIN" \
+                --password "$KEYCLOAK_ADMIN_PASSWORD"
+
+              echo ""
+              echo "=== Ensuring 'kubernetes' realm exists ==="
+              if ! /opt/keycloak/bin/kcadm.sh get realms/kubernetes 2>/dev/null; then
+                echo "Creating kubernetes realm..."
+                /opt/keycloak/bin/kcadm.sh create realms \
+                  -s realm=kubernetes \
+                  -s enabled=true \
+                  -s displayName="Kubernetes Homelab"
+                echo "Kubernetes realm created"
+              else
+                echo "Kubernetes realm already exists"
+              fi
+
+              echo ""
+              echo "=== Checking if 'druid' client exists ==="
+              EXISTING_CLIENT=$(/opt/keycloak/bin/kcadm.sh get clients -r kubernetes -q clientId=druid --fields id 2>/dev/null | grep '"id"' | cut -d'"' -f4 || true)
+
+              if [ -n "$EXISTING_CLIENT" ]; then
+                echo "Druid client already exists (ID: $EXISTING_CLIENT)"
+                echo "Updating client configuration..."
+                /opt/keycloak/bin/kcadm.sh update clients/$EXISTING_CLIENT -r kubernetes \
+                  -s enabled=true \
+                  -s 'redirectUris=["https://druid.timourhomelab.org/oauth2/callback"]' \
+                  -s 'webOrigins=["https://druid.timourhomelab.org"]' \
+                  -s secret="$DRUID_CLIENT_SECRET"
+                echo "Client updated"
+              else
+                echo ""
+                echo "=== Creating OIDC Client 'druid' ==="
+                CLIENT_ID=$(/opt/keycloak/bin/kcadm.sh create clients -r kubernetes \
+                  -s clientId=druid \
+                  -s enabled=true \
+                  -s protocol=openid-connect \
+                  -s publicClient=false \
+                  -s standardFlowEnabled=true \
+                  -s directAccessGrantsEnabled=true \
+                  -s serviceAccountsEnabled=false \
+                  -s 'redirectUris=["https://druid.timourhomelab.org/oauth2/callback"]' \
+                  -s 'webOrigins=["https://druid.timourhomelab.org"]' \
+                  -s consentRequired=false \
+                  -s fullScopeAllowed=true \
+                  -s secret="$DRUID_CLIENT_SECRET" \
+                  -i)
+                echo "Created Druid Client: $CLIENT_ID"
+                EXISTING_CLIENT=$CLIENT_ID
+              fi
+
+              echo ""
+              echo "=== Ensuring 'groups' scope is assigned ==="
+              GROUPS_SCOPE_ID=$(/opt/keycloak/bin/kcadm.sh get client-scopes -r kubernetes --fields id,name 2>/dev/null | grep -B1 '"name" : "groups"' | grep '"id"' | cut -d'"' -f4 || true)
+
+              if [ -n "$GROUPS_SCOPE_ID" ]; then
+                /opt/keycloak/bin/kcadm.sh update clients/$EXISTING_CLIENT/default-client-scopes/$GROUPS_SCOPE_ID -r kubernetes 2>/dev/null || true
+                echo "Groups scope assigned to druid client"
+              else
+                echo "Note: Groups scope not found - will be configured via LDAP federation"
+              fi
+
+              echo ""
+              echo "=== Creating Druid Groups (if not exist) ==="
+
+              # Create druid-users group
+              if ! /opt/keycloak/bin/kcadm.sh get groups -r kubernetes | grep -q '"name" : "druid-users"'; then
+                /opt/keycloak/bin/kcadm.sh create groups -r kubernetes \
+                  -s name=druid-users \
+                  -s 'attributes.description=["Druid Users - Read access to Druid"]'
+                echo "Created group: druid-users"
+              else
+                echo "Group already exists: druid-users"
+              fi
+
+              # Create druid-admins group
+              if ! /opt/keycloak/bin/kcadm.sh get groups -r kubernetes | grep -q '"name" : "druid-admins"'; then
+                /opt/keycloak/bin/kcadm.sh create groups -r kubernetes \
+                  -s name=druid-admins \
+                  -s 'attributes.description=["Druid Admins - Full access to Druid"]'
+                echo "Created group: druid-admins"
+              else
+                echo "Group already exists: druid-admins"
+              fi
+
+              echo ""
+              echo "==========================================="
+              echo "Druid OIDC Client Setup Complete!"
+              echo "==========================================="
+              echo ""
+              echo "OIDC Configuration:"
+              echo "  Issuer URL: https://iam.timourhomelab.org/realms/kubernetes"
+              echo "  Client ID: druid"
+              echo "  Redirect URI: https://druid.timourhomelab.org/oauth2/callback"
+              echo ""
+              echo "Groups Created:"
+              echo "  - druid-users (read access)"
+              echo "  - druid-admins (full access)"
+              echo ""
+              echo "Next Steps:"
+              echo "1. Add your user to 'druid-users' or 'druid-admins' group in LLDAP"
+              echo "2. Access Druid at https://druid.timourhomelab.org"
+              echo "==========================================="
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: druid-oidc-client-secret
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: druid-oidc-client-secret
+    app.kubernetes.io/part-of: platform-identity
+type: Opaque
+stringData:
+  clientSecret: "Druid-OIDC-Secret-2026!"
