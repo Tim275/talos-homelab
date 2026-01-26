@@ -1,0 +1,60 @@
+# Minimal ZooKeeper for Druid coordination
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: druid-zookeeper
+  namespace: druid
+spec:
+  serviceName: druid-zookeeper
+  replicas: 1
+  selector:
+    matchLabels:
+      app: druid-zookeeper
+  template:
+    metadata:
+      labels:
+        app: druid-zookeeper
+    spec:
+      containers:
+        - name: zookeeper
+          image: zookeeper:3.8
+          ports:
+            - containerPort: 2181
+              name: client
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          env:
+            - name: ZOO_MY_ID
+              value: "1"
+            - name: ZOO_SERVERS
+              value: "server.1=druid-zookeeper-0.druid-zookeeper:2888:3888"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: rook-ceph-block-enterprise
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: druid-zookeeper
+  namespace: druid
+spec:
+  ports:
+    - port: 2181
+      name: client
+  clusterIP: None
+  selector:
+    app: druid-zookeeper
