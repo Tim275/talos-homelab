@@ -1,0 +1,94 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: druid-oauth2-proxy
+  namespace: druid
+  labels:
+    app: druid-oauth2-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: druid-oauth2-proxy
+  template:
+    metadata:
+      labels:
+        app: druid-oauth2-proxy
+    spec:
+      containers:
+        - name: oauth2-proxy
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+          args:
+            - --provider=oidc
+            - --oidc-issuer-url=https://iam.timourhomelab.org/realms/kubernetes
+            - --client-id=druid
+            - --client-secret-file=/etc/oauth2-proxy/client-secret
+            - --cookie-secret-file=/etc/oauth2-proxy/cookie-secret
+            - --cookie-secure=true
+            - --cookie-samesite=lax
+            - --cookie-name=_druid_oauth2
+            - --email-domain=*
+            - --upstream=http://druid-router:8888
+            - --http-address=0.0.0.0:4180
+            - --reverse-proxy=true
+            - --skip-provider-button=true
+            - --pass-authorization-header=true
+            - --pass-access-token=true
+            - --set-authorization-header=true
+            - --set-xauthrequest=true
+            - --cookie-refresh=1h
+            - --cookie-expire=4h
+            - --session-store-type=cookie
+            - --skip-jwt-bearer-tokens=true
+            - --allowed-group=druid-users
+            - --allowed-group=druid-admins
+            - --allowed-group=oms-admins
+          ports:
+            - containerPort: 4180
+              name: http
+          volumeMounts:
+            - name: oauth2-secrets
+              mountPath: /etc/oauth2-proxy
+              readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: 4180
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: 4180
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: oauth2-secrets
+          secret:
+            secretName: druid-oauth2-proxy
+            items:
+              - key: client-secret
+                path: client-secret
+              - key: cookie-secret
+                path: cookie-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: druid-oauth2-proxy
+  namespace: druid
+spec:
+  selector:
+    app: druid-oauth2-proxy
+  ports:
+    - port: 4180
+      targetPort: 4180
+      name: http
