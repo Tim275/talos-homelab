@@ -52,9 +52,10 @@ coordinator:
     enabled: true
     storageClass: rook-ceph-block-enterprise
     size: 5Gi
-  config:
+  envVars:
     DRUID_XMX: 512m
     DRUID_XMS: 512m
+    DRUID_MAXDIRECTMEMORYSIZE: 200m
     druid_coordinator_asOverlord_enabled: "true"
     druid_coordinator_asOverlord_overlordService: druid/overlord
 
@@ -68,7 +69,7 @@ broker:
     limits:
       cpu: 500m
       memory: 1536Mi
-  config:
+  envVars:
     DRUID_XMX: 384m
     DRUID_XMS: 384m
     DRUID_MAXDIRECTMEMORYSIZE: 400m
@@ -78,25 +79,27 @@ broker:
 
 # Historical
 historical:
-  replicaCount: 1
-  resources:
-    requests:
-      cpu: 100m
-      memory: 768Mi
-    limits:
-      cpu: 500m
-      memory: 1536Mi
-  persistence:
-    enabled: true
-    storageClass: rook-ceph-block-enterprise
-    size: 10Gi
-  config:
-    DRUID_XMX: 384m
-    DRUID_XMS: 384m
-    DRUID_MAXDIRECTMEMORYSIZE: 400m
-    druid_processing_buffer_sizeBytes: "50000000"
-    druid_processing_numMergeBuffers: "2"
-    druid_processing_numThreads: "1"
+  tiers:
+    default:
+      envVars:
+        DRUID_XMX: 384m
+        DRUID_XMS: 384m
+        DRUID_MAXDIRECTMEMORYSIZE: 400m
+        druid_processing_buffer_sizeBytes: "50000000"
+        druid_processing_numMergeBuffers: "2"
+        druid_processing_numThreads: "1"
+        druid_server_tier: "tier_default"
+        druid_segmentCache_locations: '[{"path":"/opt/druid/var/druid/segment-cache","maxSize":"1GiB"}]'
+      resources:
+        requests:
+          cpu: 100m
+          memory: 768Mi
+        limits:
+          cpu: 500m
+          memory: 1536Mi
+      persistence:
+        size: 10Gi
+        storageClass: rook-ceph-block-enterprise
 
 # Disable MiddleManager (causes schema issues)
 middleManager:
@@ -116,7 +119,8 @@ router:
     limits:
       cpu: 250m
       memory: 512Mi
-  config:
+  envVars:
     DRUID_XMX: 128m
     DRUID_XMS: 128m
+    DRUID_MAXDIRECTMEMORYSIZE: 100m
     druid_router_managementProxy_enabled: "true"
