@@ -1,0 +1,129 @@
+# Druid Helm Chart Values - Homelab Configuration
+# Using Wiremind Helm Chart
+
+image:
+  repository: apache/druid
+  tag: "30.0.1"  # Stable version without K8s extension bugs
+
+# ZooKeeper - use built-in
+zookeeper:
+  enabled: true
+  replicaCount: 1
+  persistence:
+    enabled: true
+    storageClass: rook-ceph-block-enterprise
+    size: 2Gi
+
+# PostgreSQL for metadata (use external CNPG)
+postgresql:
+  enabled: false
+
+# External metadata store (CNPG)
+metadataStore:
+  type: postgresql
+  host: druid-postgres-rw.druid.svc
+  port: 5432
+  user: druid
+  password: druid-metadata-2026
+
+# Deep storage - local for homelab
+deepStorage:
+  type: local
+  spec:
+    directory: /opt/druid/var/druid/segments
+
+# Common config
+configVars:
+  druid_extensions_loadList: '["postgresql-metadata-storage", "druid-kafka-indexing-service", "druid-datasketches", "druid-histogram", "druid-avro-extensions"]'
+  druid_storage_type: local
+  druid_storage_storageDirectory: /opt/druid/var/druid/segments
+  druid_indexer_logs_type: file
+  druid_indexer_logs_directory: /opt/druid/var/druid/indexing-logs
+
+# Coordinator (includes Overlord)
+coordinator:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  persistence:
+    enabled: true
+    storageClass: rook-ceph-block-enterprise
+    size: 5Gi
+  config:
+    DRUID_XMX: 384m
+    DRUID_XMS: 384m
+    druid_coordinator_asOverlord_enabled: "true"
+    druid_coordinator_asOverlord_overlordService: druid/overlord
+
+# Broker
+broker:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  config:
+    DRUID_XMX: 256m
+    DRUID_XMS: 256m
+    druid_sql_enable: "true"
+
+# Historical
+historical:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  persistence:
+    enabled: true
+    storageClass: rook-ceph-block-enterprise
+    size: 10Gi
+  config:
+    DRUID_XMX: 256m
+    DRUID_XMS: 256m
+    druid_segmentCache_locations: '[{"path":"/opt/druid/var/druid/segment-cache","maxSize":5000000000}]'
+
+# MiddleManager
+middleManager:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  persistence:
+    enabled: true
+    storageClass: rook-ceph-block-enterprise
+    size: 5Gi
+  config:
+    DRUID_XMX: 128m
+    DRUID_XMS: 128m
+    druid_worker_capacity: "2"
+
+# Router (UI)
+router:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      cpu: 250m
+      memory: 512Mi
+  config:
+    DRUID_XMX: 128m
+    DRUID_XMS: 128m
+    druid_router_managementProxy_enabled: "true"
