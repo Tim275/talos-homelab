@@ -3,9 +3,6 @@ kind: Deployment
 metadata:
   name: druid-broker
   namespace: druid
-  labels:
-    app.kubernetes.io/name: druid-broker
-    app.kubernetes.io/part-of: druid
 spec:
   replicas: 1
   selector:
@@ -19,6 +16,10 @@ spec:
         app.kubernetes.io/part-of: druid
     spec:
       serviceAccountName: druid
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+        runAsGroup: 1000
       containers:
         - name: broker
           image: apache/druid:30.0.1
@@ -36,20 +37,22 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
             - name: DRUID_XMX
-              value: "256m"
+              value: "512m"
             - name: DRUID_XMS
-              value: "128m"
+              value: "256m"
           resources:
             requests:
-              memory: "256Mi"
+              memory: "512Mi"
               cpu: "100m"
             limits:
-              memory: "512Mi"
+              memory: "1Gi"
               cpu: "500m"
           volumeMounts:
             - name: config
               mountPath: /opt/druid/conf/druid/cluster/_common/common.runtime.properties
               subPath: common.runtime.properties
+            - name: druid-var
+              mountPath: /opt/druid/var
           livenessProbe:
             httpGet:
               path: /status/health
@@ -60,6 +63,8 @@ spec:
         - name: config
           configMap:
             name: druid-common-config
+        - name: druid-var
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
