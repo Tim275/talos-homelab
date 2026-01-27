@@ -1,0 +1,158 @@
+# Druid Chaos Testing Experiments
+# Enterprise Best Practice: Validate system resilience
+# Requires: Chaos Mesh installed (kubectl apply -f https://mirrors.chaos-mesh.org/v2.7.0/chaos-mesh.yaml)
+---
+# Pod Kill Experiment - Test Druid self-healing
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: druid-broker-pod-kill
+  namespace: druid
+  labels:
+    app: druid-chaos
+    experiment: pod-kill
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces:
+      - druid
+    labelSelectors:
+      app.kubernetes.io/component: broker
+  # Experiment is paused by default - enable manually
+  # Remove this annotation to activate
+  # duration: "30s"
+---
+# Pod Failure Experiment - Test graceful degradation
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: druid-historical-pod-failure
+  namespace: druid
+  labels:
+    app: druid-chaos
+    experiment: pod-failure
+spec:
+  action: pod-failure
+  mode: one
+  selector:
+    namespaces:
+      - druid
+    labelSelectors:
+      app.kubernetes.io/component: historical
+  # duration: "60s"
+---
+# Network Delay Experiment - Test query timeout handling
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: druid-network-delay
+  namespace: druid
+  labels:
+    app: druid-chaos
+    experiment: network-delay
+spec:
+  action: delay
+  mode: all
+  selector:
+    namespaces:
+      - druid
+    labelSelectors:
+      app.kubernetes.io/name: druid
+  delay:
+    latency: "100ms"
+    correlation: "25"
+    jitter: "50ms"
+  # duration: "60s"
+---
+# Network Partition Experiment - Test split-brain handling
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: druid-network-partition
+  namespace: druid
+  labels:
+    app: druid-chaos
+    experiment: network-partition
+spec:
+  action: partition
+  mode: one
+  selector:
+    namespaces:
+      - druid
+    labelSelectors:
+      app.kubernetes.io/component: indexer
+  direction: both
+  target:
+    mode: all
+    selector:
+      namespaces:
+        - kafka
+  # duration: "30s"
+---
+# CPU Stress Experiment - Test resource contention
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: druid-cpu-stress
+  namespace: druid
+  labels:
+    app: druid-chaos
+    experiment: cpu-stress
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - druid
+    labelSelectors:
+      app.kubernetes.io/component: broker
+  stressors:
+    cpu:
+      workers: 2
+      load: 80
+  # duration: "60s"
+---
+# Memory Stress Experiment - Test OOM handling
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: druid-memory-stress
+  namespace: druid
+  labels:
+    app: druid-chaos
+    experiment: memory-stress
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - druid
+    labelSelectors:
+      app.kubernetes.io/component: historical
+  stressors:
+    memory:
+      workers: 2
+      size: "512MB"
+  # duration: "60s"
+---
+# IO Chaos - Test disk latency handling
+apiVersion: chaos-mesh.org/v1alpha1
+kind: IOChaos
+metadata:
+  name: druid-io-latency
+  namespace: druid
+  labels:
+    app: druid-chaos
+    experiment: io-latency
+spec:
+  action: latency
+  mode: one
+  selector:
+    namespaces:
+      - druid
+    labelSelectors:
+      app.kubernetes.io/component: historical
+  volumePath: /opt/druid/var/druid/segment-cache
+  path: "/*"
+  delay: "100ms"
+  percent: 50
+  # duration: "60s"
