@@ -32,6 +32,11 @@ metadataStore:
 deepStorage:
   type: local
 
+# Common config for all services
+env:
+  - name: druid_extensions_loadList
+    value: '["postgresql-metadata-storage", "druid-kafka-indexing-service", "druid-datasketches"]'
+
 # Extensions
 configVars:
   druid_extensions_loadList: '["postgresql-metadata-storage", "druid-kafka-indexing-service", "druid-datasketches"]'
@@ -101,11 +106,29 @@ historical:
         size: 10Gi
         storageClass: rook-ceph-block-enterprise
 
-# Disable MiddleManager (causes schema issues)
+# MiddleManager for Kafka ingestion tasks
 middleManager:
-  enabled: false
+  enabled: true
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  envVars:
+    DRUID_XMX: 256m
+    DRUID_XMS: 256m
+    DRUID_MAXDIRECTMEMORYSIZE: 256m
+    druid_indexer_runner_javaOptsArray: '["-server", "-Xmx512m", "-Xms512m", "-XX:MaxDirectMemorySize=256m"]'
+    druid_indexer_fork_property_druid_processing_buffer_sizeBytes: "50000000"
+  persistence:
+    enabled: true
+    storageClass: rook-ceph-block-enterprise
+    size: 5Gi
 
-# Disable Indexer (causes schema issues)
+# Disable Indexer (using MiddleManager instead)
 indexer:
   enabled: false
 
