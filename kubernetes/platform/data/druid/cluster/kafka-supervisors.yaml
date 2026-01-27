@@ -1,6 +1,6 @@
 ---
-# Druid Kafka Supervisors - Real-time Ingestion from Kafka
-# These supervisors consume from Kafka topics and create Druid datasources
+# Druid Kafka Supervisors - Real-time Ingestion from Analytics Topics
+# Flow: Producer → Kafka → Spring Boot Consumer → Enrichment → Kafka (*-analytics) → Druid
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -59,6 +59,9 @@ spec:
               echo "============================================"
               echo "Druid Kafka Supervisors Setup"
               echo "============================================"
+              echo ""
+              echo "Flow: Spring Boot → Kafka (*-analytics) → Druid"
+              echo ""
 
               # Function to create or update supervisor
               create_supervisor() {
@@ -83,9 +86,12 @@ spec:
                 echo "Response: $response"
               }
 
+              # =============================================
+              # ORDERS ANALYTICS - Enriched order events
+              # =============================================
               echo ""
-              echo "=== Creating Orders Supervisor ==="
-              create_supervisor "orders-kafka" '{
+              echo "=== Creating Orders Analytics Supervisor ==="
+              create_supervisor "orders-analytics" '{
                 "type": "kafka",
                 "spec": {
                   "ioConfig": {
@@ -93,7 +99,7 @@ spec:
                     "consumerProperties": {
                       "bootstrap.servers": "'"$KAFKA_BOOTSTRAP"'"
                     },
-                    "topic": "orders",
+                    "topic": "orders-analytics",
                     "inputFormat": {
                       "type": "json"
                     },
@@ -114,11 +120,15 @@ spec:
                       "dimensions": [
                         "orderId",
                         "customerId",
+                        "customerName",
                         "productId",
+                        "productName",
                         "status",
+                        "sagaStatus",
                         {"name": "quantity", "type": "long"},
                         {"name": "price", "type": "double"},
-                        {"name": "totalAmount", "type": "double"}
+                        {"name": "totalAmount", "type": "double"},
+                        {"name": "processingTimeMs", "type": "long"}
                       ]
                     },
                     "granularitySpec": {
@@ -130,9 +140,12 @@ spec:
                 }
               }'
 
+              # =============================================
+              # PAYMENTS ANALYTICS - Enriched payment events
+              # =============================================
               echo ""
-              echo "=== Creating Payments Supervisor ==="
-              create_supervisor "payments-kafka" '{
+              echo "=== Creating Payments Analytics Supervisor ==="
+              create_supervisor "payments-analytics" '{
                 "type": "kafka",
                 "spec": {
                   "ioConfig": {
@@ -140,7 +153,7 @@ spec:
                     "consumerProperties": {
                       "bootstrap.servers": "'"$KAFKA_BOOTSTRAP"'"
                     },
-                    "topic": "payments",
+                    "topic": "payments-analytics",
                     "inputFormat": {
                       "type": "json"
                     },
@@ -162,9 +175,14 @@ spec:
                         "paymentId",
                         "orderId",
                         "customerId",
+                        "customerName",
                         "status",
+                        "sagaStatus",
                         "paymentMethod",
-                        {"name": "amount", "type": "double"}
+                        "paymentProvider",
+                        {"name": "amount", "type": "double"},
+                        {"name": "processingTimeMs", "type": "long"},
+                        "failureReason"
                       ]
                     },
                     "granularitySpec": {
@@ -176,9 +194,12 @@ spec:
                 }
               }'
 
+              # =============================================
+              # STOCK ANALYTICS - Enriched stock events
+              # =============================================
               echo ""
-              echo "=== Creating Stock Supervisor ==="
-              create_supervisor "stock-kafka" '{
+              echo "=== Creating Stock Analytics Supervisor ==="
+              create_supervisor "stock-analytics" '{
                 "type": "kafka",
                 "spec": {
                   "ioConfig": {
@@ -186,7 +207,7 @@ spec:
                     "consumerProperties": {
                       "bootstrap.servers": "'"$KAFKA_BOOTSTRAP"'"
                     },
-                    "topic": "stock",
+                    "topic": "stock-analytics",
                     "inputFormat": {
                       "type": "json"
                     },
@@ -208,14 +229,71 @@ spec:
                         "stockId",
                         "orderId",
                         "productId",
+                        "productName",
                         "warehouseId",
+                        "warehouseName",
                         "status",
+                        "sagaStatus",
                         {"name": "quantity", "type": "long"},
-                        {"name": "availableStock", "type": "long"}
+                        {"name": "availableStock", "type": "long"},
+                        {"name": "reservedStock", "type": "long"},
+                        {"name": "processingTimeMs", "type": "long"}
                       ]
                     },
                     "granularitySpec": {
                       "queryGranularity": "minute",
+                      "rollup": false,
+                      "segmentGranularity": "hour"
+                    }
+                  }
+                }
+              }'
+
+              # =============================================
+              # SAGA EVENTS - Saga orchestration tracking
+              # =============================================
+              echo ""
+              echo "=== Creating Saga Events Supervisor ==="
+              create_supervisor "saga-events" '{
+                "type": "kafka",
+                "spec": {
+                  "ioConfig": {
+                    "type": "kafka",
+                    "consumerProperties": {
+                      "bootstrap.servers": "'"$KAFKA_BOOTSTRAP"'"
+                    },
+                    "topic": "saga-events",
+                    "inputFormat": {
+                      "type": "json"
+                    },
+                    "useEarliestOffset": true
+                  },
+                  "tuningConfig": {
+                    "type": "kafka",
+                    "maxRowsPerSegment": 5000000,
+                    "maxRowsInMemory": 100000
+                  },
+                  "dataSchema": {
+                    "dataSource": "saga_events",
+                    "timestampSpec": {
+                      "column": "timestamp",
+                      "format": "auto"
+                    },
+                    "dimensionsSpec": {
+                      "dimensions": [
+                        "sagaId",
+                        "orderId",
+                        "step",
+                        "service",
+                        "status",
+                        "eventType",
+                        {"name": "durationMs", "type": "long"},
+                        "errorMessage",
+                        "compensating"
+                      ]
+                    },
+                    "granularitySpec": {
+                      "queryGranularity": "second",
                       "rollup": false,
                       "segmentGranularity": "hour"
                     }
@@ -240,14 +318,19 @@ spec:
               echo "Kafka Supervisors Setup Complete!"
               echo "============================================"
               echo ""
-              echo "Datasources created:"
-              echo "  - orders    (from Kafka topic: orders)"
-              echo "  - payments  (from Kafka topic: payments)"
-              echo "  - stock     (from Kafka topic: stock)"
+              echo "Datasources (from enriched analytics topics):"
+              echo "  - orders      <- orders-analytics"
+              echo "  - payments    <- payments-analytics"
+              echo "  - stock       <- stock-analytics"
+              echo "  - saga_events <- saga-events"
+              echo ""
+              echo "Spring Boot Services must produce to:"
+              echo "  - orders-analytics"
+              echo "  - payments-analytics"
+              echo "  - stock-analytics"
+              echo "  - saga-events"
               echo ""
               echo "View in Druid UI: https://druid.timourhomelab.org"
-              echo "  -> Supervisors tab"
-              echo "  -> Datasources tab (after data arrives)"
               echo "============================================"
           resources:
             requests:

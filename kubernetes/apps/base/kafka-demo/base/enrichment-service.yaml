@@ -1,0 +1,88 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: enrichment-service
+  namespace: kafka-saga
+  labels:
+    app: enrichment-service
+    app.kubernetes.io/name: enrichment-service
+    app.kubernetes.io/part-of: kafka-saga
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: enrichment-service
+  template:
+    metadata:
+      labels:
+        app: enrichment-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8084"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: enrichment-service
+          image: timour259/enrichment-service:1.0.0
+          imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - containerPort: 8084
+              name: http
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: KAFKA_BOOTSTRAP_SERVERS
+            - name: SCHEMA_REGISTRY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: SCHEMA_REGISTRY_URL
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8084
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8084
+            initialDelaySeconds: 30
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: enrichment-service
+  namespace: kafka-saga
+  labels:
+    app: enrichment-service
+    app.kubernetes.io/part-of: kafka-saga
+spec:
+  selector:
+    app: enrichment-service
+  ports:
+    - name: http
+      port: 8084
+      targetPort: 8084
+  type: ClusterIP
