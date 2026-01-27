@@ -1,0 +1,115 @@
+# Druid Security Configuration
+# Enterprise Best Practice: Basic Auth + OIDC-Ready
+---
+# ConfigMap for Druid security settings
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: druid-security-config
+  namespace: druid
+data:
+  # Basic Auth Configuration for Druid API
+  # This enables authentication for all Druid internal API calls
+  druid-security.json: |
+    {
+      "authenticator": {
+        "basic": {
+          "type": "basic",
+          "authorizerName": "metadata"
+        }
+      },
+      "authorizer": {
+        "metadata": {
+          "type": "metadata"
+        }
+      },
+      "escalator": {
+        "internal": {
+          "type": "internal",
+          "authorizerName": "metadata",
+          "authenticatorName": "basic",
+          "internalClientUsername": "druid_internal",
+          "internalClientPassword": "druid-internal-2026"
+        }
+      }
+    }
+---
+# Secret for Druid internal users
+apiVersion: v1
+kind: Secret
+metadata:
+  name: druid-auth-credentials
+  namespace: druid
+type: Opaque
+stringData:
+  # Admin user for Druid console
+  DRUID_ADMIN_USER: "admin"
+  DRUID_ADMIN_PASSWORD: "druid-admin-2026"
+  # Internal service user for inter-node communication
+  DRUID_INTERNAL_USER: "druid_internal"
+  DRUID_INTERNAL_PASSWORD: "druid-internal-2026"
+  # Read-only user for dashboards/queries
+  DRUID_READONLY_USER: "readonly"
+  DRUID_READONLY_PASSWORD: "druid-readonly-2026"
+---
+# NetworkPolicy for Druid - Enterprise security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: druid-network-policy
+  namespace: druid
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: druid
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow traffic from within druid namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: druid
+    # Allow traffic from gateway namespace (ingress)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gateway
+    # Allow traffic from monitoring namespace (prometheus)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+    # Allow traffic from kafka namespace (for supervisor connections)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kafka
+  egress:
+    # Allow all egress (Druid needs to reach Kafka, S3, PostgreSQL)
+    - {}
+---
+# PodDisruptionBudget for Druid Coordinator - maintain availability during upgrades
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: druid-coordinator-pdb
+  namespace: druid
+spec:
+  minAvailable: 0  # Homelab: allow all to be disrupted
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: coordinator
+---
+# PodDisruptionBudget for Druid Broker
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: druid-broker-pdb
+  namespace: druid
+spec:
+  minAvailable: 0  # Homelab: allow all to be disrupted
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: broker
