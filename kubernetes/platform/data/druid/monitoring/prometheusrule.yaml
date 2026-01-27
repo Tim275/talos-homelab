@@ -1,0 +1,151 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: druid-alerts
+  namespace: druid
+  labels:
+    app.kubernetes.io/name: druid
+    release: prometheus
+spec:
+  groups:
+    - name: druid-supervisor
+      rules:
+        - alert: DruidSupervisorNotRunning
+          expr: |
+            druid_supervisor_status{state!="RUNNING"} > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Druid Supervisor {{ $labels.dataSource }} is not running"
+            description: "Supervisor {{ $labels.dataSource }} has state {{ $labels.state }} for more than 5 minutes"
+
+        - alert: DruidSupervisorUnhealthy
+          expr: |
+            druid_supervisor_is_healthy == 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Druid Supervisor {{ $labels.dataSource }} is unhealthy"
+            description: "Supervisor {{ $labels.dataSource }} has been unhealthy for more than 5 minutes"
+
+    - name: druid-ingestion
+      rules:
+        - alert: DruidIngestionLagHigh
+          expr: |
+            druid_ingest_kafka_lag > 100000
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High Kafka ingestion lag for {{ $labels.dataSource }}"
+            description: "Ingestion lag is {{ $value }} messages for {{ $labels.dataSource }}"
+
+        - alert: DruidIngestionLagCritical
+          expr: |
+            druid_ingest_kafka_lag > 500000
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Critical Kafka ingestion lag for {{ $labels.dataSource }}"
+            description: "Ingestion lag is {{ $value }} messages for {{ $labels.dataSource }}"
+
+        - alert: DruidParseExceptionsHigh
+          expr: |
+            rate(druid_ingest_events_unparseable_total[5m]) > 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High parse exception rate for {{ $labels.dataSource }}"
+            description: "Parse exceptions rate is {{ $value }}/s for {{ $labels.dataSource }}"
+
+    - name: druid-query
+      rules:
+        - alert: DruidQueryLatencyHigh
+          expr: |
+            histogram_quantile(0.95, rate(druid_query_time_bucket[5m])) > 5000
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High query latency on {{ $labels.service }}"
+            description: "95th percentile query latency is {{ $value }}ms"
+
+        - alert: DruidQueryFailureRateHigh
+          expr: |
+            rate(druid_query_failed_total[5m]) / rate(druid_query_count[5m]) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "High query failure rate"
+            description: "Query failure rate is {{ $value | humanizePercentage }}"
+
+    - name: druid-segments
+      rules:
+        - alert: DruidSegmentUnavailable
+          expr: |
+            druid_segment_unavailable_count > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Unavailable segments detected"
+            description: "{{ $value }} segments are unavailable for {{ $labels.dataSource }}"
+
+        - alert: DruidSegmentUnderReplicated
+          expr: |
+            druid_segment_underreplicated_count > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Under-replicated segments detected"
+            description: "{{ $value }} segments are under-replicated for {{ $labels.dataSource }}"
+
+    - name: druid-jvm
+      rules:
+        - alert: DruidJvmHeapUsageHigh
+          expr: |
+            jvm_memory_bytes_used{area="heap"} / jvm_memory_bytes_max{area="heap"} > 0.9
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High JVM heap usage on {{ $labels.pod }}"
+            description: "JVM heap usage is {{ $value | humanizePercentage }} on {{ $labels.pod }}"
+
+        - alert: DruidGcTimeHigh
+          expr: |
+            rate(jvm_gc_collection_seconds_sum[5m]) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High GC time on {{ $labels.pod }}"
+            description: "GC time is {{ $value }}s per second on {{ $labels.pod }}"
+
+    - name: druid-tasks
+      rules:
+        - alert: DruidTasksFailing
+          expr: |
+            rate(druid_task_failed_total[5m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Druid tasks are failing"
+            description: "Task failure rate is {{ $value }}/s for {{ $labels.dataSource }}"
+
+        - alert: DruidPendingTasksHigh
+          expr: |
+            druid_task_pending_count > 10
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High number of pending tasks"
+            description: "{{ $value }} tasks are pending"
