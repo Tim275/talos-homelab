@@ -1,0 +1,121 @@
+# Kafka Users for mTLS Authentication
+# These users get client certificates for secure communication
+---
+# Druid user for analytics ingestion
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaUser
+metadata:
+  name: druid-analytics
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: my-cluster
+spec:
+  authentication:
+    type: tls
+  authorization:
+    type: simple
+    acls:
+      # Consumer permissions for analytics topics
+      - resource:
+          type: topic
+          name: orders-analytics
+          patternType: literal
+        operations: [Read, Describe]
+        host: "*"
+      - resource:
+          type: topic
+          name: payments-analytics
+          patternType: literal
+        operations: [Read, Describe]
+        host: "*"
+      - resource:
+          type: topic
+          name: stock-analytics
+          patternType: literal
+        operations: [Read, Describe]
+        host: "*"
+      - resource:
+          type: topic
+          name: saga-events
+          patternType: literal
+        operations: [Read, Describe]
+        host: "*"
+      # Consumer group permissions
+      - resource:
+          type: group
+          name: druid-*
+          patternType: prefix
+        operations: [Read, Describe]
+        host: "*"
+---
+# Spring Boot services user for producing analytics events
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaUser
+metadata:
+  name: spring-analytics-producer
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: my-cluster
+spec:
+  authentication:
+    type: tls
+  authorization:
+    type: simple
+    acls:
+      # Producer permissions for analytics topics
+      - resource:
+          type: topic
+          name: orders-analytics
+          patternType: literal
+        operations: [Write, Describe, Create]
+        host: "*"
+      - resource:
+          type: topic
+          name: payments-analytics
+          patternType: literal
+        operations: [Write, Describe, Create]
+        host: "*"
+      - resource:
+          type: topic
+          name: stock-analytics
+          patternType: literal
+        operations: [Write, Describe, Create]
+        host: "*"
+      - resource:
+          type: topic
+          name: saga-events
+          patternType: literal
+        operations: [Write, Describe, Create]
+        host: "*"
+---
+# Admin user for management operations
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaUser
+metadata:
+  name: kafka-admin
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: my-cluster
+spec:
+  authentication:
+    type: tls
+  authorization:
+    type: simple
+    acls:
+      # Full access to all topics
+      - resource:
+          type: topic
+          name: "*"
+          patternType: literal
+        operations: [All]
+        host: "*"
+      - resource:
+          type: group
+          name: "*"
+          patternType: literal
+        operations: [All]
+        host: "*"
+      - resource:
+          type: cluster
+        operations: [All]
+        host: "*"
