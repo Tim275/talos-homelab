@@ -1,0 +1,130 @@
+# Druid Chaos Testing Schedules
+# Regular resilience testing during non-peak hours
+---
+# Weekly Broker Kill Test - Every Sunday 3 AM
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: druid-weekly-broker-resilience
+  namespace: druid
+  labels:
+    app: druid-chaos
+    schedule: weekly
+spec:
+  schedule: "0 3 * * 0"  # Sunday 3 AM
+  type: PodChaos
+  historyLimit: 5
+  concurrencyPolicy: Forbid
+  podChaos:
+    action: pod-kill
+    mode: one
+    selector:
+      namespaces:
+        - druid
+      labelSelectors:
+        app.kubernetes.io/component: broker
+    duration: "30s"
+---
+# Weekly Network Delay Test - Every Sunday 3:30 AM
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: druid-weekly-network-resilience
+  namespace: druid
+  labels:
+    app: druid-chaos
+    schedule: weekly
+spec:
+  schedule: "30 3 * * 0"  # Sunday 3:30 AM
+  type: NetworkChaos
+  historyLimit: 5
+  concurrencyPolicy: Forbid
+  networkChaos:
+    action: delay
+    mode: all
+    selector:
+      namespaces:
+        - druid
+      labelSelectors:
+        app.kubernetes.io/name: druid
+    delay:
+      latency: "200ms"
+      jitter: "100ms"
+    duration: "120s"
+---
+# Monthly Full Chaos Test - First Sunday of month 4 AM
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: druid-monthly-full-chaos
+  namespace: druid
+  labels:
+    app: druid-chaos
+    schedule: monthly
+spec:
+  schedule: "0 4 1-7 * 0"  # First Sunday, 4 AM
+  type: PodChaos
+  historyLimit: 3
+  concurrencyPolicy: Forbid
+  podChaos:
+    action: pod-failure
+    mode: all
+    selector:
+      namespaces:
+        - druid
+      labelSelectors:
+        app.kubernetes.io/name: druid
+    duration: "60s"
+---
+# Workflow: Multi-step chaos testing
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+metadata:
+  name: druid-comprehensive-chaos-test
+  namespace: druid
+  labels:
+    app: druid-chaos
+    type: workflow
+spec:
+  entry: entry
+  templates:
+    - name: entry
+      templateType: Serial
+      children:
+        - network-test
+        - pod-test
+        - recovery-check
+
+    - name: network-test
+      templateType: NetworkChaos
+      deadline: 5m
+      networkChaos:
+        action: delay
+        mode: all
+        selector:
+          namespaces:
+            - druid
+          labelSelectors:
+            app.kubernetes.io/name: druid
+        delay:
+          latency: "150ms"
+        duration: "60s"
+
+    - name: pod-test
+      templateType: PodChaos
+      deadline: 5m
+      podChaos:
+        action: pod-kill
+        mode: one
+        selector:
+          namespaces:
+            - druid
+          labelSelectors:
+            app.kubernetes.io/component: broker
+        duration: "30s"
+
+    - name: recovery-check
+      templateType: Suspend
+      deadline: 2m
+      suspend:
+        duration: "90s"

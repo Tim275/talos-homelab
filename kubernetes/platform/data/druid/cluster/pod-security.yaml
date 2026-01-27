@@ -1,0 +1,91 @@
+# Pod Security Standards for Druid
+# Enterprise Best Practice: Hardened container security
+---
+# PodSecurityPolicy-like configuration via SecurityContext
+# Applied as a ConfigMap that documents the security requirements
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: druid-pod-security-config
+  namespace: druid
+data:
+  security-requirements.md: |
+    # Druid Pod Security Requirements
+
+    ## Enforced Security Contexts
+    - runAsNonRoot: true
+    - allowPrivilegeEscalation: false
+    - readOnlyRootFilesystem: false (Druid needs write access)
+    - capabilities: drop ALL
+
+    ## Network Policies
+    - Ingress: Only from druid, gateway, monitoring, kafka namespaces
+    - Egress: Allowed (Kafka, S3, PostgreSQL access needed)
+
+    ## Resource Management
+    - CPU/Memory limits enforced per component
+    - PodDisruptionBudgets for critical components
+---
+# LimitRange for Druid namespace - prevents resource abuse
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: druid-limit-range
+  namespace: druid
+spec:
+  limits:
+    # Default limits for containers without explicit limits
+    - type: Container
+      default:
+        cpu: "500m"
+        memory: "1Gi"
+      defaultRequest:
+        cpu: "100m"
+        memory: "256Mi"
+      max:
+        cpu: "4"
+        memory: "8Gi"
+      min:
+        cpu: "50m"
+        memory: "128Mi"
+    # Pod-level limits
+    - type: Pod
+      max:
+        cpu: "8"
+        memory: "16Gi"
+---
+# ServiceAccount with restricted permissions
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: druid-restricted
+  namespace: druid
+automountServiceAccountToken: false
+---
+# Role with minimal permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: druid-pod-reader
+  namespace: druid
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: druid-pod-reader-binding
+  namespace: druid
+subjects:
+  - kind: ServiceAccount
+    name: druid-restricted
+    namespace: druid
+roleRef:
+  kind: Role
+  name: druid-pod-reader
+  apiGroup: rbac.authorization.k8s.io
