@@ -1,6 +1,7 @@
 ---
 # Druid Kafka Supervisors - Real-time Ingestion from Analytics Topics
 # Flow: Producer → Kafka → Spring Boot Consumer → Enrichment → Kafka (*-analytics) → Druid
+# Enterprise: mTLS authentication with Strimzi Kafka
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -47,6 +48,12 @@ spec:
       containers:
         - name: setup
           image: curlimages/curl:8.5.0
+          env:
+            - name: KAFKA_KEYSTORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: druid-kafka-mtls
+                  key: user.password
           command:
             - /bin/sh
             - -c
@@ -54,7 +61,16 @@ spec:
               set -e
 
               DRUID_URL="http://druid-router:8888"
-              KAFKA_BOOTSTRAP="my-cluster-kafka-bootstrap.kafka.svc:9092"
+              # Enterprise: mTLS endpoint on port 9094
+              KAFKA_BOOTSTRAP="my-cluster-kafka-bootstrap.kafka.svc:9094"
+
+              # Kafka SSL configuration for mTLS
+              KAFKA_SSL_CONFIG='"security.protocol": "SSL",
+                      "ssl.truststore.location": "/kafka-certs/ca.crt",
+                      "ssl.truststore.type": "PEM",
+                      "ssl.keystore.location": "/kafka-certs/user.p12",
+                      "ssl.keystore.password": "'"$KAFKA_KEYSTORE_PASSWORD"'",
+                      "ssl.keystore.type": "PKCS12"'
 
               echo "============================================"
               echo "Druid Kafka Supervisors Setup"
@@ -97,7 +113,8 @@ spec:
                   "ioConfig": {
                     "type": "kafka",
                     "consumerProperties": {
-                      "bootstrap.servers": "'"$KAFKA_BOOTSTRAP"'"
+                      "bootstrap.servers": "'"$KAFKA_BOOTSTRAP"'",
+                      '"$KAFKA_SSL_CONFIG"'
                     },
                     "topic": "orders-analytics",
                     "inputFormat": {
@@ -151,7 +168,8 @@ spec:
                   "ioConfig": {
                     "type": "kafka",
                     "consumerProperties": {
-                      "bootstrap.servers": "'"$KAFKA_BOOTSTRAP"'"
+                      "bootstrap.servers": "'"$KAFKA_BOOTSTRAP"'",
+                      '"$KAFKA_SSL_CONFIG"'
                     },
                     "topic": "payments-analytics",
                     "inputFormat": {
@@ -205,7 +223,8 @@ spec:
                   "ioConfig": {
                     "type": "kafka",
                     "consumerProperties": {
-                      "bootstrap.servers": "'"$KAFKA_BOOTSTRAP"'"
+                      "bootstrap.servers": "'"$KAFKA_BOOTSTRAP"'",
+                      '"$KAFKA_SSL_CONFIG"'
                     },
                     "topic": "stock-analytics",
                     "inputFormat": {
@@ -260,7 +279,8 @@ spec:
                   "ioConfig": {
                     "type": "kafka",
                     "consumerProperties": {
-                      "bootstrap.servers": "'"$KAFKA_BOOTSTRAP"'"
+                      "bootstrap.servers": "'"$KAFKA_BOOTSTRAP"'",
+                      '"$KAFKA_SSL_CONFIG"'
                     },
                     "topic": "saga-events",
                     "inputFormat": {
@@ -332,6 +352,10 @@ spec:
               echo ""
               echo "View in Druid UI: https://druid.timourhomelab.org"
               echo "============================================"
+          volumeMounts:
+            - name: kafka-certs
+              mountPath: /kafka-certs
+              readOnly: true
           resources:
             requests:
               cpu: 50m
@@ -339,3 +363,7 @@ spec:
             limits:
               cpu: 200m
               memory: 128Mi
+      volumes:
+        - name: kafka-certs
+          secret:
+            secretName: druid-kafka-mtls
