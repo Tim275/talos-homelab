@@ -1,5 +1,5 @@
 # Druid Helm Chart - Enterprise Production Config (Homelab-Optimized)
-# Features: mTLS, Schema Registry, OIDC-Ready, Tuned Resources
+# Features: Internal mTLS, Kafka mTLS, Schema Registry, OIDC-Ready, Tuned Resources
 image:
   repository: apache/druid
   tag: "30.0.1"
@@ -40,7 +40,7 @@ metadataStore:
 deepStorage:
   type: s3
 
-# Extensions - Enterprise stack
+# Extensions - Enterprise stack with TLS support
 extensions:
   loadList:
     - druid-kafka-indexing-service
@@ -51,6 +51,8 @@ extensions:
     - prometheus-emitter
     # Security extensions
     - druid-basic-security
+    # TLS extension for client connections
+    - simple-client-sslcontext
     # Future: druid-pac4j for OIDC
 
 # Global config
@@ -76,21 +78,24 @@ configVars:
   druid_emitter_prometheus_port: 9090
   druid_emitter_prometheus_strategy: exporter
 
-  # TLS/mTLS Configuration - Enterprise Best Practice
-  # Keystore settings (JKS format required for Java)
-  druid_server_https_keyStorePath: /opt/druid/tls/keystore.jks
-  druid_server_https_keyStorePassword: druid-tls-2026
-  druid_server_https_keyStoreType: jks
-  druid_server_https_certAlias: druid
-  # Truststore settings (for mTLS client verification)
-  druid_client_https_trustStorePath: /opt/druid/tls/truststore.jks
-  druid_client_https_trustStorePassword: druid-tls-2026
-  druid_client_https_trustStoreType: jks
-  # Enable both ports during migration, disable plaintext later
-  druid_enablePlaintextPort: "true"
+  # ============================================
+  # Internal TLS/mTLS Configuration - Enterprise
+  # ============================================
+  # Enable HTTPS, disable plaintext
+  druid_enablePlaintextPort: "false"
   druid_enableTlsPort: "true"
-  # Internal client TLS
+
+  # Server keystore (PKCS12 from cert-manager)
+  druid_server_https_keyStorePath: /opt/druid/tls/keystore.p12
+  druid_server_https_keyStorePassword: druid-tls-2026
+  druid_server_https_keyStoreType: PKCS12
+  druid_server_https_certAlias: "1"
+
+  # Client truststore for internal communication
   druid_client_https_protocol: TLSv1.2
+  druid_client_https_trustStorePath: /opt/druid/tls/truststore.p12
+  druid_client_https_trustStorePassword: druid-tls-2026
+  druid_client_https_trustStoreType: PKCS12
 
   # Schema Registry (Apicurio)
   # Supervisors will reference: http://apicurio-registry.kafka.svc:8080/apis/ccompat/v7
@@ -118,9 +123,25 @@ coordinator:
     # Coordinator tuning
     druid_coordinator_period: PT60S
     druid_coordinator_startDelay: PT30S
+    # TLS port
+    druid_plaintextPort: "8081"
+    druid_tlsPort: "8281"
   extraEnvFrom:
     - secretRef:
         name: druid-deep-storage
+  extraVolumes:
+    - name: tls-certs
+      secret:
+        secretName: druid-coordinator-tls
+  extraVolumeMounts:
+    - name: tls-certs
+      mountPath: /opt/druid/tls/keystore.p12
+      subPath: keystore.p12
+      readOnly: true
+    - name: tls-certs
+      mountPath: /opt/druid/tls/truststore.p12
+      subPath: truststore.p12
+      readOnly: true
 
 # Broker - Query router, needs fast response
 broker:
@@ -144,9 +165,25 @@ broker:
     druid_broker_cache_useCache: "true"
     druid_broker_cache_populateCache: "true"
     druid_broker_http_numConnections: "5"
+    # TLS port
+    druid_plaintextPort: "8082"
+    druid_tlsPort: "8282"
   extraEnvFrom:
     - secretRef:
         name: druid-deep-storage
+  extraVolumes:
+    - name: tls-certs
+      secret:
+        secretName: druid-broker-tls
+  extraVolumeMounts:
+    - name: tls-certs
+      mountPath: /opt/druid/tls/keystore.p12
+      subPath: keystore.p12
+      readOnly: true
+    - name: tls-certs
+      mountPath: /opt/druid/tls/truststore.p12
+      subPath: truststore.p12
+      readOnly: true
 
 # Historical - Segment storage, needs disk I/O
 historical:
@@ -163,8 +200,11 @@ historical:
         druid_server_tier: "tier_default"
         druid_segmentCache_locations: '[{"path":"/opt/druid/var/druid/segment-cache","maxSize":"5GiB"}]'
         # Historical tuning
-        druid_server_maxSize: 5368709120
+        druid_server_maxSize: "5368709120"
         druid_historical_cache_useCache: "true"
+        # TLS port
+        druid_plaintextPort: "8083"
+        druid_tlsPort: "8283"
       resources:
         requests:
           cpu: 150m
@@ -178,6 +218,19 @@ historical:
       extraEnvFrom:
         - secretRef:
             name: druid-deep-storage
+      extraVolumes:
+        - name: tls-certs
+          secret:
+            secretName: druid-historical-tls
+      extraVolumeMounts:
+        - name: tls-certs
+          mountPath: /opt/druid/tls/keystore.p12
+          subPath: keystore.p12
+          readOnly: true
+        - name: tls-certs
+          mountPath: /opt/druid/tls/truststore.p12
+          subPath: truststore.p12
+          readOnly: true
 
 # Indexer/MiddleManager - Task execution, needs CPU for ingestion
 indexer:
@@ -196,8 +249,8 @@ indexer:
       DRUID_XMX: 512m
       DRUID_XMS: 512m
       DRUID_MAXDIRECTMEMORYSIZE: 512m
-      # Peon JVM - 4 concurrent tasks
-      druid_indexer_runner_javaOpts: "-server -Xms384m -Xmx384m -XX:MaxDirectMemorySize=384m -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC"
+      # Peon JVM - 4 concurrent tasks with TLS config
+      druid_indexer_runner_javaOpts: "-server -Xms384m -Xmx384m -XX:MaxDirectMemorySize=384m -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC -Djavax.net.ssl.trustStore=/opt/druid/tls/truststore.p12 -Djavax.net.ssl.trustStorePassword=druid-tls-2026 -Djavax.net.ssl.trustStoreType=PKCS12"
       # Task processing
       druid_indexer_fork_property_druid_processing_buffer_sizeBytes: "50000000"
       druid_indexer_fork_property_druid_processing_numMergeBuffers: "2"
@@ -207,6 +260,9 @@ indexer:
       # Task tuning
       druid_indexer_task_restoreTasksOnRestart: "true"
       druid_indexer_task_gracefulShutdownTimeout: PT30S
+      # TLS port
+      druid_plaintextPort: "8091"
+      druid_tlsPort: "8291"
     persistence:
       enabled: true
       storageClass: rook-ceph-block-enterprise
@@ -214,6 +270,26 @@ indexer:
     extraEnvFrom:
       - secretRef:
           name: druid-deep-storage
+    # Kafka mTLS + Internal TLS certificates
+    extraVolumes:
+      - name: kafka-mtls-certs
+        secret:
+          secretName: druid-kafka-mtls
+      - name: tls-certs
+        secret:
+          secretName: druid-indexer-tls
+    extraVolumeMounts:
+      - name: kafka-mtls-certs
+        mountPath: /kafka-certs
+        readOnly: true
+      - name: tls-certs
+        mountPath: /opt/druid/tls/keystore.p12
+        subPath: keystore.p12
+        readOnly: true
+      - name: tls-certs
+        mountPath: /opt/druid/tls/truststore.p12
+        subPath: truststore.p12
+        readOnly: true
 
 # Router - Web console, lightweight
 router:
@@ -232,6 +308,22 @@ router:
     druid_router_managementProxy_enabled: "true"
     druid_router_http_numConnections: "10"
     druid_router_http_readTimeout: PT5M
+    # TLS port
+    druid_plaintextPort: "8888"
+    druid_tlsPort: "9088"
   extraEnvFrom:
     - secretRef:
         name: druid-deep-storage
+  extraVolumes:
+    - name: tls-certs
+      secret:
+        secretName: druid-router-tls
+  extraVolumeMounts:
+    - name: tls-certs
+      mountPath: /opt/druid/tls/keystore.p12
+      subPath: keystore.p12
+      readOnly: true
+    - name: tls-certs
+      mountPath: /opt/druid/tls/truststore.p12
+      subPath: truststore.p12
+      readOnly: true
