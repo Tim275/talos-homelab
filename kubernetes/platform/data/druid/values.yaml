@@ -28,20 +28,39 @@ metadataStore:
   user: druid
   password: druid-metadata-2026
 
-# Deep storage
+# Deep storage - Rook-Ceph S3
 deepStorage:
-  type: local
+  type: s3
 
-# Common config for all services
-env:
-  - name: druid_extensions_loadList
-    value: '["postgresql-metadata-storage", "druid-kafka-indexing-service", "druid-datasketches"]'
+# Extensions - include Kafka + S3 + Prometheus for streaming ingestion
+extensions:
+  loadList:
+    - druid-kafka-indexing-service
+    - druid-datasketches
+    - druid-multi-stage-query
+    - postgresql-metadata-storage
+    - druid-s3-extensions
+    - prometheus-emitter
 
-# Extensions
+# Storage config - S3 via Rook-Ceph
 configVars:
-  druid_extensions_loadList: '["postgresql-metadata-storage", "druid-kafka-indexing-service", "druid-datasketches"]'
-  druid_storage_type: local
-  druid_storage_storageDirectory: /opt/druid/var/druid/segments
+  # S3 Deep Storage (Rook-Ceph)
+  druid_storage_type: s3
+  druid_storage_bucket: druid-segments-3ba7b62e-6999-486f-a26b-7a3a8e95a4a7
+  druid_storage_baseKey: segments
+  druid_s3_accessKey: "$(AWS_ACCESS_KEY_ID)"
+  druid_s3_secretKey: "$(AWS_SECRET_ACCESS_KEY)"
+  druid_s3_endpoint_url: "http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80"
+  druid_s3_enablePathStyleAccess: "true"
+  druid_s3_protocol: "http"
+  druid_zk_service_enabled: "true"
+  druid_discovery_type: curator
+  druid_serverview_type: http
+  druid_coordinator_loadqueuepeon_type: http
+  # Prometheus Metrics
+  druid_emitter: prometheus
+  druid_emitter_prometheus_port: 9090
+  druid_emitter_prometheus_strategy: exporter
 
 # Coordinator
 coordinator:
@@ -63,6 +82,9 @@ coordinator:
     DRUID_MAXDIRECTMEMORYSIZE: 200m
     druid_coordinator_asOverlord_enabled: "true"
     druid_coordinator_asOverlord_overlordService: druid/overlord
+  extraEnvFrom:
+    - secretRef:
+        name: druid-deep-storage
 
 # Broker
 broker:
@@ -81,6 +103,9 @@ broker:
     druid_processing_buffer_sizeBytes: "50000000"
     druid_processing_numMergeBuffers: "2"
     druid_processing_numThreads: "1"
+  extraEnvFrom:
+    - secretRef:
+        name: druid-deep-storage
 
 # Historical
 historical:
@@ -105,6 +130,9 @@ historical:
       persistence:
         size: 10Gi
         storageClass: rook-ceph-block-enterprise
+      extraEnvFrom:
+        - secretRef:
+            name: druid-deep-storage
 
 # Indexer for Kafka ingestion tasks
 indexer:
@@ -113,19 +141,31 @@ indexer:
     replicaCount: 1
     resources:
       requests:
-        cpu: 100m
-        memory: 512Mi
+        cpu: 200m
+        memory: 2048Mi
       limits:
-        cpu: 500m
-        memory: 1Gi
+        cpu: 1500m
+        memory: 4096Mi
     envVars:
-      DRUID_XMX: 384m
-      DRUID_XMS: 384m
-      DRUID_MAXDIRECTMEMORYSIZE: 256m
+      # MiddleManager JVM settings
+      DRUID_XMX: 512m
+      DRUID_XMS: 512m
+      DRUID_MAXDIRECTMEMORYSIZE: 400m
+      # Peon (forked task) JVM settings - reduced for 4 concurrent tasks
+      druid_indexer_runner_javaOpts: "-server -Xms384m -Xmx384m -XX:MaxDirectMemorySize=384m -XX:+ExitOnOutOfMemoryError"
+      # Task processing settings
+      druid_indexer_fork_property_druid_processing_buffer_sizeBytes: "50000000"
+      druid_indexer_fork_property_druid_processing_numMergeBuffers: "2"
+      druid_indexer_fork_property_druid_processing_numThreads: "1"
+      # Worker capacity - match number of supervisors
+      druid_worker_capacity: "4"
     persistence:
       enabled: true
       storageClass: rook-ceph-block-enterprise
       size: 5Gi
+    extraEnvFrom:
+      - secretRef:
+          name: druid-deep-storage
 
 # Router (UI)
 router:
@@ -142,3 +182,6 @@ router:
     DRUID_XMS: 128m
     DRUID_MAXDIRECTMEMORYSIZE: 100m
     druid_router_managementProxy_enabled: "true"
+  extraEnvFrom:
+    - secretRef:
+        name: druid-deep-storage
