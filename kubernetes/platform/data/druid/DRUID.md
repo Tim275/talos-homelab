@@ -659,25 +659,38 @@ curl -s http://localhost:8888/druid/indexer/v1/supervisor
 
 ```
 kubernetes/platform/data/druid/
-├── application.yaml          # ArgoCD Application
-├── kustomization.yaml        # Kustomize root
-├── values.yaml               # Helm values (S3, Extensions, Resources)
-├── DRUID.md                  # Diese Dokumentation
+├── application.yaml              # ArgoCD Application
+├── kustomization.yaml            # Kustomize root
+├── values.yaml                   # Helm values (mTLS, S3, Extensions)
+├── DRUID.md                      # Diese Dokumentation
 ├── cluster/
 │   ├── namespace.yaml
 │   ├── postgres-credentials.yaml
-│   ├── postgres-cluster.yaml   # CNPG für Metadata
-│   ├── tls-certificates.yaml   # mTLS Certificates (Enterprise)
-│   ├── security-config.yaml    # Auth/NetworkPolicy (Enterprise)
-│   ├── oauth2-proxy-*.yaml     # OIDC Proxy
-│   ├── httproute.yaml          # Ingress
-│   └── kafka-supervisors.yaml  # Supervisor Setup Job
-└── monitoring/
+│   ├── postgres-cluster.yaml     # CNPG für Metadata
+│   ├── tls-certificates.yaml     # mTLS Certificates (6 certs)
+│   ├── mtls-config.yaml          # JKS Keystore Init Script
+│   ├── security-config.yaml      # Auth/NetworkPolicy/PDB
+│   ├── pod-security.yaml         # LimitRange/RBAC
+│   ├── audit-logging.yaml        # Audit Logs + Fluentbit
+│   ├── oauth2-proxy-*.yaml       # OIDC Proxy
+│   ├── httproute.yaml            # Ingress
+│   ├── analytics-topics.yaml     # Kafka Topics
+│   └── kafka-supervisors.yaml    # Supervisor Setup Job
+├── monitoring/
+│   ├── kustomization.yaml
+│   ├── servicemonitor.yaml       # Prometheus Scraping
+│   ├── prometheusrule.yaml       # 15 Alert Rules
+│   ├── grafana-dashboard.yaml    # GrafanaDashboard CRD
+│   └── dashboard-configmap.yaml  # Dashboard JSON
+└── chaos-testing/                # Requires Chaos Mesh
     ├── kustomization.yaml
-    ├── servicemonitor.yaml     # Prometheus Scraping
-    ├── prometheusrule.yaml     # Alert Rules
-    ├── grafana-dashboard.yaml  # GrafanaDashboard CRD
-    └── dashboard-configmap.yaml # Dashboard JSON
+    ├── chaos-experiments.yaml    # Pod/Network/Stress/IO Chaos
+    └── chaos-schedules.yaml      # Weekly/Monthly Schedules
+
+# Kafka mTLS (separate repo)
+kubernetes/platform/messaging/kafka/
+├── kafka-cluster.yaml            # mTLS listener on :9094
+└── kafka-users.yaml              # druid-analytics, spring-producer, admin
 ```
 
 ---
@@ -779,16 +792,126 @@ readonly:       druid-readonly-2026   # Dashboard queries
 | **Router** | Web console | 50m/300m | 256Mi/512Mi | Lightweight |
 | **ZooKeeper** | Coordination | 50m/200m | 256Mi/512Mi | Stability |
 
-### Enterprise Checklist
+### Kafka mTLS
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           KAFKA mTLS ARCHITEKTUR                                  │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                   │
+│  Strimzi Kafka Cluster                     Clients                               │
+│  ═════════════════════                     ═══════                               │
+│                                                                                   │
+│  ┌─────────────────┐                       ┌─────────────────┐                  │
+│  │ my-cluster      │                       │ druid-analytics │                  │
+│  │                 │                       │ (KafkaUser)     │                  │
+│  │ Listeners:      │                       │ - TLS Auth      │                  │
+│  │ - plain:9092    │◄──────────────────────│ - ACLs          │                  │
+│  │ - tls:9093      │       mTLS            └─────────────────┘                  │
+│  │ - mtls:9094 ────┼───────────────────────┐                                    │
+│  └─────────────────┘                       │                                    │
+│                                            ▼                                    │
+│                                   ┌─────────────────┐                           │
+│                                   │ spring-producer │                           │
+│                                   │ (KafkaUser)     │                           │
+│                                   │ - TLS Auth      │                           │
+│                                   │ - ACLs          │                           │
+│                                   └─────────────────┘                           │
+│                                                                                   │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**KafkaUsers (mit Client-Zertifikaten):**
+- `druid-analytics` - Consumer für Druid Supervisors
+- `spring-analytics-producer` - Producer für Spring Boot Services
+- `kafka-admin` - Admin-Zugang
+
+### Pod Security Standards
+
+```yaml
+# LimitRange für Druid Namespace
+limits:
+  - type: Container
+    default:
+      cpu: "500m"
+      memory: "1Gi"
+    max:
+      cpu: "4"
+      memory: "8Gi"
+
+# ServiceAccount
+- automountServiceAccountToken: false
+- Minimal RBAC permissions
+```
+
+### Audit Logging
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           AUDIT LOGGING FLOW                                      │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                   │
+│  Druid Components              Log Aggregation           Alerting                │
+│  ═════════════════            ═══════════════            ════════                │
+│                                                                                   │
+│  ┌─────────────┐   JSON logs   ┌─────────────┐   alerts   ┌─────────────┐       │
+│  │ Coordinator │──────────────►│ Fluentbit   │──────────►│ Prometheus  │       │
+│  │ Broker      │               │ (optional)  │           │ AlertManager│       │
+│  │ Historical  │               └──────┬──────┘           └─────────────┘       │
+│  │ Indexer     │                      │                                         │
+│  └─────────────┘                      ▼                                         │
+│                               ┌─────────────┐                                   │
+│  Logged Events:               │ Loki/S3     │                                   │
+│  - Authentication attempts    │ (storage)   │                                   │
+│  - Query executions           └─────────────┘                                   │
+│  - Supervisor changes                                                           │
+│  - Task lifecycle                                                               │
+│                                                                                   │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Chaos Testing (Chaos Mesh)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           CHAOS EXPERIMENTS                                       │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                   │
+│  Experiment Type          Target              Schedule                           │
+│  ═══════════════          ══════              ════════                           │
+│                                                                                   │
+│  PodChaos (kill)          Broker              Weekly (Sun 3 AM)                  │
+│  PodChaos (failure)       Historical          Monthly                            │
+│  NetworkChaos (delay)     All Druid           Weekly (Sun 3:30 AM)               │
+│  NetworkChaos (partition) Indexer↔Kafka       Manual                             │
+│  StressChaos (CPU)        Broker              Manual                             │
+│  StressChaos (Memory)     Historical          Manual                             │
+│  IOChaos (latency)        Historical          Manual                             │
+│                                                                                   │
+│  Workflow: network-test → pod-test → recovery-check                              │
+│                                                                                   │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Chaos Mesh Installation:**
+```bash
+kubectl apply -f https://mirrors.chaos-mesh.org/v2.7.0/chaos-mesh.yaml
+```
+
+### Enterprise Checklist (110%)
 
 | Feature | Status | Config Location |
 |---------|--------|-----------------|
-| **mTLS Internal** | ✅ | cluster/tls-certificates.yaml |
+| **Druid mTLS** | ✅ | cluster/tls-certificates.yaml, mtls-config.yaml |
+| **Kafka mTLS** | ✅ | kafka/kafka-cluster.yaml, kafka-users.yaml |
 | **Schema Registry** | ✅ | kafka namespace (Apicurio) |
 | **OIDC (UI)** | ✅ | cluster/oauth2-proxy.yaml |
-| **Basic Auth (API)** | ✅ | cluster/security-config.yaml |
 | **NetworkPolicy** | ✅ | cluster/security-config.yaml |
 | **PodDisruptionBudget** | ✅ | cluster/security-config.yaml |
+| **Pod Security** | ✅ | cluster/pod-security.yaml |
+| **LimitRange** | ✅ | cluster/pod-security.yaml |
+| **Audit Logging** | ✅ | cluster/audit-logging.yaml |
+| **Chaos Testing** | ✅ | chaos-testing/ |
 | **Resource Limits** | ✅ | values.yaml (tuned per workload) |
 | **Deep Storage (S3)** | ✅ | values.yaml (Rook-Ceph) |
 | **Monitoring** | ✅ | monitoring/ (ServiceMonitor, Rules, Dashboard) |
