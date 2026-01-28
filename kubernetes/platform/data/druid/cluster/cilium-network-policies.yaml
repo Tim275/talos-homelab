@@ -1,0 +1,216 @@
+---
+# CiliumNetworkPolicies for Druid - Egress Control
+# Complements standard NetworkPolicies (ingress) with fine-grained egress rules
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: druid-egress-policy
+  namespace: druid
+spec:
+  endpointSelector:
+    matchLabels:
+      druid_cr: druid
+  egress:
+    # DNS resolution (kube-dns)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+    # ZooKeeper (within druid namespace)
+    - toEndpoints:
+        - matchLabels:
+            app: druid-zookeeper
+      toPorts:
+        - ports:
+            - port: "2181"
+              protocol: TCP
+    # PostgreSQL (CNPG within druid namespace)
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: druid-postgres
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+    # Kafka (Strimzi in kafka namespace) - mTLS ports
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kafka
+            strimzi.io/cluster: kafka
+      toPorts:
+        - ports:
+            - port: "9092"
+              protocol: TCP
+            - port: "9093"
+              protocol: TCP
+            - port: "9094"
+              protocol: TCP
+    # Rook-Ceph S3 (RGW in rook-ceph namespace)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: rook-ceph
+            app: rook-ceph-rgw
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+            - port: "443"
+              protocol: TCP
+    # Inter-node Druid communication
+    - toEndpoints:
+        - matchLabels:
+            druid_cr: druid
+      toPorts:
+        - ports:
+            # Coordinator
+            - port: "8081"
+              protocol: TCP
+            # Broker
+            - port: "8082"
+              protocol: TCP
+            # Historical
+            - port: "8083"
+              protocol: TCP
+            # MiddleManager
+            - port: "8091"
+              protocol: TCP
+            # Router
+            - port: "8888"
+              protocol: TCP
+            # Peon ports
+            - port: "8100"
+              protocol: TCP
+            - port: "8101"
+              protocol: TCP
+            - port: "8102"
+              protocol: TCP
+            - port: "8103"
+              protocol: TCP
+            - port: "8104"
+              protocol: TCP
+            - port: "8105"
+              protocol: TCP
+            - port: "8106"
+              protocol: TCP
+            - port: "8107"
+              protocol: TCP
+            # Prometheus metrics
+            - port: "9090"
+              protocol: TCP
+
+---
+# ZooKeeper egress policy
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: zookeeper-egress-policy
+  namespace: druid
+spec:
+  endpointSelector:
+    matchLabels:
+      app: druid-zookeeper
+  egress:
+    # DNS resolution
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+    # ZooKeeper peer communication (for multi-node setup)
+    - toEndpoints:
+        - matchLabels:
+            app: druid-zookeeper
+      toPorts:
+        - ports:
+            - port: "2181"
+              protocol: TCP
+            - port: "2888"
+              protocol: TCP
+            - port: "3888"
+              protocol: TCP
+
+---
+# PostgreSQL egress policy (CNPG needs API access)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: postgres-egress-policy
+  namespace: druid
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: druid-postgres
+  egress:
+    # DNS resolution
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+    # Kubernetes API (required by CNPG instance manager)
+    - toEntities:
+        - kube-apiserver
+    # PostgreSQL replication (CNPG internal)
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: druid-postgres
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+
+---
+# OAuth2-Proxy egress policy
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: oauth2-proxy-egress-policy
+  namespace: druid
+spec:
+  endpointSelector:
+    matchLabels:
+      app: druid-oauth2-proxy
+  egress:
+    # DNS resolution
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+    # Druid Router (upstream)
+    - toEndpoints:
+        - matchLabels:
+            nodeSpecUniqueStr: druid-druid-routers
+      toPorts:
+        - ports:
+            - port: "8888"
+              protocol: TCP
+    # External OIDC Provider (Authentik/Keycloak)
+    - toFQDNs:
+        - matchPattern: "*.homelab.local"
+        - matchPattern: "authentik.homelab.local"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
