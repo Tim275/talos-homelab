@@ -1,0 +1,450 @@
+# Apache Druid Cluster - DataInfra Operator
+# Enterprise Configuration with Internal TLS + Kafka mTLS
+---
+apiVersion: "druid.apache.org/v1alpha1"
+kind: "Druid"
+metadata:
+  name: druid
+  namespace: druid
+spec:
+  image: apache/druid:30.0.1
+  startScript: /druid.sh
+
+  # Pod Labels & Annotations
+  podLabels:
+    app.kubernetes.io/name: druid
+    app.kubernetes.io/part-of: analytics-platform
+
+  # Security Context (non-root)
+  securityContext:
+    fsGroup: 1000
+    runAsUser: 1000
+    runAsGroup: 1000
+    runAsNonRoot: true
+
+  # Readiness Probe
+  readinessProbe:
+    httpGet:
+      path: /status/health
+      port: 8088
+    initialDelaySeconds: 30
+    periodSeconds: 10
+
+  # Services
+  services:
+    - spec:
+        type: ClusterIP
+        clusterIP: None
+
+  # ============================================
+  # TLS CERTIFICATES - Mounted to all components
+  # ============================================
+  volumes:
+    - name: tls-certs
+      secret:
+        secretName: druid-internal-tls
+    - name: kafka-mtls-certs
+      secret:
+        secretName: druid-kafka-mtls
+
+  volumeMounts:
+    - name: tls-certs
+      mountPath: /opt/druid/tls
+      readOnly: true
+    - name: kafka-mtls-certs
+      mountPath: /opt/druid/kafka-certs
+      readOnly: true
+
+  # ============================================
+  # COMMON CONFIGURATION
+  # ============================================
+  commonConfigMountPath: "/opt/druid/conf/druid/cluster/_common"
+
+  jvm.options: |-
+    -server
+    -XX:+UseG1GC
+    -XX:MaxGCPauseMillis=100
+    -XX:+ExitOnOutOfMemoryError
+    -Duser.timezone=UTC
+    -Dfile.encoding=UTF-8
+    -Djava.io.tmpdir=/druid/data
+    -Djava.util.logging.manager=org.apache.logging.log4j.jul.LogManager
+    # TLS System Properties
+    -Djavax.net.ssl.keyStore=/opt/druid/tls/keystore.p12
+    -Djavax.net.ssl.keyStorePassword=${DRUID_TLS_PASSWORD}
+    -Djavax.net.ssl.keyStoreType=PKCS12
+    -Djavax.net.ssl.trustStore=/opt/druid/tls/truststore.p12
+    -Djavax.net.ssl.trustStorePassword=${DRUID_TLS_PASSWORD}
+    -Djavax.net.ssl.trustStoreType=PKCS12
+
+  log4j.config: |-
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Configuration status="WARN">
+        <Appenders>
+            <Console name="Console" target="SYSTEM_OUT">
+                <PatternLayout pattern="%d{ISO8601} %p [%t] %c - %m%n"/>
+            </Console>
+        </Appenders>
+        <Loggers>
+            <Root level="info">
+                <AppenderRef ref="Console"/>
+            </Root>
+            <Logger name="org.apache.druid" level="info" additivity="false">
+                <AppenderRef ref="Console"/>
+            </Logger>
+        </Loggers>
+    </Configuration>
+
+  common.runtime.properties: |
+    # ============================================
+    # ZOOKEEPER
+    # ============================================
+    druid.zk.service.host=druid-zookeeper:2181
+    druid.zk.paths.base=/druid
+    druid.zk.service.compress=false
+
+    # ============================================
+    # METADATA STORE (PostgreSQL via CNPG)
+    # ============================================
+    druid.metadata.storage.type=postgresql
+    druid.metadata.storage.connector.connectURI=jdbc:postgresql://druid-postgres-rw.druid.svc:5432/druid
+    druid.metadata.storage.connector.user=${DRUID_METADATA_USER}
+    druid.metadata.storage.connector.password=${DRUID_METADATA_PASSWORD}
+    druid.metadata.storage.connector.createTables=true
+
+    # ============================================
+    # DEEP STORAGE (Rook-Ceph S3)
+    # ============================================
+    druid.storage.type=s3
+    druid.storage.bucket=${DRUID_S3_BUCKET}
+    druid.storage.baseKey=segments
+    druid.s3.accessKey=${AWS_ACCESS_KEY_ID}
+    druid.s3.secretKey=${AWS_SECRET_ACCESS_KEY}
+    druid.s3.endpoint.url=http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
+    druid.s3.enablePathStyleAccess=true
+    druid.s3.protocol=http
+
+    # ============================================
+    # EXTENSIONS
+    # ============================================
+    druid.extensions.loadList=["druid-kafka-indexing-service","druid-datasketches","druid-multi-stage-query","postgresql-metadata-storage","druid-s3-extensions","prometheus-emitter","druid-basic-security"]
+
+    # ============================================
+    # INTERNAL TLS
+    # ============================================
+    druid.enablePlaintextPort=false
+    druid.enableTlsPort=true
+    druid.server.https.keyStorePath=/opt/druid/tls/keystore.p12
+    druid.server.https.keyStorePassword=${DRUID_TLS_PASSWORD}
+    druid.server.https.keyStoreType=PKCS12
+    druid.server.https.certAlias=druid
+    druid.client.https.protocol=TLSv1.2
+    druid.client.https.trustStorePath=/opt/druid/tls/truststore.p12
+    druid.client.https.trustStorePassword=${DRUID_TLS_PASSWORD}
+    druid.client.https.trustStoreType=PKCS12
+
+    # ============================================
+    # SERVICE DISCOVERY
+    # ============================================
+    druid.selectors.indexing.serviceName=druid/overlord
+    druid.selectors.coordinator.serviceName=druid/coordinator
+    druid.indexer.logs.type=file
+    druid.indexer.logs.directory=/druid/data/indexing-logs
+    druid.lookup.enableLookupSyncOnStartup=false
+
+    # ============================================
+    # PROMETHEUS METRICS
+    # ============================================
+    druid.emitter=prometheus
+    druid.emitter.prometheus.port=9090
+    druid.emitter.prometheus.strategy=exporter
+
+  # Env vars from secrets
+  env:
+    - name: DRUID_METADATA_USER
+      valueFrom:
+        secretKeyRef:
+          name: druid-postgres-credentials
+          key: username
+    - name: DRUID_METADATA_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: druid-postgres-credentials
+          key: password
+    - name: DRUID_TLS_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: druid-tls-password
+          key: password
+    - name: AWS_ACCESS_KEY_ID
+      valueFrom:
+        secretKeyRef:
+          name: druid-deep-storage
+          key: AWS_ACCESS_KEY_ID
+    - name: AWS_SECRET_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: druid-deep-storage
+          key: AWS_SECRET_ACCESS_KEY
+    - name: DRUID_S3_BUCKET
+      valueFrom:
+        configMapKeyRef:
+          name: druid-deep-storage
+          key: BUCKET_NAME
+
+  # ============================================
+  # NODE CONFIGURATIONS
+  # ============================================
+  nodes:
+    # ------------------------------------------
+    # COORDINATOR (with Overlord)
+    # ------------------------------------------
+    coordinators:
+      nodeType: coordinator
+      druid.port: 8081
+      nodeConfigMountPath: "/opt/druid/conf/druid/cluster/master/coordinator-overlord"
+      replicas: 1
+      runtime.properties: |
+        druid.service=druid/coordinator
+        druid.plaintextPort=8081
+        druid.tlsPort=8281
+        # Run Overlord on Coordinator
+        druid.coordinator.asOverlord.enabled=true
+        druid.coordinator.asOverlord.overlordService=druid/overlord
+        druid.coordinator.period=PT60S
+        druid.coordinator.startDelay=PT30S
+      extra.jvm.options: |-
+        -Xms512m
+        -Xmx512m
+        -XX:MaxDirectMemorySize=256m
+      resources:
+        requests:
+          cpu: 150m
+          memory: 896Mi
+        limits:
+          cpu: 750m
+          memory: 1792Mi
+      volumeClaimTemplates:
+        - metadata:
+            name: data
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: rook-ceph-block-enterprise
+            resources:
+              requests:
+                storage: 5Gi
+      volumeMounts:
+        - name: data
+          mountPath: /druid/data
+
+    # ------------------------------------------
+    # BROKER
+    # ------------------------------------------
+    brokers:
+      nodeType: broker
+      druid.port: 8082
+      nodeConfigMountPath: "/opt/druid/conf/druid/cluster/query/broker"
+      replicas: 1
+      runtime.properties: |
+        druid.service=druid/broker
+        druid.plaintextPort=8082
+        druid.tlsPort=8282
+        druid.processing.buffer.sizeBytes=50000000
+        druid.processing.numMergeBuffers=2
+        druid.processing.numThreads=1
+        druid.broker.cache.useCache=true
+        druid.broker.cache.populateCache=true
+        druid.broker.http.numConnections=5
+      extra.jvm.options: |-
+        -Xms512m
+        -Xmx512m
+        -XX:MaxDirectMemorySize=512m
+      resources:
+        requests:
+          cpu: 150m
+          memory: 896Mi
+        limits:
+          cpu: 750m
+          memory: 1792Mi
+
+    # ------------------------------------------
+    # HISTORICAL
+    # ------------------------------------------
+    historicals:
+      nodeType: historical
+      druid.port: 8083
+      nodeConfigMountPath: "/opt/druid/conf/druid/cluster/data/historical"
+      replicas: 1
+      runtime.properties: |
+        druid.service=druid/historical
+        druid.plaintextPort=8083
+        druid.tlsPort=8283
+        druid.processing.buffer.sizeBytes=50000000
+        druid.processing.numMergeBuffers=2
+        druid.processing.numThreads=1
+        druid.server.tier=tier_default
+        druid.segmentCache.locations=[{"path":"/druid/data/segment-cache","maxSize":"5GiB"}]
+        druid.server.maxSize=5368709120
+        druid.historical.cache.useCache=true
+      extra.jvm.options: |-
+        -Xms512m
+        -Xmx512m
+        -XX:MaxDirectMemorySize=512m
+      resources:
+        requests:
+          cpu: 150m
+          memory: 1024Mi
+        limits:
+          cpu: 750m
+          memory: 2048Mi
+      volumeClaimTemplates:
+        - metadata:
+            name: data
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: rook-ceph-block-enterprise
+            resources:
+              requests:
+                storage: 10Gi
+      volumeMounts:
+        - name: data
+          mountPath: /druid/data
+
+    # ------------------------------------------
+    # MIDDLEMANAGER (Indexer Tasks)
+    # ------------------------------------------
+    middleManagers:
+      nodeType: middleManager
+      druid.port: 8091
+      nodeConfigMountPath: "/opt/druid/conf/druid/cluster/data/middleManager"
+      replicas: 1
+      runtime.properties: |
+        druid.service=druid/middleManager
+        druid.plaintextPort=8091
+        druid.tlsPort=8291
+        druid.worker.capacity=4
+        druid.indexer.task.restoreTasksOnRestart=true
+        druid.indexer.runner.javaOpts=-server -Xms384m -Xmx384m -XX:MaxDirectMemorySize=384m -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC
+        druid.indexer.fork.property.druid.processing.buffer.sizeBytes=50000000
+        druid.indexer.fork.property.druid.processing.numMergeBuffers=2
+        druid.indexer.fork.property.druid.processing.numThreads=1
+        # Kafka mTLS for Peons
+        druid.indexer.fork.property.druid.indexer.task.defaultTlsConfig=true
+      extra.jvm.options: |-
+        -Xms512m
+        -Xmx512m
+        -XX:MaxDirectMemorySize=512m
+      resources:
+        requests:
+          cpu: 300m
+          memory: 2560Mi
+        limits:
+          cpu: 2000m
+          memory: 4608Mi
+      volumeClaimTemplates:
+        - metadata:
+            name: data
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: rook-ceph-block-enterprise
+            resources:
+              requests:
+                storage: 10Gi
+      volumeMounts:
+        - name: data
+          mountPath: /druid/data
+
+    # ------------------------------------------
+    # ROUTER (Web Console)
+    # ------------------------------------------
+    routers:
+      nodeType: router
+      druid.port: 8888
+      nodeConfigMountPath: "/opt/druid/conf/druid/cluster/query/router"
+      replicas: 1
+      runtime.properties: |
+        druid.service=druid/router
+        druid.plaintextPort=8888
+        druid.tlsPort=8888
+        druid.router.managementProxy.enabled=true
+        druid.router.http.numConnections=10
+        druid.router.http.readTimeout=PT5M
+      extra.jvm.options: |-
+        -Xms192m
+        -Xmx192m
+        -XX:MaxDirectMemorySize=128m
+      resources:
+        requests:
+          cpu: 50m
+          memory: 256Mi
+        limits:
+          cpu: 300m
+          memory: 512Mi
+---
+# ZooKeeper for Druid (single node homelab)
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: druid-zookeeper
+  namespace: druid
+spec:
+  serviceName: druid-zookeeper
+  replicas: 1
+  selector:
+    matchLabels:
+      app: druid-zookeeper
+  template:
+    metadata:
+      labels:
+        app: druid-zookeeper
+    spec:
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+      containers:
+        - name: zookeeper
+          image: bitnami/zookeeper:3.9
+          ports:
+            - containerPort: 2181
+              name: client
+          env:
+            - name: ALLOW_ANONYMOUS_LOGIN
+              value: "yes"
+            - name: ZOO_DATA_DIR
+              value: /bitnami/zookeeper/data
+            - name: ZOO_DATA_LOG_DIR
+              value: /bitnami/zookeeper/data
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              cpu: 200m
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /bitnami/zookeeper
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: rook-ceph-block-enterprise
+        resources:
+          requests:
+            storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: druid-zookeeper
+  namespace: druid
+spec:
+  ports:
+    - port: 2181
+      name: client
+  clusterIP: None
+  selector:
+    app: druid-zookeeper
