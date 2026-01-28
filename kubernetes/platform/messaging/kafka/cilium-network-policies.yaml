@@ -1,0 +1,233 @@
+# CiliumNetworkPolicies for Kafka - Egress Control
+# Complements Strimzi's NetworkPolicies (ingress) with fine-grained egress rules
+---
+# Kafka Broker egress policy
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: kafka-broker-egress
+  namespace: kafka
+spec:
+  endpointSelector:
+    matchLabels:
+      strimzi.io/name: my-cluster-kafka
+  egress:
+    # DNS resolution
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+    # Inter-broker communication (KRaft controller + broker)
+    - toEndpoints:
+        - matchLabels:
+            strimzi.io/name: my-cluster-kafka
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+            - port: "9091"
+              protocol: TCP
+            - port: "9092"
+              protocol: TCP
+            - port: "9093"
+              protocol: TCP
+            - port: "9094"
+              protocol: TCP
+            - port: "9404"
+              protocol: TCP
+
+---
+# Entity Operator egress policy
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: kafka-entity-operator-egress
+  namespace: kafka
+spec:
+  endpointSelector:
+    matchLabels:
+      strimzi.io/name: my-cluster-entity-operator
+  egress:
+    # DNS resolution
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+    # Kubernetes API (required for Topic/User management)
+    - toEntities:
+        - kube-apiserver
+    # Kafka broker
+    - toEndpoints:
+        - matchLabels:
+            strimzi.io/name: my-cluster-kafka
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+            - port: "9091"
+              protocol: TCP
+            - port: "9092"
+              protocol: TCP
+            - port: "9093"
+              protocol: TCP
+
+---
+# Kafka Exporter egress policy
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: kafka-exporter-egress
+  namespace: kafka
+spec:
+  endpointSelector:
+    matchLabels:
+      strimzi.io/name: my-cluster-kafka-exporter
+  egress:
+    # DNS resolution
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+    # Kafka broker (for metrics collection)
+    - toEndpoints:
+        - matchLabels:
+            strimzi.io/name: my-cluster-kafka
+      toPorts:
+        - ports:
+            - port: "9092"
+              protocol: TCP
+            - port: "9093"
+              protocol: TCP
+
+---
+# Kafka UI egress policy
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: kafka-ui-egress
+  namespace: kafka
+spec:
+  endpointSelector:
+    matchLabels:
+      app: kafka-ui
+  egress:
+    # DNS resolution
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+    # Kafka broker
+    - toEndpoints:
+        - matchLabels:
+            strimzi.io/name: my-cluster-kafka
+      toPorts:
+        - ports:
+            - port: "9092"
+              protocol: TCP
+            - port: "9093"
+              protocol: TCP
+    # Apicurio Schema Registry
+    - toEndpoints:
+        - matchLabels:
+            app: apicurio-registry
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+
+---
+# Apicurio Schema Registry egress policy
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: apicurio-registry-egress
+  namespace: kafka
+spec:
+  endpointSelector:
+    matchLabels:
+      app: apicurio-registry
+  egress:
+    # DNS resolution
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+    # Kafka broker (for schema storage)
+    - toEndpoints:
+        - matchLabels:
+            strimzi.io/name: my-cluster-kafka
+      toPorts:
+        - ports:
+            - port: "9092"
+              protocol: TCP
+            - port: "9093"
+              protocol: TCP
+
+---
+# Strimzi Cluster Operator egress policy
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: strimzi-operator-egress
+  namespace: kafka
+spec:
+  endpointSelector:
+    matchLabels:
+      name: strimzi-cluster-operator
+  egress:
+    # DNS resolution
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+    # Kubernetes API (required for operator)
+    - toEntities:
+        - kube-apiserver
+    # Kafka broker (for health checks)
+    - toEndpoints:
+        - matchLabels:
+            strimzi.io/name: my-cluster-kafka
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+            - port: "9091"
+              protocol: TCP
+            - port: "9092"
+              protocol: TCP
