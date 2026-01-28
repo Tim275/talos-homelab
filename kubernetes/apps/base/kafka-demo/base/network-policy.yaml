@@ -1,0 +1,47 @@
+# CiliumNetworkPolicy for Kafka Saga Microservices
+# Allows services to access Kafka and internal communication
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: kafka-saga-egress
+  namespace: kafka-saga
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: kafka-saga
+  egress:
+    # DNS Resolution
+    - toEndpoints:
+        - matchLabels:
+            k8s-app: kube-dns
+            k8s:io.kubernetes.pod.namespace: kube-system
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+    # Kafka Broker Access (plain listener for internal services)
+    - toEntities:
+        - cluster
+      toPorts:
+        - ports:
+            - port: "9092"
+              protocol: TCP
+            - port: "9093"
+              protocol: TCP
+            - port: "9094"
+              protocol: TCP
+    # Internal namespace communication (services talking to each other)
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/part-of: kafka-saga
+    # PostgreSQL for stock-service (CNPG)
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: stock-db
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
