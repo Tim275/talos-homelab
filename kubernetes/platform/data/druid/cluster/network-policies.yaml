@@ -1,0 +1,165 @@
+---
+# NetworkPolicies for Druid - Zero Trust Architecture (Ingress Only)
+# Note: Egress is NOT controlled due to Cilium limitations with cross-namespace Service IPs
+# For full egress control, use CiliumNetworkPolicies instead
+
+# Default deny all ingress for druid namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: druid
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+# Druid nodes - allow inter-node + Prometheus
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-druid-internal
+  namespace: druid
+spec:
+  podSelector:
+    matchLabels:
+      druid_cr: druid
+  policyTypes:
+    - Ingress
+  ingress:
+    # From other Druid nodes (plaintext + TLS ports)
+    - from:
+        - podSelector:
+            matchLabels:
+              druid_cr: druid
+      ports:
+        - protocol: TCP
+          port: 8081
+        - protocol: TCP
+          port: 8281
+        - protocol: TCP
+          port: 8082
+        - protocol: TCP
+          port: 8282
+        - protocol: TCP
+          port: 8083
+        - protocol: TCP
+          port: 8283
+        - protocol: TCP
+          port: 8091
+        - protocol: TCP
+          port: 8291
+        - protocol: TCP
+          port: 8888
+        - protocol: TCP
+          port: 8889
+    # Prometheus scraping
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9090
+
+---
+# ZooKeeper - allow from Druid nodes
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-zookeeper
+  namespace: druid
+spec:
+  podSelector:
+    matchLabels:
+      app: druid-zookeeper
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              druid_cr: druid
+      ports:
+        - protocol: TCP
+          port: 2181
+
+---
+# Router - allow from Gateway + OAuth2-Proxy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-router-ingress
+  namespace: druid
+spec:
+  podSelector:
+    matchLabels:
+      nodeSpecUniqueStr: druid-druid-routers
+  policyTypes:
+    - Ingress
+  ingress:
+    # From Gateway namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gateway
+      ports:
+        - protocol: TCP
+          port: 8888
+        - protocol: TCP
+          port: 8889
+    # From OAuth2-Proxy
+    - from:
+        - podSelector:
+            matchLabels:
+              app: druid-oauth2-proxy
+      ports:
+        - protocol: TCP
+          port: 8888
+        - protocol: TCP
+          port: 8889
+
+---
+# OAuth2-Proxy - allow from Gateway
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-oauth2-proxy
+  namespace: druid
+spec:
+  podSelector:
+    matchLabels:
+      app: druid-oauth2-proxy
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gateway
+      ports:
+        - protocol: TCP
+          port: 4180
+
+---
+# PostgreSQL - allow from Druid coordinator
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres
+  namespace: druid
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: druid-postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              druid_cr: druid
+      ports:
+        - protocol: TCP
+          port: 5432
