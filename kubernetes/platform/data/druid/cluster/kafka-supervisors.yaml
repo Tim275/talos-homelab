@@ -45,7 +45,8 @@ spec:
               echo "Waiting for Druid Coordinator..."
               for i in $(seq 1 60); do
                 # Druid Operator creates services as druid-<nodetype>
-                if wget -qO- http://druid-druid-coordinators:8081/status/health 2>/dev/null | grep -q true; then
+                # Using HTTPS with TLS port, --no-check-certificate for self-signed certs
+                if wget --no-check-certificate -qO- https://druid-druid-coordinators:8281/status/health 2>/dev/null | grep -q true; then
                   echo "Druid Coordinator is ready!"
                   sleep 10
                   exit 0
@@ -87,7 +88,8 @@ spec:
               set -e
 
               # Druid Operator creates services as druid-<nodetype>
-              DRUID_URL="http://druid-druid-routers:8888"
+              # Using HTTPS with TLS port (skip cert verification for internal comms)
+              DRUID_URL="https://druid-druid-routers:8889"
               # Enterprise: mTLS endpoint on port 9094
               KAFKA_BOOTSTRAP="my-cluster-kafka-bootstrap.kafka.svc:9094"
 
@@ -114,15 +116,15 @@ spec:
                 echo ""
                 echo "=== Creating Supervisor: $name ==="
 
-                # Check if supervisor exists
-                existing=$(curl -s "$DRUID_URL/druid/indexer/v1/supervisor/$name" | grep -c "id" || echo "0")
+                # Check if supervisor exists (using -k for self-signed certs)
+                existing=$(curl -sk "$DRUID_URL/druid/indexer/v1/supervisor/$name" | grep -c "id" || echo "0")
 
                 if [ "$existing" != "0" ]; then
                   echo "Supervisor $name already exists, updating..."
                 fi
 
-                # Create/Update supervisor
-                response=$(curl -s -X POST "$DRUID_URL/druid/indexer/v1/supervisor" \
+                # Create/Update supervisor (using -k for self-signed certs)
+                response=$(curl -sk -X POST "$DRUID_URL/druid/indexer/v1/supervisor" \
                   -H "Content-Type: application/json" \
                   -d "$spec")
 
@@ -357,7 +359,7 @@ spec:
 
               echo ""
               echo "Active Supervisors:"
-              curl -s "$DRUID_URL/druid/indexer/v1/supervisor" | tr ',' '\n'
+              curl -sk "$DRUID_URL/druid/indexer/v1/supervisor" | tr ',' '\n'
 
               echo ""
               echo ""
