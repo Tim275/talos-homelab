@@ -45,14 +45,23 @@ spec:
   # ============================================
   # KAFKA mTLS CERTIFICATES (for Strimzi Kafka)
   # ============================================
+  # ============================================
+  # INTERNAL TLS CERTIFICATES (for inter-node communication)
+  # ============================================
   volumes:
     - name: kafka-mtls-certs
       secret:
         secretName: druid-kafka-mtls
+    - name: internal-tls-certs
+      secret:
+        secretName: druid-internal-tls
 
   volumeMounts:
     - name: kafka-mtls-certs
       mountPath: /opt/druid/kafka-certs
+      readOnly: true
+    - name: internal-tls-certs
+      mountPath: /opt/druid/internal-tls
       readOnly: true
 
   # ============================================
@@ -123,10 +132,17 @@ spec:
     druid.extensions.loadList=["druid-kafka-indexing-service","druid-datasketches","druid-multi-stage-query","postgresql-metadata-storage","druid-s3-extensions","prometheus-emitter","druid-basic-security"]
 
     # ============================================
-    # INTERNAL TLS (disabled for homelab)
+    # INTERNAL TLS (Enterprise - inter-node encryption)
     # ============================================
-    druid.enablePlaintextPort=true
-    druid.enableTlsPort=false
+    druid.enablePlaintextPort=false
+    druid.enableTlsPort=true
+    druid.server.https.keyStorePath=/opt/druid/internal-tls/keystore.p12
+    druid.server.https.keyStoreType=PKCS12
+    druid.server.https.keyStorePassword=${env:DRUID_TLS_PASSWORD}
+    druid.client.https.protocol=TLSv1.2
+    druid.client.https.trustStorePath=/opt/druid/internal-tls/truststore.p12
+    druid.client.https.trustStoreType=PKCS12
+    druid.client.https.trustStorePassword=${env:DRUID_TLS_PASSWORD}
 
     # ============================================
     # SERVICE DISCOVERY
@@ -171,6 +187,11 @@ spec:
         configMapKeyRef:
           name: druid-deep-storage
           key: BUCKET_NAME
+    - name: DRUID_TLS_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: druid-tls-password
+          key: password
 
   # ============================================
   # NODE CONFIGURATIONS
@@ -181,7 +202,7 @@ spec:
     # ------------------------------------------
     coordinators:
       nodeType: coordinator
-      druid.port: 8081
+      druid.port: 8281
       nodeConfigMountPath: "/opt/druid/conf/druid/cluster/master/coordinator-overlord"
       replicas: 1
       runtime.properties: |
@@ -222,7 +243,7 @@ spec:
     # ------------------------------------------
     brokers:
       nodeType: broker
-      druid.port: 8082
+      druid.port: 8282
       nodeConfigMountPath: "/opt/druid/conf/druid/cluster/query/broker"
       replicas: 1
       runtime.properties: |
@@ -252,7 +273,7 @@ spec:
     # ------------------------------------------
     historicals:
       nodeType: historical
-      druid.port: 8083
+      druid.port: 8283
       nodeConfigMountPath: "/opt/druid/conf/druid/cluster/data/historical"
       replicas: 1
       runtime.properties: |
@@ -295,7 +316,7 @@ spec:
     # ------------------------------------------
     middlemanagers:
       nodeType: middleManager
-      druid.port: 8091
+      druid.port: 8291
       nodeConfigMountPath: "/opt/druid/conf/druid/cluster/data/middleManager"
       replicas: 1
       runtime.properties: |
@@ -337,13 +358,13 @@ spec:
     # ------------------------------------------
     routers:
       nodeType: router
-      druid.port: 8888
+      druid.port: 8889
       nodeConfigMountPath: "/opt/druid/conf/druid/cluster/query/router"
       replicas: 1
       runtime.properties: |
         druid.service=druid/router
         druid.plaintextPort=8888
-        druid.tlsPort=8888
+        druid.tlsPort=8889
         druid.router.managementProxy.enabled=true
         druid.router.http.numConnections=10
         druid.router.http.readTimeout=PT5M
