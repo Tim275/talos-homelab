@@ -36,14 +36,6 @@ spec:
     seccompProfile:
       type: RuntimeDefault
 
-  # Readiness Probe
-  readinessProbe:
-    httpGet:
-      path: /status/health
-      port: 8088
-    initialDelaySeconds: 30
-    periodSeconds: 10
-
   # Services
   services:
     - spec:
@@ -51,20 +43,14 @@ spec:
         clusterIP: None
 
   # ============================================
-  # TLS CERTIFICATES - Mounted to all components
+  # KAFKA mTLS CERTIFICATES (for Strimzi Kafka)
   # ============================================
   volumes:
-    - name: tls-certs
-      secret:
-        secretName: druid-internal-tls
     - name: kafka-mtls-certs
       secret:
         secretName: druid-kafka-mtls
 
   volumeMounts:
-    - name: tls-certs
-      mountPath: /opt/druid/tls
-      readOnly: true
     - name: kafka-mtls-certs
       mountPath: /opt/druid/kafka-certs
       readOnly: true
@@ -115,18 +101,18 @@ spec:
     # ============================================
     druid.metadata.storage.type=postgresql
     druid.metadata.storage.connector.connectURI=jdbc:postgresql://druid-postgres-rw.druid.svc:5432/druid
-    druid.metadata.storage.connector.user=${DRUID_METADATA_USER}
-    druid.metadata.storage.connector.password=${DRUID_METADATA_PASSWORD}
+    druid.metadata.storage.connector.user=${env:DRUID_METADATA_USER}
+    druid.metadata.storage.connector.password=${env:DRUID_METADATA_PASSWORD}
     druid.metadata.storage.connector.createTables=true
 
     # ============================================
     # DEEP STORAGE (Rook-Ceph S3)
     # ============================================
     druid.storage.type=s3
-    druid.storage.bucket=${DRUID_S3_BUCKET}
+    druid.storage.bucket=${env:DRUID_S3_BUCKET}
     druid.storage.baseKey=segments
-    druid.s3.accessKey=${AWS_ACCESS_KEY_ID}
-    druid.s3.secretKey=${AWS_SECRET_ACCESS_KEY}
+    druid.s3.accessKey=${env:AWS_ACCESS_KEY_ID}
+    druid.s3.secretKey=${env:AWS_SECRET_ACCESS_KEY}
     druid.s3.endpoint.url=http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
     druid.s3.enablePathStyleAccess=true
     druid.s3.protocol=http
@@ -137,18 +123,10 @@ spec:
     druid.extensions.loadList=["druid-kafka-indexing-service","druid-datasketches","druid-multi-stage-query","postgresql-metadata-storage","druid-s3-extensions","prometheus-emitter","druid-basic-security"]
 
     # ============================================
-    # INTERNAL TLS
+    # INTERNAL TLS (disabled for homelab)
     # ============================================
-    druid.enablePlaintextPort=false
-    druid.enableTlsPort=true
-    druid.server.https.keyStorePath=/opt/druid/tls/keystore.p12
-    druid.server.https.keyStorePassword=${DRUID_TLS_PASSWORD}
-    druid.server.https.keyStoreType=PKCS12
-    druid.server.https.certAlias=druid
-    druid.client.https.protocol=TLSv1.2
-    druid.client.https.trustStorePath=/opt/druid/tls/truststore.p12
-    druid.client.https.trustStorePassword=${DRUID_TLS_PASSWORD}
-    druid.client.https.trustStoreType=PKCS12
+    druid.enablePlaintextPort=true
+    druid.enableTlsPort=false
 
     # ============================================
     # SERVICE DISCOVERY
@@ -177,11 +155,6 @@ spec:
       valueFrom:
         secretKeyRef:
           name: druid-postgres-credentials
-          key: password
-    - name: DRUID_TLS_PASSWORD
-      valueFrom:
-        secretKeyRef:
-          name: druid-tls-password
           key: password
     - name: AWS_ACCESS_KEY_ID
       valueFrom:
@@ -335,8 +308,6 @@ spec:
         druid.indexer.fork.property.druid.processing.buffer.sizeBytes=50000000
         druid.indexer.fork.property.druid.processing.numMergeBuffers=2
         druid.indexer.fork.property.druid.processing.numThreads=1
-        # Kafka mTLS for Peons
-        druid.indexer.fork.property.druid.indexer.task.defaultTlsConfig=true
       extra.jvm.options: |-
         -Xms512m
         -Xmx512m
@@ -414,7 +385,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: zookeeper
-          image: bitnami/zookeeper:3.9.2
+          image: zookeeper:3.9.3
           ports:
             - containerPort: 2181
               name: client
@@ -428,12 +399,10 @@ spec:
             seccompProfile:
               type: RuntimeDefault
           env:
-            - name: ALLOW_ANONYMOUS_LOGIN
-              value: "yes"
             - name: ZOO_DATA_DIR
-              value: /bitnami/zookeeper/data
+              value: /data
             - name: ZOO_DATA_LOG_DIR
-              value: /bitnami/zookeeper/data
+              value: /datalog
           resources:
             requests:
               cpu: 50m
@@ -443,7 +412,9 @@ spec:
               memory: 512Mi
           volumeMounts:
             - name: data
-              mountPath: /bitnami/zookeeper
+              mountPath: /data
+            - name: datalog
+              mountPath: /datalog
   volumeClaimTemplates:
     - metadata:
         name: data
@@ -453,6 +424,14 @@ spec:
         resources:
           requests:
             storage: 2Gi
+    - metadata:
+        name: datalog
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: rook-ceph-block-enterprise
+        resources:
+          requests:
+            storage: 1Gi
 ---
 apiVersion: v1
 kind: Service
