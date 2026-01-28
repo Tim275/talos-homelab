@@ -45,23 +45,14 @@ spec:
   # ============================================
   # KAFKA mTLS CERTIFICATES (for Strimzi Kafka)
   # ============================================
-  # ============================================
-  # INTERNAL TLS CERTIFICATES (for inter-node communication)
-  # ============================================
   volumes:
     - name: kafka-mtls-certs
       secret:
         secretName: druid-kafka-mtls
-    - name: internal-tls-certs
-      secret:
-        secretName: druid-internal-tls
 
   volumeMounts:
     - name: kafka-mtls-certs
       mountPath: /opt/druid/kafka-certs
-      readOnly: true
-    - name: internal-tls-certs
-      mountPath: /opt/druid/internal-tls
       readOnly: true
 
   # ============================================
@@ -132,17 +123,12 @@ spec:
     druid.extensions.loadList=["druid-kafka-indexing-service","druid-datasketches","druid-multi-stage-query","postgresql-metadata-storage","druid-s3-extensions","prometheus-emitter","druid-basic-security"]
 
     # ============================================
-    # INTERNAL TLS (Enterprise - inter-node encryption)
+    # NETWORK SECURITY
     # ============================================
-    druid.enablePlaintextPort=false
-    druid.enableTlsPort=true
-    druid.server.https.keyStorePath=/opt/druid/internal-tls/keystore.p12
-    druid.server.https.keyStoreType=PKCS12
-    druid.server.https.keyStorePassword=${env:DRUID_TLS_PASSWORD}
-    druid.client.https.protocol=TLSv1.2
-    druid.client.https.trustStorePath=/opt/druid/internal-tls/truststore.p12
-    druid.client.https.trustStoreType=PKCS12
-    druid.client.https.trustStorePassword=${env:DRUID_TLS_PASSWORD}
+    # TLS disabled - using Kubernetes NetworkPolicies for isolation (Zero Trust)
+    # See network-policies.yaml for ingress rules
+    druid.enablePlaintextPort=true
+    druid.enableTlsPort=false
 
     # ============================================
     # SERVICE DISCOVERY
@@ -202,7 +188,7 @@ spec:
     # ------------------------------------------
     coordinators:
       nodeType: coordinator
-      druid.port: 8281
+      druid.port: 8081
       nodeConfigMountPath: "/opt/druid/conf/druid/cluster/master/coordinator-overlord"
       replicas: 1
       runtime.properties: |
@@ -243,7 +229,7 @@ spec:
     # ------------------------------------------
     brokers:
       nodeType: broker
-      druid.port: 8282
+      druid.port: 8082
       nodeConfigMountPath: "/opt/druid/conf/druid/cluster/query/broker"
       replicas: 1
       runtime.properties: |
@@ -273,7 +259,7 @@ spec:
     # ------------------------------------------
     historicals:
       nodeType: historical
-      druid.port: 8283
+      druid.port: 8083
       nodeConfigMountPath: "/opt/druid/conf/druid/cluster/data/historical"
       replicas: 1
       runtime.properties: |
@@ -316,7 +302,7 @@ spec:
     # ------------------------------------------
     middlemanagers:
       nodeType: middleManager
-      druid.port: 8291
+      druid.port: 8091
       nodeConfigMountPath: "/opt/druid/conf/druid/cluster/data/middleManager"
       replicas: 1
       runtime.properties: |
@@ -326,9 +312,12 @@ spec:
         druid.worker.capacity=4
         druid.indexer.task.restoreTasksOnRestart=true
         druid.indexer.runner.javaOpts=-server -Xms384m -Xmx384m -XX:MaxDirectMemorySize=384m -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC
+        # Peon Port Configuration (Plaintext only)
+        druid.indexer.runner.startPort=8100
         druid.indexer.fork.property.druid.processing.buffer.sizeBytes=50000000
         druid.indexer.fork.property.druid.processing.numMergeBuffers=2
         druid.indexer.fork.property.druid.processing.numThreads=1
+        # Peon Configuration (HTTP only - secured by NetworkPolicy)
       extra.jvm.options: |-
         -Xms512m
         -Xmx512m
@@ -358,7 +347,7 @@ spec:
     # ------------------------------------------
     routers:
       nodeType: router
-      druid.port: 8889
+      druid.port: 8888
       nodeConfigMountPath: "/opt/druid/conf/druid/cluster/query/router"
       replicas: 1
       runtime.properties: |
