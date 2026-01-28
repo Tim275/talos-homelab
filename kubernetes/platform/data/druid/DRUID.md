@@ -626,13 +626,17 @@ indexer:
 
 ## Aktueller Status
 
-**Getestet am:** 2026-01-27
+**Getestet am:** 2026-01-28
+**Deployment:** DataInfra Druid Operator v1.3.1
 
 | Komponente | Status | Details |
 |------------|--------|---------|
-| **Datasources** | ✅ | orders (105), payments (5), stock (5), saga_events (5) |
-| **Supervisors** | ✅ | 4/4 Running |
-| **Deep Storage** | ✅ | Rook-Ceph S3 konfiguriert |
+| **Operator** | ✅ | DataInfra druid-operator v1.3.1 |
+| **Druid CR** | ✅ | Druid Custom Resource (Operator-managed) |
+| **Internal TLS** | ✅ | PKCS12 Keystores via cert-manager |
+| **Kafka mTLS** | ✅ | Strimzi mTLS auf Port 9094 |
+| **Deep Storage** | ✅ | Rook-Ceph S3 (ObjectBucketClaim) |
+| **SealedSecrets** | ✅ | 3 Secrets versiegelt |
 | **Monitoring** | ✅ | ServiceMonitor, PrometheusRule, GrafanaDashboard |
 | **Alerts** | ✅ | 15 Alert Rules aktiv |
 
@@ -659,33 +663,37 @@ curl -s http://localhost:8888/druid/indexer/v1/supervisor
 
 ```
 kubernetes/platform/data/druid/
-├── application.yaml              # ArgoCD Application
+├── application-operator.yaml     # ArgoCD Application (Operator)
+├── application-cluster.yaml      # ArgoCD Application (Cluster)
 ├── kustomization.yaml            # Kustomize root
-├── values.yaml                   # Helm values (mTLS, S3, Extensions)
 ├── DRUID.md                      # Diese Dokumentation
-├── cluster/
-│   ├── namespace.yaml
-│   ├── postgres-credentials.yaml
-│   ├── postgres-cluster.yaml     # CNPG für Metadata
-│   ├── tls-certificates.yaml     # mTLS Certificates (6 certs)
-│   ├── mtls-config.yaml          # JKS Keystore Init Script
-│   ├── security-config.yaml      # Auth/NetworkPolicy/PDB
-│   ├── pod-security.yaml         # LimitRange/RBAC
-│   ├── audit-logging.yaml        # Audit Logs + Fluentbit
-│   ├── oauth2-proxy-*.yaml       # OIDC Proxy
-│   ├── httproute.yaml            # Ingress
-│   ├── analytics-topics.yaml     # Kafka Topics
-│   └── kafka-supervisors.yaml    # Supervisor Setup Job
-├── monitoring/
+│
+├── operator/                     # DataInfra Druid Operator
 │   ├── kustomization.yaml
-│   ├── servicemonitor.yaml       # Prometheus Scraping
-│   ├── prometheusrule.yaml       # 15 Alert Rules
-│   ├── grafana-dashboard.yaml    # GrafanaDashboard CRD
-│   └── dashboard-configmap.yaml  # Dashboard JSON
-└── chaos-testing/                # Requires Chaos Mesh
+│   ├── namespace.yaml            # druid-operator-system
+│   └── helmrelease.yaml          # Operator Helm Release
+│
+├── cluster/                      # Druid Cluster Resources
+│   ├── kustomization.yaml
+│   ├── namespace.yaml            # druid namespace
+│   ├── druid-cluster.yaml        # Druid CR (Custom Resource)
+│   ├── tls-certificates.yaml     # Internal TLS (cert-manager)
+│   ├── sealed-postgres-credentials.yaml
+│   ├── sealed-oauth2-proxy-secret.yaml
+│   ├── sealed-druid-tls-password.yaml
+│   ├── postgres-cluster.yaml     # CNPG für Metadata
+│   ├── oauth2-proxy.yaml         # OIDC Proxy
+│   ├── httproute.yaml            # Gateway API Ingress
+│   ├── analytics-topics.yaml     # Kafka Topics
+│   ├── kafka-mtls-rbac.yaml      # RBAC für Secret-Copy
+│   └── kafka-supervisors.yaml    # Supervisor Setup Job
+│
+└── monitoring/
     ├── kustomization.yaml
-    ├── chaos-experiments.yaml    # Pod/Network/Stress/IO Chaos
-    └── chaos-schedules.yaml      # Weekly/Monthly Schedules
+    ├── servicemonitor.yaml       # Prometheus Scraping
+    ├── prometheusrule.yaml       # 15 Alert Rules
+    ├── grafana-dashboard.yaml    # GrafanaDashboard CRD
+    └── dashboard-configmap.yaml  # Dashboard JSON
 
 # Kafka mTLS (separate repo)
 kubernetes/platform/messaging/kafka/
@@ -902,21 +910,17 @@ kubectl apply -f https://mirrors.chaos-mesh.org/v2.7.0/chaos-mesh.yaml
 
 | Feature | Status | Config Location |
 |---------|--------|-----------------|
-| **Druid mTLS** | ✅ | cluster/tls-certificates.yaml, mtls-config.yaml |
+| **Druid Operator** | ✅ | operator/helmrelease.yaml (DataInfra v1.3.1) |
+| **Druid Internal TLS** | ✅ | cluster/tls-certificates.yaml (PKCS12) |
 | **Kafka mTLS** | ✅ | kafka/kafka-cluster.yaml, kafka-users.yaml |
+| **SealedSecrets** | ✅ | cluster/sealed-*.yaml (3 Secrets) |
 | **Schema Registry** | ✅ | kafka namespace (Apicurio) |
 | **OIDC (UI)** | ✅ | cluster/oauth2-proxy.yaml |
-| **NetworkPolicy** | ✅ | cluster/security-config.yaml |
-| **PodDisruptionBudget** | ✅ | cluster/security-config.yaml |
-| **Pod Security** | ✅ | cluster/pod-security.yaml |
-| **LimitRange** | ✅ | cluster/pod-security.yaml |
-| **Audit Logging** | ✅ | cluster/audit-logging.yaml |
-| **Chaos Testing** | ✅ | chaos-testing/ |
-| **Resource Limits** | ✅ | values.yaml (tuned per workload) |
-| **Deep Storage (S3)** | ✅ | values.yaml (Rook-Ceph) |
+| **Deep Storage (S3)** | ✅ | druid-cluster.yaml (Rook-Ceph OBC) |
 | **Monitoring** | ✅ | monitoring/ (ServiceMonitor, Rules, Dashboard) |
-| **Replicas** | 1 (Homelab) | values.yaml |
-| **Worker Capacity** | 4 | values.yaml (matches supervisors) |
+| **Resource Limits** | ✅ | druid-cluster.yaml (tuned per workload) |
+| **Replicas** | 1 (Homelab) | druid-cluster.yaml |
+| **Worker Capacity** | 4 | druid-cluster.yaml (matches supervisors) |
 
 ---
 
@@ -952,4 +956,276 @@ curl -s -X POST "http://localhost:8888/druid/v2/sql" \
 
 # 6. Cleanup
 pkill -f "kubectl port-forward.*druid-router"
+```
+
+---
+
+## Step-by-Step Setup Guide
+
+### Prerequisites
+
+```bash
+# Sealed Secrets Controller muss laufen
+kubectl get pods -n sealed-secrets
+
+# Sealed Secrets Public Key
+CERT_PATH="tofu/bootstrap/sealed-secrets/certificate/sealed-secrets.crt"
+```
+
+### 1. Namespace erstellen
+
+```bash
+kubectl create namespace druid
+```
+
+### 2. SealedSecrets erstellen
+
+```bash
+CERT_PATH="path/to/sealed-secrets.crt"
+DRUID_CLUSTER="kubernetes/platform/data/druid/cluster"
+
+# PostgreSQL Credentials
+cat <<EOF | kubeseal --cert "$CERT_PATH" --format yaml > "$DRUID_CLUSTER/sealed-postgres-credentials.yaml"
+apiVersion: v1
+kind: Secret
+metadata:
+  name: druid-postgres-credentials
+  namespace: druid
+type: kubernetes.io/basic-auth
+stringData:
+  username: druid
+  password: YOUR-SECURE-PASSWORD
+EOF
+
+# OAuth2 Proxy Secret
+cat <<EOF | kubeseal --cert "$CERT_PATH" --format yaml > "$DRUID_CLUSTER/sealed-oauth2-proxy-secret.yaml"
+apiVersion: v1
+kind: Secret
+metadata:
+  name: druid-oauth2-proxy
+  namespace: druid
+type: Opaque
+stringData:
+  client-secret: "YOUR-OIDC-SECRET"
+  cookie-secret: "$(openssl rand -base64 24)"
+EOF
+
+# Keystore Password
+cat <<EOF | kubeseal --cert "$CERT_PATH" --format yaml > "$DRUID_CLUSTER/sealed-keystore-password.yaml"
+apiVersion: v1
+kind: Secret
+metadata:
+  name: druid-keystore-password
+  namespace: druid
+type: Opaque
+stringData:
+  password: YOUR-TLS-PASSWORD
+EOF
+```
+
+### 3. Deep Storage (Rook-Ceph) erstellen
+
+```bash
+kubectl apply -f - <<EOF
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: druid-deep-storage
+  namespace: druid
+spec:
+  generateBucketName: druid-segments
+  storageClassName: rook-ceph-bucket
+EOF
+
+# Warten bis Bucket ready
+kubectl wait --for=jsonpath='{.status.phase}'=Bound obc/druid-deep-storage -n druid --timeout=60s
+
+# Secret wird automatisch erstellt: druid-deep-storage
+kubectl get secret druid-deep-storage -n druid
+```
+
+### 4. Kafka mTLS Secret kopieren
+
+```bash
+# Strimzi erstellt druid-analytics Secret in kafka namespace
+# Kopieren nach druid namespace
+kubectl get secret druid-analytics -n kafka -o json | \
+  jq '.metadata.namespace = "druid" | .metadata.name = "druid-kafka-mtls" | del(.metadata.resourceVersion, .metadata.uid, .metadata.creationTimestamp)' | \
+  kubectl apply -f -
+```
+
+### 5. ArgoCD Application deployen
+
+```bash
+kubectl apply -f kubernetes/platform/data/druid/application.yaml
+
+# Sync starten
+argocd app sync druid --prune
+```
+
+### 6. Warten auf Pods
+
+```bash
+kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=druid -n druid --timeout=300s
+
+# Alle Pods prüfen
+kubectl get pods -n druid
+```
+
+### 7. Kafka Supervisors erstellen
+
+```bash
+# Job wird automatisch via ArgoCD Hook gestartet
+# Falls manuell nötig:
+kubectl apply -f kubernetes/platform/data/druid/cluster/kafka-supervisors.yaml
+
+# Status prüfen
+kubectl get jobs -n druid
+kubectl logs -n druid -l app=druid-kafka-supervisors
+```
+
+### 8. Verifizieren
+
+```bash
+# Supervisors
+kubectl exec -n druid druid-coordinator-0 -- \
+  wget -qO- http://localhost:8081/druid/indexer/v1/supervisor
+
+# Erwartete Ausgabe: ["saga_events","payments","orders","stock"]
+
+# SealedSecrets Status
+kubectl get sealedsecrets -n druid
+# Alle sollten SYNCED=True zeigen
+```
+
+---
+
+## SealedSecrets
+
+### Warum SealedSecrets?
+
+Plaintext Secrets im Git-Repo = Sicherheitsrisiko. SealedSecrets verschlüsseln mit dem Cluster-Public-Key, sodass nur der eigene Cluster sie entschlüsseln kann.
+
+### Versiegelte Secrets in diesem Projekt
+
+| Secret | SealedSecret File | Inhalt |
+|--------|-------------------|--------|
+| `druid-postgres-credentials` | sealed-postgres-credentials.yaml | DB User/Password |
+| `druid-oauth2-proxy` | sealed-oauth2-proxy-secret.yaml | OIDC Client Secret, Cookie Secret |
+| `druid-keystore-password` | sealed-keystore-password.yaml | TLS Keystore Password |
+
+### Nicht versiegelt (automatisch generiert)
+
+| Secret | Quelle | Grund |
+|--------|--------|-------|
+| `druid-deep-storage` | ObjectBucketClaim (Rook-Ceph) | Dynamisch generiert |
+| `druid-kafka-mtls` | Strimzi KafkaUser | Kopiert aus kafka namespace |
+| `druid-*-tls` | cert-manager | Automatisch rotiert |
+
+### Neues Secret versiegeln
+
+```bash
+# 1. Secret als YAML erstellen (NICHT committen!)
+cat <<EOF > /tmp/my-secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-new-secret
+  namespace: druid
+type: Opaque
+stringData:
+  key: value
+EOF
+
+# 2. Mit kubeseal versiegeln
+kubeseal --cert "$CERT_PATH" --format yaml < /tmp/my-secret.yaml > sealed-my-secret.yaml
+
+# 3. Plaintext löschen!
+rm /tmp/my-secret.yaml
+
+# 4. SealedSecret committen
+git add sealed-my-secret.yaml
+git commit -m "Add sealed secret"
+```
+
+---
+
+## Known Limitations
+
+### Internal TLS (Druid-zu-Druid)
+
+**Status:** Deaktiviert
+
+**Grund:** Das wiremind/druid Helm Chart (v1.22.1) unterstützt `extraVolumes` nur für den Indexer, nicht für Broker/Coordinator/Historical/Router. Ohne Volume-Mounts können die TLS-Zertifikate nicht in die Pods gemountet werden.
+
+**Workaround:** Kafka mTLS ist aktiv für externe Kommunikation. Internal TLS würde einen Custom Helm Chart Fork oder den Druid Operator erfordern.
+
+**Config in values.yaml:**
+```yaml
+# Internal TLS - Disabled (Helm chart doesn't support extraVolumes for all components)
+druid_enablePlaintextPort: "true"
+druid_enableTlsPort: "false"
+```
+
+### Kafka mTLS Secret Rotation
+
+Das `druid-kafka-mtls` Secret muss manuell aktualisiert werden, wenn Strimzi die Zertifikate rotiert:
+
+```bash
+# Secret neu kopieren
+kubectl get secret druid-analytics -n kafka -o json | \
+  jq '.metadata.namespace = "druid" | .metadata.name = "druid-kafka-mtls"' | \
+  kubectl apply -f -
+
+# Indexer neustarten (lädt neue Certs)
+kubectl rollout restart statefulset druid-indexer-default -n druid
+```
+
+---
+
+## Troubleshooting
+
+### SealedSecret nicht entschlüsselt
+
+```bash
+# Status prüfen
+kubectl get sealedsecret my-secret -n druid -o yaml
+
+# Events prüfen
+kubectl describe sealedsecret my-secret -n druid
+
+# Häufige Fehler:
+# - "no key for name": Falscher Public Key verwendet
+# - "already exists and is not managed": Secret existiert bereits ohne SealedSecret
+```
+
+**Lösung für "already exists":**
+```bash
+kubectl delete secret my-secret -n druid
+# SealedSecret Controller erstellt es neu
+```
+
+### Supervisor UNHEALTHY_TASKS
+
+```bash
+# Worker Capacity prüfen (muss >= Anzahl Supervisors sein)
+kubectl exec -n druid druid-indexer-default-0 -- \
+  cat /opt/druid/conf/druid/middleManager/runtime.properties | grep capacity
+
+# Falls zu niedrig, in values.yaml anpassen:
+# druid_worker_capacity: "4"
+```
+
+### Kafka mTLS Connection Fehler
+
+```bash
+# Secret vorhanden?
+kubectl get secret druid-kafka-mtls -n druid
+
+# Zertifikate gültig?
+kubectl get secret druid-kafka-mtls -n druid -o jsonpath='{.data.user\.crt}' | \
+  base64 -d | openssl x509 -text -noout | grep -A2 "Validity"
+
+# Indexer Logs prüfen
+kubectl logs -n druid druid-indexer-default-0 | grep -i "kafka\|ssl\|tls"
 ```
