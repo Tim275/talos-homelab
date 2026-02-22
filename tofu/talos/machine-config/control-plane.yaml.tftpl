@@ -43,6 +43,47 @@ cluster:
       # API server stability fixes only
       max-requests-inflight: "400"
       max-mutating-requests-inflight: "200"
+    auditPolicy:
+      apiVersion: audit.k8s.io/v1
+      kind: Policy
+      omitStages:
+        - "RequestReceived"
+      rules:
+        # CRITICAL: pod exec/attach/portforward
+        - level: RequestResponse
+          resources:
+            - group: ""
+              resources: ["pods/exec", "pods/attach", "pods/portforward"]
+          verbs: ["create"]
+        # CRITICAL: secret/configmap changes
+        - level: RequestResponse
+          resources:
+            - group: ""
+              resources: ["secrets", "configmaps"]
+          verbs: ["create", "update", "patch", "delete"]
+        # HIGH: unauthenticated requests
+        - level: Metadata
+          omitStages:
+            - "RequestReceived"
+          userGroups: ["system:unauthenticated"]
+        # MEDIUM: RBAC changes
+        - level: RequestResponse
+          resources:
+            - group: "rbac.authorization.k8s.io"
+              resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+          verbs: ["create", "update", "patch", "delete"]
+        # MEDIUM: workload changes
+        - level: Request
+          resources:
+            - group: ""
+              resources: ["pods"]
+            - group: "apps"
+              resources: ["deployments", "statefulsets", "daemonsets"]
+          verbs: ["create", "update", "patch", "delete"]
+        # LOW: everything else
+        - level: Metadata
+          omitStages:
+            - "RequestReceived"
     resources:
       requests:
         cpu: 600m      # Actual: 403m * 1.5 (single node, 3 masters = ~200m/node)
