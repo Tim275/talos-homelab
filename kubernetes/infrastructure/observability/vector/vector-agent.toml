@@ -57,10 +57,40 @@ contains(to_string(.level) ?? "", "error") ||
 contains(to_string(.level) ?? "", "warn")
 '''
 
+# Kubernetes API server audit logs (control plane nodes only)
+[sources.kube_audit_logs]
+type = "file"
+include = ["/var/log/kubernetes/audit.log"]
+read_from = "end"
+
+[transforms.parse_kube_audit]
+type = "remap"
+inputs = ["kube_audit_logs"]
+source = '''
+. = parse_json!(string!(.message))
+.source = "kubernetes-audit"
+.cluster = "talos-homelab"
+.environment = "production"
+.service_name = "kube-audit"
+.severity = "info"
+.namespace_suffix = "production"
+."@timestamp" = .stageTimestamp
+."log.level" = if .level == "RequestResponse" { "info" } else { "debug" }
+."service.name" = "kube-audit"
+."event.action" = .verb
+."event.outcome" = if exists(.responseStatus.code) && to_int!(.responseStatus.code) < 400 { "success" } else { "failure" }
+."user.name" = string(.user.username) ?? "unknown"
+."user.id" = string(.user.uid) ?? ""
+."source.ip" = if exists(.sourceIPs) && length!(.sourceIPs) > 0 { string!(.sourceIPs[0]) } else { "" }
+."kubernetes.namespace" = string(.objectRef.namespace) ?? ""
+."kubernetes.resource" = string(.objectRef.resource) ?? ""
+."kubernetes.name" = string(.objectRef.name) ?? ""
+'''
+
 # Forward to Vector Aggregator
 [sinks.vector_aggregator]
 type = "vector"
-inputs = ["filter_noise"]
+inputs = ["filter_noise", "parse_kube_audit"]
 address = "vector-aggregator.elastic-system.svc.cluster.local:6000"
 version = "2"
 
