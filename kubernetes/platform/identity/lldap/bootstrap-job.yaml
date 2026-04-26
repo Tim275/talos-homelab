@@ -103,7 +103,8 @@ spec:
               # Create users from ConfigMap
               echo ""
               echo "--- Creating Users ---"
-              cat /config/users.json | jq -c '.[]' | while read user; do
+              USERS_JSON=$(envsubst < /config/users.json)
+              echo "$USERS_JSON" | jq -c '.[]' | while read user; do
                 ID=$(echo "$user" | jq -r '.id')
                 EMAIL=$(echo "$user" | jq -r '.email')
                 FIRST=$(echo "$user" | jq -r '.firstName // ""')
@@ -138,7 +139,9 @@ spec:
               echo "--- Setting Passwords via LDAP ---"
               apk add --no-cache openldap-clients
 
-              cat /config/users.json | jq -c '.[]' | while read user; do
+              USERS_JSON=$(envsubst < /config/users.json)
+
+              echo "$USERS_JSON" | jq -c '.[]' | while read user; do
                 ID=$(echo "$user" | jq -r '.id')
                 PASSWORD=$(echo "$user" | jq -r '.password // empty')
 
@@ -164,6 +167,11 @@ spec:
                 secretKeyRef:
                   name: lldap-secrets
                   key: admin-password
+            - name: LLDAP_USER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: lldap-secrets
+                  key: user-password
           volumeMounts:
             - name: config
               mountPath: /config
