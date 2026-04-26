@@ -1,13 +1,11 @@
 # CoreDNS ConfigMap Override
-# CRITICAL: Override default CoreDNS to use public DNS (8.8.8.8, 1.1.1.1)
-# instead of Talos link-local DNS (169.254.116.108) which breaks in VMs
+# CRITICAL: Override default CoreDNS to use gateway (192.168.0.1) as primary DNS
+# instead of Talos link-local DNS (169.254.116.108) which breaks in VMs.
 #
-# This is applied as an inline manifest at cluster bootstrap to ensure
-# DNS works correctly from the very start.
-#
-# Problem: Talos default /etc/resolv.conf points to 169.254.116.108 which
-# is a link-local address that doesn't work reliably in Proxmox VMs.
-# This breaks Helm chart downloads for ArgoCD (cert-manager, velero, etc.)
+# Why 192.168.0.1 and not 8.8.8.8/1.1.1.1 directly:
+# UDP port 53 outbound to public DNS IPs times out from within pods in this
+# Proxmox setup. The home router (192.168.0.1) is reachable and forwards
+# upstream reliably. 8.8.8.8/1.1.1.1 kept as fallback only.
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -32,8 +30,9 @@ data:
             fallthrough in-addr.arpa ip6.arpa
             ttl 30
         }
-        forward . 8.8.8.8 1.1.1.1 {
+        forward . 192.168.0.1 8.8.8.8 1.1.1.1 {
            max_concurrent 1000
+           policy sequential
         }
         cache 30 {
            disable success cluster.local
