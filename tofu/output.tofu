@@ -26,3 +26,17 @@ output "talos_config" {
   value     = module.talos.client_configuration.talos_config
   sensitive = true
 }
+
+# ==============================================================================
+# SECURITY OUTPUTS — copy these after first apply
+# ==============================================================================
+output "proxmox_tofu_token" {
+  description = "API token for tofu@pve — already in id=secret format, copy directly to proxmox_api_token"
+  value       = proxmox_virtual_environment_user_token.tofu.value
+  sensitive   = true
+}
+
+output "proxmox_tofu_token_id" {
+  description = "Token ID (non-sensitive part) — for reference"
+  value       = proxmox_virtual_environment_user_token.tofu.id
+}
