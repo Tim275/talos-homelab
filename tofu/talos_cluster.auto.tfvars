@@ -1,11 +1,11 @@
 talos_cluster_config = {
   name                         = "homelab-k8s"
-  vip                          = "192.168.68.100"  # VIP managed by kube-vip  
-  gateway                      = "192.168.68.1"
+  vip                          = "192.168.0.100"  # VIP managed by kube-vip
+  gateway                      = "192.168.0.1"
   subnet_mask                  = "24"
-  talos_machine_config_version = "v1.10.6"
+  talos_machine_config_version = "v1.10.6"  # DO NOT change via Renovate - manual upgrade only (talosctl upgrade)
   proxmox_cluster              = "homelab"
-  kubernetes_version           = "1.33.2"
+  kubernetes_version           = "1.33.0"  # DO NOT change via Renovate - manual upgrade only (talosctl upgrade-k8s)
   gateway_api_version          = "v1.3.0"
   extra_manifests              = []
   kubelet                      = ""
