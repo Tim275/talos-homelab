@@ -48,3 +48,13 @@ module "volumes" {
   volumes     = var.kubernetes_volumes
 }
 
+module "gitlab" {
+  source = "./gitlab"
+
+  providers = {
+    proxmox = proxmox
+  }
+
+  gitlab_config = var.gitlab_config
+}
+
