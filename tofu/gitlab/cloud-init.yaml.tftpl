@@ -1,0 +1,55 @@
+#cloud-config
+hostname: ${hostname}
+manage_etc_hosts: true
+locale: en_US.UTF-8
+timezone: UTC
+
+users:
+  - name: gitlab-admin
+    groups: sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+%{ for key in ssh_keys ~}
+      - ${key}
+%{ endfor ~}
+
+package_update: true
+package_upgrade: false
+packages:
+  - curl
+  - openssh-server
+  - ca-certificates
+  - tzdata
+  - qemu-guest-agent
+
+runcmd:
+  - systemctl enable qemu-guest-agent
+  - systemctl start qemu-guest-agent
+
+  # 4GB swap — GitLab CE needs headroom on 8GB RAM
+  - fallocate -l 4G /swapfile
+  - chmod 600 /swapfile
+  - mkswap /swapfile
+  - swapon /swapfile
+  - echo '/swapfile none swap sw 0 0' >> /etc/fstab
+
+  # Install GitLab CE
+  - curl -sS https://packages.gitlab.com/install/repositories/gitlab/gitlab-ce/script.deb.sh | bash
+  - EXTERNAL_URL="http://${external_url}" apt-get install -y gitlab-ce
+
+  # Tune for homelab — 8GB RAM, no built-in Grafana/KAS
+  - echo "nginx['listen_port'] = 80" >> /etc/gitlab/gitlab.rb
+  - echo "nginx['listen_https'] = false" >> /etc/gitlab/gitlab.rb
+  - echo "puma['worker_processes'] = 2" >> /etc/gitlab/gitlab.rb
+  - echo "puma['min_threads'] = 1" >> /etc/gitlab/gitlab.rb
+  - echo "puma['max_threads'] = 4" >> /etc/gitlab/gitlab.rb
+  - echo "sidekiq['concurrency'] = 5" >> /etc/gitlab/gitlab.rb
+  - echo "postgresql['shared_buffers'] = '256MB'" >> /etc/gitlab/gitlab.rb
+  - echo "postgresql['max_connections'] = 50" >> /etc/gitlab/gitlab.rb
+  - echo "prometheus_monitoring['enable'] = true" >> /etc/gitlab/gitlab.rb
+  - echo "grafana['enable'] = false" >> /etc/gitlab/gitlab.rb
+  - echo "gitlab_kas['enable'] = false" >> /etc/gitlab/gitlab.rb
+  - echo "gitlab_rails['gitlab_email_enabled'] = false" >> /etc/gitlab/gitlab.rb
+
+  - gitlab-ctl reconfigure
