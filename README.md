@@ -284,7 +284,7 @@ Core cluster services including GitOps, networking, storage, backup, and observa
 
 ## 🗄️ Platform Services
 
-Databases, messaging platforms, and identity management:
+Databases, messaging platforms, identity management, and DevOps tooling:
 
 <table>
     <tr>
@@ -331,6 +331,11 @@ Databases, messaging platforms, and identity management:
         <td><img width="32" src="https://avatars.githubusercontent.com/u/103038211?s=200&v=4"></td>
         <td><a href="https://github.com/lldap/lldap">LLDAP</a></td>
         <td>Lightweight LDAP server for authentication and user directory services</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://about.gitlab.com/images/press/logo/png/gitlab-icon-rgb.png"></td>
+        <td><a href="https://gitlab.timourhomelab.org">GitLab CE</a></td>
+        <td>Self-hosted Git platform with CI/CD pipelines, running as a VM on Proxmox (nipogi)</td>
     </tr>
 </table>
 
