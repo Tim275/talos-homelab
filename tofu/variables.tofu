@@ -83,18 +83,6 @@ variable "sealed_secrets_config" {
   sensitive = true
 }
 
-variable "admin_cidr" {
-  description = "Admin network CIDR — only this network can reach Proxmox SSH + Web UI"
-  type        = string
-  default     = "192.168.0.0/24"
-}
-
-variable "proxmox_tofu_user_password" {
-  description = "Password for tofu@pve user (never used interactively — API token is used)"
-  type        = string
-  sensitive   = true
-}
-
 variable "kubernetes_volumes" {
   description = "Kubernetes volumes configuration"
   type = map(
