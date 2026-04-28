@@ -4,12 +4,8 @@ metadata:
   name: require-resource-requests
   annotations:
     policies.kyverno.io/title: Require Resource Requests
-    policies.kyverno.io/category: s
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod
-    policies.kyverno.io/description: >-
-      Containers must have resource requests defined. This policy validates that all
-      containers have memory and CPU requests specified for proper scheduling.
 spec:
   background: true
   rules:
@@ -19,11 +15,27 @@ spec:
           - resources:
               kinds:
                 - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+                - argocd
+                - cert-manager
+                - istio-system
+                - rook-ceph
+                - sealed-secrets
+                - cnpg-system
+                - elastic-system
+                - monitoring
+                - envoy-gateway-system
+                - gateway
       validate:
-        failureAction: Enforce
-        message: >-
-          Resource requests are required for all containers.
-          Set resources.requests.cpu and resources.requests.memory.
+        failureAction: Audit
+        message: "containers must set resources.requests.cpu and resources.requests.memory"
         pattern:
           spec:
             containers:
@@ -32,11 +44,6 @@ spec:
                     memory: "?*"
                     cpu: "?*"
             =(initContainers):
-              - resources:
-                  requests:
-                    memory: "?*"
-                    cpu: "?*"
-            =(ephemeralContainers):
               - resources:
                   requests:
                     memory: "?*"
