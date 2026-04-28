@@ -1,14 +1,43 @@
 # Kyverno Policy Engine Configuration
-# Helm Chart: kyverno/kyverno v3.5.2
-# MINIMAL SAFE CONFIG - Only the 3 CRITICAL safety features
+# Helm Chart: kyverno/kyverno 3.7.1
 
-# MUST-HAVE #3: Cleanup webhooks on uninstall
+# Cleanup webhooks on uninstall
 webhooksCleanup:
   enabled: true
 
-# Security Configuration
+# CRITICAL: Force all webhooks to failurePolicy=Ignore
+# Without this, when Kyverno restarts it deadlocks itself:
+# - background controller resets webhooks to Fail
+# - admission controller pod creation goes through Fail webhook
+# - webhook unreachable → pod blocked → admission controller never starts → loop
+features:
+  forceFailurePolicyIgnore:
+    enabled: true
+
 config:
-  # MUST-HAVE #2: Exclude critical namespaces from validation
+  # Exclude critical system namespaces from webhook calls at the API server level.
+  # resourceFilters only works when Kyverno is running; namespaceSelector works
+  # even when Kyverno is down (API server skips the webhook call entirely).
+  webhooks:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kyverno
+            - kube-system
+            - kube-public
+            - kube-node-lease
+            - argocd
+            - cert-manager
+            - istio-system
+            - rook-ceph
+            - sealed-secrets
+            - cnpg-system
+            - elastic-system
+            - monitoring
+
+  # Exclude same namespaces from policy evaluation (Kyverno-internal filter)
   resourceFilters:
     - '[Event,*,*]'
     - '[*,kube-system,*]'
@@ -21,8 +50,10 @@ config:
     - '[*,rook-ceph,*]'
     - '[*,cert-manager,*]'
     - '[*,sealed-secrets,*]'
+    - '[*,cnpg-system,*]'
+    - '[*,elastic-system,*]'
+    - '[*,monitoring,*]'
 
-# Basic resource limits
 admissionController:
   container:
     resources:
