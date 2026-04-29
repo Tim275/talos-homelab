@@ -1,0 +1,40 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: drova-prod
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    apps.environment: prod
+  annotations:
+    argocd.argoproj.io/sync-wave: "27"
+spec:
+  project: apps
+  source:
+    repoURL: https://github.com/Tim275/drova
+    targetRevision: HEAD
+    path: infra/production/k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: drova
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  ignoreDifferences:
+    - group: bitnami.com
+      kind: SealedSecret
+      jsonPointers:
+        - /metadata/annotations/kubectl.kubernetes.io~1last-applied-configuration
