@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: drova
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+    spec:
+      initContainers:
+        - name: migrate
+          image: ghcr.io/Tim275/drova/payment-service:latest
+          command: ["/app/payment-service", "migrate"]
+          env:
+            - name: DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: drova-pg-payments-creds
+                  key: DB_URL
+            - name: MIGRATIONS_PATH
+              value: "migrations"
+      containers:
+        - name: payment-service
+          image: ghcr.io/Tim275/drova/payment-service:latest
+          imagePullPolicy: Always
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          env:
+            - name: KAFKA_BROKERS
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: KAFKA_BROKERS
+            - name: JAEGER_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: JAEGER_ENDPOINT
+            - name: ENVIRONMENT
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: ENVIRONMENT
+            - name: MIGRATIONS_PATH
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: MIGRATIONS_PATH
+            - name: STRIPE_CURRENCY
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: STRIPE_CURRENCY
+            - name: STRIPE_SUCCESS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: STRIPE_SUCCESS_URL
+            - name: STRIPE_CANCEL_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: STRIPE_CANCEL_URL
+            - name: DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: drova-pg-payments-creds
+                  key: DB_URL
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: drova-app-secrets
+                  key: STRIPE_SECRET_KEY
