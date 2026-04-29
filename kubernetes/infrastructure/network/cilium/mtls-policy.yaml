@@ -1,31 +1,40 @@
 # ============================================================
 # CILIUM mTLS POLICY - SPIRE-based Mutual TLS
 # ============================================================
-# Requires SPIRE to be running and all agents healthy.
-# Enable by adding to kustomization.yaml.
+# Requires SPIRE running: kubectl get pods -n cilium-spire (all Running)
+# Requires Cilium SPIRE connected: cilium status | grep SPIRE
+#
+# Activation: uncomment in kustomization.yaml
 #
 # What this does:
-# - All traffic between pods that have SPIFFE identities MUST
-#   use mTLS (Cilium WireGuard handles encryption, SPIRE handles
-#   identity verification)
-# - Pods without a valid SPIFFE identity are REJECTED
+# - Pod-to-pod traffic (cluster-internal) → mTLS SVID required
+# - External traffic (world, cloudflared, host) → no mTLS (passthrough)
 #
-# Activation checklist:
-#   kubectl get pods -n cilium-spire  (all Running)
-#   cilium status | grep SPIRE        (Connected)
-#   Then: uncomment in kustomization.yaml
+# Architecture note:
+# This adds authentication ON TOP of existing CiliumNetworkPolicies.
+# Without explicit allow rules here, this policy would default-deny
+# all ingress → so we must allow world + host + remote-node explicitly.
 # ============================================================
 
 ---
 apiVersion: "cilium.io/v2"
 kind: CiliumClusterwideNetworkPolicy
 metadata:
-  name: mtls-ingress
+  name: require-mtls
 spec:
-  description: "Require mTLS for all pod-to-pod traffic (SPIRE-based)"
+  description: "mTLS required for pod-to-pod traffic, external traffic passthrough"
   endpointSelector: {}
+
   ingress:
+    # Pod-to-pod: require valid SPIFFE SVID (mTLS)
     - fromEndpoints:
         - {}
       authentication:
         mode: "required"
+
+    # External traffic: no mTLS (Cloudflare tunnel, health checks, nodes)
+    - fromEntities:
+        - world
+        - host
+        - remote-node
+        - health
