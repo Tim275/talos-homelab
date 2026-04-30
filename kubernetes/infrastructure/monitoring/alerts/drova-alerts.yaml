@@ -1,0 +1,154 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: drova-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack-prometheus
+    role: alert-rules
+    severity: warning
+    priority: p2
+spec:
+  groups:
+    - name: drova.pods
+      interval: 60s
+      rules:
+        - alert: DrovaPodNotReady
+          expr: |
+            kube_pod_status_ready{namespace="drova", condition="true"} == 0
+          for: 2m
+          labels:
+            severity: warning
+            priority: p2
+            component: drova
+          annotations:
+            summary: "Drova pod {{ $labels.pod }} not ready"
+            description: "Pod {{ $labels.pod }} in namespace drova has been not ready for 2+ minutes"
+            impact: "Reduced capacity or partial service outage for Drova"
+
+        - alert: DrovaPodCrashLooping
+          expr: |
+            rate(kube_pod_container_status_restarts_total{namespace="drova"}[5m]) * 60 > 0.5
+          for: 5m
+          labels:
+            severity: warning
+            priority: p2
+            component: drova
+          annotations:
+            summary: "Drova container {{ $labels.container }} is crash-looping"
+            description: "Container {{ $labels.container }} in pod {{ $labels.pod }} is restarting more than once every 2 minutes"
+            impact: "Service instability, potential data loss for in-flight requests"
+
+        - alert: DrovaDeploymentUnavailable
+          expr: |
+            kube_deployment_status_replicas_unavailable{namespace="drova"} > 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p2
+            component: drova
+          annotations:
+            summary: "Drova deployment {{ $labels.deployment }} has unavailable replicas"
+            description: "Deployment {{ $labels.deployment }} has {{ $value }} unavailable replicas for 3+ minutes"
+            impact: "Reduced capacity for affected Drova service"
+
+    - name: drova.http
+      interval: 60s
+      rules:
+        - alert: DrovaHighErrorRate
+          expr: |
+            sum(rate(http_server_request_duration_seconds_count{
+              job=~"drova.*",
+              http_response_status_code=~"5.."
+            }[5m])) by (job)
+            /
+            sum(rate(http_server_request_duration_seconds_count{
+              job=~"drova.*"
+            }[5m])) by (job)
+            > 0.05
+          for: 3m
+          labels:
+            severity: warning
+            priority: p2
+            component: drova
+          annotations:
+            summary: "Drova service {{ $labels.job }} error rate > 5%"
+            description: "HTTP 5xx error rate is {{ $value | humanizePercentage }} for {{ $labels.job }}"
+            impact: "Users experiencing errors in Drova application"
+
+        - alert: DrovaHighLatency
+          expr: |
+            histogram_quantile(0.95,
+              sum(rate(http_server_request_duration_seconds_bucket{job=~"drova.*"}[5m])) by (le, job)
+            ) > 2
+          for: 5m
+          labels:
+            severity: warning
+            priority: p2
+            component: drova
+          annotations:
+            summary: "Drova service {{ $labels.job }} p95 latency > 2s"
+            description: "95th percentile latency is {{ $value }}s for {{ $labels.job }}"
+            impact: "Degraded user experience in Drova application"
+
+    - name: drova.kafka
+      interval: 60s
+      rules:
+        - alert: DrovaKafkaConsumerLagHigh
+          expr: |
+            kafka_consumer_fetch_manager_records_lag_max{
+              namespace="drova"
+            } > 1000
+          for: 5m
+          labels:
+            severity: warning
+            priority: p2
+            component: drova-kafka
+          annotations:
+            summary: "Drova Kafka consumer lag > 1000 on {{ $labels.topic }}"
+            description: "Consumer {{ $labels.client_id }} is {{ $value }} messages behind on topic {{ $labels.topic }}"
+            impact: "Payment or driver assignment delays — Drova events are not being processed fast enough"
+
+        - alert: DrovaKafkaConsumerLagCritical
+          expr: |
+            kafka_consumer_fetch_manager_records_lag_max{
+              namespace="drova"
+            } > 10000
+          for: 2m
+          labels:
+            severity: critical
+            priority: p1
+            component: drova-kafka
+          annotations:
+            summary: "CRITICAL: Drova Kafka consumer lag > 10000 on {{ $labels.topic }}"
+            description: "Consumer {{ $labels.client_id }} is {{ $value }} messages behind — service is severely falling behind"
+            impact: "Significant payment and trip processing delays — immediate attention required"
+
+    - name: drova.database
+      interval: 120s
+      rules:
+        - alert: DrovaPostgresReplicationLag
+          expr: |
+            cnpg_pg_replication_lag{namespace="drova"} > 30
+          for: 5m
+          labels:
+            severity: warning
+            priority: p2
+            component: drova-postgres
+          annotations:
+            summary: "Drova PostgreSQL replication lag > 30s"
+            description: "Replication lag is {{ $value }}s — standby is falling behind primary"
+            impact: "Data loss risk if primary fails — standby promotion would lose recent writes"
+
+        - alert: DrovaPostgresConnectionsHigh
+          expr: |
+            cnpg_backends_total{namespace="drova"} > 80
+          for: 5m
+          labels:
+            severity: warning
+            priority: p2
+            component: drova-postgres
+          annotations:
+            summary: "Drova PostgreSQL connection count high ({{ $value }}/100)"
+            description: "PostgreSQL is using {{ $value }} connections out of max_connections=100"
+            impact: "Approaching connection limit — new connections will be rejected above 100"
