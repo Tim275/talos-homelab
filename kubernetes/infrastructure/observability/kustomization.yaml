@@ -1,15 +1,52 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# OBSERVABILITY DOMAIN - COMPONENT CONTROL
+# ==========================================
+# Uncommented = DEPLOYED | Commented = DISABLED
+
 resources:
-  # namespace.yaml removed - elastic-system and opentelemetry namespaces
-  # are managed by operators app to avoid SharedResourceWarning
-  - elasticsearch/application.yaml
-  - kibana/application.yaml
-  - vector/application.yaml
-  - opentelemetry/application.yaml
+  # METRICS
+  - metrics/kube-prometheus-stack/application.yaml
+  - metrics/metrics-server/application.yaml
+  # - metrics/victoriametrics/    # DISABLED: no application.yaml yet
+  # - metrics/opencost.disabled/  # DISABLED: cost analysis (optional)
+
+  # LOGS
+  - logs/loki/application.yaml
+  - logs/elasticsearch/application.yaml
+  - logs/kibana/application.yaml
+  - logs/vector/application.yaml
+  # - logs/fluent-bit/            # DISABLED: alternative log collector
+  # - logs/fluentd/               # DISABLED: alternative log aggregator
+
+  # TRACES
+  - traces/tempo/application.yaml
+  - traces/jaeger/application.yaml
+  - traces/opentelemetry/application.yaml
+
+  # ALERTING
+  - alerting/alerts/application.yaml
+  - alerting/keep/application.yaml
+  # - alerting/robusta/application.yaml  # DISABLED: alert enrichment
+  # - alerting/ai-alert-enrichment/      # DISABLED: AI enrichment
+
+  # DASHBOARDS
+  - dashboards/grafana/application.yaml
+  - dashboards/hubble/application.yaml
+  - dashboards/configs/application.yaml
+  # - dashboards/kiali/application.yaml  # DISABLED: Istio removed
+  # - dashboards/simple/                 # DISABLED: simple dashboards
 
 labels:
   - pairs:
-      app.kubernetes.io/part-of: observability-stack
-      infrastructure.domain: observability
+      app.kubernetes.io/managed-by: argocd
+      app.kubernetes.io/part-of: timour-homelab
+      app.kubernetes.io/domain: observability
+      app.kubernetes.io/layer: infrastructure
+      team: timour
+
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "10"
+  enterprise.domain: "observability"
+  gitops.control: "kustomize-component-level"
