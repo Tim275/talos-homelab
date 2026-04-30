@@ -76,6 +76,44 @@ spec:
           http:
             endpoint: 0.0.0.0:4318
 
+      # Kubernetes pod log collection (CRI/containerd format)
+      # Reads from host /var/log/pods, filters to drova namespace
+      filelog:
+        include:
+          - /var/log/pods/drova_*/*/*.log
+        start_at: end
+        include_file_path: true
+        include_file_name: false
+        operators:
+          # Parse CRI format: timestamp stream flags message
+          - type: regex_parser
+            id: cri-parser
+            regex: '^(?P<time>[^ ^Z]+Z) (?P<stream>stdout|stderr) (?P<flags>[^ ]*) (?P<log>.*)$'
+            timestamp:
+              parse_from: attributes.time
+              layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+          # Extract namespace/pod/container from file path
+          - type: regex_parser
+            id: filepath-parser
+            regex: '^\/var\/log\/pods\/(?P<namespace>[^_]+)_(?P<pod>[^_]+)_[^\/]+\/(?P<container>[^\/]+)\/[^\/]+\.log$'
+            parse_from: attributes["log.file.path"]
+            cache:
+              size: 128
+          - type: move
+            from: attributes.log
+            to: body
+          - type: move
+            from: attributes.namespace
+            to: resource["k8s.namespace.name"]
+          - type: move
+            from: attributes.pod
+            to: resource["k8s.pod.name"]
+          - type: move
+            from: attributes.container
+            to: resource["k8s.container.name"]
+          - type: remove
+            field: attributes.flags
+
     # =========================================================================
     # PROCESSORS - Transform and enrich telemetry
     # =========================================================================
@@ -239,6 +277,7 @@ spec:
         logs:
           receivers:
             - otlp
+            - filelog
           processors:
             - memory_limiter
             - k8sattributes
@@ -273,3 +312,15 @@ spec:
   envFrom:
     - secretRef:
         name: otel-collector-secrets
+
+  # Host log access for filelog receiver
+  volumes:
+    - name: varlogpods
+      hostPath:
+        path: /var/log/pods
+        type: Directory
+
+  volumeMounts:
+    - name: varlogpods
+      mountPath: /var/log/pods
+      readOnly: true
