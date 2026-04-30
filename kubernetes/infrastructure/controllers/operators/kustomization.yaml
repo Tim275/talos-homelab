@@ -15,6 +15,7 @@ kind: Kustomization
 # ArgoCD CreateNamespace=true does NOT work for Kustomize helmCharts!
 resources:
   - namespaces.yaml
+  - strimzi-cluster-rbac.yaml
   # 🐰 RabbitMQ Cluster Operator (official VMware/Tanzu - no Helm chart available)
   - rabbitmq-cluster-operator.yaml
 
@@ -54,7 +55,6 @@ helmCharts:
     namespace: kafka
     includeCRDs: true
     valuesInline:
-      watchAnyNamespace: true
       resources:
         limits:
           cpu: "1"
@@ -104,3 +104,19 @@ helmCharts:
       operatorConfig:
         defaultTags:
           - "tag:k8s-operator"
+
+patches:
+  # Strimzi: watch all namespaces for Kafka CRs
+  # ClusterRoleBinding strimzi-cluster-operator-global already grants cluster-wide RBAC.
+  # Just override STRIMZI_NAMESPACE to * without touching Helm values (which generate
+  # duplicate RoleBindings and conflict with the existing kafka-namespace installation).
+  - target:
+      kind: Deployment
+      name: strimzi-cluster-operator
+      namespace: kafka
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env/0
+        value:
+          name: STRIMZI_NAMESPACE
+          value: "*"
