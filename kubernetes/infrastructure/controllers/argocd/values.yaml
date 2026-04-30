@@ -150,6 +150,44 @@ configs:
       hs.message = "Waiting for KafkaNodePool replicas"
       return hs
 
+    # CLOUDNATIVE PG HEALTH CHECK
+    # ====================================================================
+    resource.customizations.health.postgresql.cnpg.io_Cluster: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "Ready" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = "CNPG Cluster is ready (" .. (obj.status.readyInstances or 0) .. "/" .. (obj.status.instances or 0) .. " instances)"
+              return hs
+            elseif condition.type == "Ready" and condition.status == "False" then
+              hs.status = "Progressing"
+              hs.message = condition.message or "CNPG Cluster not ready"
+              return hs
+            end
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for CNPG Cluster to be ready"
+      return hs
+
+    # OPSTREE REDIS REPLICATION HEALTH CHECK
+    # ====================================================================
+    resource.customizations.health.redis.redis.opstreelabs.in_RedisReplication: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.masterNode ~= nil and obj.status.masterNode ~= "" then
+          hs.status = "Healthy"
+          hs.message = "RedisReplication ready, master: " .. obj.status.masterNode
+          return hs
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for RedisReplication master election"
+      return hs
+
   cmp:
     create: true
     plugins:
