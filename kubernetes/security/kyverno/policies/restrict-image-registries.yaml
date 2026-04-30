@@ -1,0 +1,68 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registries
+  annotations:
+    policies.kyverno.io/title: Restrict Image Registries
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Only images from trusted registries may be used. This prevents
+      deployment of images from unknown or untrusted sources.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-image-registry
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - kube-system
+                      - kube-public
+                      - cilium-spire
+                      - rook-ceph
+                      - cnpg-system
+                      - cert-manager
+                      - sealed-secrets
+                      - argocd
+                      - tailscale
+      validate:
+        message: >-
+          Image "{{ request.object.spec.containers[].image }}" uses an
+          untrusted registry. Allowed: ghcr.io/tim275, ghcr.io/siderolabs,
+          ghcr.io/vectordotdev, docker.io/bitnami, registry.k8s.io,
+          quay.io, docker.elastic.co, gcr.io, ghcr.io/cloudnative-pg.
+        foreach:
+          - list: "request.object.spec.containers"
+            deny:
+              conditions:
+                all:
+                  - key: "{{ element.image }}"
+                    operator: AnyNotIn
+                    value:
+                      - "ghcr.io/tim275/*"
+                      - "ghcr.io/siderolabs/*"
+                      - "ghcr.io/vectordotdev/*"
+                      - "ghcr.io/cloudnative-pg/*"
+                      - "ghcr.io/cloudflare/*"
+                      - "ghcr.io/open-telemetry/*"
+                      - "ghcr.io/cert-manager/*"
+                      - "ghcr.io/kyverno/*"
+                      - "ghcr.io/argoproj/*"
+                      - "ghcr.io/tailscale/*"
+                      - "docker.io/bitnami/*"
+                      - "docker.io/library/*"
+                      - "docker.elastic.co/*"
+                      - "registry.k8s.io/*"
+                      - "quay.io/*"
+                      - "gcr.io/*"
+                      - "public.ecr.aws/*"
+                      - "us-docker.pkg.dev/*"
