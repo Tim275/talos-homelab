@@ -106,6 +106,24 @@ patches:
   #         requests:
   #           cpu: "10m"
   #           memory: "64Mi"
+  # CSI Controller Plugin: Add resource limits to prevent OOM-kill mid-operation
+  # OOM-kill during CreateVolume/DeleteVolume leaves orphaned goroutines holding
+  # in-memory volume locks → causes "operation already exists" on every retry
+  - target:
+      kind: Deployment
+      name: rook-ceph.rbd.csi.ceph.com-ctrlplugin
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests:
+            cpu: "50m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+
+  # CSI Node Plugin (DaemonSet): mount/unmount only — 256Mi is sufficient
   - target:
       kind: DaemonSet
       name: csi-rbdplugin
@@ -114,11 +132,29 @@ patches:
         path: /spec/template/spec/containers/1/resources
         value:
           limits:
-            cpu: "100m"
-            memory: "128Mi"
+            cpu: "200m"
+            memory: "256Mi"
           requests:
             cpu: "10m"
             memory: "64Mi"
+
+  # CSI Timeout Fix: lower from 150s to 30s
+  # Root cause of "operation already exists" deadlock:
+  # goroutine gets stuck (Ceph slow / RST_STREAM), holds in-memory volume lock
+  # for up to 150s. With 30s timeout goroutines fail fast → lock released → retry works.
+  # ROOK_CEPH_COMMANDS_TIMEOUT_SECONDS=15s so 30s gives 2x buffer.
+  # CSI_ENABLE_LIVENESS=true → Kubernetes restarts the CSI pod if stuck.
+  - target:
+      kind: ConfigMap
+      name: rook-ceph-operator-config
+    patch: |-
+      - op: replace
+        path: /data/CSI_GRPC_TIMEOUT_SECONDS
+        value: "30"
+      - op: replace
+        path: /data/CSI_ENABLE_LIVENESS
+        value: "true"
+
   # CRITICAL: Add Prometheus discovery labels to Ceph services
   - target:
       kind: Service
