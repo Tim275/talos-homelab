@@ -2,8 +2,6 @@
 
 AI-powered workflow that automatically analyzes and merges Renovate PRs.
 
-Based on [Mischa van den Burg's](https://github.com/mischavandenburg) workflow.
-
 ## Architektur
 
 ```
