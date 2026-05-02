@@ -1,0 +1,37 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kubernetes-workloads
+spec:
+  groups:
+    - name: kubernetes-workloads
+      interval: 1m
+      rules:
+        - alert: PodCrashLooping
+          expr: rate(kube_pod_container_status_restarts_total[10m]) * 600 > 3
+          for: 5m
+          labels:
+            severity: warning
+            component: kubernetes
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} crashlooping"
+            description: ">3 restarts in 10 minutes for container {{ $labels.container }}."
+
+        - alert: PodPendingTooLong
+          expr: kube_pod_status_phase{phase="Pending"} == 1
+          for: 10m
+          labels:
+            severity: warning
+            component: kubernetes
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} pending >10min"
+            description: "Likely scheduling failure or PVC unbound."
+
+        - alert: ContainerOOMKilled
+          expr: increase(kube_pod_container_status_terminated_reason{reason="OOMKilled"}[15m]) > 0
+          labels:
+            severity: warning
+            component: kubernetes
+          annotations:
+            summary: "OOM kill: {{ $labels.namespace }}/{{ $labels.pod }}/{{ $labels.container }}"
+            description: "Container OOM-killed in last 15min."

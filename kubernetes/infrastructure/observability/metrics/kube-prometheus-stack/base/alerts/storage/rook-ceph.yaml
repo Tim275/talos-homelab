@@ -1,0 +1,59 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: storage-rook-ceph
+spec:
+  groups:
+    - name: rook-ceph
+      interval: 1m
+      rules:
+        - alert: CephHealthError
+          expr: ceph_health_status == 2
+          for: 5m
+          labels:
+            severity: critical
+            component: storage
+          annotations:
+            summary: "Ceph cluster HEALTH_ERR"
+            description: "Rook-Ceph reports HEALTH_ERR. Data integrity at risk."
+            runbook_url: "docs/runbooks/ceph-health-error.md"
+
+        - alert: CephOSDDown
+          expr: ceph_osd_up == 0
+          for: 10m
+          labels:
+            severity: critical
+            component: storage
+          annotations:
+            summary: "Ceph OSD {{ $labels.ceph_daemon }} down"
+            description: "OSD has been down for >10min. Replication degraded."
+
+        - alert: CephPgInactive
+          expr: ceph_pg_total - ceph_pg_active > 0
+          for: 15m
+          labels:
+            severity: critical
+            component: storage
+          annotations:
+            summary: "Ceph PGs inactive"
+            description: "{{ $value }} placement groups not active. Data unavailable."
+
+        - alert: CephOSDNearFull
+          expr: ceph_osd_stat_bytes_used / ceph_osd_stat_bytes > 0.75
+          for: 30m
+          labels:
+            severity: warning
+            component: storage
+          annotations:
+            summary: "Ceph OSD {{ $labels.ceph_daemon }} >75% full"
+            description: "OSD usage at {{ $value | humanizePercentage }}. Add capacity soon."
+
+        - alert: CephPgRecoveryStuck
+          expr: ceph_pg_total - ceph_pg_clean > 0
+          for: 30m
+          labels:
+            severity: warning
+            component: storage
+          annotations:
+            summary: "Ceph PG recovery stalled"
+            description: "{{ $value }} PGs not clean for >30min."

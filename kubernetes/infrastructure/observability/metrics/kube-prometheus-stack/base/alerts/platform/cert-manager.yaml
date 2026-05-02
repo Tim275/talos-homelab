@@ -1,0 +1,36 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-cert-manager
+spec:
+  groups:
+    - name: cert-manager
+      interval: 5m
+      rules:
+        - alert: CertExpiringIn7Days
+          expr: certmanager_certificate_expiration_timestamp_seconds - time() < 7 * 24 * 3600
+          for: 1h
+          labels:
+            severity: critical
+            component: platform
+          annotations:
+            summary: "TLS cert expires in <7d: {{ $labels.name }}"
+            description: "Certificate {{ $labels.name }} in {{ $labels.namespace }} expires in {{ $value | humanizeDuration }}."
+
+        - alert: CertExpiringIn30Days
+          expr: certmanager_certificate_expiration_timestamp_seconds - time() < 30 * 24 * 3600
+          for: 12h
+          labels:
+            severity: warning
+            component: platform
+          annotations:
+            summary: "TLS cert expires in <30d: {{ $labels.name }}"
+
+        - alert: CertManagerWebhookDown
+          expr: up{job="cert-manager-webhook"} == 0
+          for: 10m
+          labels:
+            severity: critical
+            component: platform
+          annotations:
+            summary: "cert-manager webhook down — renewals blocked"
