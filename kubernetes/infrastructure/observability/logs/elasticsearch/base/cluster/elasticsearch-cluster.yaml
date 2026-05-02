@@ -4,7 +4,7 @@ metadata:
   name: production-cluster
   namespace: elastic-system
 spec:
-  # UPGRADED: 8.16.1 → 8.17.0 (December 2025 - latest stable 8.17.x)
+  # UPGRADED: 8.16.1 8.17.0 (December 2025 - latest stable 8.17.x)
   # ECK Operator 3.2.0 compatible
   version: 8.17.0
 
@@ -27,25 +27,20 @@ spec:
         # Note: cluster.initial_master_nodes and xpack.security.enabled
         # are managed by ECK Operator automatically
 
-        # ============================================================================
         # 2025 CEPH STORAGE TUNING
         # Based on: Elastic Docs, Opster Analysis, Pulse Support, GitHub Issues
         # Problem: Ceph block storage on Proxmox VMs has 50-70s I/O latency spikes
         # Solution: Enterprise-grade timeout configuration for distributed storage
-        # ============================================================================
 
-        # === CLUSTER STATE PUBLICATION (CRITICAL for "failed to commit" errors) ===
         # Reference: https://pulse.support/kb/elasticsearch-cluster-publish-timeout
         cluster.publish.timeout: "180s"       # Default: 30s - cluster state writes take 69s!
         cluster.publish.info_timeout: "60s"   # Default: 10s - balanced (not too high to mask issues)
 
-        # === DISCOVERY (Cluster Formation) ===
         # Reference: https://www.elastic.co/guide/en/elasticsearch/reference/current/modules-discovery-settings.html
         discovery.request_peers_timeout: "120s"     # Default: 3s - health checks take 56-69s!
         discovery.probe.connect_timeout: "60s"      # Default: 30s
         discovery.probe.handshake_timeout: "60s"    # Default: 30s
 
-        # === FAULT DETECTION (prevent false node removals during I/O spikes) ===
         # Reference: https://www.elastic.co/guide/en/elasticsearch/reference/current/cluster-fault-detection.html
         cluster.fault_detection.leader_check.timeout: "60s"    # Default: 10s
         cluster.fault_detection.leader_check.interval: "5s"    # Default: 1s - balanced
@@ -54,15 +49,12 @@ spec:
         cluster.fault_detection.follower_check.interval: "5s"  # Default: 1s
         cluster.fault_detection.follower_check.retry_count: "5" # Default: 3
 
-        # === TRANSPORT LAYER (ES 8.17+ - reduces network chatter) ===
         transport.ping_schedule: "10s"          # Reduce heartbeat frequency
         transport.connect_timeout: "60s"        # Default: 30s (renamed from transport.tcp.connect_timeout in 8.17)
 
-        # === STORAGE HEALTH MONITORING ===
         monitor.fs.health.slow_path_logging_threshold: "60s"  # Default: 5s
         monitor.fs.health.refresh_interval: "120s"            # Default: 60s
 
-        # === INDEXING PERFORMANCE  ===
         indices.memory.index_buffer_size: "15%"   # Default: 10% - better for bulk indexing
         thread_pool.write.queue_size: "1000"      # Default: 200 - prevent rejections
       podTemplate:
@@ -103,7 +95,7 @@ spec:
                   cpu: 1500m
               env:
                 - name: ES_JAVA_OPTS
-                  # 50% of container memory (3GB → 1.5GB heap)
+                  # 50% of container memory (3GB 1.5GB heap)
                   value: "-Xms1536m -Xmx1536m"
           # Affinity - schedule on large memory nodes (worker-1, worker-2 have 28GB)
           affinity:
