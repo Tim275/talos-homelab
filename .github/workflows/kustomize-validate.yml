@@ -1,0 +1,64 @@
+name: kustomize-validate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "kubernetes/**"
+      - ".github/workflows/kustomize-validate.yml"
+  push:
+    branches: [main]
+    paths:
+      - "kubernetes/**"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+          kustomize version
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.0
+
+      - name: Validate kustomize builds
+        run: |
+          set +e
+          FAILED=0
+          PASSED=0
+          FAILED_DIRS=()
+
+          while IFS= read -r kfile; do
+            DIR=$(dirname "$kfile")
+            OUTPUT=$(kustomize build "$DIR" --enable-helm --load-restrictor=LoadRestrictionsNone 2>&1)
+            STATUS=$?
+
+            if [ $STATUS -ne 0 ]; then
+              FAILED=$((FAILED+1))
+              FAILED_DIRS+=("$DIR")
+              echo "::error file=$kfile::kustomize build failed in $DIR"
+              echo "::group::Error in $DIR"
+              echo "$OUTPUT"
+              echo "::endgroup::"
+            else
+              PASSED=$((PASSED+1))
+            fi
+          done < <(find kubernetes -name kustomization.yaml -not -path "*/charts/*")
+
+          echo "Total: $((PASSED + FAILED)), Passed: $PASSED, Failed: $FAILED"
+
+          if [ $FAILED -gt 0 ]; then
+            echo "Failed directories:"
+            printf '  - %s\n' "${FAILED_DIRS[@]}"
+            exit 1
+          fi
