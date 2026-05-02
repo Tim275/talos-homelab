@@ -1,0 +1,39 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyExtensionPolicy
+metadata:
+  name: coraza-waf
+  namespace: gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: envoy-gateway
+  wasm:
+    - name: coraza
+      rootID: coraza
+      # failOpen: if Coraza crashes → traffic passes through (no downtime)
+      failOpen: true
+      code:
+        type: Image
+        image:
+          url: ghcr.io/corazawaf/coraza-proxy-wasm:v0.6.0
+      config: |
+        {
+          "directives_map": {
+            "default": [
+              "SecRuleEngine DetectionOnly",
+              "SecRequestBodyAccess On",
+              "SecRequestBodyLimit 13107200",
+              "SecRequestBodyNoFilesLimit 131072",
+              "SecResponseBodyAccess Off",
+              "SecDebugLogLevel 0",
+              "SecRule REQUEST_HEADERS:Upgrade \"@streq websocket\" \"id:1000,phase:1,pass,nolog,ctl:ruleEngine=Off\"",
+              "SecRule REQUEST_HEADERS:Content-Type \"@beginsWith application/grpc\" \"id:1001,phase:1,pass,nolog,ctl:ruleEngine=Off\"",
+              "Include @owasp_crs/crs-setup.conf.example",
+              "Include @owasp_crs/rules/*.conf"
+            ]
+          },
+          "default_directives": "default"
+        }
