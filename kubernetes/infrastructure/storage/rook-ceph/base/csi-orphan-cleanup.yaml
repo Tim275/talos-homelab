@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: csi-orphan-cleanup
+  namespace: rook-ceph
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: csi-orphan-cleanup
+  namespace: rook-ceph
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/exec"]
+    verbs: ["get", "list", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: csi-orphan-cleanup
+  namespace: rook-ceph
+subjects:
+  - kind: ServiceAccount
+    name: csi-orphan-cleanup
+    namespace: rook-ceph
+roleRef:
+  kind: Role
+  name: csi-orphan-cleanup
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: csi-orphan-omap-cleanup
+  namespace: rook-ceph
+spec:
+  schedule: "17 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          serviceAccountName: csi-orphan-cleanup
+          restartPolicy: OnFailure
+          containers:
+            - name: cleanup
+              image: bitnami/kubectl:1.33
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 200m
+                  memory: 128Mi
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -eo pipefail
+                  POOLS="replicapool-enterprise"
+                  REMOVED=0
+                  for POOL in $POOLS; do
+                    echo "[$(date)] Scanning pool: $POOL"
+                    KEYS=$(kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
+                      rados -p "$POOL" listomapkeys csi.volumes.default 2>/dev/null \
+                      | grep '^csi\.volume\.pvc-' || true)
+                    [ -z "$KEYS" ] && continue
+                    RBD_IMGS=$(kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
+                      rbd ls -p "$POOL" 2>/dev/null || true)
+                    LIVE_PVCS=$(kubectl get pvc -A -o jsonpath='{range .items[*]}{.metadata.uid}{"\n"}{end}' 2>/dev/null)
+                    while read -r KEY; do
+                      [ -z "$KEY" ] && continue
+                      PVC_UID=$(echo "$KEY" | sed 's|^csi\.volume\.pvc-||')
+                      if echo "$LIVE_PVCS" | grep -q "$PVC_UID"; then
+                        continue
+                      fi
+                      VOL_UID=$(kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
+                        rados -p "$POOL" getomapval csi.volumes.default "$KEY" --no-header 2>/dev/null \
+                        | tr -d '\0' | tail -c 36 || true)
+                      if [ -n "$VOL_UID" ] && echo "$RBD_IMGS" | grep -q "csi-vol-$VOL_UID"; then
+                        echo "  SKIP $KEY → has live RBD image csi-vol-$VOL_UID"
+                        continue
+                      fi
+                      echo "  ORPHAN $KEY (PVC=$PVC_UID, IMG=$VOL_UID) — removing"
+                      kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
+                        rados -p "$POOL" rmomapkey csi.volumes.default "$KEY" 2>&1 | tail -1
+                      REMOVED=$((REMOVED+1))
+                    done <<< "$KEYS"
+                  done
+                  echo "[$(date)] Done. Removed $REMOVED orphan omap keys."

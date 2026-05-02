@@ -1,0 +1,54 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: storage-csi
+spec:
+  groups:
+    - name: csi-pvc-health
+      interval: 1m
+      rules:
+        - alert: PVCPendingTooLong
+          expr: |
+            kube_persistentvolumeclaim_status_phase{phase="Pending"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            component: storage
+          annotations:
+            summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} pending >5min"
+            description: "Likely a stuck CSI provisioning operation. Check `kubectl describe pvc` for `already exists` errors."
+            action: "kubectl exec -n rook-ceph deploy/rook-ceph-tools -- rados -p replicapool-enterprise rmomapkey csi.volumes.default csi.volume.<PVC-UID>"
+
+        - alert: PVCPendingCritical
+          expr: |
+            kube_persistentvolumeclaim_status_phase{phase="Pending"} == 1
+          for: 30m
+          labels:
+            severity: critical
+            component: storage
+          annotations:
+            summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} pending >30min"
+            description: "Workload {{ $labels.persistentvolumeclaim }} blocked from starting. Investigate stuck CSI lock or unhealthy Ceph."
+            impact: "Pods waiting for this PVC cannot start"
+
+        - alert: CSIProvisionerDown
+          expr: |
+            kube_deployment_status_replicas_available{deployment=~".*csi.ceph.com-ctrlplugin"} < 1
+          for: 5m
+          labels:
+            severity: critical
+            component: storage
+          annotations:
+            summary: "Ceph CSI provisioner {{ $labels.deployment }} has 0 available replicas"
+            description: "PVC creation/deletion blocked cluster-wide while CSI provisioner is down."
+
+        - alert: CephOSDFlapping
+          expr: |
+            changes(ceph_osd_up[10m]) > 2
+          for: 5m
+          labels:
+            severity: warning
+            component: storage
+          annotations:
+            summary: "Ceph OSD {{ $labels.ceph_daemon }} flapping (>2 state changes in 10min)"
+            description: "OSD bouncing up/down — investigate disk health, network, or memory pressure."
