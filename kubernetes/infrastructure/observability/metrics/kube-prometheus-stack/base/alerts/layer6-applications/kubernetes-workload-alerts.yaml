@@ -1,7 +1,7 @@
-# ============================================================================
+
 # KUBERNETES WORKLOAD ALERTS
 # Enterprise Tier-0: PVC, Deployments, Jobs, CronJobs, HPA
-# ============================================================================
+
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -13,13 +13,13 @@ metadata:
     tier: infrastructure
 spec:
   groups:
-    # ========================================================================
+
     # KUBERNETES WORKLOAD CRITICAL ALERTS
-    # ========================================================================
+
     - name: kubernetes.workload.critical
       interval: 30s
       rules:
-        # ====== P1: CRITICAL - Deployment at Zero Replicas ======
+
         - alert: DeploymentReplicasZero
           expr: |
             kube_deployment_spec_replicas > 0
@@ -47,13 +47,12 @@ spec:
 
               Check: kubectl -n {{ $labels.namespace }} describe deployment {{ $labels.deployment }}
 
-    # ========================================================================
     # KUBERNETES WORKLOAD HIGH ALERTS
-    # ========================================================================
+
     - name: kubernetes.workload.high
       interval: 30s
       rules:
-        # ====== P2: HIGH - PVC Pending ======
+
         - alert: PersistentVolumeClaimPending
           expr: |
             kube_persistentvolumeclaim_status_phase{phase="Pending"} == 1
@@ -80,7 +79,6 @@ spec:
 
               Check: kubectl -n {{ $labels.namespace }} describe pvc {{ $labels.persistentvolumeclaim }}
 
-        # ====== P2: HIGH - Pod Pending Scheduling ======
         - alert: PodPendingScheduling
           expr: |
             kube_pod_status_phase{phase="Pending"} == 1
@@ -109,7 +107,6 @@ spec:
 
               Check: kubectl -n {{ $labels.namespace }} describe pod {{ $labels.pod }}
 
-        # ====== P2: HIGH - Deployment Replicas Mismatch ======
         - alert: DeploymentReplicasMismatch
           expr: |
             kube_deployment_spec_replicas
@@ -135,7 +132,6 @@ spec:
               Impact: Reduced capacity or unavailable pods
               Action: Check pod events and node resources
 
-        # ====== P2: HIGH - StatefulSet Replicas Mismatch ======
         - alert: StatefulSetReplicasMismatch
           expr: |
             kube_statefulset_replicas
@@ -161,7 +157,6 @@ spec:
               Impact: Stateful service degraded
               Action: Check pod events and PVC binding
 
-        # ====== P2: HIGH - HPA at Maximum ======
         - alert: HorizontalPodAutoscalerMaxedOut
           expr: |
             kube_horizontalpodautoscaler_status_current_replicas
@@ -187,7 +182,6 @@ spec:
               Impact: Cannot scale further, potential performance issues
               Action: Consider increasing max replicas or optimizing application
 
-        # ====== P2: HIGH - Job Failed ======
         - alert: KubernetesJobFailed
           expr: |
             kube_job_status_failed > 0
@@ -210,7 +204,6 @@ spec:
               Check: kubectl -n {{ $labels.namespace }} describe job {{ $labels.job_name }}
               Check: kubectl -n {{ $labels.namespace }} logs job/{{ $labels.job_name }}
 
-        # ====== P2: HIGH - CronJob Missed Schedule ======
         # : Alert if last run > 3x expected interval
         # Uses kube_cronjob_next_schedule_time to calculate expected interval dynamically
         - alert: CronJobMissedSchedule
@@ -242,7 +235,6 @@ spec:
               Check: kubectl -n {{ $labels.namespace }} describe cronjob {{ $labels.cronjob }}
               Logs: kubectl -n {{ $labels.namespace }} logs -l job-name --tail=50
 
-        # ====== P2: HIGH - DaemonSet Not Scheduled ======
         - alert: DaemonSetNotScheduled
           expr: |
             kube_daemonset_status_desired_number_scheduled
@@ -267,7 +259,6 @@ spec:
 
               Action: Check node taints and DaemonSet tolerations
 
-        # ====== P2: HIGH - DaemonSet Rollout Stuck ======
         - alert: DaemonSetRolloutStuck
           expr: |
             kube_daemonset_status_number_ready
@@ -291,13 +282,12 @@ spec:
 
               Action: Check pod status and events
 
-    # ========================================================================
     # KUBERNETES WORKLOAD MEDIUM ALERTS
-    # ========================================================================
+
     - name: kubernetes.workload.medium
       interval: 60s
       rules:
-        # ====== P3: MEDIUM - Container Waiting ======
+
         - alert: ContainerWaiting
           expr: |
             kube_pod_container_status_waiting_reason{reason!="ContainerCreating"} == 1
@@ -322,7 +312,6 @@ spec:
               - CrashLoopBackOff: Container keeps crashing
               - ErrImagePull: Image not found
 
-        # ====== P3: MEDIUM - HPA Unable to Scale ======
         - alert: HPAUnableToScale
           expr: |
             kube_horizontalpodautoscaler_status_condition{condition="ScalingActive",status="false"} == 1
@@ -344,7 +333,6 @@ spec:
 
               Action: Check metrics-server and HPA configuration
 
-        # ====== P3: MEDIUM - PV Reclaim Failed ======
         - alert: PersistentVolumeReclaimFailed
           expr: |
             kube_persistentvolume_status_phase{phase="Failed"} == 1

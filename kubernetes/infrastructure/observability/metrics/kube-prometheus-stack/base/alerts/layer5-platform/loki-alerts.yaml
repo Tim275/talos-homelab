@@ -1,7 +1,7 @@
-# ============================================================================
+
 # LOKI LOG AGGREGATION ALERTS
 # Enterprise Tier-0: Monitor log infrastructure
-# ============================================================================
+
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -13,13 +13,13 @@ metadata:
     tier: observability
 spec:
   groups:
-    # ========================================================================
+
     # LOKI CRITICAL ALERTS
-    # ========================================================================
+
     - name: loki.critical
       interval: 30s
       rules:
-        # ====== P1: CRITICAL - Loki Down ======
+
         - alert: LokiDown
           expr: |
             up{job=~"loki.*"} == 0
@@ -45,7 +45,6 @@ spec:
 
               Check: kubectl -n monitoring get pods -l app.kubernetes.io/name=loki
 
-        # ====== P1: CRITICAL - Loki All Replicas Down ======
         - alert: LokiAllReplicasDown
           expr: |
             count(up{job=~"loki.*"} == 1) == 0
@@ -67,13 +66,12 @@ spec:
               Impact: No logs collected, complete observability blind spot
               Team: @platform-oncall
 
-    # ========================================================================
     # LOKI HIGH ALERTS
-    # ========================================================================
+
     - name: loki.high
       interval: 30s
       rules:
-        # ====== P2: HIGH - Loki Ingestion Rate Throttled ======
+
         - alert: LokiIngestionRateThrottled
           expr: |
             sum(rate(loki_distributor_bytes_received_total[5m])) by (job)
@@ -96,7 +94,6 @@ spec:
 
               Action: Check for log spam, noisy applications
 
-        # ====== P2: HIGH - Loki Query Errors ======
         - alert: LokiQueryErrors
           expr: |
             sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[5m])) by (job)
@@ -121,7 +118,6 @@ spec:
               Impact: Log queries failing, troubleshooting impaired
               Action: Check Loki logs for errors
 
-        # ====== P2: HIGH - Loki Request Latency High ======
         # NOTE: Excludes tail endpoints which are long-lived WebSocket connections
         # Tail connections naturally have high "latency" because they stream continuously
         # Route formats: /loki/api/v1/tail OR loki_api_v1_tail (underscore variant)
@@ -148,7 +144,6 @@ spec:
 
               Action: Check Loki resources and query patterns
 
-        # ====== P2: HIGH - Loki Ingester Not Ready ======
         - alert: LokiIngesterNotReady
           expr: |
             loki_ingester_checkpoint_logged_bytes > 0
@@ -169,7 +164,6 @@ spec:
 
               Action: Check Loki ingester logs and state
 
-        # ====== P2: HIGH - Loki S3 Errors ======
         - alert: LokiS3Errors
           expr: |
             sum(rate(loki_boltdb_shipper_request_duration_seconds_count{status="error"}[5m])) > 0
@@ -188,13 +182,12 @@ spec:
 
               Action: Check Ceph RGW status and Loki S3 credentials
 
-    # ========================================================================
     # LOKI MEDIUM ALERTS
-    # ========================================================================
+
     - name: loki.medium
       interval: 60s
       rules:
-        # ====== P3: MEDIUM - Loki Compactor Not Running ======
+
         - alert: LokiCompactorNotRunning
           expr: |
             loki_compactor_running == 0
@@ -214,7 +207,6 @@ spec:
               Impact: Storage not being cleaned up
               Action: Check compactor configuration
 
-        # ====== P3: MEDIUM - Loki Canary Latency High ======
         - alert: LokiCanaryLatencyHigh
           expr: |
             histogram_quantile(0.99,
@@ -236,7 +228,6 @@ spec:
               p99 Latency: {{ $value | printf "%.1f" }}s
               Threshold: 5s
 
-        # ====== P3: MEDIUM - Loki Stream Rate Limit ======
         - alert: LokiStreamRateLimited
           expr: |
             sum(rate(loki_discarded_samples_total{reason="rate_limited"}[5m])) > 0
