@@ -30,6 +30,19 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        - name: wait-for-keycloak
+          image: busybox:1.36
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for keycloak service to accept TCP on :8080…"
+              until nc -z keycloak.keycloak.svc.cluster.local 8080; do
+                echo "  not ready yet, retry in 5s"
+                sleep 5
+              done
+              echo "Keycloak port reachable."
       containers:
         - name: setup
           image: quay.io/keycloak/keycloak:25.0.6@sha256:82c5b7a110456dbd42b86ea572e728878549954cc8bd03cd65410d75328095d2
@@ -60,8 +73,18 @@ spec:
             - |
               set -e
 
-              echo "=== Waiting for Keycloak to be ready (20s) ==="
-              sleep 20
+              # Wait for the admin REST API to actually accept credentials, not just the TCP port.
+              echo "=== Waiting for Keycloak admin REST API ==="
+              for i in $(seq 1 60); do
+                if /opt/keycloak/bin/kcadm.sh config credentials \
+                    --server "$KEYCLOAK_URL" --realm master \
+                    --user "$KEYCLOAK_ADMIN" --password "$KEYCLOAK_ADMIN_PASSWORD" 2>/dev/null; then
+                  echo "Admin API ready (after $((i*5))s)."
+                  break
+                fi
+                echo "  attempt $i/60 — admin API not ready, retry in 5s"
+                sleep 5
+              done
 
               echo ""
               echo "=== Logging in to Keycloak ==="
@@ -169,17 +192,16 @@ spec:
               echo "    - https://argo.timourhomelab.org/auth/callback"
               echo "    - https://argo.timourhomelab.org/api/dex/callback"
               echo "==========================================="
----
-# ArgoCD OIDC Client Secret - should be SealedSecret in production
-apiVersion: v1
-kind: Secret
-metadata:
-  name: argocd-oidc-client-secret
-  namespace: keycloak
-  labels:
-    app.kubernetes.io/name: argocd-oidc-client-secret
-    app.kubernetes.io/part-of: platform-identity
-type: Opaque
-stringData:
-  # This secret should match the one in argocd namespace (argocd-oidc-secret)
-  clientSecret: "ArgoCD-OIDC-Secret-2025!"
+# NOTE: The plaintext Secret previously inlined here was removed for security.
+# Provide the secret as a SealedSecret named `argocd-oidc-client-secret`
+# (key: `clientSecret`) in this namespace. Generate with:
+#
+#   kubectl create secret generic argocd-oidc-client-secret \
+#     --namespace=keycloak \
+#     --from-literal=clientSecret='<rotate-me>' \
+#     --dry-run=client -o yaml \
+#     | kubeseal --controller-namespace sealed-secrets --format yaml \
+#     > argocd-oidc-client-sealed-secret.yaml
+#
+# Reference it from kustomization.yaml. The same value must also be present in
+# the argocd namespace (argocd-oidc-secret) for OIDC verification.
