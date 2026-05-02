@@ -1,0 +1,59 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kubernetes-cluster
+spec:
+  groups:
+    - name: kubernetes-cluster
+      interval: 30s
+      rules:
+        - alert: ClusterAPIServerDown
+          expr: up{job="apiserver"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            component: kubernetes
+          annotations:
+            summary: "Kubernetes API server is down"
+            description: "API server unreachable for >2 minutes. All cluster operations halted."
+            runbook_url: "docs/runbooks/cluster-apiserver-down.md"
+
+        - alert: EtcdQuorumLoss
+          expr: sum(up{job=~"kube-etcd|etcd"}) < ((count(up{job=~"kube-etcd|etcd"}) / 2) + 1)
+          for: 1m
+          labels:
+            severity: critical
+            component: kubernetes
+          annotations:
+            summary: "etcd quorum lost"
+            description: "etcd has lost quorum — cluster state at risk of corruption."
+
+        - alert: WorkerNodesDown
+          expr: count(kube_node_status_condition{condition="Ready", status="false"} == 1) > 1
+          for: 5m
+          labels:
+            severity: critical
+            component: kubernetes
+          annotations:
+            summary: "Multiple worker nodes NotReady"
+            description: "{{ $value }} worker nodes have been NotReady for >5 minutes."
+
+        - alert: NodeMemoryPressure
+          expr: (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) < 0.20
+          for: 10m
+          labels:
+            severity: warning
+            component: kubernetes
+          annotations:
+            summary: "Node {{ $labels.instance }} low on memory"
+            description: "Available memory <20% on node {{ $labels.instance }}."
+
+        - alert: NodeDiskUsageHigh
+          expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|nfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|nfs|overlay"}) > 0.75
+          for: 10m
+          labels:
+            severity: warning
+            component: kubernetes
+          annotations:
+            summary: "Disk >75% full on {{ $labels.instance }}:{{ $labels.mountpoint }}"
+            description: "Disk usage at {{ $value | humanizePercentage }}."

@@ -1,0 +1,72 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: apps-drova
+spec:
+  groups:
+    - name: drova-http
+      interval: 30s
+      rules:
+        - alert: DrovaHttpErrorRateHigh
+          expr: |
+            (
+              sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service",http_response_status_code=~"5.."}[5m]))
+              /
+              sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service"}[5m]))
+            ) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+            component: apps
+            tenant: drova
+          annotations:
+            summary: "Drova {{ $labels.service_name }}: HTTP error rate >5%"
+            description: "Error rate {{ $value | humanizePercentage }} for service {{ $labels.service_name }}."
+
+        - alert: DrovaHttpP99LatencyHigh
+          expr: |
+            histogram_quantile(0.99,
+              sum by (service_name, le) (rate(http_server_request_duration_seconds_bucket{service_name=~"api-gateway|chat-service|user-service"}[5m]))
+            ) > 2
+          for: 10m
+          labels:
+            severity: warning
+            component: apps
+            tenant: drova
+          annotations:
+            summary: "Drova {{ $labels.service_name }}: P99 latency >2s"
+            description: "P99 latency {{ $value }}s for service {{ $labels.service_name }}."
+
+    - name: drova-grpc
+      interval: 30s
+      rules:
+        - alert: DrovaGrpcErrorRateHigh
+          expr: |
+            (
+              sum by (service_name) (rate(rpc_server_call_duration_seconds_count{service_name=~"trip-service|driver-service",rpc_grpc_status_code!="0"}[5m]))
+              /
+              sum by (service_name) (rate(rpc_server_call_duration_seconds_count{service_name=~"trip-service|driver-service"}[5m]))
+            ) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+            component: apps
+            tenant: drova
+          annotations:
+            summary: "Drova {{ $labels.service_name }}: gRPC error rate >5%"
+            description: "gRPC errors {{ $value | humanizePercentage }} for service {{ $labels.service_name }}."
+
+    - name: drova-availability
+      interval: 1m
+      rules:
+        - alert: DrovaServiceDown
+          expr: |
+            kube_deployment_status_replicas_available{namespace="drova",deployment=~"api-gateway|user-service|trip-service|driver-service|chat-service|payment-service"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            component: apps
+            tenant: drova
+          annotations:
+            summary: "Drova service down: {{ $labels.deployment }}"
+            description: "0 ready replicas for {{ $labels.deployment }} >2min."

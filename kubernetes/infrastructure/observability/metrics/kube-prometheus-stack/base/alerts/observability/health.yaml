@@ -1,0 +1,38 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: observability-health
+spec:
+  groups:
+    - name: observability-stack
+      interval: 5m
+      rules:
+        - alert: PrometheusTargetDown
+          expr: up == 0
+          for: 15m
+          labels:
+            severity: warning
+            component: observability
+          annotations:
+            summary: "Scrape target down: {{ $labels.job }}/{{ $labels.instance }}"
+            description: "Prometheus cannot scrape {{ $labels.instance }} for >15min."
+
+        - alert: LokiHighIngestionRate
+          expr: rate(loki_distributor_bytes_received_total[5m]) > 10 * 1024 * 1024
+          for: 30m
+          labels:
+            severity: warning
+            component: observability
+          annotations:
+            summary: "Loki log ingestion >10 MB/s"
+            description: "Sustained log volume {{ $value | humanize }}B/s. Investigate noisy services."
+
+        - alert: KubescapeDown
+          expr: up{job=~"kubescape.*"} == 0
+          for: 30m
+          labels:
+            severity: warning
+            component: observability
+          annotations:
+            summary: "Kubescape down — compliance scanning halted"
+            description: "Kubescape unavailable >30min."
