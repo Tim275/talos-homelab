@@ -1,0 +1,55 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: drova-slo
+  namespace: grafana
+spec:
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  allowCrossNamespaceImport: true
+  folder: Drova
+  json: |
+    {
+      "title": "Drova — SLO + Error Budget",
+      "uid": "drova-slo",
+      "tags": ["drova","slo"],
+      "schemaVersion": 39,
+      "refresh": "1m",
+      "time": {"from":"now-30d","to":"now"},
+      "panels": [
+        {
+          "id": 1,
+          "title": "HTTP Availability SLI (5m, target 99.5%)",
+          "type": "timeseries",
+          "gridPos": {"x":0,"y":0,"w":24,"h":8},
+          "targets": [{
+            "expr": "100 * slo:drova_http_availability:ratio_rate5m",
+            "legendFormat": "{{service_name}}"
+          }],
+          "fieldConfig": {"defaults":{"unit":"percent","min":99,"max":100,"thresholds":{"mode":"absolute","steps":[{"color":"red","value":0},{"color":"yellow","value":99.5},{"color":"green","value":99.9}]}}}
+        },
+        {
+          "id": 2,
+          "title": "Error Budget Burn Rate (1h)",
+          "type": "timeseries",
+          "gridPos": {"x":0,"y":8,"w":12,"h":8},
+          "targets": [{
+            "expr": "(1 - slo:drova_http_availability:ratio_rate1h) / (1 - 0.995)",
+            "legendFormat": "{{service_name}}"
+          }],
+          "fieldConfig": {"defaults":{"unit":"none","thresholds":{"mode":"absolute","steps":[{"color":"green","value":0},{"color":"yellow","value":1},{"color":"red","value":14.4}]}}}
+        },
+        {
+          "id": 3,
+          "title": "30-day Error Budget Remaining",
+          "type": "stat",
+          "gridPos": {"x":12,"y":8,"w":12,"h":8},
+          "targets": [{
+            "expr": "100 * (1 - ((1 - avg_over_time(slo:drova_http_availability:ratio_rate5m[30d])) / (1 - 0.995)))",
+            "legendFormat": "{{service_name}}"
+          }],
+          "fieldConfig": {"defaults":{"unit":"percent","thresholds":{"mode":"absolute","steps":[{"color":"red","value":0},{"color":"yellow","value":25},{"color":"green","value":75}]}}}
+        }
+      ]
+    }

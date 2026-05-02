@@ -1,0 +1,36 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hypervisor-external
+spec:
+  groups:
+    - name: external-connectivity
+      interval: 1m
+      rules:
+        - alert: InternetConnectivityLost
+          expr: probe_success{job="blackbox-external"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: hypervisor
+          annotations:
+            summary: "External connectivity lost: {{ $labels.target }}"
+            description: "Blackbox probe to {{ $labels.target }} failing >5min. ISP/router/firewall issue."
+
+        - alert: ExternalDNSResolutionFailed
+          expr: probe_dns_lookup_time_seconds{job="blackbox-dns"} > 5 or probe_success{job="blackbox-dns"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            component: hypervisor
+          annotations:
+            summary: "External DNS slow/failing: {{ $labels.target }}"
+
+        - alert: TLSCertificateExpiringSoonExternal
+          expr: probe_ssl_earliest_cert_expiry{job=~"blackbox-.*"} - time() < 14 * 24 * 3600
+          for: 1h
+          labels:
+            severity: warning
+            component: hypervisor
+          annotations:
+            summary: "External TLS cert expires <14d: {{ $labels.target }}"

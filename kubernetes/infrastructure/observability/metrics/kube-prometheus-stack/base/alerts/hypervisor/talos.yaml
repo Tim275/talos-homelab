@@ -1,0 +1,67 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hypervisor-talos
+spec:
+  groups:
+    - name: talos-os
+      interval: 1m
+      rules:
+        - alert: TalosKubeletDown
+          expr: up{job="kubelet"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: hypervisor
+          annotations:
+            summary: "Talos kubelet unreachable on {{ $labels.node }}"
+            description: "Kubelet has been down >5min. Pods on this node not reconciled."
+
+        - alert: TalosNodeRebootedRecently
+          expr: (time() - node_boot_time_seconds) < 600
+          for: 1m
+          labels:
+            severity: warning
+            component: hypervisor
+          annotations:
+            summary: "Talos node {{ $labels.instance }} rebooted recently"
+            description: "Node uptime <10min. Investigate if planned."
+
+        - alert: TalosKernelMessages
+          expr: increase(node_systemd_unit_state{name="kernel"}[5m]) > 5
+          for: 5m
+          labels:
+            severity: warning
+            component: hypervisor
+          annotations:
+            summary: "Talos kernel events on {{ $labels.instance }}"
+
+        - alert: TalosNodeClockSkew
+          expr: abs(node_timex_offset_seconds) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            component: hypervisor
+          annotations:
+            summary: "Talos node {{ $labels.instance }} clock skew {{ $value }}s"
+            description: "NTP sync issue. Auth tokens may fail."
+
+        - alert: TalosCPUSteal
+          expr: avg by (instance) (rate(node_cpu_seconds_total{mode="steal"}[5m])) > 0.05
+          for: 15m
+          labels:
+            severity: warning
+            component: hypervisor
+          annotations:
+            summary: "Talos node {{ $labels.instance }} CPU steal >5%"
+            description: "Hypervisor resource contention. Proxmox host overcommitted."
+
+        - alert: TalosFilesystemReadOnly
+          expr: node_filesystem_readonly{fstype!~"tmpfs|squashfs|nfs"} == 1
+          for: 1m
+          labels:
+            severity: critical
+            component: hypervisor
+          annotations:
+            summary: "Talos filesystem read-only on {{ $labels.instance }}:{{ $labels.mountpoint }}"
+            description: "Likely disk failure or corruption. Node degraded."

@@ -1,0 +1,81 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: drova-dependencies
+  namespace: grafana
+spec:
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  allowCrossNamespaceImport: true
+  folder: Drova
+  json: |
+    {
+      "title": "Drova — Dependencies (PG / Redis / Kafka)",
+      "uid": "drova-dependencies",
+      "tags": ["drova","data"],
+      "schemaVersion": 39,
+      "refresh": "30s",
+      "time": {"from":"now-1h","to":"now"},
+      "panels": [
+        {
+          "id": 1,
+          "title": "PostgreSQL — Active Connections",
+          "type": "timeseries",
+          "gridPos": {"x":0,"y":0,"w":12,"h":8},
+          "targets": [{"expr":"cnpg_backends_total{namespace=\"drova\"}","legendFormat":"{{cluster}}/{{pod}}"}]
+        },
+        {
+          "id": 2,
+          "title": "PostgreSQL — Replication Lag",
+          "type": "timeseries",
+          "gridPos": {"x":12,"y":0,"w":12,"h":8},
+          "targets": [{"expr":"cnpg_pg_replication_lag{namespace=\"drova\"}","legendFormat":"{{pod}}"}],
+          "fieldConfig": {"defaults": {"unit": "s"}}
+        },
+        {
+          "id": 3,
+          "title": "Redis — Memory Used vs Max",
+          "type": "timeseries",
+          "gridPos": {"x":0,"y":8,"w":12,"h":8},
+          "targets": [
+            {"expr":"redis_memory_used_bytes{namespace=\"drova\"}","legendFormat":"used {{pod}}"},
+            {"expr":"redis_memory_max_bytes{namespace=\"drova\"}","legendFormat":"max {{pod}}"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "bytes"}}
+        },
+        {
+          "id": 4,
+          "title": "Redis — Operations/sec",
+          "type": "timeseries",
+          "gridPos": {"x":12,"y":8,"w":12,"h":8},
+          "targets": [{"expr":"rate(redis_commands_processed_total{namespace=\"drova\"}[5m])","legendFormat":"{{pod}}"}]
+        },
+        {
+          "id": 5,
+          "title": "Kafka — Consumer Lag (drova-kafka)",
+          "type": "timeseries",
+          "gridPos": {"x":0,"y":16,"w":12,"h":8},
+          "targets": [{"expr":"kafka_consumergroup_lag_sum{namespace=\"drova\"}","legendFormat":"{{consumergroup}}/{{topic}}"}]
+        },
+        {
+          "id": 6,
+          "title": "Kafka — Messages In/Out",
+          "type": "timeseries",
+          "gridPos": {"x":12,"y":16,"w":12,"h":8},
+          "targets": [
+            {"expr":"sum(rate(kafka_server_brokertopicmetrics_messagesin_total{namespace=\"drova\"}[5m]))","legendFormat":"in"},
+            {"expr":"sum(rate(kafka_server_brokertopicmetrics_bytesout_total{namespace=\"drova\"}[5m]))","legendFormat":"out (bytes)"}
+          ]
+        },
+        {
+          "id": 7,
+          "title": "MongoDB Atlas (External)",
+          "type": "text",
+          "gridPos": {"x":0,"y":24,"w":24,"h":3},
+          "options": {
+            "content": "**MongoDB Atlas:** [Open Atlas Dashboard](https://cloud.mongodb.com/) — Atlas hat seine eigene Native UI für MongoDB Performance/Connections/Replication."
+          }
+        }
+      ]
+    }
