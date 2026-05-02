@@ -47,19 +47,9 @@ End-user applications deployed in dev, staging, and production environments:
         <td>Self-hosted audiobook and podcast server</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://www.vectorlogo.zone/logos/apache_kafka/apache_kafka-icon.svg"></td>
-        <td><a href="kubernetes/apps/base/kafka-demo/">Kafka Email Consumer</a></td>
-        <td>Real-time email notification system consuming Kafka messages</td>
-    </tr>
-    <tr>
-        <td><img width="32" src="https://www.vectorlogo.zone/logos/apache_kafka/apache_kafka-icon.svg"></td>
-        <td><a href="kubernetes/apps/base/kafka-demo/">Kafka User Producer</a></td>
-        <td>Kafka message producer for user registration events</td>
-    </tr>
-    <tr>
-        <td>🍔</td>
-        <td><a href="https://github.com/Tim275/oms-k8s">OMS</a></td>
-        <td>Order Management System - Go microservices with distributed tracing (gateway, orders, payments, stock, kitchen)</td>
+        <td>🚗</td>
+        <td><a href="https://github.com/Tim275/drova-gitops">Drova</a></td>
+        <td>Ride-sharing microservices platform — api-gateway, user, trip, driver, chat, payment services with Kafka, Postgres (CNPG), Redis, OpenTelemetry tracing</td>
     </tr>
     <tr>
         <td><img width="32" src="https://dbeaver.io/wp-content/uploads/2015/09/beaver-head.png"></td>
