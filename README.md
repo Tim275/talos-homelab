@@ -52,6 +52,11 @@ End-user applications deployed in dev, staging, and production environments:
         <td>Ride-sharing microservices platform — api-gateway, user, trip, driver, chat, payment services with Kafka, Postgres (CNPG), Redis, OpenTelemetry tracing</td>
     </tr>
     <tr>
+        <td><img width="32" src="https://www.vectorlogo.zone/logos/apache_kafka/apache_kafka-icon.svg"></td>
+        <td><a href="https://strimzi.io/">Kafka (Strimzi)</a></td>
+        <td>Event streaming clusters managed by Strimzi operator — KafkaCluster CR, Topics, Users, Schema-Registry. Used by Drova services for event-driven workflows.</td>
+    </tr>
+    <tr>
         <td><img width="32" src="https://dbeaver.io/wp-content/uploads/2015/09/beaver-head.png"></td>
         <td><a href="https://dbeaver.io/docs/cloudbeaver/">CloudBeaver</a></td>
         <td>Web-based database management UI for PostgreSQL, MongoDB and more</td>
