@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: n8n-webhook
+  namespace: n8n-prod
+  labels:
+    app: n8n
+    component: webhook
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  replicas: 1  # Homelab: reduced from 2 to save resources
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: n8n
+      component: webhook
+  template:
+    metadata:
+      labels:
+        app: n8n
+        component: webhook
+    spec:
+      # ==========================================
+      # POD ANTI-AFFINITY - Distribute across nodes
+      # ==========================================
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - n8n
+                topologyKey: kubernetes.io/hostname
+
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: n8n-webhook
+          image: docker.n8n.io/n8nio/n8n:1.122.1
+          command: ["n8n", "webhook"]  # WEBHOOK MODE!
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          envFrom:
+            - configMapRef:
+                name: n8n-configmap
+            - secretRef:
+                name: n8n-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"     # Homelab: reduced from 500m
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3008
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 3008
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+      restartPolicy: Always
