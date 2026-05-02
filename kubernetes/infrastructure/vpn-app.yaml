@@ -1,29 +1,14 @@
-# VPN DOMAIN - PARENT APPLICATION (APP-OF-APPS PATTERN)
-
-# Enterprise Tier-0 GitOps Pattern: Parent app deploys child apps
-# UI Hierarchy: vpn (parent) tailscale (child)
-#
-# Tailscale Architecture:
-#   - Userspace WireGuard (no privileged containers)
-#   - Subnet router for Kubernetes access (Pod + Service CIDRs)
-#   - Restricted pod security standard
-#
-# Sync Wave Strategy:
-#   Wave 1: Network (Cilium/Istio) - CNI required
-#   Wave 2: Controllers (Cert-Manager, Sealed Secrets) - Required for auth
-#   Wave 3: VPN (THIS) - Tailscale subnet router
-#   Wave 4: Monitoring - Can scrape VPN metrics
+---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: vpn
   namespace: argocd
   labels:
-
     infrastructure.domain: vpn
     team: timour
   annotations:
-    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/sync-wave: '3'
 spec:
   project: infrastructure
   source:
@@ -38,7 +23,14 @@ spec:
       prune: true
       selfHeal: true
     syncOptions:
-      - CreateNamespace=true
-      - PrunePropagationPolicy=foreground
-      - PruneLast=true
-      - ServerSideApply=true
+    - CreateNamespace=true
+    - PrunePropagationPolicy=foreground
+    - PruneLast=true
+    - RespectIgnoreDifferences=true
+    - ServerSideApply=true
+    - ServerSideDiff=false
+  ignoreDifferences:
+  - group: argoproj.io
+    kind: Application
+    jqPathExpressions:
+    - ".status"
