@@ -6,13 +6,45 @@ metadata:
   labels:
     app: grafana
 spec:
-  disableDefaultAdminSecret: false  # Use admin credentials for now
+  disableDefaultAdminSecret: false
   config:
     log:
       mode: console
     server:
-      root_url: http://grafana.homelab.local:3000  # Your local setup
-      # OIDC disabled for initial setup - can be added later
+      root_url: https://grafana.timourhomelab.org
+      serve_from_sub_path: "false"
+    security:
+      cookie_secure: "true"
+      cookie_samesite: "lax"
+      disable_gravatar: "true"
+    auth:
+      disable_login_form: "false"
+      oauth_auto_login: "false"
+      signout_redirect_url: "https://iam.timourhomelab.org/realms/timour-homelab/protocol/openid-connect/logout?post_logout_redirect_uri=https%3A%2F%2Fgrafana.timourhomelab.org"
+    auth.generic_oauth:
+      enabled: "true"
+      name: "Keycloak"
+      icon: "signin"
+      allow_sign_up: "true"
+      client_id: "$__env{OAUTH_CLIENT_ID}"
+      client_secret: "$__env{OAUTH_CLIENT_SECRET}"
+      scopes: "openid profile email roles"
+      auth_url: "https://iam.timourhomelab.org/realms/timour-homelab/protocol/openid-connect/auth"
+      token_url: "https://iam.timourhomelab.org/realms/timour-homelab/protocol/openid-connect/token"
+      api_url: "https://iam.timourhomelab.org/realms/timour-homelab/protocol/openid-connect/userinfo"
+      role_attribute_path: "contains(roles[*], 'grafana-admin') && 'GrafanaAdmin' || contains(roles[*], 'grafana-editor') && 'Editor' || 'Viewer'"
+      role_attribute_strict: "false"
+      allow_assign_grafana_admin: "true"
+      use_pkce: "true"
+    feature_toggles:
+      enable: "traceqlEditor traceqlSearch correlations"
+    users:
+      allow_sign_up: "false"
+      auto_assign_org: "true"
+      auto_assign_org_role: "Viewer"
+    analytics:
+      reporting_enabled: "false"
+      check_for_updates: "false"
   service:
     spec:
       ports:
@@ -27,6 +59,9 @@ spec:
         spec:
           containers:
             - name: grafana
+              envFrom:
+                - secretRef:
+                    name: grafana-oauth-secret
               resources:
                 limits:
                   cpu: 500m
