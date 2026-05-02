@@ -1,0 +1,28 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: apps-n8n
+spec:
+  groups:
+    - name: n8n
+      interval: 1m
+      rules:
+        - alert: N8NMainDown
+          expr: kube_deployment_status_replicas_available{namespace="n8n-prod",deployment="n8n-main"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            component: apps
+          annotations:
+            summary: "n8n main pod down"
+            description: "n8n main has 0 ready replicas >2min. Workflow execution halted."
+
+        - alert: N8NWorkerDown
+          expr: kube_deployment_status_replicas_available{namespace="n8n-prod",deployment="n8n-worker"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: apps
+          annotations:
+            summary: "n8n worker down"
+            description: "n8n worker pool empty. Async workflows queued."

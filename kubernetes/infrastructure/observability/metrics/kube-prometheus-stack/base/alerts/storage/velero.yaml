@@ -1,0 +1,27 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: storage-velero
+spec:
+  groups:
+    - name: velero
+      interval: 5m
+      rules:
+        - alert: VeleroBackupFailed
+          expr: increase(velero_backup_failure_total[1h]) > 0
+          labels:
+            severity: critical
+            component: storage
+          annotations:
+            summary: "Velero backup failed: {{ $labels.schedule }}"
+            description: "Backup failure in last hour. Restoration capability at risk."
+
+        - alert: VeleroNoRecentBackup
+          expr: time() - velero_backup_last_successful_timestamp > 26 * 3600
+          for: 1h
+          labels:
+            severity: critical
+            component: storage
+          annotations:
+            summary: "No successful Velero backup in >26h"
+            description: "Last successful backup older than 26h for schedule {{ $labels.schedule }}."
