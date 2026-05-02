@@ -14,10 +14,14 @@ metadata:
     app.kubernetes.io/name: keycloak-argocd-client-setup
     app.kubernetes.io/part-of: platform-identity
   annotations:
-    argocd.argoproj.io/hook: Sync
+    # PostSync hook: ArgoCD only fires this AFTER all sync-wave resources
+    # report Healthy (Keycloak deployment probes must pass first).
+    # That removes the race where setup-jobs ran while Keycloak was still booting.
+    argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   ttlSecondsAfterFinished: 3600
+  backoffLimit: 5
   template:
     metadata:
       labels:
@@ -30,19 +34,6 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
-      initContainers:
-        - name: wait-for-keycloak
-          image: busybox:1.36
-          command:
-            - /bin/sh
-            - -c
-            - |
-              echo "Waiting for keycloak service to accept TCP on :8080…"
-              until nc -z keycloak.keycloak.svc.cluster.local 8080; do
-                echo "  not ready yet, retry in 5s"
-                sleep 5
-              done
-              echo "Keycloak port reachable."
       containers:
         - name: setup
           image: quay.io/keycloak/keycloak:25.0.6@sha256:82c5b7a110456dbd42b86ea572e728878549954cc8bd03cd65410d75328095d2
