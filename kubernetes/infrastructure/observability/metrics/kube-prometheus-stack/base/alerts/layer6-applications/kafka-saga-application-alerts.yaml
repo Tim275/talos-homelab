@@ -1,7 +1,7 @@
-# ============================================================================
+
 # KAFKA-SAGA MICROSERVICES ALERTS
 # Spring Boot + Kafka Application Metrics (via Micrometer/Actuator)
-# ============================================================================
+
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -13,13 +13,13 @@ metadata:
     layer: application
 spec:
   groups:
-    # ========================================================================
+
     # KAFKA-SAGA CRITICAL ALERTS
-    # ========================================================================
+
     - name: application.kafka-saga.critical
       interval: 30s
       rules:
-        # ====== P1: CRITICAL - Kafka Producer Errors ======
+
         - alert: KafkaSagaProducerErrors
           expr: |
             sum(rate(kafka_producer_record_error_total{namespace="kafka-saga"}[5m])) by (service) > 0
@@ -41,7 +41,6 @@ spec:
 
               Check: kubectl -n kafka-saga logs -l app={{ $labels.service }} --tail=100
 
-        # ====== P1: CRITICAL - Application Down (Spring Boot Health) ======
         - alert: KafkaSagaApplicationDown
           expr: |
             up{namespace="kafka-saga", job=~".*kafka-saga.*"} == 0
@@ -61,13 +60,12 @@ spec:
               Duration: >3 minutes
               Action: Check pod health and logs
 
-    # ========================================================================
     # KAFKA-SAGA HIGH ALERTS
-    # ========================================================================
+
     - name: application.kafka-saga.high
       interval: 30s
       rules:
-        # ====== P2: HIGH - Consumer Records Lag Per Partition ======
+
         - alert: KafkaSagaConsumerLagHigh
           expr: |
             sum(kafka_consumer_records_lag{namespace="kafka-saga"}) by (service, topic) > 5000
@@ -89,7 +87,6 @@ spec:
 
               Action: Scale consumers or investigate processing delays
 
-        # ====== P2: HIGH - JVM Heap Usage High ======
         - alert: KafkaSagaJvmHeapHigh
           expr: |
             (jvm_memory_used_bytes{namespace="kafka-saga", area="heap"}
@@ -110,7 +107,6 @@ spec:
               Duration: >10 minutes
               Action: Increase memory limits or investigate memory leak
 
-        # ====== P2: HIGH - HTTP Error Rate High ======
         - alert: KafkaSagaHttpErrorRateHigh
           expr: |
             sum(rate(http_server_requests_seconds_count{namespace="kafka-saga", status=~"5.."}[5m])) by (service)
@@ -131,13 +127,12 @@ spec:
               Duration: >5 minutes
               Action: Check application logs for exceptions
 
-    # ========================================================================
     # KAFKA-SAGA MEDIUM ALERTS
-    # ========================================================================
+
     - name: application.kafka-saga.medium
       interval: 60s
       rules:
-        # ====== P3: MEDIUM - GC Pause Time High ======
+
         - alert: KafkaSagaGcPauseHigh
           expr: |
             rate(jvm_gc_pause_seconds_sum{namespace="kafka-saga"}[5m])
@@ -158,7 +153,6 @@ spec:
               Duration: >15 minutes
               Action: Review heap settings and GC algorithm
 
-        # ====== P3: MEDIUM - Slow Kafka Produce Requests ======
         - alert: KafkaSagaSlowProduceRequests
           expr: |
             histogram_quantile(0.99,
