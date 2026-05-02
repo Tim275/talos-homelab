@@ -2,9 +2,13 @@
 # https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml
 prometheus:
   prometheusSpec:
-    # Retention configuration (prevents disk full)
-    retention: 15d           # 15 days retention (homelab standard)
-    retentionSize: "45GB"    # 90% of 50GB PVC (prevents disk full)
+    externalLabels:
+      cluster: prod-talos
+      environment: prod
+      region: homelab-de
+
+    retention: 15d
+    retentionSize: "45GB"
 
     # Resource limits — prevents Prometheus from being OOMKilled or starving the node.
     # Without limits the pod can land on a CPU-saturated node and fail liveness probes.
@@ -132,14 +136,25 @@ grafana:
       app: grafana
     folder: Kubernetes
 
-# Disable all default Prometheus rules - we use custom enterprise rules
 defaultRules:
-  create: false
+  create: true
   rules:
-    alertmanager: false
+    alertmanager: true
+    configReloaders: true
+    general: true
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    kubeStateMetrics: true
+    kubePrometheusGeneral: true
+    kubePrometheusNodeRecording: true
+    nodeExporterAlerting: true
+    nodeExporterRecording: true
+    prometheus: true
+    prometheusOperator: true
+
     etcd: false
-    configReloaders: false
-    general: false
     k8s: false
     kubeApiserverAvailability: false
     kubeApiserverBurnrate: false
@@ -148,21 +163,10 @@ defaultRules:
     kubeControllerManager: false
     kubelet: false
     kubeProxy: false
-    kubePrometheusGeneral: false
-    kubePrometheusNodeRecording: false
-    kubernetesApps: false
-    kubernetesResources: false
-    kubernetesStorage: false
-    kubernetesSystem: false
     kubeSchedulerAlerting: false
     kubeSchedulerRecording: false
-    kubeStateMetrics: false
     network: false
     node: false
-    nodeExporterAlerting: false
-    nodeExporterRecording: false
-    prometheus: false
-    prometheusOperator: false
     windows: false
 
 prometheusOperator:
@@ -207,34 +211,10 @@ kube-state-metrics:
     timeoutSeconds: 5
     failureThreshold: 3
 
-# TIER-0 ALERTMANAGER CONFIG
-# Based on: Google SRE Workbook, ITIL Priority Matrix, Prometheus s
-# References:
-#   - https://sre.google/workbook/alerting-on-slos/
-#   - https://www.sysdig.com/blog/prometheus-alertmanager
-#   - https://fibery.io/blog/product-management/p0-p1-p2-p3-p4/
-
-#
-# PRIORITY LEVELS (ITIL-based):
-# ┌──────┬─────────────┬─────────────────┬────────────────────────────────────┐
-# │ Prio │ Response    │ Channel         │ Description                        │
-# ├──────┼─────────────┼─────────────────┼────────────────────────────────────┤
-# │ P0   │ Immediate   │ #alerts-critical│ Total outage, data loss risk       │
-# │ P1   │ < 15 min    │ #alerts-critical│ Major degradation, users impacted  │
-# │ P2   │ < 1 hour    │ #alerts         │ Partial degradation, workaround    │
-# │ P3   │ < 4 hours   │ #alerts         │ Minor issue, no user impact        │
-# │ P4   │ Next day    │ #alerts-info    │ Informational, maintenance         │
-# └──────┴─────────────┴─────────────────┴────────────────────────────────────┘
-#
-# SEVERITY LEVELS:
-#   critical = Service down, immediate action required
-#   warning  = Degraded, action needed soon
-#   info     = Informational, no action needed
-
 alertmanager:
   alertmanagerSpec:
-    replicas: 1
-    retention: 120h
+    replicas: 3
+    retention: 720h
     storage:
       volumeClaimTemplate:
         spec:
@@ -258,6 +238,9 @@ alertmanager:
     global:
       resolve_timeout: 5m
       slack_api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
+
+    templates:
+      - '/etc/alertmanager/config/*.tmpl'
 
     # ROUTING TREE - Priority-based with severity fallback
 
@@ -390,176 +373,151 @@ alertmanager:
         target_matchers:
           - alertname=~"KubeController.*|KubeScheduler.*|ArgoCD.*"
 
-    # RECEIVERS - All with unified detailed templates
-
     receivers:
 
       - name: 'slack-critical'
+        slack_configs:
+          - channel: '#alerts'
+            send_resolved: true
+            title: '{{ template "slack.title" . }}'
+            text: '{{ template "slack.body" . }}'
+            color: '{{ template "slack.color" . }}'
+            actions: &critical-actions
+              - type: button
+                text: 'Runbook :book:'
+                url: '{{ if (index .Alerts 0).Annotations.runbook_url }}{{ (index .Alerts 0).Annotations.runbook_url }}{{ else }}https://github.com/Tim275/talos-homelab/tree/main/docs/runbooks{{ end }}'
+              - type: button
+                text: 'Dashboard :bar_chart:'
+                url: '{{ if (index .Alerts 0).Annotations.dashboard_url }}{{ (index .Alerts 0).Annotations.dashboard_url }}{{ else }}https://grafana.timourhomelab.org{{ end }}'
+              - type: button
+                text: 'Query :mag:'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: 'Silence 2h :no_bell:'
+                url: '{{ template "slack.silenceURL" . }}'
         telegram_configs:
           - bot_token_file: /etc/alertmanager/secrets/telegram-bot-token/token
             chat_id: 8449184586
             parse_mode: HTML
             send_resolved: true
-            message: |-
-              {{ if eq .Status "firing" }} <b>[FIRING:{{ .Alerts.Firing | len }}]</b>{{ else }} <b>[RESOLVED]</b>{{ end }} {{ .CommonLabels.alertname }}
-
-              {{ range .Alerts }}
-              ━━━━━━━━━━━━━━━━━━━━
-              <b>Alert:</b> {{ .Labels.alertname }}
-              <b>Severity:</b>  {{ .Labels.severity | toUpper }}
-              {{ if .Labels.priority }}<b>Priority:</b> {{ .Labels.priority | toUpper }}{{ end }}
-              {{ if .Labels.namespace }}<b>Namespace:</b> <code>{{ .Labels.namespace }}</code>{{ end }}
-              {{ if .Labels.pod }}<b>Pod:</b> <code>{{ .Labels.pod }}</code>{{ end }}
-              {{ if .Labels.container }}<b>Container:</b> <code>{{ .Labels.container }}</code>{{ end }}
-              {{ if .Labels.node }}<b>Node:</b> <code>{{ .Labels.node }}</code>{{ end }}
-              {{ if .Labels.job }}<b>Job:</b> <code>{{ .Labels.job }}</code>{{ end }}
-              {{ if .Labels.component }}<b>Component:</b> <code>{{ .Labels.component }}</code>{{ end }}
-              {{ if .Labels.layer }}<b>Layer:</b> {{ .Labels.layer }}{{ end }}
-              {{ if .Labels.tier }}<b>Tier:</b> {{ .Labels.tier }}{{ end }}
-
-              <b>Summary:</b> {{ .Annotations.summary }}
-              {{ if .Annotations.description }}<b>Description:</b> {{ .Annotations.description }}{{ end }}
-              {{ if .Annotations.impact }}<b>Impact:</b> {{ .Annotations.impact }}{{ end }}
-              {{ if .Annotations.runbook_url }}<b>Runbook:</b> {{ .Annotations.runbook_url }}{{ end }}
-              {{ end }}
-
-               <a href="{{ (index .Alerts 0).GeneratorURL }}">Prometheus</a> | <a href="https://grafana.timourhomelab.org">Grafana</a>
-        slack_configs:
-          - channel: '#alerts'
-            send_resolved: true
-            title: |-
-              {{ if eq .Status "firing" }}:rotating_light:{{ else }}:white_check_mark:{{ end }} [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }}
-            text: |-
-              {{ range .Alerts }}
-              *Alert:* {{ .Labels.alertname }}
-              *Severity:* :red_circle: {{ .Labels.severity | toUpper }}
-              {{ if .Labels.priority }}*Priority:* {{ .Labels.priority | toUpper }}{{ end }}
-              {{ if .Labels.namespace }}*Namespace:* `{{ .Labels.namespace }}`{{ end }}
-              {{ if .Labels.pod }}*Pod:* `{{ .Labels.pod }}`{{ end }}
-              {{ if .Labels.container }}*Container:* `{{ .Labels.container }}`{{ end }}
-              {{ if .Labels.node }}*Node:* `{{ .Labels.node }}`{{ end }}
-              {{ if .Labels.job }}*Job:* `{{ .Labels.job }}`{{ end }}
-              {{ if .Labels.component }}*Component:* `{{ .Labels.component }}`{{ end }}
-              {{ if .Labels.layer }}*Layer:* {{ .Labels.layer }}{{ end }}
-              {{ if .Labels.tier }}*Tier:* {{ .Labels.tier }}{{ end }}
-              *Summary:* {{ .Annotations.summary }}
-              {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
-              {{ if .Annotations.impact }}*Impact:* {{ .Annotations.impact }}{{ end }}
-              {{ if .Annotations.runbook_url }}*Runbook:* {{ .Annotations.runbook_url }}{{ end }}
-              {{ end }}
-            color: |-
-              {{ if eq .Status "firing" }}danger{{ else }}good{{ end }}
-            actions:
-              - type: button
-                text: 'Prometheus'
-                url: '{{ (index .Alerts 0).GeneratorURL }}'
-              - type: button
-                text: 'Grafana'
-                url: 'https://grafana.timourhomelab.org'
-              - type: button
-                text: 'Silence 2h'
-                url: '{{ .ExternalURL }}/#/silences/new?filter=%7Balertname%3D%22{{ .CommonLabels.alertname }}%22%7D'
+            message: '{{ template "telegram.body" . }}'
 
       - name: 'slack-default'
+        slack_configs:
+          - channel: '#alerts'
+            send_resolved: true
+            title: '{{ template "slack.title" . }}'
+            text: '{{ template "slack.body" . }}'
+            color: '{{ template "slack.color" . }}'
+            actions: *critical-actions
         telegram_configs:
           - bot_token_file: /etc/alertmanager/secrets/telegram-bot-token/token
             chat_id: 8449184586
             parse_mode: HTML
             send_resolved: true
-            message: |-
-              {{ if eq .Status "firing" }} <b>[FIRING:{{ .Alerts.Firing | len }}]</b>{{ else }} <b>[RESOLVED]</b>{{ end }} {{ .CommonLabels.alertname }}
-
-              {{ range .Alerts }}
-              ━━━━━━━━━━━━━━━━━━━━
-              <b>Alert:</b> {{ .Labels.alertname }}
-              <b>Severity:</b> {{ .Labels.severity | toUpper }}
-              {{ if .Labels.priority }}<b>Priority:</b> {{ .Labels.priority | toUpper }}{{ end }}
-              {{ if .Labels.namespace }}<b>Namespace:</b> <code>{{ .Labels.namespace }}</code>{{ end }}
-              {{ if .Labels.pod }}<b>Pod:</b> <code>{{ .Labels.pod }}</code>{{ end }}
-              {{ if .Labels.container }}<b>Container:</b> <code>{{ .Labels.container }}</code>{{ end }}
-              {{ if .Labels.node }}<b>Node:</b> <code>{{ .Labels.node }}</code>{{ end }}
-              {{ if .Labels.job }}<b>Job:</b> <code>{{ .Labels.job }}</code>{{ end }}
-              {{ if .Labels.component }}<b>Component:</b> <code>{{ .Labels.component }}</code>{{ end }}
-
-              <b>Summary:</b> {{ .Annotations.summary }}
-              {{ if .Annotations.description }}<b>Description:</b> {{ .Annotations.description }}{{ end }}
-              {{ if .Annotations.impact }}<b>Impact:</b> {{ .Annotations.impact }}{{ end }}
-              {{ if .Annotations.runbook_url }}<b>Runbook:</b> {{ .Annotations.runbook_url }}{{ end }}
-              {{ end }}
-
-               <a href="{{ (index .Alerts 0).GeneratorURL }}">Prometheus</a> | <a href="https://grafana.timourhomelab.org">Grafana</a>
-        slack_configs:
-          - channel: '#alerts'
-            send_resolved: true
-            title: |-
-              {{ if eq .Status "firing" }}:warning:{{ else }}:white_check_mark:{{ end }} [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }}
-            text: |-
-              {{ range .Alerts }}
-              *Alert:* {{ .Labels.alertname }}
-              *Severity:* :large_orange_circle: {{ .Labels.severity | toUpper }}
-              {{ if .Labels.priority }}*Priority:* {{ .Labels.priority | toUpper }}{{ end }}
-              {{ if .Labels.namespace }}*Namespace:* `{{ .Labels.namespace }}`{{ end }}
-              {{ if .Labels.pod }}*Pod:* `{{ .Labels.pod }}`{{ end }}
-              {{ if .Labels.container }}*Container:* `{{ .Labels.container }}`{{ end }}
-              {{ if .Labels.node }}*Node:* `{{ .Labels.node }}`{{ end }}
-              {{ if .Labels.job }}*Job:* `{{ .Labels.job }}`{{ end }}
-              {{ if .Labels.component }}*Component:* `{{ .Labels.component }}`{{ end }}
-              *Summary:* {{ .Annotations.summary }}
-              {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
-              {{ if .Annotations.impact }}*Impact:* {{ .Annotations.impact }}{{ end }}
-              {{ if .Annotations.runbook_url }}*Runbook:* {{ .Annotations.runbook_url }}{{ end }}
-              {{ end }}
-            color: |-
-              {{ if eq .Status "firing" }}warning{{ else }}good{{ end }}
-            actions:
-              - type: button
-                text: 'Prometheus'
-                url: '{{ (index .Alerts 0).GeneratorURL }}'
-              - type: button
-                text: 'Grafana'
-                url: 'https://grafana.timourhomelab.org'
+            message: '{{ template "telegram.body" . }}'
 
       - name: 'slack-info'
+        slack_configs:
+          - channel: '#alerts'
+            send_resolved: false
+            title: '{{ template "slack.title" . }}'
+            text: '{{ template "slack.body" . }}'
+            color: '{{ template "slack.color" . }}'
+            actions:
+              - type: button
+                text: 'Query :mag:'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: 'Silence 2h :no_bell:'
+                url: '{{ template "slack.silenceURL" . }}'
         telegram_configs:
           - bot_token_file: /etc/alertmanager/secrets/telegram-bot-token/token
             chat_id: 8449184586
             parse_mode: HTML
             send_resolved: false
-            message: |-
-              ℹ <b>[FIRING:{{ .Alerts.Firing | len }}]</b> {{ .CommonLabels.alertname }}
+            message: '{{ template "telegram.body" . }}'
 
-              {{ range .Alerts }}
-              ━━━━━━━━━━━━━━━━━━━━
-              <b>Alert:</b> {{ .Labels.alertname }}
-              <b>Severity:</b>  {{ .Labels.severity | toUpper }}
-              {{ if .Labels.priority }}<b>Priority:</b> {{ .Labels.priority | toUpper }}{{ end }}
-              {{ if .Labels.namespace }}<b>Namespace:</b> <code>{{ .Labels.namespace }}</code>{{ end }}
-              {{ if .Labels.pod }}<b>Pod:</b> <code>{{ .Labels.pod }}</code>{{ end }}
-              {{ if .Labels.job }}<b>Job:</b> <code>{{ .Labels.job }}</code>{{ end }}
+  templateFiles:
+    homelab.tmpl: |-
+      {{ define "slack.icon" -}}
+      {{ if eq .Status "resolved" }}:white_check_mark:
+      {{- else if eq .CommonLabels.severity "critical" }}:rotating_light:
+      {{- else if eq .CommonLabels.severity "warning" }}:warning:
+      {{- else }}:information_source:
+      {{- end -}}
+      {{ end }}
 
-              <b>Summary:</b> {{ .Annotations.summary }}
-              {{ if .Annotations.description }}<b>Description:</b> {{ .Annotations.description }}{{ end }}
-              {{ end }}
+      {{ define "slack.title" -}}
+      [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ template "slack.icon" . }} {{ .CommonLabels.alertname }}
+      {{- end }}
 
-               <a href="{{ (index .Alerts 0).GeneratorURL }}">View Details</a>
-        slack_configs:
-          - channel: '#alerts'
-            send_resolved: false
-            title: |-
-              :information_source: [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }}
-            text: |-
-              {{ range .Alerts }}
-              *Alert:* {{ .Labels.alertname }}
-              *Severity:* :large_blue_circle: {{ .Labels.severity | toUpper }}
-              {{ if .Labels.priority }}*Priority:* {{ .Labels.priority | toUpper }}{{ end }}
-              {{ if .Labels.namespace }}*Namespace:* `{{ .Labels.namespace }}`{{ end }}
-              {{ if .Labels.pod }}*Pod:* `{{ .Labels.pod }}`{{ end }}
-              {{ if .Labels.job }}*Job:* `{{ .Labels.job }}`{{ end }}
-              *Summary:* {{ .Annotations.summary }}
-              {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
-              {{ end }}
-            color: '#439FE0'
-            actions:
-              - type: button
-                text: 'View Details'
-                url: '{{ (index .Alerts 0).GeneratorURL }}'
+      {{ define "slack.color" -}}
+      {{ if eq .Status "resolved" }}good
+      {{- else if eq .CommonLabels.severity "critical" }}danger
+      {{- else if eq .CommonLabels.severity "warning" }}warning
+      {{- else }}#439FE0
+      {{- end -}}
+      {{ end }}
+
+      {{ define "resource.slack" -}}
+      {{ if .Labels.deployment }}*Resource:* `deployment/{{ .Labels.deployment }}`
+      {{- else if .Labels.statefulset }}*Resource:* `statefulset/{{ .Labels.statefulset }}`
+      {{- else if .Labels.daemonset }}*Resource:* `daemonset/{{ .Labels.daemonset }}`
+      {{- else if .Labels.persistentvolumeclaim }}*Resource:* `pvc/{{ .Labels.persistentvolumeclaim }}`
+      {{- else if and .Labels.pod (ne (.Labels.job | default "") "kube-state-metrics") (ne (.Labels.service | default "") "kube-state-metrics") }}*Resource:* `pod/{{ .Labels.pod }}`
+      {{- else if .Labels.instance }}*Resource:* `instance/{{ .Labels.instance }}`
+      {{- else if .Labels.node }}*Resource:* `node/{{ .Labels.node }}`
+      {{- end -}}
+      {{ end }}
+
+      {{ define "resource.telegram" -}}
+      {{ if .Labels.deployment }}<b>Resource:</b> <code>deployment/{{ .Labels.deployment }}</code>
+      {{- else if .Labels.statefulset }}<b>Resource:</b> <code>statefulset/{{ .Labels.statefulset }}</code>
+      {{- else if .Labels.daemonset }}<b>Resource:</b> <code>daemonset/{{ .Labels.daemonset }}</code>
+      {{- else if .Labels.persistentvolumeclaim }}<b>Resource:</b> <code>pvc/{{ .Labels.persistentvolumeclaim }}</code>
+      {{- else if and .Labels.pod (ne (.Labels.job | default "") "kube-state-metrics") (ne (.Labels.service | default "") "kube-state-metrics") }}<b>Resource:</b> <code>pod/{{ .Labels.pod }}</code>
+      {{- else if .Labels.instance }}<b>Resource:</b> <code>instance/{{ .Labels.instance }}</code>
+      {{- else if .Labels.node }}<b>Resource:</b> <code>node/{{ .Labels.node }}</code>
+      {{- end -}}
+      {{ end }}
+
+      {{ define "slack.body" -}}
+      {{ range .Alerts -}}
+      *Severity:* `{{ .Labels.severity | toUpper }}`{{ if .Labels.priority }}  ·  *Priority:* `{{ .Labels.priority | toUpper }}`{{ end }}{{ if .Labels.component }}  ·  *Component:* `{{ .Labels.component }}`{{ end }}
+      {{ if .Labels.namespace }}*Namespace:* `{{ .Labels.namespace }}`  {{ end }}{{ template "resource.slack" . }}
+
+      *Summary:* {{ .Annotations.summary }}
+      {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}
+      {{ end }}{{ if .Annotations.impact }}*Impact:* {{ .Annotations.impact }}
+      {{ end }}{{ if .Annotations.action }}*Action:* {{ .Annotations.action }}
+      {{ end }}
+      {{ end -}}
+      {{ end }}
+
+      {{ define "telegram.body" -}}
+      {{ if eq .Status "firing" }}🔥 <b>[FIRING:{{ .Alerts.Firing | len }}]</b>{{ else }}✅ <b>[RESOLVED]</b>{{ end }} <b>{{ .CommonLabels.alertname }}</b>
+
+      {{ range .Alerts -}}
+      ━━━━━━━━━━━━━━━━━━━━
+      <b>Severity:</b> {{ .Labels.severity | toUpper }}{{ if .Labels.priority }} · <b>Priority:</b> {{ .Labels.priority | toUpper }}{{ end }}
+      {{ if .Labels.component }}<b>Component:</b> <code>{{ .Labels.component }}</code>
+      {{ end }}{{ if .Labels.namespace }}<b>Namespace:</b> <code>{{ .Labels.namespace }}</code>
+      {{ end }}{{ template "resource.telegram" . }}
+      <b>Summary:</b> {{ .Annotations.summary }}
+      {{ if .Annotations.description }}<b>Description:</b> {{ .Annotations.description }}
+      {{ end }}{{ if .Annotations.impact }}<b>Impact:</b> {{ .Annotations.impact }}
+      {{ end }}{{ if .Annotations.action }}<b>Action:</b> {{ .Annotations.action }}
+      {{ end }}{{ if .Annotations.runbook_url }}<a href="{{ .Annotations.runbook_url }}">Runbook</a> · {{ end }}<a href="{{ .GeneratorURL }}">Query</a> · <a href="{{ if .Annotations.dashboard_url }}{{ .Annotations.dashboard_url }}{{ else }}https://grafana.timourhomelab.org{{ end }}">Dashboard</a>
+      {{ end -}}
+      {{ end }}
+
+      {{ define "slack.silenceURL" -}}
+      {{ .ExternalURL }}/#/silences/new?filter=%7B
+      {{- range $k, $v := .CommonLabels -}}
+      {{- if ne $k "alertname" -}}
+      {{ $k }}%3D%22{{ $v }}%22%2C
+      {{- end -}}
+      {{- end -}}
+      alertname%3D%22{{ .CommonLabels.alertname }}%22%7D
+      {{- end }}
