@@ -1,0 +1,38 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: data-elasticsearch
+spec:
+  groups:
+    - name: elasticsearch
+      interval: 1m
+      rules:
+        - alert: ElasticsearchClusterRed
+          expr: elasticsearch_cluster_health_status{color="red"} == 1
+          for: 5m
+          labels:
+            severity: critical
+            component: data
+          annotations:
+            summary: "Elasticsearch cluster RED"
+            description: "Primary shards unassigned. Data unavailable."
+
+        - alert: ElasticsearchClusterYellow
+          expr: elasticsearch_cluster_health_status{color="yellow"} == 1
+          for: 30m
+          labels:
+            severity: warning
+            component: data
+          annotations:
+            summary: "Elasticsearch cluster YELLOW"
+            description: "Replica shards unassigned for >30min."
+
+        - alert: ElasticsearchHeapHigh
+          expr: (elasticsearch_jvm_memory_used_bytes{area="heap"} / elasticsearch_jvm_memory_max_bytes{area="heap"}) > 0.85
+          for: 15m
+          labels:
+            severity: warning
+            component: data
+          annotations:
+            summary: "Elasticsearch JVM heap >85%"
+            description: "{{ $labels.instance }} heap at {{ $value | humanizePercentage }}."

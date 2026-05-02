@@ -1,0 +1,55 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: slo-drova
+spec:
+  groups:
+    - name: drova-slo-recording
+      interval: 30s
+      rules:
+        - record: slo:drova_http_availability:ratio_rate5m
+          expr: |
+            sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service",http_response_status_code!~"5.."}[5m]))
+            /
+            sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service"}[5m]))
+
+        - record: slo:drova_http_availability:ratio_rate1h
+          expr: |
+            sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service",http_response_status_code!~"5.."}[1h]))
+            /
+            sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service"}[1h]))
+
+        - record: slo:drova_grpc_availability:ratio_rate5m
+          expr: |
+            sum by (service_name) (rate(rpc_server_call_duration_seconds_count{service_name=~"trip-service|driver-service",rpc_grpc_status_code="0"}[5m]))
+            /
+            sum by (service_name) (rate(rpc_server_call_duration_seconds_count{service_name=~"trip-service|driver-service"}[5m]))
+
+    - name: drova-slo-burn-rate
+      interval: 1m
+      rules:
+        - alert: DrovaSLOFastBurn
+          expr: |
+            (1 - slo:drova_http_availability:ratio_rate5m) > (14.4 * (1 - 0.995))
+          for: 2m
+          labels:
+            severity: critical
+            component: apps
+            tenant: drova
+            slo: availability
+          annotations:
+            summary: "Drova {{ $labels.service_name }}: SLO fast-burn (will exhaust 30d budget in <2d)"
+            description: "Error budget burn rate 14.4× normal. Target SLO: 99.5% availability."
+
+        - alert: DrovaSLOSlowBurn
+          expr: |
+            (1 - slo:drova_http_availability:ratio_rate1h) > (1 * (1 - 0.995))
+          for: 1h
+          labels:
+            severity: warning
+            component: apps
+            tenant: drova
+            slo: availability
+          annotations:
+            summary: "Drova {{ $labels.service_name }}: SLO slow-burn"
+            description: "Sustained error rate exceeding 0.5% target."

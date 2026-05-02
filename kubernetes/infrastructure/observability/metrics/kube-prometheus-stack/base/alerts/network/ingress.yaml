@@ -1,0 +1,41 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: network-ingress
+spec:
+  groups:
+    - name: envoy-gateway
+      interval: 1m
+      rules:
+        - alert: EnvoyGatewayNoEndpoints
+          expr: envoy_cluster_membership_healthy == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: network
+          annotations:
+            summary: "Envoy Gateway: no healthy endpoints for {{ $labels.envoy_cluster_name }}"
+            description: "All upstream endpoints unhealthy. Traffic dropped."
+
+        - alert: EnvoyGatewayHigh5xxRate
+          expr: rate(envoy_http_downstream_rq_5xx[5m]) > 0.1
+          for: 10m
+          labels:
+            severity: warning
+            component: network
+          annotations:
+            summary: "Envoy Gateway 5xx rate >10%: {{ $labels.envoy_cluster_name }}"
+            description: "{{ $value }} 5xx/sec via gateway."
+
+    - name: cloudflared
+      interval: 1m
+      rules:
+        - alert: CloudflaredAllDown
+          expr: count(up{job="cloudflared"} == 1) == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: network
+          annotations:
+            summary: "All Cloudflared tunnels down"
+            description: "External access via Cloudflare Tunnel completely down."
