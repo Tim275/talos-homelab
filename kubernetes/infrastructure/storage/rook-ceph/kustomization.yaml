@@ -27,23 +27,19 @@ resources:
   - storage-classes.yaml
   - toolbox.yaml
 
-  # Monitoring components
+  # Monitoring
   - servicemonitor-ceph-mgr.yaml
   - servicemonitor-ceph-exporter.yaml
   - ceph-dashboard-prometheus-config.yaml
 
-  # Health monitoring automation
-  - ceph-health-rbac.yaml
-  # - ceph-health-monitor.yaml  # DISABLED: Was causing resource drain with stuck jobs
-  - ceph-crash-archive.yaml  # Enterprise: Auto-archive crashes every 6 hours
+  # Crash archiver — auto-archive ceph crashes every 6h
+  - ceph-crash-archive.yaml
 
+  # Gateway routing
   - http-route.yaml
-  # backend-tls.yaml, ceph-dashboard-ca-secret.yaml, reference-grant.yaml: NOT NEEDED - HTTP backend like ArgoCD/Grafana
-  - velero-users.yaml
-  # velero-buckets-init.yaml removed temporarily
 
-# Resource reduction for homelab stability
-# - resource-reduction-patch.yaml  # Using strategic merge patch instead
+  # S3 users for Velero / Loki
+  - velero-users.yaml
 
 # Enterprise and Talos-specific patches
 patches:
@@ -88,27 +84,9 @@ patches:
           argocd.argoproj.io/sync-wave: "0"
           argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 
-  # Wave 3: Storage pools and classes use inline annotations
-  # Removed conflicting patches - pools.yaml and storage-classes.yaml already have sync-wave: "3"
-
-  # CRITICAL: CSI Plugin Resource Limits (No unlimited memory!)
-  # DISABLED: CephFS not in use - CSI plugin won't be deployed
-  # - target:
-  #     kind: DaemonSet
-  #     name: csi-cephfsplugin
-  #   patch: |-
-  #     - op: replace
-  #       path: /spec/template/spec/containers/1/resources
-  #       value:
-  #         limits:
-  #           cpu: "100m"
-  #           memory: "128Mi"
-  #         requests:
-  #           cpu: "10m"
-  #           memory: "64Mi"
-  # CSI Controller Plugin: Add resource limits to prevent OOM-kill mid-operation
+  # CSI Controller Plugin: resource limits to prevent OOM-kill mid-operation.
   # OOM-kill during CreateVolume/DeleteVolume leaves orphaned goroutines holding
-  # in-memory volume locks → causes "operation already exists" on every retry
+  # in-memory volume locks → "operation already exists" on every retry.
   - target:
       kind: Deployment
       name: rook-ceph.rbd.csi.ceph.com-ctrlplugin
@@ -226,17 +204,9 @@ patches:
         value:
           name: ROOK_CSI_ENABLE_RBD
           value: "true"
-      # NOTE: CSI Operator is now deployed via csi-operator.yaml resource
-      # ROOK_USE_CSI_OPERATOR defaults to true in v1.18+
       - op: add
         path: /spec/template/metadata/annotations
         value:
           prometheus.io/scrape: "true"
           prometheus.io/port: "8080"
           prometheus.io/path: "/metrics"
-
-# Use upstream version v1.18.7 - latest stable (CSI Operator disabled for simplicity)
-
-# Common labels removed - causes immutable selector issues
-
-# Metadata removed to avoid conflicts
