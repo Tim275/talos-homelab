@@ -99,22 +99,33 @@ spec:
             drop:
             - ALL
           readOnlyRootFilesystem: false  # Keycloak needs write access
-        # Probes disabled - Keycloak takes 60s+ to start with SQLite
-        # readinessProbe:
-        #   httpGet:
-        #     path: /
-        #     port: 8080
-        #     scheme: HTTP
-        #   initialDelaySeconds: 120
-        #   periodSeconds: 10
-        #   timeoutSeconds: 5
-        #   failureThreshold: 5
-        # livenessProbe:
-        #   httpGet:
-        #     path: /
-        #     port: 8080
-        #     scheme: HTTP
-        #   initialDelaySeconds: 180
-        #   periodSeconds: 30
-        #   timeoutSeconds: 5
-        #   failureThreshold: 5
+        # Probes use the Keycloak management endpoint on port 9000 (--health-enabled=true).
+        # /health/started → only true once Keycloak is fully initialised.
+        # /health/ready  → DB connection up, ready for traffic.
+        # /health/live   → process is responsive.
+        # Java + DB-migrations + Infinispan join can take 60-120s, so startupProbe
+        # absorbs that window before liveness/readiness kick in.
+        startupProbe:
+          httpGet:
+            path: /health/started
+            port: 9000
+            scheme: HTTP
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30      # 5 min cold-start budget
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 9000
+            scheme: HTTP
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 9000
+            scheme: HTTP
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 5
