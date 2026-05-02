@@ -1,6 +1,4 @@
-# n8n PostgreSQL Cluster
-# Dedicated PostgreSQL database for n8n workflow automation
-
+---
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -10,44 +8,33 @@ metadata:
     app.kubernetes.io/name: n8n-postgres
     app.kubernetes.io/component: database
   annotations:
-    argocd.argoproj.io/sync-wave: "3"  # After operator (wave 2)
+    argocd.argoproj.io/sync-wave: '3'
 spec:
-  # HOMELAB: 2 instances for basic HA (primary + 1 replica)
   instances: 2
-
-  # PostgreSQL version
   imageName: ghcr.io/cloudnative-pg/postgresql:16.1
-
-  # Backup via Barman Cloud Plugin (CNPG ≥1.27 pattern)
   plugins:
-    - name: barman-cloud.cloudnative-pg.io
-      parameters:
-        barmanObjectName: n8n-postgres-backup-store
-        serverName: n8n-postgres
-
-  # Resource allocation (n8n optimized)
+  - name: barman-cloud.cloudnative-pg.io
+    parameters:
+      barmanObjectName: n8n-postgres-backup-store
+      serverName: n8n-postgres
   resources:
     requests:
-      memory: "256Mi"
-      cpu: "200m"
+      memory: 256Mi
+      cpu: 200m
     limits:
-      memory: "512Mi"
-      cpu: "500m"
-
-  # Storage configuration
+      memory: 512Mi
+      cpu: 500m
   storage:
     size: 8Gi
-    # ENTERPRISE: Use Retain StorageClass to prevent data loss on PVC deletion
     storageClass: rook-ceph-block-enterprise-retain
-
-  # HOMELAB: No HA, single instance
-  # minSyncReplicas: 1  # Disabled - single instance
-  # maxSyncReplicas: 1  # Disabled - single instance
-
-  # Bootstrap from existing cluster or create new
   bootstrap:
     initdb:
       database: n8n
       owner: n8n
       secret:
         name: n8n-postgres-credentials
+  affinity:
+    podAntiAffinityType: preferred
+    topologyKey: kubernetes.io/hostname
+  monitoring:
+    enablePodMonitor: true
