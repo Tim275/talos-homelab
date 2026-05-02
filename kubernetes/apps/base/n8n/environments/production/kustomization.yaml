@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: n8n-prod
+
+resources:
+  # Configuration
+  - configmap.yaml
+  - sealed-secrets.yaml        # N8N encryption key + DB password
+  # NOTE: redis-password managed by redis-n8n application
+
+  # Deployments - Enterprise Queue Mode
+  - deployment-main.yaml    # UI/API only (webhooks disabled)
+  - deployment-webhook.yaml # Webhook processors (2 replicas, HA)
+  - deployment-worker.yaml  # Execution workers (1 replica, HPA)
+  - hpa-worker.yaml         # Auto-scaling for workers
+
+  # Networking
+  - service.yaml         # Main UI service
+  - service-webhook.yaml # Webhook service
+  - httproute.yaml
+  - backend-traffic-policy.yaml  # WebSocket/SSE timeout config
+
+  # REMOVED - No longer needed:
+  # - deployment.yaml      # Old single deployment with PVC
+  # - secret.yaml          # Replaced by sealed-secrets.yaml
+  # - pvc.yaml             # NO PVC NEEDED - STATELESS!
+
+commonLabels:
+  app.kubernetes.io/name: n8n
+  environment: production
+  team: timour
