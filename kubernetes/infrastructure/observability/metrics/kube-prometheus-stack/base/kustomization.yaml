@@ -1,40 +1,37 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# : Parent manages namespaces, children inherit
-# Namespace managed by: monitoring/namespace.yaml (parent app)
 namespace: monitoring
 
+# Orphan files in base/ (not referenced, not deployed — preserve old behavior):
+#   - prometheus-http-route.yaml
+#   - alertmanager-http-route.yaml
+#   - basic-alertmanager-config.yaml
+# Decide separately whether to enable them.
+
 resources:
-  # - alertmanager-slack-webhooks-sealed-secret.yaml  # Slack webhook for #alerts channel (DISABLED: Using PagerDuty instead)
-  - telegram-bot-sealed.yaml  # Telegram bot token for mobile alerts (@Timour_homelab_bot)
-
-  # =====================================================================
-  # ALERTS - Enterprise Layer Architecture
-  # =====================================================================
-
-  # ===== P1 CRITICAL =====
+  # P1 CRITICAL
   - alerts/p1-critical/enterprise-critical-alerts.yaml
 
-  # ===== LAYER 1: Infrastructure =====
+  # LAYER 1: Infrastructure
   - alerts/layer1-infrastructure/layer1-infrastructure-alerts.yaml
   - alerts/layer1-infrastructure/talos-os-alerts.yaml
   - alerts/layer1-infrastructure/node-allocation-alerts.yaml
 
-  # ===== LAYER 2: Security =====
+  # LAYER 2: Security
   - alerts/layer2-security/layer2-security-alerts.yaml
   - alerts/layer2-security/cert-manager-alerts.yaml
 
-  # ===== LAYER 3: Network =====
+  # LAYER 3: Network
   - alerts/layer3-network/layer3-network-alerts.yaml
   - alerts/layer3-network/grafana-cloudflared-alerts.yaml
 
-  # ===== LAYER 4: Storage =====
+  # LAYER 4: Storage
   - alerts/layer4-storage/layer4-storage-alerts.yaml
   - alerts/layer4-storage/ceph-cluster-alerts.yaml
   - alerts/layer4-storage/velero-backup-alerts.yaml
 
-  # ===== LAYER 5: Platform =====
+  # LAYER 5: Platform
   - alerts/layer5-platform/layer5-platform-alerts.yaml
   - alerts/layer5-platform/kafka-alerts.yaml
   - alerts/layer5-platform/cnpg-postgresql-alerts.yaml
@@ -46,36 +43,27 @@ resources:
   - alerts/layer5-platform/argocd-alerts.yaml
   - alerts/layer5-platform/argocd-enhanced-alerts.yaml
 
-  # ===== LAYER 6: Applications =====
+  # LAYER 6: Applications
   - alerts/layer6-applications/kubernetes-workload-alerts.yaml
   - alerts/layer6-applications/enterprise-workload-alerts.yaml
   - alerts/layer6-applications/n8n-application-alerts.yaml
   - alerts/layer6-applications/kafka-saga-application-alerts.yaml
   - alerts/layer6-applications/basic-tier0-alerts.yaml
 
-  # ===== SLO/SLI =====
+  # SLO/SLI
   - alerts/slo-sli/slo-sli-alerts.yaml
 
-  # ===== SELF-MONITORING =====
+  # SELF-MONITORING
   - alerts/self-monitoring/prometheus-self-monitoring-alerts.yaml
 
-  # =====================================================================
-  # SERVICEMONITORS - Infrastructure Monitoring
-  # =====================================================================
+  # ServiceMonitors
   - servicemonitors/servicemonitor-grafana.yaml
   - servicemonitors/servicemonitor-grafana-operator.yaml
   - servicemonitors/servicemonitor-cert-manager.yaml
   - servicemonitors/argocd-complete.yaml
-
-  # ===== SERVICEMONITORS - Network & Service Mesh =====
-  # servicemonitor-istio-istiod.yaml deleted: duplicated `istiod` SM in `servicemonitor-istio.yaml` below
   - servicemonitors/servicemonitor-envoy-gateway.yaml
-
-  # ===== SERVICEMONITORS - Storage =====
   - servicemonitors/servicemonitor-ceph.yaml
   - servicemonitors/servicemonitor-ceph-exporter.yaml
-
-  # ===== SERVICEMONITORS - Observability =====
   - servicemonitors/servicemonitor-elasticsearch-exporter.yaml
   - servicemonitors/servicemonitor-elasticsearch-cluster.yaml
   - servicemonitors/vector-agent.yaml
@@ -84,26 +72,11 @@ resources:
   - servicemonitors/jaeger.yaml
   - servicemonitors/servicemonitor-influxdb.yaml
   - servicemonitors/servicemonitor-opentelemetry-collector.yaml
-
-  # ===== SERVICEMONITORS - Messaging =====
   - servicemonitors/servicemonitor-kafka-exporter.yaml
   - servicemonitors/servicemonitor-schema-registry.yaml
   - servicemonitors/servicemonitor-rabbitmq.yaml
   - servicemonitors/servicemonitor-kafka-saga.yaml
-
-  # ===== SERVICEMONITORS - Databases =====
   - servicemonitors/cnpg-clusters.yaml
   - servicemonitors/servicemonitor-mongodb.yaml
-
-  # ===== SERVICEMONITORS - Applications =====
   - servicemonitors/servicemonitor-n8n-dev.yaml
   - servicemonitors/servicemonitor-n8n-prod.yaml
-
-helmCharts:
-  - name: kube-prometheus-stack
-    repo: https://prometheus-community.github.io/helm-charts
-    includeCRDs: true  # CRDs required for PrometheusRule resources
-    namespace: monitoring
-    version: 75.18.1
-    releaseName: kube-prometheus-stack
-    valuesFile: ./values.yaml
