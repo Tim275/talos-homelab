@@ -1,7 +1,7 @@
-# ============================================================================
+
 # PROMETHEUS & ALERTMANAGER SELF-MONITORING ALERTS
 # Enterprise Tier-0: Monitor the monitoring system itself
-# ============================================================================
+
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -13,13 +13,13 @@ metadata:
     tier: observability
 spec:
   groups:
-    # ========================================================================
+
     # PROMETHEUS CRITICAL ALERTS
-    # ========================================================================
+
     - name: prometheus.critical
       interval: 30s
       rules:
-        # ====== P1: CRITICAL - Prometheus Storage Full ======
+
         - alert: PrometheusStorageFull
           expr: |
             (
@@ -51,7 +51,6 @@ spec:
               - Delete old data
               - Expand storage
 
-        # ====== P1: CRITICAL - Prometheus Down ======
         - alert: PrometheusDown
           expr: |
             up{job="prometheus-kube-prometheus-prometheus"} == 0
@@ -73,13 +72,12 @@ spec:
 
               Check: kubectl -n monitoring get pods -l app.kubernetes.io/name=prometheus
 
-    # ========================================================================
     # PROMETHEUS HIGH ALERTS
-    # ========================================================================
+
     - name: prometheus.high
       interval: 30s
       rules:
-        # ====== P2: HIGH - Prometheus Target Down ======
+
         - alert: PrometheusTargetDown
           expr: |
             up == 0
@@ -102,7 +100,6 @@ spec:
 
               Action: Check if the target service is running
 
-        # ====== P2: HIGH - Prometheus Rule Evaluation Failures ======
         - alert: PrometheusRuleFailures
           expr: |
             increase(prometheus_rule_evaluation_failures_total[5m]) > 0
@@ -125,7 +122,6 @@ spec:
               Action: Check Prometheus logs for PromQL errors
               Check: kubectl -n monitoring logs -l app.kubernetes.io/name=prometheus --tail=100
 
-        # ====== P2: HIGH - Prometheus TSDB Compactions Failing ======
         - alert: PrometheusTSDBCompactionsFailing
           expr: |
             increase(prometheus_tsdb_compactions_failed_total[1h]) > 0
@@ -146,7 +142,6 @@ spec:
 
               Action: Check disk space and Prometheus logs
 
-        # ====== P2: HIGH - Prometheus Config Reload Failed ======
         - alert: PrometheusConfigReloadFailed
           expr: |
             prometheus_config_last_reload_successful == 0
@@ -166,7 +161,6 @@ spec:
               Action: Check config syntax
               Check: kubectl -n monitoring logs -l app.kubernetes.io/name=prometheus --tail=50
 
-        # ====== P2: HIGH - Prometheus Scrape Duration High ======
         - alert: PrometheusScrapeDurationHigh
           expr: |
             prometheus_target_scrape_pool_sync_total > 0
@@ -187,13 +181,12 @@ spec:
 
               Action: Check target count and scrape intervals
 
-    # ========================================================================
     # ALERTMANAGER CRITICAL ALERTS
-    # ========================================================================
+
     - name: alertmanager.critical
       interval: 30s
       rules:
-        # ====== P1: CRITICAL - Alertmanager Down ======
+
         - alert: AlertmanagerDown
           expr: |
             up{job="alertmanager-operated"} == 0
@@ -215,7 +208,6 @@ spec:
 
               Check: kubectl -n monitoring get pods -l app.kubernetes.io/name=alertmanager
 
-        # ====== P1: CRITICAL - Alertmanager Cluster Down ======
         - alert: AlertmanagerClusterDown
           expr: |
             count(up{job="alertmanager-operated"} == 1) < 1
@@ -238,13 +230,12 @@ spec:
               Impact: Complete alerting system failure
               Team: @platform-oncall
 
-    # ========================================================================
     # ALERTMANAGER HIGH ALERTS
-    # ========================================================================
+
     - name: alertmanager.high
       interval: 30s
       rules:
-        # ====== P1: HIGH - Alertmanager Failed to Send Alerts ======
+
         - alert: AlertmanagerFailedToSendAlerts
           expr: |
             rate(alertmanager_notifications_failed_total[5m]) > 0
@@ -267,7 +258,6 @@ spec:
               Action: Check Alertmanager logs and integration config
               Check: kubectl -n monitoring logs -l app.kubernetes.io/name=alertmanager --tail=100
 
-        # ====== P2: HIGH - Alertmanager Config Reload Failed ======
         - alert: AlertmanagerConfigReloadFailed
           expr: |
             alertmanager_config_last_reload_successful == 0
@@ -286,7 +276,6 @@ spec:
 
               Action: Check config syntax in values.yaml
 
-        # ====== P2: HIGH - Alertmanager Cluster Not Synced ======
         - alert: AlertmanagerClusterNotSynced
           expr: |
             min(alertmanager_cluster_members) < 2
@@ -310,13 +299,12 @@ spec:
 
               Action: Check network connectivity between Alertmanager pods
 
-    # ========================================================================
     # PROMETHEUS MEDIUM ALERTS
-    # ========================================================================
+
     - name: prometheus.medium
       interval: 60s
       rules:
-        # ====== P3: MEDIUM - Prometheus High Memory ======
+
         - alert: PrometheusHighMemory
           expr: |
             process_resident_memory_bytes{job="prometheus-kube-prometheus-prometheus"}
@@ -337,7 +325,6 @@ spec:
               Current: {{ $value | printf "%.1f" }}GB
               Threshold: 4GB
 
-        # ====== P3: MEDIUM - Prometheus High Cardinality ======
         - alert: PrometheusHighCardinality
           expr: |
             prometheus_tsdb_head_series > 1000000

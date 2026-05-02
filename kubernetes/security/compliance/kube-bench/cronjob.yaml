@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-bench
+  namespace: security
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kube-bench
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "pods", "namespaces", "serviceaccounts", "secrets", "configmaps"]
+    verbs: ["get", "list"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+    verbs: ["get", "list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-bench
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-bench
+subjects:
+  - kind: ServiceAccount
+    name: kube-bench
+    namespace: security
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: kube-bench-cis-policies
+  namespace: security
+  labels:
+    app.kubernetes.io/name: kube-bench
+    app.kubernetes.io/component: compliance
+spec:
+  schedule: "0 3 * * 0"
+  successfulJobsHistoryLimit: 4
+  failedJobsHistoryLimit: 4
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: kube-bench
+          restartPolicy: Never
+          containers:
+            - name: kube-bench
+              image: docker.io/aquasec/kube-bench:v0.10.6
+              command:
+                - kube-bench
+                - run
+                - --benchmark
+                - cis-1.10
+                - --targets
+                - policies
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 65534
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
