@@ -1,0 +1,38 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: data-redis
+spec:
+  groups:
+    - name: redis
+      interval: 1m
+      rules:
+        - alert: RedisDown
+          expr: redis_up == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: data
+          annotations:
+            summary: "Redis down: {{ $labels.namespace }}/{{ $labels.pod }}"
+            description: "Redis instance unreachable for >5min."
+
+        - alert: RedisOutOfMemory
+          expr: (redis_memory_used_bytes / redis_memory_max_bytes) > 0.95
+          for: 5m
+          labels:
+            severity: critical
+            component: data
+          annotations:
+            summary: "Redis OOM imminent: {{ $labels.namespace }}/{{ $labels.pod }}"
+            description: "Memory usage at {{ $value | humanizePercentage }}. Eviction storm likely."
+
+        - alert: RedisHighEvictionRate
+          expr: rate(redis_evicted_keys_total[5m]) > 100
+          for: 10m
+          labels:
+            severity: warning
+            component: data
+          annotations:
+            summary: "Redis high eviction rate: {{ $labels.pod }}"
+            description: "{{ $value }} keys/sec evicted. Memory pressure or undersized cache."

@@ -1,0 +1,48 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: data-postgres
+spec:
+  groups:
+    - name: cnpg-postgres
+      interval: 1m
+      rules:
+        - alert: CnpgPrimaryDown
+          expr: cnpg_pg_replication_in_recovery{role="primary"} == 1 or absent(cnpg_pg_replication_in_recovery{role="primary"})
+          for: 2m
+          labels:
+            severity: critical
+            component: data
+          annotations:
+            summary: "CNPG primary down: {{ $labels.namespace }}/{{ $labels.cluster }}"
+            description: "PostgreSQL primary not serving traffic for >2min."
+
+        - alert: CnpgReplicationLagHigh
+          expr: cnpg_pg_replication_lag > 30
+          for: 5m
+          labels:
+            severity: critical
+            component: data
+          annotations:
+            summary: "CNPG replication lag >30s: {{ $labels.namespace }}/{{ $labels.cluster }}"
+            description: "Replica lagging primary by {{ $value }}s. Failover risk."
+
+        - alert: CnpgStorageNearFull
+          expr: (kubelet_volume_stats_used_bytes{persistentvolumeclaim=~".*-postgres-.*|.*-cnpg-.*"} / kubelet_volume_stats_capacity_bytes{persistentvolumeclaim=~".*-postgres-.*|.*-cnpg-.*"}) > 0.85
+          for: 15m
+          labels:
+            severity: critical
+            component: data
+          annotations:
+            summary: "PostgreSQL PVC >85% full: {{ $labels.persistentvolumeclaim }}"
+            description: "Storage at {{ $value | humanizePercentage }}. Disk full = DB crash."
+
+        - alert: CnpgConnectionsNearLimit
+          expr: (cnpg_backends_total / cnpg_pg_settings_setting{name="max_connections"}) > 0.8
+          for: 10m
+          labels:
+            severity: warning
+            component: data
+          annotations:
+            summary: "PostgreSQL connection pool >80%: {{ $labels.cluster }}"
+            description: "{{ $value | humanizePercentage }} of max_connections used."

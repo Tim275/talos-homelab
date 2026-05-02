@@ -1,0 +1,48 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: data-kafka
+spec:
+  groups:
+    - name: kafka
+      interval: 1m
+      rules:
+        - alert: KafkaBrokerDown
+          expr: kafka_server_replicamanager_underreplicatedpartitions > 0 or kafka_controller_kafkacontroller_offlinepartitionscount > 0
+          for: 5m
+          labels:
+            severity: critical
+            component: data
+          annotations:
+            summary: "Kafka broker issue: {{ $labels.namespace }}"
+            description: "Underreplicated or offline partitions detected."
+
+        - alert: KafkaConsumerLagCritical
+          expr: kafka_consumergroup_lag_sum > 50000
+          for: 10m
+          labels:
+            severity: critical
+            component: data
+          annotations:
+            summary: "Kafka consumer lag >50k: {{ $labels.consumergroup }}"
+            description: "Consumer group {{ $labels.consumergroup }} lagging by {{ $value }} events on {{ $labels.topic }}."
+
+        - alert: KafkaConsumerLagWarning
+          expr: kafka_consumergroup_lag_sum > 10000
+          for: 15m
+          labels:
+            severity: warning
+            component: data
+          annotations:
+            summary: "Kafka consumer lag >10k: {{ $labels.consumergroup }}"
+            description: "Sustained lag {{ $value }} events on {{ $labels.topic }}."
+
+        - alert: KafkaProducerErrorRate
+          expr: rate(kafka_producer_errors_total[5m]) > 0.01
+          for: 10m
+          labels:
+            severity: warning
+            component: data
+          annotations:
+            summary: "Kafka producer errors: {{ $labels.namespace }}"
+            description: "Producer error rate {{ $value }}/sec."

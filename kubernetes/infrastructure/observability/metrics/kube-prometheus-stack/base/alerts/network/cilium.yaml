@@ -1,0 +1,48 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: network-cilium
+spec:
+  groups:
+    - name: cilium
+      interval: 1m
+      rules:
+        - alert: CiliumAgentsCrashing
+          expr: count(up{job="cilium-agent"} == 0) > 1
+          for: 5m
+          labels:
+            severity: critical
+            component: network
+          annotations:
+            summary: "Multiple Cilium agents down ({{ $value }})"
+            description: "More than 1 Cilium agent unreachable. Pod-to-pod networking degraded."
+
+        - alert: CiliumOperatorDown
+          expr: up{job="cilium-operator"} == 0
+          for: 10m
+          labels:
+            severity: critical
+            component: network
+          annotations:
+            summary: "Cilium operator down"
+            description: "Cilium operator unreachable >10min. New IPs/policies cannot be programmed."
+
+        - alert: SpireServerDown
+          expr: up{job=~"spire-server.*"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: network
+          annotations:
+            summary: "SPIRE server down — mTLS broken"
+            description: "Workload Identity issuer unreachable. New mTLS connections will fail."
+
+        - alert: HubbleRelayDown
+          expr: up{job="hubble-relay"} == 0
+          for: 15m
+          labels:
+            severity: warning
+            component: network
+          annotations:
+            summary: "Hubble Relay down — flow visibility lost"
+            description: "Cilium flow visibility unavailable. Network not affected."
