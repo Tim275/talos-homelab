@@ -24,7 +24,7 @@ configs:
     exec.timeout: "300s"  # 5 minutes for kustomize build (default 90s)
 
     # KEYCLOAK OIDC AUTHENTICATION - PRODUCTION SSO
-    # ================================================
+
     # Client secret is stored in SealedSecret: oidc-secret.yaml
     oidc.config: |
       name: Keycloak
@@ -41,7 +41,7 @@ configs:
     timeout.hard.reconciliation: "600s"    # Hard limit for reconciliation
 
     # GATEWAY API HEALTH CHECKS - 2025 KUBERNETES GATEWAY API
-    # ===========================================================
+
     # Custom health checks for Gateway API resources
     resource.customizations.health.gateway.networking.k8s.io_Gateway: |
       hs = {}
@@ -95,7 +95,7 @@ configs:
       return hs
 
     #  STRIMZI KAFKA HEALTH CHECKS - Fix permanent "Progressing" status
-    # ====================================================================
+
     resource.customizations.health.kafka.strimzi.io_Kafka: |
       hs = {}
       if obj.status ~= nil then
@@ -151,7 +151,7 @@ configs:
       return hs
 
     # CLOUDNATIVE PG HEALTH CHECK
-    # ====================================================================
+
     resource.customizations.health.postgresql.cnpg.io_Cluster: |
       hs = {}
       if obj.status ~= nil then
@@ -174,7 +174,7 @@ configs:
       return hs
 
     # OPSTREE REDIS REPLICATION HEALTH CHECK
-    # ====================================================================
+
     resource.customizations.health.redis.redis.opstreelabs.in_RedisReplication: |
       hs = {}
       if obj.status ~= nil then
@@ -211,7 +211,7 @@ configs:
     reposerver.cache.expiration: "10m"          # Very short global cache expiration
 
     # PERFORMANCE TUNING - 2025 OPTIMIZATIONS
-    # =====================================================
+
     # Timeouts (Extended for large repositories and Helm charts)
     controller.repo.server.timeout.seconds: "600"    # Increased from 300s
     server.repo.server.timeout.seconds: "600"        # Match controller timeout
@@ -229,7 +229,7 @@ configs:
     controller.cache.default.expiration: "60m"       # Cache optimization
 
     #  2025 CACHE OPTIMIZATION - LATEST STANDARDS
-    # ========================================================
+
     controller.app.state.cache.expiration: "1h"           # Application state cache TTL
     controller.revision-cache-expiration: "300s"          # Git revision cache for rapid sync
     controller.diff.cache.expiration: "300s"              # Diff result caching
@@ -258,7 +258,7 @@ configs:
     application.operation.retry.backoff.maxDuration: "3m" # Max retry wait
 
     # DELETE GUARANTEE - Applications/ApplicationSets müssen IMMER löschbar sein
-    # ===============================================================================
+
     application.finalizer.timeout: "60s"                 # Max 1 minute finalizer wait
     applicationset.finalizer.timeout: "60s"              # Max 1 minute finalizer wait
     controller.finalizer.timeout: "60s"                  # Global finalizer timeout
@@ -272,23 +272,20 @@ configs:
     application.sync.retry.limit: "0"                    # No retry during deletion
 
   # RBAC CONFIGURATION - KEYCLOAK GROUP MAPPING
-  # ===============================================
+
   rbac:
     create: true
     policy.default: role:readonly
     policy.csv: |
       # KEYCLOAK GROUP-BASED RBAC - PRODUCTION SECURITY
-      # ===================================================
 
-      # ==========================================
       # ROLE: ADMIN (Full Access)
-      # ==========================================
+
       # Built-in role:admin has all permissions
       g, cluster-admins, role:admin
 
-      # ==========================================
       # ROLE: DEVELOPER (No Delete!)
-      # ==========================================
+
       # Create applications
       p, role:developer, applications, create, */*, allow
       # View applications (get = read single, list = read all)
@@ -301,7 +298,7 @@ configs:
       p, role:developer, applications, override, */*, allow
       # Rollback to previous version
       p, role:developer, applications, action/*, */*, allow
-      # DELETE IS DENIED (not explicitly allowed → denied by default!)
+      # DELETE IS DENIED (not explicitly allowed denied by default!)
 
       # Repository access (read-only)
       p, role:developer, repositories, get, *, allow
@@ -317,12 +314,11 @@ configs:
       # Logs access
       p, role:developer, logs, get, */*, allow
 
-      # Map LDAP group → ArgoCD role
+      # Map LDAP group ArgoCD role
       g, developers, role:developer
 
-      # ==========================================
       # ROLE: DEPLOYER (CI/CD Bot)
-      # ==========================================
+
       # View applications
       p, role:deployer, applications, get, */*, allow
       # Sync applications (deploy)
@@ -331,12 +327,11 @@ configs:
       p, role:deployer, applications, action/*, */*, allow
       # NO create/update/delete!
 
-      # Map LDAP groups → ArgoCD role
+      # Map LDAP groups ArgoCD role
       g, deployers, role:deployer
 
-      # ==========================================
       # ROLE: VIEWER (Read-Only)
-      # ==========================================
+
       # View applications
       p, role:viewer, applications, get, */*, allow
       # View clusters
@@ -349,7 +344,7 @@ configs:
       p, role:viewer, logs, get, */*, allow
       # NO write access!
 
-      # Map LDAP group → ArgoCD role
+      # Map LDAP group ArgoCD role
       g, viewers, role:viewer
 
     scopes: '[groups, email]'
@@ -414,7 +409,7 @@ controller:
       value: "8GiB"                          # INCREASED: Match memory limit (was 4GiB)
 
     # ANTI-HANG PROTECTION - NEVER STUCK AGAIN!
-    # =============================================
+
     - name: ARGOCD_CONTROLLER_HEARTBEAT_TIME
       value: "30s"                           # Restart if no heartbeat for 30s
     - name: ARGOCD_CONTROLLER_LIVENESS_PROBE_TIMEOUT
@@ -427,14 +422,14 @@ controller:
       value: "true"                          # Prevent compression hangs
 
     #  2025 REDIS OPTIMIZATION - Reduce Redis traffic
-    # =================================================
+
     - name: ARGOCD_APPLICATION_TREE_SHARD_SIZE
       value: "100"
       # Split large app trees (default: 0 = no split)
       # Reduces Redis key size for 1000+ resource apps
 
     #  2025 CONTROLLER SCALING
-    # ====================================
+
     - name: ARGOCD_APP_STATE_CACHE_EXPIRATION
       value: "1h"                            # Application state cache optimization
     - name: ARGOCD_CONTROLLER_DIFF_CACHE_EXPIRATION
@@ -472,13 +467,13 @@ dex:
       memory: 128Mi
 
 # DISABLE INTERNAL REDIS - USE REDIS-HA INSTEAD FOR BULLETPROOF CACHE
-# ===========================================================================
+
 # Single Redis = single point of failure. Redis-HA = 3 replicas + Sentinel
 redis:
   enabled: false  # Disable single Redis - using redis-ha chart below
 
 #  REDIS-HA: BULLETPROOF 3-NODE SETUP WITH SENTINEL AUTO-FAILOVER
-# ===================================================================
+
 # Never cache freeze, never hang - automatic failover in seconds
 redis-ha:
   enabled: true
@@ -593,7 +588,7 @@ server:
       value: "true"
 
     # SERVER ANTI-FREEZE PROTECTION
-    # =================================
+
     - name: ARGOCD_SERVER_CONNECTION_STATUS_CACHE_EXPIRATION
       value: "1m"                          # Short connection cache - prevent connection hangs
     - name: ARGOCD_SERVER_DISABLE_AUTH
@@ -623,7 +618,7 @@ repoServer:
     readOnlyRootFilesystem: true
 
   # IMPROVED READINESS/LIVENESS PROBES - Prevent premature restarts
-  # ==================================================================
+
   readinessProbe:
     initialDelaySeconds: 30  # Wait 30s before first check (was 10s)
     periodSeconds: 10        # Check every 10s
@@ -720,7 +715,7 @@ repoServer:
       value: "false"                       # Allow non-strict TLS for faster git operations
 
     # REPO SERVER ANTI-HANG PROTECTION
-    # ====================================
+
     - name: ARGOCD_REPO_SERVER_TIMEOUT_SECONDS
       value: "120"                         # Kill hanging git operations after 2min
     - name: ARGOCD_REPO_SERVER_GIT_REQUEST_TIMEOUT
@@ -783,7 +778,7 @@ repoServer:
                   - work-02
 
 applicationSet:
-  # APPLICATIONSET CONTROLLER
+
   replicas: 2  # HA configuration
 
   resources:
@@ -812,7 +807,7 @@ notifications:
   enabled: true
 
   #  ARGOCD NOTIFICATIONS - Deployment Status Tracking
-  # =================================================================
+
   # Separate from Prometheus alerts - focuses on deployment health
   # Secret is managed in monitoring/alerts/argocd-slack-webhook-secret.yaml
 
@@ -1012,7 +1007,7 @@ notifications:
         - app-sync-failed
         when: app.status.operationState != nil and app.status.operationState.phase in ['Error', 'Failed'] and app.status.health.status == 'Degraded'
 
-  # 📢 DEFAULT SUBSCRIPTIONS - Production-grade triggers (no noise!)
+  # DEFAULT SUBSCRIPTIONS - Production-grade triggers (no noise!)
   # Global subscription for all apps (can override per-app via annotations)
   # For webhooks: just use the webhook name (matches service.webhook.<name>)
   subscriptions:

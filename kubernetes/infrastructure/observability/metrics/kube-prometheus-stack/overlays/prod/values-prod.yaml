@@ -207,14 +207,13 @@ kube-state-metrics:
     timeoutSeconds: 5
     failureThreshold: 3
 
-# ============================================================================
 # TIER-0 ALERTMANAGER CONFIG
 # Based on: Google SRE Workbook, ITIL Priority Matrix, Prometheus s
 # References:
 #   - https://sre.google/workbook/alerting-on-slos/
 #   - https://www.sysdig.com/blog/prometheus-alertmanager
 #   - https://fibery.io/blog/product-management/p0-p1-p2-p3-p4/
-# ============================================================================
+
 #
 # PRIORITY LEVELS (ITIL-based):
 # ┌──────┬─────────────┬─────────────────┬────────────────────────────────────┐
@@ -231,7 +230,6 @@ kube-state-metrics:
 #   critical = Service down, immediate action required
 #   warning  = Degraded, action needed soon
 #   info     = Informational, no action needed
-# ============================================================================
 
 alertmanager:
   alertmanagerSpec:
@@ -261,9 +259,8 @@ alertmanager:
       resolve_timeout: 5m
       slack_api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
 
-    # ========================================================================
     # ROUTING TREE - Priority-based with severity fallback
-    # ========================================================================
+
     route:
       receiver: 'slack-default'
       group_by: ['alertname', 'namespace', 'severity']
@@ -272,7 +269,7 @@ alertmanager:
       repeat_interval: 4h
 
       routes:
-        # ============ P0: CRITICAL OUTAGE ============
+
         # Total service failure, data loss risk
         - matchers:
             - severity="critical"
@@ -283,7 +280,6 @@ alertmanager:
           repeat_interval: 30m
           continue: false
 
-        # ============ P1: MAJOR INCIDENT ============
         # Major degradation, users actively impacted
         - matchers:
             - severity="critical"
@@ -301,7 +297,6 @@ alertmanager:
           repeat_interval: 1h
           continue: false
 
-        # ============ P2: DEGRADED SERVICE ============
         # Partial issues, workaround available
         - matchers:
             - severity="warning"
@@ -319,7 +314,6 @@ alertmanager:
           repeat_interval: 2h
           continue: false
 
-        # ============ P3/P4: LOW PRIORITY ============
         # Minor issues, informational
         - matchers:
             - severity="info"
@@ -337,10 +331,9 @@ alertmanager:
           repeat_interval: 12h
           continue: false
 
-    # ========================================================================
     # INHIBITION RULES - Suppress lower priority when higher is firing
     # Based on: https://www.neteye-blog.com/2025/06/alertmanager-alert-filtering-rules/
-    # ========================================================================
+
     inhibit_rules:
       # Critical suppresses Warning for same alert
       - source_matchers:
@@ -397,11 +390,10 @@ alertmanager:
         target_matchers:
           - alertname=~"KubeController.*|KubeScheduler.*|ArgoCD.*"
 
-    # ========================================================================
     # RECEIVERS - All with unified detailed templates
-    # ========================================================================
+
     receivers:
-      # ============ CRITICAL: P0/P1 (Slack + Telegram) ============
+
       - name: 'slack-critical'
         telegram_configs:
           - bot_token_file: /etc/alertmanager/secrets/telegram-bot-token/token
@@ -468,7 +460,6 @@ alertmanager:
                 text: 'Silence 2h'
                 url: '{{ .ExternalURL }}/#/silences/new?filter=%7Balertname%3D%22{{ .CommonLabels.alertname }}%22%7D'
 
-      # ============ DEFAULT: P2/Warning (Slack + Telegram) ============
       - name: 'slack-default'
         telegram_configs:
           - bot_token_file: /etc/alertmanager/secrets/telegram-bot-token/token
@@ -481,7 +472,7 @@ alertmanager:
               {{ range .Alerts }}
               ━━━━━━━━━━━━━━━━━━━━
               <b>Alert:</b> {{ .Labels.alertname }}
-              <b>Severity:</b> 🟠 {{ .Labels.severity | toUpper }}
+              <b>Severity:</b> {{ .Labels.severity | toUpper }}
               {{ if .Labels.priority }}<b>Priority:</b> {{ .Labels.priority | toUpper }}{{ end }}
               {{ if .Labels.namespace }}<b>Namespace:</b> <code>{{ .Labels.namespace }}</code>{{ end }}
               {{ if .Labels.pod }}<b>Pod:</b> <code>{{ .Labels.pod }}</code>{{ end }}
@@ -528,7 +519,6 @@ alertmanager:
                 text: 'Grafana'
                 url: 'https://grafana.timourhomelab.org'
 
-      # ============ INFO: P3/P4 (Slack + Telegram) ============
       - name: 'slack-info'
         telegram_configs:
           - bot_token_file: /etc/alertmanager/secrets/telegram-bot-token/token

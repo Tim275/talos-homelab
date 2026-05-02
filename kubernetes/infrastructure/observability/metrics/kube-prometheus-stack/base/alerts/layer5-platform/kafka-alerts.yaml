@@ -12,7 +12,7 @@ spec:
     - name: platform.kafka.critical
       interval: 30s
       rules:
-        # ====== P1: CRITICAL - Kafka Broker Down ======
+
         # Mit 3 Brokern kann ein Broker 0 Leader haben (normal nach Rebalancing)
         # Prüfe stattdessen ob Broker komplett weg ist (kein UP metric)
         - alert: KafkaBrokerDown
@@ -36,7 +36,6 @@ spec:
 
               Check: kubectl -n kafka get pods -l app.kubernetes.io/name=kafka
 
-        # ====== P1: CRITICAL - Kafka Under-Replicated Partitions ======
         - alert: KafkaUnderReplicatedPartitions
           expr: |
             kafka_server_replicamanager_underreplicatedpartitions > 0
@@ -59,7 +58,6 @@ spec:
               Check: kubectl -n kafka exec {{ $labels.pod }} -- \
                 kafka-topics.sh --bootstrap-server localhost:9092 --describe --under-replicated-partitions
 
-        # ====== P1: CRITICAL - Kafka Offline Partitions ======
         - alert: KafkaOfflinePartitions
           expr: |
             kafka_controller_kafkacontroller_offlinepartitionscount > 0
@@ -79,7 +77,6 @@ spec:
               Impact: Message writes and reads FAILING
               Team: @platform-oncall
 
-        # ====== P1: CRITICAL - Unclean Leader Election (DATA LOSS!) ======
         - alert: KafkaUncleanLeaderElection
           expr: |
             rate(kafka_controller_kafkacontroller_uncleanleaderelectionspersec[5m]) > 0
@@ -104,7 +101,6 @@ spec:
 
               Check: Review broker logs for election events
 
-        # ====== P1: CRITICAL - Kafka Disk Usage Critical ======
         - alert: KafkaDiskUsageCritical
           expr: |
             kubelet_volume_stats_used_bytes{persistentvolumeclaim=~"data-my-cluster.*"}
@@ -132,7 +128,7 @@ spec:
     - name: platform.kafka.high
       interval: 30s
       rules:
-        # ====== P2: HIGH - Kafka Disk Usage High (Warning) ======
+
         - alert: KafkaDiskUsageHigh
           expr: |
             kubelet_volume_stats_used_bytes{persistentvolumeclaim=~"data-my-cluster.*"}
@@ -152,7 +148,6 @@ spec:
 
               Action: Monitor closely, will become critical at 90%
 
-        # ====== P2: HIGH - Kafka Request Latency High ======
         - alert: KafkaHighRequestLatency
           expr: |
             histogram_quantile(0.99,
@@ -174,7 +169,6 @@ spec:
               Duration: >10 minutes
               Action: Check broker resources, disk I/O, network
 
-        # ====== P2: HIGH - Kafka Consumer Lag High ======
         - alert: KafkaConsumerLagHigh
           expr: |
             kafka_consumergroup_lag > 10000
@@ -197,7 +191,6 @@ spec:
               Check: kubectl -n kafka exec my-cluster-dual-role-0 -- \
                 kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group {{ $labels.consumergroup }}
 
-        # ====== P2: HIGH - Kafka ISR Shrink Rate High ======
         - alert: KafkaISRShrinkRateHigh
           expr: |
             rate(kafka_server_replicamanager_isrshrinkspersec[5m]) > 0
@@ -217,7 +210,6 @@ spec:
               Duration: >10 minutes
               Action: Check broker health and network connectivity
 
-        # ====== P2: HIGH - Kafka Active Controller Missing ======
         - alert: KafkaNoActiveController
           expr: |
             sum(kafka_controller_kafkacontroller_activecontrollercount) == 0
@@ -240,7 +232,7 @@ spec:
     - name: platform.kafka.medium
       interval: 60s
       rules:
-        # ====== P3: MEDIUM - Kafka Request Handler Idle Low ======
+
         - alert: KafkaRequestHandlerIdleLow
           expr: |
             avg(kafka_server_kafkarequesthandlerpool_requesthandleravgidlepercent) < 0.2
@@ -260,7 +252,6 @@ spec:
               Duration: >15 minutes
               Action: Consider increasing broker resources or adding brokers
 
-        # ====== P3: MEDIUM - Kafka Network Processor Idle Low ======
         - alert: KafkaNetworkProcessorIdleLow
           expr: |
             avg(kafka_network_socketserver_networkprocessoravgidlepercent) < 0.3
@@ -280,7 +271,6 @@ spec:
               Duration: >15 minutes
               Action: Consider increasing num.network.threads
 
-        # ====== P3: MEDIUM - Kafka Log Directory Offline ======
         - alert: KafkaLogDirectoryOffline
           expr: |
             kafka_log_logmanager_offlinelogdirectorycount > 0
@@ -300,7 +290,6 @@ spec:
               Duration: >5 minutes
               Action: Check disk health and mount points
 
-        # ====== P3: MEDIUM - Kafka Partition Imbalance ======
         - alert: KafkaPartitionImbalance
           expr: |
             stddev(kafka_server_replicamanager_partitioncount) by (strimzi_io_cluster) > 10
@@ -323,7 +312,6 @@ spec:
               Check: kubectl -n kafka exec my-cluster-dual-role-0 -- \
                 kafka-topics.sh --bootstrap-server localhost:9092 --describe | grep Leader
 
-        # ====== P3: MEDIUM - Kafka Consumer Rebalancing Frequent ======
         - alert: KafkaConsumerRebalancingFrequent
           expr: |
             increase(kafka_consumer_coordinator_rebalance_total[10m]) > 5
@@ -345,7 +333,6 @@ spec:
 
               Fix: Increase session.timeout.ms, reduce max.poll.records, or use static membership
 
-        # ====== P3: MEDIUM - Kafka Deserialization Errors ======
         - alert: KafkaDeserializationErrors
           expr: |
             increase(spring_kafka_listener_seconds_count{exception!="none"}[5m]) > 0
