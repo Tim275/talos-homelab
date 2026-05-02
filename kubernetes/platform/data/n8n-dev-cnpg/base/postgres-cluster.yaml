@@ -1,6 +1,4 @@
-# n8n Development PostgreSQL Cluster
-# Lightweight PostgreSQL database for n8n development and testing
-
+---
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -11,28 +9,20 @@ metadata:
     app.kubernetes.io/component: database
     environment: development
   annotations:
-    argocd.argoproj.io/sync-wave: "3"  # After operator (wave 2)
+    argocd.argoproj.io/sync-wave: '3'
 spec:
-  # Single instance for development
   instances: 1
-
-  # PostgreSQL version (same as prod for consistency)
   imageName: ghcr.io/cloudnative-pg/postgresql:16.1
-
-  # Resource allocation (reduced for dev)
   resources:
     requests:
-      memory: "128Mi"      # Reduced from 256Mi
-      cpu: "100m"          # Reduced from 200m
+      memory: 128Mi
+      cpu: 100m
     limits:
-      memory: "256Mi"      # Reduced from 512Mi
-      cpu: "250m"          # Reduced from 500m
-
-  # Storage configuration (smaller for dev)
+      memory: 256Mi
+      cpu: 250m
   storage:
-    size: 2Gi             # Reduced from 8Gi
+    size: 2Gi
     storageClass: rook-ceph-block-enterprise
-
   backup:
     barmanObjectStore:
       destinationPath: s3://cnpg-n8n-dev-backup/
@@ -49,18 +39,19 @@ spec:
       data:
         compression: gzip
       serverName: n8n-postgres-dev
-    retentionPolicy: "7d"
-
-  # Bootstrap new development database
+    retentionPolicy: 7d
   bootstrap:
     initdb:
       database: n8n
       owner: n8n
       secret:
         name: n8n-postgres-credentials
-
+  affinity:
+    podAntiAffinityType: preferred
+    topologyKey: kubernetes.io/hostname
+  monitoring:
+    enablePodMonitor: true
 ---
-# n8n development database user credentials
 apiVersion: v1
 kind: Secret
 metadata:
@@ -69,8 +60,8 @@ metadata:
   labels:
     environment: development
   annotations:
-    argocd.argoproj.io/sync-wave: "2"  # Same as operator, before cluster
+    argocd.argoproj.io/sync-wave: '2'
 type: kubernetes.io/basic-auth
 stringData:
   username: n8n
-  password: n8nDevPassword123  # Different password for dev
+  password: n8nDevPassword123
