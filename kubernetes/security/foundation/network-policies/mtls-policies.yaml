@@ -1,3 +1,16 @@
+# =============================================================================
+# Cilium L7 mTLS policies for sensitive workloads
+# =============================================================================
+# IMPORTANT: `authentication.mode: required` only works when BOTH ends of the
+# connection have a SPIRE workload identity registered. None of these apps
+# (n8n, keycloak, lldap) currently terminate SPIRE-issued certs themselves —
+# enabling required-mTLS therefore blocks all intra-namespace traffic
+# (setup-jobs, CNPG operator, internal probes) with "Operation not permitted".
+#
+# These policies are kept as plain ingress allow-lists today. Re-enable
+# `authentication.mode: required` per app once SPIRE workload identities are
+# wired up (e.g. via Cilium spire-agent + a SPIFFE-aware sidecar).
+# =============================================================================
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -11,8 +24,6 @@ spec:
   ingress:
     - fromEndpoints:
         - {}
-      authentication:
-        mode: "required"
     - fromEntities:
         - world
         - host
@@ -31,8 +42,6 @@ spec:
   ingress:
     - fromEndpoints:
         - {}
-      authentication:
-        mode: "required"
     - fromEntities:
         - world
         - host
@@ -47,12 +56,10 @@ metadata:
 spec:
   endpointSelector:
     matchLabels:
-      app: keycloak
+      app.kubernetes.io/name: keycloak
   ingress:
     - fromEndpoints:
         - {}
-      authentication:
-        mode: "required"
     - fromEntities:
         - world
         - host
@@ -71,8 +78,6 @@ spec:
   ingress:
     - fromEndpoints:
         - {}
-      authentication:
-        mode: "required"
     - fromEntities:
         - world
         - host
