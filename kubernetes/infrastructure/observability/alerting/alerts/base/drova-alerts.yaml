@@ -8,145 +8,360 @@ metadata:
     role: alert-rules
 spec:
   groups:
+    # ─────────────────────────────────────────────────────────────────────
+    # PODS / DEPLOYMENTS — Resource layer
+    # ─────────────────────────────────────────────────────────────────────
     - name: drova.pods
       interval: 60s
       rules:
         - alert: DrovaPodNotReady
-          expr: |
-            kube_pod_status_ready{namespace="drova", condition="true"} == 0
+          expr: kube_pod_status_ready{namespace="drova", condition="true"} == 0
           for: 2m
           labels:
             severity: warning
-            priority: p2
+            priority: P2
             component: drova
+            tenant: drova
           annotations:
             summary: "Drova pod {{ $labels.pod }} not ready"
-            description: "Pod {{ $labels.pod }} in namespace drova has been not ready for 2+ minutes"
-            impact: "Reduced capacity or partial service outage for Drova"
+            description: "Pod {{ $labels.pod }} not ready for >2min"
+            impact: "Reduced capacity"
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-overview"
 
         - alert: DrovaPodCrashLooping
+          expr: rate(kube_pod_container_status_restarts_total{namespace="drova"}[5m]) * 60 > 0.5
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: drova
+            tenant: drova
+          annotations:
+            summary: "Drova {{ $labels.container }} crash-looping"
+            description: "Container {{ $labels.container }} in {{ $labels.pod }} restarting >0.5/min"
+            impact: "Service instability"
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail?var-service={{ $labels.container }}"
+
+        - alert: DrovaDeploymentUnavailable
+          expr: kube_deployment_status_replicas_unavailable{namespace="drova"} > 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova
+            tenant: drova
+          annotations:
+            summary: "Drova {{ $labels.deployment }} has unavailable replicas"
+            description: "{{ $value }} replicas unavailable >3min"
+
+        - alert: DrovaPodMemoryPressure
           expr: |
-            rate(kube_pod_container_status_restarts_total{namespace="drova"}[5m]) * 60 > 0.5
+            (
+              container_memory_working_set_bytes{namespace="drova",container!=""}
+              /
+              kube_pod_container_resource_limits{namespace="drova",resource="memory"}
+            ) > 0.9
           for: 5m
           labels:
             severity: warning
-            priority: p2
+            priority: P2
             component: drova
+            tenant: drova
           annotations:
-            summary: "Drova container {{ $labels.container }} is crash-looping"
-            description: "Container {{ $labels.container }} in pod {{ $labels.pod }} is restarting more than once every 2 minutes"
-            impact: "Service instability, potential data loss for in-flight requests"
+            summary: "Drova {{ $labels.pod }} memory >90% of limit"
+            description: "OOMKill risk — memory at {{ $value | humanizePercentage }} of limit"
 
-        - alert: DrovaDeploymentUnavailable
-          expr: |
-            kube_deployment_status_replicas_unavailable{namespace="drova"} > 0
-          for: 3m
+        - alert: DrovaPodCPUThrottling
+          expr: rate(container_cpu_cfs_throttled_periods_total{namespace="drova",container!=""}[5m]) / rate(container_cpu_cfs_periods_total{namespace="drova",container!=""}[5m]) > 0.5
+          for: 10m
           labels:
             severity: warning
-            priority: p2
+            priority: P2
             component: drova
+            tenant: drova
           annotations:
-            summary: "Drova deployment {{ $labels.deployment }} has unavailable replicas"
-            description: "Deployment {{ $labels.deployment }} has {{ $value }} unavailable replicas for 3+ minutes"
-            impact: "Reduced capacity for affected Drova service"
+            summary: "Drova {{ $labels.pod }} CPU throttled >50%"
+            description: "Container is being CPU-throttled — increase limits or scale horizontally"
 
+    # ─────────────────────────────────────────────────────────────────────
+    # HTTP — RED method per service (uses service_name, NOT job)
+    # ─────────────────────────────────────────────────────────────────────
     - name: drova.http
-      interval: 60s
+      interval: 30s
       rules:
+        - alert: DrovaServiceDown
+          expr: |
+            absent(rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service"}[5m]))
+            or
+            sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service"}[5m])) == 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: drova
+            tenant: drova
+          annotations:
+            summary: "Drova service {{ $labels.service_name }} emits no metrics (down?)"
+            description: "No HTTP requests received for >5min — service is down or crashed"
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail?var-service={{ $labels.service_name }}"
+
         - alert: DrovaHighErrorRate
           expr: |
-            sum(rate(http_server_request_duration_seconds_count{
-              job=~"drova.*",
-              http_response_status_code=~"5.."
-            }[5m])) by (job)
+            100 * sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service",http_response_status_code=~"5.."}[5m]))
             /
-            sum(rate(http_server_request_duration_seconds_count{
-              job=~"drova.*"
-            }[5m])) by (job)
-            > 0.05
+            clamp_min(sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service"}[5m])), 0.001)
+            > 5
           for: 3m
           labels:
-            severity: warning
-            priority: p2
+            severity: critical
+            priority: P1
             component: drova
+            tenant: drova
           annotations:
-            summary: "Drova service {{ $labels.job }} error rate > 5%"
-            description: "HTTP 5xx error rate is {{ $value | humanizePercentage }} for {{ $labels.job }}"
-            impact: "Users experiencing errors in Drova application"
+            summary: "Drova {{ $labels.service_name }} 5xx rate >5% ({{ $value | humanize }}%)"
+            description: "Sustained 5xx errors above 5% threshold"
+            impact: "Users experiencing errors"
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail?var-service={{ $labels.service_name }}"
 
-        - alert: DrovaHighLatency
+        - alert: DrovaHighErrorRateWarning
           expr: |
-            histogram_quantile(0.95,
-              sum(rate(http_server_request_duration_seconds_bucket{job=~"drova.*"}[5m])) by (le, job)
+            100 * sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service",http_response_status_code=~"5.."}[5m]))
+            /
+            clamp_min(sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service"}[5m])), 0.001)
+            > 1
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova
+            tenant: drova
+          annotations:
+            summary: "Drova {{ $labels.service_name }} 5xx rate >1%"
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail?var-service={{ $labels.service_name }}"
+
+        - alert: DrovaP99LatencyCritical
+          expr: |
+            histogram_quantile(0.99,
+              sum by (service_name, le) (rate(http_server_request_duration_seconds_bucket{service_name=~"api-gateway|chat-service|user-service"}[5m]))
             ) > 2
           for: 5m
           labels:
-            severity: warning
-            priority: p2
+            severity: critical
+            priority: P1
             component: drova
+            tenant: drova
           annotations:
-            summary: "Drova service {{ $labels.job }} p95 latency > 2s"
-            description: "95th percentile latency is {{ $value }}s for {{ $labels.job }}"
-            impact: "Degraded user experience in Drova application"
+            summary: "Drova {{ $labels.service_name }} p99 latency >2s ({{ $value | humanizeDuration }})"
+            description: "Severe latency degradation"
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail?var-service={{ $labels.service_name }}"
 
+        - alert: DrovaP99LatencyWarning
+          expr: |
+            histogram_quantile(0.99,
+              sum by (service_name, le) (rate(http_server_request_duration_seconds_bucket{service_name=~"api-gateway|chat-service|user-service"}[5m]))
+            ) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova
+            tenant: drova
+          annotations:
+            summary: "Drova {{ $labels.service_name }} p99 >500ms"
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail?var-service={{ $labels.service_name }}"
+
+        - alert: DrovaTrafficDropped
+          expr: |
+            (
+              sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service"}[5m]))
+              <
+              sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service"}[1h] offset 1h)) * 0.3
+            )
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova
+            tenant: drova
+          annotations:
+            summary: "Drova {{ $labels.service_name }} traffic dropped >70% vs 1h ago"
+            description: "Anomalous traffic drop — possibly client-side issue or upstream outage"
+
+    # ─────────────────────────────────────────────────────────────────────
+    # KAFKA — broker-level (drova-kafka cluster)
+    # ─────────────────────────────────────────────────────────────────────
     - name: drova.kafka
       interval: 60s
       rules:
-        - alert: DrovaKafkaConsumerLagHigh
-          expr: |
-            kafka_consumer_fetch_manager_records_lag_max{
-              namespace="drova"
-            } > 1000
-          for: 5m
-          labels:
-            severity: warning
-            priority: p2
-            component: drova-kafka
-          annotations:
-            summary: "Drova Kafka consumer lag > 1000 on {{ $labels.topic }}"
-            description: "Consumer {{ $labels.client_id }} is {{ $value }} messages behind on topic {{ $labels.topic }}"
-            impact: "Payment or driver assignment delays — Drova events are not being processed fast enough"
-
-        - alert: DrovaKafkaConsumerLagCritical
-          expr: |
-            kafka_consumer_fetch_manager_records_lag_max{
-              namespace="drova"
-            } > 10000
+        - alert: DrovaKafkaBrokerDown
+          expr: count(up{namespace="drova",pod=~"drova-kafka-.*"}==1) < 3
           for: 2m
           labels:
             severity: critical
-            priority: p1
+            priority: P1
             component: drova-kafka
+            tenant: drova
           annotations:
-            summary: "CRITICAL: Drova Kafka consumer lag > 10000 on {{ $labels.topic }}"
-            description: "Consumer {{ $labels.client_id }} is {{ $value }} messages behind — service is severely falling behind"
-            impact: "Significant payment and trip processing delays — immediate attention required"
+            summary: "Drova Kafka: {{ $value }}/3 brokers up"
+            description: "Less than 3 Kafka brokers reachable — replication factor at risk"
 
-    - name: drova.database
-      interval: 120s
-      rules:
-        - alert: DrovaPostgresReplicationLag
-          expr: |
-            cnpg_pg_replication_lag{namespace="drova"} > 30
+        - alert: DrovaKafkaUnderReplicatedPartitions
+          expr: kafka_server_replicamanager_under_replicated_partitions{namespace="drova"} > 0
           for: 5m
           labels:
             severity: warning
-            priority: p2
-            component: drova-postgres
+            priority: P2
+            component: drova-kafka
+            tenant: drova
           annotations:
-            summary: "Drova PostgreSQL replication lag > 30s"
-            description: "Replication lag is {{ $value }}s — standby is falling behind primary"
-            impact: "Data loss risk if primary fails — standby promotion would lose recent writes"
+            summary: "Drova Kafka: {{ $value }} under-replicated partitions"
+            description: "Some partitions have fewer in-sync replicas than configured RF"
+
+        - alert: DrovaKafkaOfflinePartitions
+          expr: kafka_controller_kafkacontroller_offline_partitions_count{namespace="drova"} > 0
+          for: 1m
+          labels:
+            severity: critical
+            priority: P1
+            component: drova-kafka
+            tenant: drova
+          annotations:
+            summary: "Drova Kafka: {{ $value }} offline partitions"
+            description: "Partitions completely unavailable — message production blocked"
+
+        - alert: DrovaKafkaConsumerLagHigh
+          expr: kafka_consumer_fetch_manager_records_lag_max{namespace="drova"} > 1000
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova-kafka
+            tenant: drova
+          annotations:
+            summary: "Drova Kafka consumer lag >1000 on {{ $labels.topic }}"
+            description: "{{ $labels.client_id }} is {{ $value }} messages behind"
+
+        - alert: DrovaKafkaConsumerLagCritical
+          expr: kafka_consumer_fetch_manager_records_lag_max{namespace="drova"} > 10000
+          for: 2m
+          labels:
+            severity: critical
+            priority: P1
+            component: drova-kafka
+            tenant: drova
+          annotations:
+            summary: "Drova Kafka consumer lag >10000 on {{ $labels.topic }}"
+            description: "{{ $labels.client_id }} severely behind ({{ $value }} msgs)"
+
+    # ─────────────────────────────────────────────────────────────────────
+    # POSTGRES — drova-postgres cluster
+    # ─────────────────────────────────────────────────────────────────────
+    - name: drova.database
+      interval: 60s
+      rules:
+        - alert: DrovaPostgresDown
+          expr: cnpg_collector_up{namespace="drova"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            priority: P1
+            component: drova-postgres
+            tenant: drova
+          annotations:
+            summary: "Drova Postgres {{ $labels.pod }} down"
+            description: "CNPG instance not reachable for >2min"
+
+        - alert: DrovaPostgresReplicationLag
+          expr: cnpg_pg_replication_lag{namespace="drova"} > 30
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova-postgres
+            tenant: drova
+          annotations:
+            summary: "Drova Postgres replication lag {{ $value }}s"
+            description: "Standby falling behind primary — data loss risk on failover"
 
         - alert: DrovaPostgresConnectionsHigh
-          expr: |
-            cnpg_backends_total{namespace="drova"} > 80
+          expr: cnpg_backends_total{namespace="drova"} > 80
           for: 5m
           labels:
             severity: warning
-            priority: p2
+            priority: P2
             component: drova-postgres
+            tenant: drova
           annotations:
-            summary: "Drova PostgreSQL connection count high ({{ $value }}/100)"
-            description: "PostgreSQL is using {{ $value }} connections out of max_connections=100"
-            impact: "Approaching connection limit — new connections will be rejected above 100"
+            summary: "Drova Postgres connections {{ $value }}/100"
+            description: "Approaching max_connections limit"
+
+        - alert: DrovaPostgresWALArchivingFailed
+          expr: cnpg_collector_last_failed_wal_archive_seconds{namespace="drova"} > 0
+          for: 15m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova-postgres
+            tenant: drova
+          annotations:
+            summary: "Drova Postgres WAL archiving failing"
+            description: "Last failed archive {{ $value | humanizeTimestamp }} — disk fill risk"
+
+    # ─────────────────────────────────────────────────────────────────────
+    # REDIS — drova-redis cluster
+    # ─────────────────────────────────────────────────────────────────────
+    - name: drova.redis
+      interval: 60s
+      rules:
+        - alert: DrovaRedisDown
+          expr: redis_up{namespace="drova"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            priority: P1
+            component: drova-redis
+            tenant: drova
+          annotations:
+            summary: "Drova Redis {{ $labels.pod }} down"
+            description: "Redis instance not reachable >2min"
+
+        - alert: DrovaRedisHighMemory
+          expr: redis_memory_used_bytes{namespace="drova"} / redis_memory_max_bytes{namespace="drova"} > 0.9
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova-redis
+            tenant: drova
+          annotations:
+            summary: "Drova Redis {{ $labels.pod }} memory >90%"
+            description: "Redis approaching max-memory — eviction will start"
+
+        - alert: DrovaRedisLowHitRate
+          expr: |
+            (
+              rate(redis_keyspace_hits_total{namespace="drova"}[5m])
+              /
+              clamp_min(rate(redis_keyspace_hits_total{namespace="drova"}[5m]) + rate(redis_keyspace_misses_total{namespace="drova"}[5m]), 1)
+            ) < 0.5
+          for: 15m
+          labels:
+            severity: warning
+            priority: P3
+            component: drova-redis
+            tenant: drova
+          annotations:
+            summary: "Drova Redis hit rate <50%"
+            description: "Cache hit-rate degraded — review key strategy"
+
+        - alert: DrovaRedisReplicationBroken
+          expr: redis_connected_slaves{namespace="drova"} < 1
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova-redis
+            tenant: drova
+          annotations:
+            summary: "Drova Redis no replica connected"
+            description: "Master has no replica — failover impossible"
