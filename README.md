@@ -1,4 +1,4 @@
-# 🪨 Homelab 🏡
+<h1 align="center">Homelab 🏡</h1>
 
 Repository for home infrastructure and Kubernetes cluster using GitOps practices.
 
@@ -18,14 +18,6 @@ The cluster runs **Talos Linux** on **Proxmox VE** hypervisor nodes, with VMs bo
 **Argo CD** manages everything declaratively from this repo using the App-of-Apps pattern, layered into:
 `security → infrastructure → platform → apps`.
 
-The stack uses **Cilium** (CNI with eBPF dataplane, WireGuard pod-to-pod encryption, SPIRE-backed mTLS, Hubble observability),
-**Envoy Gateway** (Gateway API) behind a **Cloudflare Tunnel**, **Rook-Ceph** for storage,
-**CloudNativePG** for Postgres HA, **Strimzi** for Kafka, plus a full observability stack
-(Prometheus + Grafana + Loki + Tempo + Jaeger + OpenTelemetry).
-
-A microservices showcase application — **[Drova](https://github.com/Tim275/drova-gitops)** —
-demonstrates the full enterprise pattern: 6 services, distributed tracing, mTLS, tiered backups, SLO burn-rate alerts.
-
 ## 🧑‍💻 Getting Started
 
 The cluster is bootstrapped from `tofu/` (Proxmox VMs + Talos config) and then handed off to Argo CD, which reconciles
@@ -34,9 +26,6 @@ everything under `kubernetes/`. The full bootstrap order:
 1. `tofu apply` → Proxmox VMs provisioned, Talos installed, kubeconfig written.
 2. `kubectl apply -k kubernetes/bootstrap/` → installs Argo CD + Sealed Secrets + ApplicationSets.
 3. Argo CD takes over and syncs the rest of the repo automatically.
-
-The detailed cluster topology, network parameters and battle-tested recovery playbooks live in `CLAUDE.md`
-(local-only, gitignored — operator's notebook).
 
 ## ⚙️ Core Components
 
@@ -357,16 +346,3 @@ Zero-trust foundation, policy enforcement and compliance:
         <td>CIS Kubernetes Benchmark scanner (Talos-aware policies-target only)</td>
     </tr>
 </table>
-
-## 🌟 Notable Patterns
-
-- **Multi-Tenant Governance** — Per-tenant namespace + ResourceQuota + LimitRange + RBAC + NetworkPolicy + PolicyExceptions (`platform/governance/tenants/`)
-- **App-of-Apps + ApplicationSets** — 4-layer hierarchy (security → infra → platform → apps) with cluster-generator-based ApplicationSets ready for multi-cluster
-- **Three-Pillar Correlation** — Metric exemplars → Trace, Loki derivedFields → Trace, Tempo tracesToLogsV2 → Loki — full Senior-level observability
-- **Defense-in-Depth Backups** — Default StorageClass with `Retain` policy, VolumeSnapshotClass `Retain`, daily Released-PV cleanup CronJob, CSI orphan-omap cleanup CronJob
-- **DDoS Protection** — Cloudflare Edge Rate Limiting + Custom Rules + Envoy Gateway Global Rate Limiting (Redis-backed) + ClientTrafficPolicy `failClosed` + HTTP Security Headers
-- **Drova Showcase** — 6 microservices with mTLS via Cilium-SPIRE, distributed tracing, SLO burn-rate alerts, tiered backups (daily + weekly, 90d retention)
-
----
-
-> Operator's notebook (battle-tested fixes, recovery playbooks, network-migration checklists, score-tracking) lives in `CLAUDE.md` — gitignored, local-only.
