@@ -4,14 +4,24 @@ metadata:
   name: slo-drova
 spec:
   groups:
+    # ─────────────────────────────────────────────────────────────────────
+    # RECORDING RULES — multi-window für Multi-Burn-Rate-Alerts
+    # ─────────────────────────────────────────────────────────────────────
     - name: drova-slo-recording
       interval: 30s
       rules:
+        # HTTP availability — pre-aggregated für 5m, 30m, 1h, 6h windows
         - record: slo:drova_http_availability:ratio_rate5m
           expr: |
             sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service",http_response_status_code!~"5.."}[5m]))
             /
             sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service"}[5m]))
+
+        - record: slo:drova_http_availability:ratio_rate30m
+          expr: |
+            sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service",http_response_status_code!~"5.."}[30m]))
+            /
+            sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service"}[30m]))
 
         - record: slo:drova_http_availability:ratio_rate1h
           expr: |
@@ -19,37 +29,113 @@ spec:
             /
             sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service"}[1h]))
 
-        - record: slo:drova_grpc_availability:ratio_rate5m
+        - record: slo:drova_http_availability:ratio_rate6h
           expr: |
-            sum by (service_name) (rate(rpc_server_call_duration_seconds_count{service_name=~"trip-service|driver-service",rpc_grpc_status_code="0"}[5m]))
+            sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service",http_response_status_code!~"5.."}[6h]))
             /
-            sum by (service_name) (rate(rpc_server_call_duration_seconds_count{service_name=~"trip-service|driver-service"}[5m]))
+            sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service"}[6h]))
 
+        # Latency SLI — p99 für 5m
+        - record: slo:drova_http_latency_p99:histogram_quantile_5m
+          expr: |
+            histogram_quantile(0.99,
+              sum by (service_name, le) (rate(http_server_request_duration_seconds_bucket{service_name=~"api-gateway|chat-service|user-service"}[5m]))
+            )
+
+    # ─────────────────────────────────────────────────────────────────────
+    # MULTI-WINDOW MULTI-BURN-RATE ALERTS (Google SRE Workbook §5)
+    # ─────────────────────────────────────────────────────────────────────
+    # Target SLO: 99.5% availability (Error budget: 0.5% = 3.6h/30d)
+    #
+    # 4 burn-rate-windows mit AND-verknüpften kurz/lang Fenstern:
+    #   page-fast:    14.4× (5m AND 1h)   → 30d budget weg in 2d   → P1
+    #   page-slow:    6×    (30m AND 6h)  → 30d budget weg in 5d   → P1
+    #   ticket-slow:  3×    (2h AND 1d)   → 30d budget weg in 10d  → P2
+    #   ticket-rest:  1×    (3d alone)    → budget vollständig in 30d → P3
+    # ─────────────────────────────────────────────────────────────────────
     - name: drova-slo-burn-rate
       interval: 1m
       rules:
-        - alert: DrovaSLOFastBurn
+        - alert: DrovaSLOPageFastBurn
           expr: |
-            (1 - slo:drova_http_availability:ratio_rate5m) > (14.4 * (1 - 0.995))
+            (
+              (1 - slo:drova_http_availability:ratio_rate5m) > (14.4 * (1 - 0.995))
+              and
+              (1 - slo:drova_http_availability:ratio_rate1h) > (14.4 * (1 - 0.995))
+            )
           for: 2m
           labels:
             severity: critical
+            priority: P1
             component: apps
             tenant: drova
             slo: availability
+            burn_rate: "14.4x"
           annotations:
-            summary: "Drova {{ $labels.service_name }}: SLO fast-burn (will exhaust 30d budget in <2d)"
-            description: "Error budget burn rate 14.4× normal. Target SLO: 99.5% availability."
+            summary: "Drova {{ $labels.service_name }}: SLO page-fast burn (5m AND 1h windows >14.4×)"
+            description: "Error budget burn rate at 14.4× normal — at this rate, 30d error budget exhausted in <2 days."
+            impact: "Customers experiencing high error rates. Service degraded."
+            action: "1) Check service logs and recent deploys. 2) Roll back if recent change. 3) Contact on-call."
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/drova-slo-burn.md"
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-slo?var-service={{ $labels.service_name }}"
+            query_url: "https://prometheus.timourhomelab.org/graph?g0.expr=slo%3Adrova_http_availability%3Aratio_rate5m"
 
-        - alert: DrovaSLOSlowBurn
+        - alert: DrovaSLOPageSlowBurn
           expr: |
-            (1 - slo:drova_http_availability:ratio_rate1h) > (1 * (1 - 0.995))
+            (
+              (1 - slo:drova_http_availability:ratio_rate30m) > (6 * (1 - 0.995))
+              and
+              (1 - slo:drova_http_availability:ratio_rate6h) > (6 * (1 - 0.995))
+            )
+          for: 15m
+          labels:
+            severity: critical
+            priority: P1
+            component: apps
+            tenant: drova
+            slo: availability
+            burn_rate: "6x"
+          annotations:
+            summary: "Drova {{ $labels.service_name }}: SLO page-slow burn (30m AND 6h windows >6×)"
+            description: "Sustained error budget burn at 6× normal — 30d budget exhausted in <5 days."
+            impact: "Sustained service degradation."
+            action: "Investigate root cause. Check dependencies (DB, Kafka, Redis, ES)."
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/drova-slo-burn.md"
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-slo?var-service={{ $labels.service_name }}"
+
+        - alert: DrovaSLOTicketSlowBurn
+          expr: |
+            (
+              (1 - slo:drova_http_availability:ratio_rate1h) > (3 * (1 - 0.995))
+              and
+              (1 - slo:drova_http_availability:ratio_rate6h) > (3 * (1 - 0.995))
+            )
           for: 1h
           labels:
             severity: warning
+            priority: P2
             component: apps
             tenant: drova
             slo: availability
+            burn_rate: "3x"
           annotations:
-            summary: "Drova {{ $labels.service_name }}: SLO slow-burn"
-            description: "Sustained error rate exceeding 0.5% target."
+            summary: "Drova {{ $labels.service_name }}: sustained 3× burn rate"
+            description: "Persistent error rate above SLO — 30d budget exhausted in <10 days. Investigate next workday."
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/drova-slo-burn.md"
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-slo?var-service={{ $labels.service_name }}"
+
+        # Latency-SLO: p99 < 500ms
+        - alert: DrovaLatencyP99High
+          expr: slo:drova_http_latency_p99:histogram_quantile_5m > 0.5
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: apps
+            tenant: drova
+            slo: latency
+          annotations:
+            summary: "Drova {{ $labels.service_name }}: p99 latency >500ms (current: {{ $value | humanizeDuration }})"
+            description: "p99 latency exceeds 500ms target. Check downstream dependencies (DB query slow? cache miss spike?)"
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/drova-latency-high.md"
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail?var-service={{ $labels.service_name }}"
