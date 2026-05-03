@@ -11,88 +11,106 @@ spec:
   folder: Drova
   json: |
     {
-      "title": "Drova — Service Overview (RED)",
+      "title": "Drova — Tier 0 Tenant Executive",
       "uid": "drova-overview",
-      "tags": ["drova","red"],
+      "tags": ["drova","tier0","executive","red"],
       "timezone": "browser",
       "schemaVersion": 39,
       "refresh": "30s",
-      "time": {"from": "now-3h", "to": "now"},
+      "time": {"from": "now-1h", "to": "now"},
       "templating": {"list": []},
       "panels": [
-        {
-          "id": 1,
-          "title": "HTTP Request Rate (req/s) — api-gateway, chat, user",
-          "type": "timeseries",
-          "gridPos": {"x":0,"y":0,"w":12,"h":8},
-          "targets": [{
-            "expr": "sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|chat-service|user-service\"}[5m]))",
-            "legendFormat": "{{service_name}}"
-          }]
-        },
-        {
-          "id": 2,
-          "title": "HTTP Error Rate %",
-          "type": "timeseries",
-          "gridPos": {"x":12,"y":0,"w":12,"h":8},
-          "targets": [{
-            "expr": "100 * sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|chat-service|user-service\",http_response_status_code=~\"5..\"}[5m])) / sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|chat-service|user-service\"}[5m]))",
-            "legendFormat": "{{service_name}}"
-          }],
-          "fieldConfig": {"defaults": {"unit": "percent", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": 0}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}}
-        },
-        {
-          "id": 3,
-          "title": "HTTP P99 Latency (s)",
-          "type": "timeseries",
-          "gridPos": {"x":0,"y":8,"w":12,"h":8},
-          "targets": [{
-            "expr": "histogram_quantile(0.99, sum by (service_name, le) (rate(http_server_request_duration_seconds_bucket{service_name=~\"api-gateway|chat-service|user-service\"}[5m])))",
-            "legendFormat": "{{service_name}}"
-          }],
-          "fieldConfig": {"defaults": {"unit": "s"}}
-        },
-        {
-          "id": 4,
-          "title": "gRPC Request Rate — trip, driver",
-          "type": "timeseries",
-          "gridPos": {"x":12,"y":8,"w":12,"h":8},
-          "targets": [{
-            "expr": "sum by (service_name) (rate(rpc_server_call_duration_seconds_count{service_name=~\"trip-service|driver-service\"}[5m]))",
-            "legendFormat": "{{service_name}}"
-          }]
-        },
-        {
-          "id": 5,
-          "title": "gRPC Error Rate %",
-          "type": "timeseries",
-          "gridPos": {"x":0,"y":16,"w":12,"h":8},
-          "targets": [{
-            "expr": "100 * sum by (service_name) (rate(rpc_server_call_duration_seconds_count{service_name=~\"trip-service|driver-service\",rpc_grpc_status_code!=\"0\"}[5m])) / sum by (service_name) (rate(rpc_server_call_duration_seconds_count{service_name=~\"trip-service|driver-service\"}[5m]))",
-            "legendFormat": "{{service_name}}"
-          }],
-          "fieldConfig": {"defaults": {"unit": "percent"}}
-        },
-        {
-          "id": 6,
-          "title": "gRPC P99 Latency (s)",
-          "type": "timeseries",
-          "gridPos": {"x":12,"y":16,"w":12,"h":8},
-          "targets": [{
-            "expr": "histogram_quantile(0.99, sum by (service_name, le) (rate(rpc_server_call_duration_seconds_bucket{service_name=~\"trip-service|driver-service\"}[5m])))",
-            "legendFormat": "{{service_name}}"
-          }],
-          "fieldConfig": {"defaults": {"unit": "s"}}
-        },
-        {
-          "id": 7,
-          "title": "Pod Replicas — Drova Services",
-          "type": "stat",
-          "gridPos": {"x":0,"y":24,"w":24,"h":4},
-          "targets": [{
-            "expr": "sum by (deployment) (kube_deployment_status_replicas_available{namespace=\"drova\",deployment=~\"api-gateway|chat-service|user-service|trip-service|driver-service|payment-service\"})",
-            "legendFormat": "{{deployment}}"
-          }]
-        }
+        {"id": 100, "type": "row", "title": "🟢 Service Health Matrix", "gridPos": {"x":0,"y":0,"w":24,"h":1}},
+        {"id": 1, "type": "stat", "title": "Drova Pods Ready",
+         "gridPos": {"x":0,"y":1,"w":4,"h":4},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"sum(kube_pod_status_ready{namespace=\"drova\",condition=\"true\"})"}],
+         "fieldConfig":{"defaults":{"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"yellow","value":10},{"color":"green","value":15}]}}}},
+        {"id": 2, "type": "stat", "title": "Total RPS (HTTP)",
+         "gridPos": {"x":4,"y":1,"w":4,"h":4},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"sum(rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|chat-service|user-service\"}[5m]))"}],
+         "fieldConfig":{"defaults":{"unit":"reqps","decimals":1}}},
+        {"id": 3, "type": "stat", "title": "Error Rate (5xx %)",
+         "gridPos": {"x":8,"y":1,"w":4,"h":4},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"100 * sum(rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|chat-service|user-service\",http_response_status_code=~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|chat-service|user-service\"}[5m])), 0.001)"}],
+         "fieldConfig":{"defaults":{"unit":"percent","decimals":2,"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":1},{"color":"red","value":5}]}}}},
+        {"id": 4, "type": "stat", "title": "p95 Latency",
+         "gridPos": {"x":12,"y":1,"w":4,"h":4},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=~\"api-gateway|chat-service|user-service\"}[5m])))"}],
+         "fieldConfig":{"defaults":{"unit":"s","decimals":2,"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":0.3},{"color":"red","value":1}]}}}},
+        {"id": 5, "type": "stat", "title": "p99 Latency",
+         "gridPos": {"x":16,"y":1,"w":4,"h":4},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=~\"api-gateway|chat-service|user-service\"}[5m])))"}],
+         "fieldConfig":{"defaults":{"unit":"s","decimals":2,"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":0.5},{"color":"red","value":2}]}}}},
+        {"id": 6, "type": "stat", "title": "Active Alerts (Drova)",
+         "gridPos": {"x":20,"y":1,"w":4,"h":4},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"count(ALERTS{alertstate=\"firing\",namespace=\"drova\"}) OR on() vector(0)"}],
+         "fieldConfig":{"defaults":{"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":1},{"color":"red","value":3}]}}}},
+
+        {"id": 200, "type": "row", "title": "📊 RED Method (Rate / Errors / Duration)", "gridPos": {"x":0,"y":5,"w":24,"h":1}},
+        {"id": 10, "type": "timeseries", "title": "Rate (RPS) per Service",
+         "gridPos": {"x":0,"y":6,"w":12,"h":7},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|chat-service|user-service\"}[5m]))","legendFormat":"{{service_name}}"}],
+         "fieldConfig":{"defaults":{"unit":"reqps"}}},
+        {"id": 11, "type": "timeseries", "title": "Errors (5xx) per Service",
+         "gridPos": {"x":12,"y":6,"w":12,"h":7},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|chat-service|user-service\",http_response_status_code=~\"5..\"}[5m]))","legendFormat":"{{service_name}}"}],
+         "fieldConfig":{"defaults":{"unit":"reqps","custom":{"fillOpacity":20}}}},
+        {"id": 12, "type": "timeseries", "title": "Duration p50 / p95 / p99 (HTTP)",
+         "gridPos": {"x":0,"y":13,"w":12,"h":7},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[
+           {"expr":"histogram_quantile(0.50, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=~\"api-gateway|chat-service|user-service\"}[5m])))","legendFormat":"p50"},
+           {"expr":"histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=~\"api-gateway|chat-service|user-service\"}[5m])))","legendFormat":"p95"},
+           {"expr":"histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=~\"api-gateway|chat-service|user-service\"}[5m])))","legendFormat":"p99"}
+         ],
+         "fieldConfig":{"defaults":{"unit":"s"}}},
+        {"id": 13, "type": "timeseries", "title": "Status Code Distribution",
+         "gridPos": {"x":12,"y":13,"w":12,"h":7},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"sum by (http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|chat-service|user-service\"}[5m]))","legendFormat":"{{http_response_status_code}}"}],
+         "fieldConfig":{"defaults":{"unit":"reqps","custom":{"stacking":{"mode":"normal"}}}}},
+
+        {"id": 300, "type": "row", "title": "🔥 Top Endpoints", "gridPos": {"x":0,"y":20,"w":24,"h":1}},
+        {"id": 20, "type": "table", "title": "Top 10 Endpoints by Rate",
+         "gridPos": {"x":0,"y":21,"w":12,"h":8},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"topk(10, sum by (service_name, http_route, http_request_method) (rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|chat-service|user-service\"}[5m])))","instant":true,"format":"table"}]},
+        {"id": 21, "type": "table", "title": "Top 10 Slowest Endpoints (p99)",
+         "gridPos": {"x":12,"y":21,"w":12,"h":8},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"topk(10, histogram_quantile(0.99, sum by (service_name, http_route, le) (rate(http_server_request_duration_seconds_bucket{service_name=~\"api-gateway|chat-service|user-service\"}[5m]))))","instant":true,"format":"table"}]},
+
+        {"id": 400, "type": "row", "title": "💾 Resources (USE Method)", "gridPos": {"x":0,"y":29,"w":24,"h":1}},
+        {"id": 30, "type": "timeseries", "title": "CPU Usage per Pod",
+         "gridPos": {"x":0,"y":30,"w":12,"h":7},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"drova\",container!=\"\"}[5m]))","legendFormat":"{{pod}}"}],
+         "fieldConfig":{"defaults":{"unit":"short"}}},
+        {"id": 31, "type": "timeseries", "title": "Memory Usage per Pod",
+         "gridPos": {"x":12,"y":30,"w":12,"h":7},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"sum by (pod) (container_memory_working_set_bytes{namespace=\"drova\",container!=\"\"})","legendFormat":"{{pod}}"}],
+         "fieldConfig":{"defaults":{"unit":"bytes"}}},
+        {"id": 32, "type": "timeseries", "title": "Pod Restart Count (1h)",
+         "gridPos": {"x":0,"y":37,"w":12,"h":7},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"drova\"}[1h]))","legendFormat":"{{pod}}"}],
+         "fieldConfig":{"defaults":{"unit":"short"}}},
+        {"id": 33, "type": "timeseries", "title": "Network Traffic per Pod",
+         "gridPos": {"x":12,"y":37,"w":12,"h":7},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[
+           {"expr":"sum by (pod) (rate(container_network_receive_bytes_total{namespace=\"drova\"}[5m]))","legendFormat":"RX {{pod}}"},
+           {"expr":"-sum by (pod) (rate(container_network_transmit_bytes_total{namespace=\"drova\"}[5m]))","legendFormat":"TX {{pod}}"}
+         ],
+         "fieldConfig":{"defaults":{"unit":"binBps"}}}
       ]
     }
