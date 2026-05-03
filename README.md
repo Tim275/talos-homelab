@@ -57,21 +57,21 @@ everything under `kubernetes/`. The full bootstrap order:
 
 ```
 .
-├── 📂 kubernetes               # Kubernetes manifests (App-of-Apps)
-│   ├── 📂 bootstrap            # Initial Argo CD + Sealed Secrets bootstrap
-│   ├── 📂 clusters             # Cluster registration secrets + labels
-│   ├── 📂 projects             # Argo CD AppProjects (RBAC boundaries)
-│   ├── 📂 applicationsets      # Multi-cluster ApplicationSets (cluster generators)
-│   ├── 📂 components           # Kustomize Components (mixins: arm64, single-replica, ...)
-│   ├── 📂 security             # Kyverno · Sealed Secrets · Compliance · Network Policies
-│   ├── 📂 infrastructure       # Network · Storage · Controllers · Observability · VPN
-│   ├── 📂 platform             # Identity · Data · Messaging · Governance/Tenants
-│   └── 📂 apps                 # End-user workloads (n8n, audiobookshelf, etc.)
+├── 📂 kubernetes               # Kubernetes manifests
+│   ├── 📂 bootstrap            # Bootstrap config
+│   ├── 📂 clusters             # Cluster registrations
+│   ├── 📂 projects             # Argo CD projects
+│   ├── 📂 applicationsets      # Bootstrapping ApplicationSets
+│   ├── 📂 components           # Kustomize components
+│   ├── 📂 security             # Security & policies
+│   ├── 📂 infrastructure       # Infrastructure components
+│   ├── 📂 platform             # Platform services
+│   └── 📂 apps                 # Applications
 ├── 📂 tools                    # Operator tooling
-└── 📂 tofu                     # OpenTofu infrastructure
-    ├── 📂 bootstrap            # Sealed Secrets master cert + initial config
-    ├── 📂 talos                # Talos cluster definition (nodes, network, inline-manifests)
-    └── 📂 gitlab               # GitLab VM (separate Proxmox VM)
+└── 📂 tofu                     # Tofu configuration
+    ├── 📂 bootstrap            # Bootstrap config
+    ├── 📂 talos                # Talos configuration
+    └── 📂 gitlab               # GitLab VM
 ```
 
 ## 📦 Applications
