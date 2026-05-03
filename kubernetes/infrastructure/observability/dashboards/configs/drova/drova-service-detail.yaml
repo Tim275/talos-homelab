@@ -11,9 +11,10 @@ spec:
   folder: Drova
   json: |
     {
-      "title": "Drova — Service Detail",
+      "title": "Drova — Service Detail (4 Golden Signals)",
       "uid": "drova-service-detail",
-      "tags": ["drova"],
+      "tags": ["drova","service","red","golden-signals"],
+      "timezone": "browser",
       "schemaVersion": 39,
       "refresh": "30s",
       "time": {"from": "now-1h", "to": "now"},
@@ -23,70 +24,96 @@ spec:
             "name": "service",
             "label": "Service",
             "type": "query",
-            "query": "label_values(http_server_request_duration_seconds_count{service_name=~\"api-gateway|chat-service|user-service|trip-service|driver-service|payment-service\"}, service_name)",
-            "datasource": {"type":"prometheus","uid":"prometheus"},
-            "refresh": 2,
-            "includeAll": false
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "query": "label_values(http_server_request_duration_seconds_count{service_name=~\"api-gateway|chat-service|user-service\"}, service_name)",
+            "refresh": 1,
+            "current": {"text": "api-gateway", "value": "api-gateway"}
           }
         ]
       },
       "panels": [
-        {
-          "id": 1,
-          "title": "Request Rate by Endpoint",
-          "type": "timeseries",
-          "gridPos": {"x":0,"y":0,"w":24,"h":8},
-          "targets": [{
-            "expr": "sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name=\"$service\"}[5m]))",
-            "legendFormat": "{{http_route}}"
-          }]
-        },
-        {
-          "id": 2,
-          "title": "Latency Heatmap (P50, P95, P99)",
-          "type": "timeseries",
-          "gridPos": {"x":0,"y":8,"w":12,"h":8},
-          "targets": [
-            {"expr": "histogram_quantile(0.50, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=\"$service\"}[5m])))","legendFormat":"p50"},
-            {"expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=\"$service\"}[5m])))","legendFormat":"p95"},
-            {"expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=\"$service\"}[5m])))","legendFormat":"p99"}
-          ],
-          "fieldConfig": {"defaults": {"unit": "s"}}
-        },
-        {
-          "id": 3,
-          "title": "Errors by Status Code",
-          "type": "timeseries",
-          "gridPos": {"x":12,"y":8,"w":12,"h":8},
-          "targets": [{
-            "expr": "sum by (http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name=\"$service\",http_response_status_code=~\"4..|5..\"}[5m]))",
-            "legendFormat": "{{http_response_status_code}}"
-          }]
-        },
-        {
-          "id": 4,
-          "title": "Go Runtime — Goroutines",
-          "type": "timeseries",
-          "gridPos": {"x":0,"y":16,"w":12,"h":6},
-          "targets": [{"expr":"go_goroutine_count{service_name=\"$service\"}","legendFormat":"goroutines"}]
-        },
-        {
-          "id": 5,
-          "title": "Go Runtime — Memory Used",
-          "type": "timeseries",
-          "gridPos": {"x":12,"y":16,"w":12,"h":6},
-          "targets": [{"expr":"go_memory_used_bytes{service_name=\"$service\"}","legendFormat":"used"}],
-          "fieldConfig": {"defaults": {"unit": "bytes"}}
-        },
-        {
-          "id": 6,
-          "title": "Pod Restarts (Last 1h)",
-          "type": "stat",
-          "gridPos": {"x":0,"y":22,"w":24,"h":4},
-          "targets": [{
-            "expr": "increase(kube_pod_container_status_restarts_total{namespace=\"drova\",pod=~\"$service-.*\"}[1h])",
-            "legendFormat": "{{pod}}"
-          }]
-        }
+        {"id": 100, "type": "row", "title": "🎯 Four Golden Signals — $service", "gridPos": {"x":0,"y":0,"w":24,"h":1}},
+        {"id": 1, "type": "stat", "title": "Latency (p99)",
+         "gridPos": {"x":0,"y":1,"w":6,"h":4},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=\"$service\"}[5m])))"}],
+         "fieldConfig":{"defaults":{"unit":"s","decimals":3,"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":0.5},{"color":"red","value":2}]}}}},
+        {"id": 2, "type": "stat", "title": "Traffic (RPS)",
+         "gridPos": {"x":6,"y":1,"w":6,"h":4},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"sum(rate(http_server_request_duration_seconds_count{service_name=\"$service\"}[5m]))"}],
+         "fieldConfig":{"defaults":{"unit":"reqps","decimals":1}}},
+        {"id": 3, "type": "stat", "title": "Errors (5xx %)",
+         "gridPos": {"x":12,"y":1,"w":6,"h":4},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"100 * sum(rate(http_server_request_duration_seconds_count{service_name=\"$service\",http_response_status_code=~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_request_duration_seconds_count{service_name=\"$service\"}[5m])), 0.001)"}],
+         "fieldConfig":{"defaults":{"unit":"percent","decimals":2,"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":1},{"color":"red","value":5}]}}}},
+        {"id": 4, "type": "stat", "title": "Saturation (CPU vs Limit)",
+         "gridPos": {"x":18,"y":1,"w":6,"h":4},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"100 * sum(rate(container_cpu_usage_seconds_total{namespace=\"drova\",pod=~\"$service.*\",container!=\"\"}[5m])) / sum(kube_pod_container_resource_limits{namespace=\"drova\",pod=~\"$service.*\",resource=\"cpu\"})"}],
+         "fieldConfig":{"defaults":{"unit":"percent","decimals":1,"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":70},{"color":"red","value":90}]}}}},
+
+        {"id": 200, "type": "row", "title": "📈 Latency Heatmap & Distribution", "gridPos": {"x":0,"y":5,"w":24,"h":1}},
+        {"id": 10, "type": "heatmap", "title": "Latency Distribution Heatmap",
+         "gridPos": {"x":0,"y":6,"w":24,"h":8},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=\"$service\"}[5m]))","format":"heatmap","legendFormat":"{{le}}"}]},
+
+        {"id": 300, "type": "row", "title": "🛣 Per-Endpoint Breakdown", "gridPos": {"x":0,"y":14,"w":24,"h":1}},
+        {"id": 20, "type": "table", "title": "Endpoints — Rate / Errors / p99",
+         "gridPos": {"x":0,"y":15,"w":24,"h":8},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[
+           {"expr":"sum by (http_route, http_request_method) (rate(http_server_request_duration_seconds_count{service_name=\"$service\"}[5m]))","instant":true,"format":"table","refId":"A"},
+           {"expr":"100 * sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name=\"$service\",http_response_status_code=~\"5..\"}[5m])) / clamp_min(sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name=\"$service\"}[5m])), 0.001)","instant":true,"format":"table","refId":"B"},
+           {"expr":"histogram_quantile(0.99, sum by (http_route, le) (rate(http_server_request_duration_seconds_bucket{service_name=\"$service\"}[5m])))","instant":true,"format":"table","refId":"C"}
+         ]},
+
+        {"id": 400, "type": "row", "title": "📊 Status Codes & Errors", "gridPos": {"x":0,"y":23,"w":24,"h":1}},
+        {"id": 30, "type": "timeseries", "title": "Status Code Distribution",
+         "gridPos": {"x":0,"y":24,"w":12,"h":7},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"sum by (http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name=\"$service\"}[5m]))","legendFormat":"{{http_response_status_code}}"}],
+         "fieldConfig":{"defaults":{"unit":"reqps","custom":{"stacking":{"mode":"normal"}}}}},
+        {"id": 31, "type": "timeseries", "title": "Error Rate (4xx vs 5xx)",
+         "gridPos": {"x":12,"y":24,"w":12,"h":7},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[
+           {"expr":"100 * sum(rate(http_server_request_duration_seconds_count{service_name=\"$service\",http_response_status_code=~\"4..\"}[5m])) / clamp_min(sum(rate(http_server_request_duration_seconds_count{service_name=\"$service\"}[5m])), 0.001)","legendFormat":"4xx %"},
+           {"expr":"100 * sum(rate(http_server_request_duration_seconds_count{service_name=\"$service\",http_response_status_code=~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_request_duration_seconds_count{service_name=\"$service\"}[5m])), 0.001)","legendFormat":"5xx %"}
+         ],
+         "fieldConfig":{"defaults":{"unit":"percent"}}},
+
+        {"id": 500, "type": "row", "title": "💾 Resource Usage (Pod-Level)", "gridPos": {"x":0,"y":31,"w":24,"h":1}},
+        {"id": 40, "type": "timeseries", "title": "CPU per Pod",
+         "gridPos": {"x":0,"y":32,"w":12,"h":7},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"drova\",pod=~\"$service.*\",container!=\"\"}[5m]))","legendFormat":"{{pod}}"}],
+         "fieldConfig":{"defaults":{"unit":"short"}}},
+        {"id": 41, "type": "timeseries", "title": "Memory per Pod",
+         "gridPos": {"x":12,"y":32,"w":12,"h":7},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"sum by (pod) (container_memory_working_set_bytes{namespace=\"drova\",pod=~\"$service.*\",container!=\"\"})","legendFormat":"{{pod}}"}],
+         "fieldConfig":{"defaults":{"unit":"bytes"}}},
+        {"id": 42, "type": "timeseries", "title": "Pod Restarts (1h)",
+         "gridPos": {"x":0,"y":39,"w":12,"h":7},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[{"expr":"sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"drova\",pod=~\"$service.*\"}[1h]))","legendFormat":"{{pod}}"}]},
+        {"id": 43, "type": "timeseries", "title": "Network I/O",
+         "gridPos": {"x":12,"y":39,"w":12,"h":7},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets":[
+           {"expr":"sum(rate(container_network_receive_bytes_total{namespace=\"drova\",pod=~\"$service.*\"}[5m]))","legendFormat":"RX"},
+           {"expr":"-sum(rate(container_network_transmit_bytes_total{namespace=\"drova\",pod=~\"$service.*\"}[5m]))","legendFormat":"TX"}
+         ],
+         "fieldConfig":{"defaults":{"unit":"binBps"}}},
+
+        {"id": 600, "type": "row", "title": "🔗 Three-Pillar Correlation", "gridPos": {"x":0,"y":46,"w":24,"h":1}},
+        {"id": 50, "type": "logs", "title": "Logs (Loki) — service=$service",
+         "gridPos": {"x":0,"y":47,"w":24,"h":10},
+         "datasource": {"type": "loki", "uid": "loki"},
+         "targets":[{"expr":"{namespace=\"drova\",app=\"$service\"} | json","refId":"A"}],
+         "options":{"showTime":true,"wrapLogMessage":true}}
       ]
     }
