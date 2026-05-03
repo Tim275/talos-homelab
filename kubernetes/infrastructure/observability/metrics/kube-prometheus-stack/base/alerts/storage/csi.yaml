@@ -42,6 +42,18 @@ spec:
             summary: "Ceph CSI provisioner {{ $labels.deployment }} has 0 available replicas"
             description: "PVC creation/deletion blocked cluster-wide while CSI provisioner is down."
 
+        - alert: ReleasedPVsAccumulating
+          expr: |
+            count(kube_persistentvolume_status_phase{phase="Released"}) > 3
+          for: 30m
+          labels:
+            severity: warning
+            component: storage
+          annotations:
+            summary: "{{ $value }} Released PVs — CSI cleanup not keeping up"
+            description: "Released PVs accumulate when CSI deletion gets stuck on operation locks. Hourly cleanup CronJob should handle it; if not, manual intervention needed."
+            action: "kubectl get pv | awk '$5==\"Released\"' && check rook-ceph-tools omap keys"
+
         - alert: CephOSDFlapping
           expr: |
             changes(ceph_osd_up[10m]) > 2
