@@ -27,32 +27,6 @@ everything under `kubernetes/`. The full bootstrap order:
 2. `kubectl apply -k kubernetes/bootstrap/` → installs Argo CD + Sealed Secrets + ApplicationSets.
 3. Argo CD takes over and syncs the rest of the repo automatically.
 
-## ⚙️ Core Components
-
-- [**Proxmox VE**](https://www.proxmox.com/) — Hypervisor for Talos VMs (msa2proxmox + nipogi nodes)
-- [**OpenTofu**](https://opentofu.org/) — Open-source Terraform fork for VM provisioning
-- [**Talos Linux**](https://www.talos.dev/) — Immutable, API-driven Kubernetes OS
-- [**Cilium**](https://cilium.io/) — eBPF CNI with WireGuard encryption, SPIRE mTLS, Hubble observability, L2 Announcements
-- [**Envoy Gateway**](https://gateway.envoyproxy.io/) — Gateway API implementation with TLS termination + global rate limiting
-- [**Cloudflare Tunnel**](https://developers.cloudflare.com/cloudflare-one/) — Zero-trust ingress without port forwarding
-- [**Tailscale Operator**](https://tailscale.com/kb/1236/kubernetes-operator) — Mesh VPN for remote cluster access
-- [**Argo CD**](https://argo-cd.readthedocs.io/) — Declarative GitOps with HA Redis backend + ApplicationSets
-- [**Argo Rollouts**](https://argo-rollouts.readthedocs.io/) — Progressive delivery (blue-green, canary)
-- [**Cert-Manager**](https://cert-manager.io/) — Automated TLS via Let's Encrypt
-- [**Sealed Secrets**](https://sealed-secrets.netlify.app/) — Encrypted secrets safe to commit
-- [**Rook-Ceph**](https://rook.io/) — Distributed block, file, and object storage (6 OSDs)
-- [**CloudNativePG**](https://cloudnative-pg.io/) — Postgres HA with Barman Cloud backups to Ceph-RGW
-- [**Strimzi**](https://strimzi.io/) — Kafka operator (KRaft mode)
-- [**Velero**](https://velero.io/) — Cluster backup + disaster recovery
-- [**Prometheus** + **Alertmanager**](https://prometheus-operator.dev/) — Metrics with HA AlertManager (3 replicas)
-- [**Grafana**](https://grafana.com/) — Visualization (83 dashboards, OIDC via Keycloak)
-- [**Loki**](https://grafana.com/oss/loki/) — Log aggregation on Ceph S3 backend
-- [**Tempo** + **Jaeger**](https://grafana.com/oss/tempo/) — Distributed tracing
-- [**OpenTelemetry**](https://opentelemetry.io/) — Unified telemetry collector (DaemonSet)
-- [**Keycloak** + **LLDAP**](https://www.keycloak.org/) — OIDC / SAML identity provider with LDAP federation
-- [**Kyverno**](https://kyverno.io/) — Policy-as-code (Enforce mode: no-privileged, no-host-namespaces, image-registry allowlist)
-- [**Kubescape**](https://kubescape.io/) + [**kube-bench**](https://aquasecurity.github.io/kube-bench/) — Compliance scanning (NSA, MITRE ATT&CK, CIS)
-
 ## 🗃️ Folder Structure
 
 ```
