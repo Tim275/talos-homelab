@@ -1,0 +1,133 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: velero-backup-status
+  namespace: grafana
+spec:
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  allowCrossNamespaceImport: true
+  folder: Storage
+  json: |
+    {
+      "title": "Velero — Backup Status",
+      "uid": "velero-backup-status",
+      "tags": ["velero","backup","storage"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "refresh": "1m",
+      "time": {"from": "now-7d", "to": "now"},
+      "templating": {
+        "list": [
+          {"name":"schedule","label":"Schedule","type":"query",
+           "datasource":{"type":"prometheus","uid":"prometheus"},
+           "query":"label_values(velero_backup_attempt_total, schedule)",
+           "refresh":1,"includeAll":true,"multi":true}
+        ]
+      },
+      "panels": [
+        {"id":900,"type":"row","title":"Health Snapshot","gridPos":{"x":0,"y":0,"w":24,"h":1}},
+        {"id":1,"type":"stat","title":"Last Backup Status",
+         "gridPos":{"x":0,"y":1,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"max(velero_backup_last_status) by (schedule)","legendFormat":"{{schedule}}"}],
+         "fieldConfig":{"defaults":{"mappings":[{"type":"value","options":{"0":{"text":"FAILED","color":"red"},"1":{"text":"OK","color":"green"}}}],"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"green","value":1}]}}},
+         "options":{"colorMode":"background"}},
+        {"id":2,"type":"stat","title":"Backups (24h)",
+         "gridPos":{"x":4,"y":1,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(increase(velero_backup_attempt_total[24h]))"}],
+         "fieldConfig":{"defaults":{"unit":"short","decimals":0,"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"green","value":1}]}}},
+         "options":{"colorMode":"background","graphMode":"area"}},
+        {"id":3,"type":"stat","title":"Success Rate (24h)",
+         "gridPos":{"x":8,"y":1,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"100 * sum(increase(velero_backup_success_total[24h])) / clamp_min(sum(increase(velero_backup_attempt_total[24h])), 1)"}],
+         "fieldConfig":{"defaults":{"unit":"percent","decimals":1,"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"yellow","value":90},{"color":"green","value":99}]}}},
+         "options":{"colorMode":"background"}},
+        {"id":4,"type":"stat","title":"Failed (24h)",
+         "gridPos":{"x":12,"y":1,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(increase(velero_backup_failure_total[24h]))"}],
+         "fieldConfig":{"defaults":{"unit":"short","decimals":0,"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":1},{"color":"red","value":3}]}}},
+         "options":{"colorMode":"background"}},
+        {"id":5,"type":"stat","title":"Partial Failures (24h)",
+         "gridPos":{"x":16,"y":1,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(increase(velero_backup_partial_failure_total[24h]))"}],
+         "fieldConfig":{"defaults":{"unit":"short","decimals":0,"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":1}]}}},
+         "options":{"colorMode":"background"}},
+        {"id":6,"type":"stat","title":"Validation Failures (24h)",
+         "gridPos":{"x":20,"y":1,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(increase(velero_backup_validation_failure_total[24h]))"}],
+         "fieldConfig":{"defaults":{"unit":"short","decimals":0,"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":1}]}}},
+         "options":{"colorMode":"background"}},
+
+        {"id":910,"type":"row","title":"Backup Trends","gridPos":{"x":0,"y":5,"w":24,"h":1}},
+        {"id":10,"type":"timeseries","title":"Backup Outcomes (7d)",
+         "gridPos":{"x":0,"y":6,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"sum(increase(velero_backup_success_total[1h]))","legendFormat":"success"},
+           {"expr":"sum(increase(velero_backup_failure_total[1h]))","legendFormat":"failure"},
+           {"expr":"sum(increase(velero_backup_partial_failure_total[1h]))","legendFormat":"partial"}
+         ],
+         "fieldConfig":{"defaults":{"unit":"short","custom":{"drawStyle":"bars","stacking":{"mode":"normal"}}},
+         "overrides":[
+           {"matcher":{"id":"byName","options":"success"},"properties":[{"id":"color","value":{"mode":"fixed","fixedColor":"green"}}]},
+           {"matcher":{"id":"byName","options":"failure"},"properties":[{"id":"color","value":{"mode":"fixed","fixedColor":"red"}}]},
+           {"matcher":{"id":"byName","options":"partial"},"properties":[{"id":"color","value":{"mode":"fixed","fixedColor":"orange"}}]}
+         ]}},
+        {"id":11,"type":"timeseries","title":"Backup Duration (p50/p95)",
+         "gridPos":{"x":12,"y":6,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"histogram_quantile(0.50, sum by (le) (rate(velero_backup_duration_seconds_bucket[1h])))","legendFormat":"p50"},
+           {"expr":"histogram_quantile(0.95, sum by (le) (rate(velero_backup_duration_seconds_bucket[1h])))","legendFormat":"p95"}
+         ],
+         "fieldConfig":{"defaults":{"unit":"s"}}},
+
+        {"id":920,"type":"row","title":"Per-Schedule Breakdown","gridPos":{"x":0,"y":14,"w":24,"h":1}},
+        {"id":20,"type":"table","title":"Backup Schedules — Status & Volume",
+         "gridPos":{"x":0,"y":15,"w":24,"h":10},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"velero_backup_last_status","instant":true,"format":"table","refId":"Status"},
+           {"expr":"sum by (schedule) (increase(velero_backup_attempt_total[24h]))","instant":true,"format":"table","refId":"Attempts"},
+           {"expr":"sum by (schedule) (increase(velero_backup_success_total[24h]))","instant":true,"format":"table","refId":"Success"},
+           {"expr":"sum by (schedule) (increase(velero_backup_failure_total[24h]))","instant":true,"format":"table","refId":"Failures"},
+           {"expr":"max by (schedule) (velero_backup_tarball_size_bytes)","instant":true,"format":"table","refId":"Size"}
+         ],
+         "transformations":[
+           {"id":"merge","options":{}},
+           {"id":"organize","options":{"excludeByName":{"Time":true,"__name__":true,"job":true,"namespace":true,"pod":true,"instance":true,"endpoint":true,"service":true,"container":true},"renameByName":{"schedule":"Schedule","Value #Status":"Last Status","Value #Attempts":"Attempts (24h)","Value #Success":"Success (24h)","Value #Failures":"Failures (24h)","Value #Size":"Tarball Size"}}}
+         ],
+         "fieldConfig":{
+           "defaults":{},
+           "overrides":[
+             {"matcher":{"id":"byName","options":"Last Status"},"properties":[{"id":"mappings","value":[{"type":"value","options":{"0":{"text":"FAILED","color":"red"},"1":{"text":"OK","color":"green"}}}]},{"id":"custom.cellOptions","value":{"type":"color-background"}}]},
+             {"matcher":{"id":"byName","options":"Failures (24h)"},"properties":[{"id":"thresholds","value":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":1}]}},{"id":"custom.cellOptions","value":{"type":"color-background"}}]},
+             {"matcher":{"id":"byName","options":"Tarball Size"},"properties":[{"id":"unit","value":"bytes"}]}
+           ]
+         }},
+
+        {"id":930,"type":"row","title":"CSI Snapshots","gridPos":{"x":0,"y":25,"w":24,"h":1}},
+        {"id":30,"type":"timeseries","title":"CSI Snapshot Outcomes (7d)",
+         "gridPos":{"x":0,"y":26,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"sum(increase(velero_csi_snapshot_success_total[1h]))","legendFormat":"success"},
+           {"expr":"sum(increase(velero_csi_snapshot_failure_total[1h]))","legendFormat":"failure"}
+         ],
+         "fieldConfig":{"defaults":{"custom":{"drawStyle":"bars","stacking":{"mode":"normal"}}}}},
+        {"id":31,"type":"timeseries","title":"Items Backed Up & Errors",
+         "gridPos":{"x":12,"y":26,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"sum(velero_backup_items_total)","legendFormat":"items total"},
+           {"expr":"sum(velero_backup_items_errors)","legendFormat":"item errors"}
+         ]}
+      ]
+    }

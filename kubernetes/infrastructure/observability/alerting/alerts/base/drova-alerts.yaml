@@ -90,21 +90,12 @@ spec:
     - name: drova.http
       interval: 30s
       rules:
-        - alert: DrovaServiceDown
-          expr: |
-            absent(rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service"}[5m]))
-            or
-            sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service"}[5m])) == 0
-          for: 5m
-          labels:
-            severity: critical
-            priority: P1
-            component: drova
-            tenant: drova
-          annotations:
-            summary: "Drova service {{ $labels.service_name }} emits no metrics (down?)"
-            description: "No HTTP requests received for >5min — service is down or crashed"
-            dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail?var-service={{ $labels.service_name }}"
+        # NOTE: DrovaServiceDown moved to kube-prometheus-stack/base/alerts/apps/drova.yaml.
+        # The old definition fired permanently for api-gateway because that service
+        # only emits http_server_request_body_size_bytes (no duration histogram), so
+        # the absent()/==0 logic incorrectly flagged the service as down. The new
+        # definition uses kube_deployment_status_replicas_available which is the
+        # correct signal for "is the service running".
 
         - alert: DrovaHighErrorRate
           expr: |

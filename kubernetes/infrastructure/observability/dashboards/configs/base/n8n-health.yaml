@@ -1,0 +1,117 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: n8n-health
+  namespace: grafana
+spec:
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  allowCrossNamespaceImport: true
+  folder: General
+  json: |
+    {
+      "title": "n8n — Workflow Health",
+      "uid": "n8n-health",
+      "tags": ["n8n","workflow","apps"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "refresh": "30s",
+      "time": {"from": "now-1h", "to": "now"},
+      "templating": {"list": []},
+      "panels": [
+        {"id":900,"type":"row","title":"n8n Pod Health","gridPos":{"x":0,"y":0,"w":24,"h":1}},
+        {"id":1,"type":"stat","title":"main / webhook / worker pods ready",
+         "gridPos":{"x":0,"y":1,"w":6,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(kube_pod_status_ready{namespace=\"n8n-prod\",pod=~\"n8n-(main|webhook|worker)-.*\",condition=\"true\"})"}],
+         "fieldConfig":{"defaults":{"unit":"short","decimals":0,"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"yellow","value":2},{"color":"green","value":3}]}}},
+         "options":{"colorMode":"background"}},
+        {"id":2,"type":"stat","title":"Restarts (24h)",
+         "gridPos":{"x":6,"y":1,"w":6,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(increase(kube_pod_container_status_restarts_total{namespace=\"n8n-prod\",pod=~\"n8n-.*\"}[24h]))"}],
+         "fieldConfig":{"defaults":{"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":3},{"color":"red","value":10}]}}},
+         "options":{"colorMode":"background"}},
+        {"id":3,"type":"stat","title":"CPU Used",
+         "gridPos":{"x":12,"y":1,"w":6,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(rate(container_cpu_usage_seconds_total{namespace=\"n8n-prod\",pod=~\"n8n-.*\",container!=\"\"}[5m]))"}],
+         "fieldConfig":{"defaults":{"unit":"short","decimals":3}},
+         "options":{"colorMode":"value","graphMode":"area"}},
+        {"id":4,"type":"stat","title":"Memory Used",
+         "gridPos":{"x":18,"y":1,"w":6,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(container_memory_working_set_bytes{namespace=\"n8n-prod\",pod=~\"n8n-.*\",container!=\"\"})"}],
+         "fieldConfig":{"defaults":{"unit":"bytes"}},
+         "options":{"colorMode":"value","graphMode":"area"}},
+
+        {"id":910,"type":"row","title":"Pod Resources (per Component)","gridPos":{"x":0,"y":5,"w":24,"h":1}},
+        {"id":10,"type":"timeseries","title":"CPU per Pod",
+         "gridPos":{"x":0,"y":6,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"n8n-prod\",pod=~\"n8n-(main|webhook|worker)-.*\",container!=\"\"}[5m]))","legendFormat":"{{pod}}"}],
+         "fieldConfig":{"defaults":{"unit":"short","decimals":3}}},
+        {"id":11,"type":"timeseries","title":"Memory per Pod (Working Set)",
+         "gridPos":{"x":12,"y":6,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (pod) (container_memory_working_set_bytes{namespace=\"n8n-prod\",pod=~\"n8n-(main|webhook|worker)-.*\",container!=\"\"})","legendFormat":"{{pod}}"}],
+         "fieldConfig":{"defaults":{"unit":"bytes"}}},
+        {"id":12,"type":"timeseries","title":"Network RX",
+         "gridPos":{"x":0,"y":13,"w":12,"h":6},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (pod) (rate(container_network_receive_bytes_total{namespace=\"n8n-prod\",pod=~\"n8n-(main|webhook|worker)-.*\"}[5m]))","legendFormat":"{{pod}}"}],
+         "fieldConfig":{"defaults":{"unit":"Bps"}}},
+        {"id":13,"type":"timeseries","title":"Network TX",
+         "gridPos":{"x":12,"y":13,"w":12,"h":6},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (pod) (rate(container_network_transmit_bytes_total{namespace=\"n8n-prod\",pod=~\"n8n-(main|webhook|worker)-.*\"}[5m]))","legendFormat":"{{pod}}"}],
+         "fieldConfig":{"defaults":{"unit":"Bps"}}},
+
+        {"id":920,"type":"row","title":"PostgreSQL (n8n-postgres) — CNPG","gridPos":{"x":0,"y":19,"w":24,"h":1}},
+        {"id":20,"type":"stat","title":"DB Replicas Ready",
+         "gridPos":{"x":0,"y":20,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"count(cnpg_collector_up{namespace=\"n8n-prod\"} == 1) OR on() vector(0)"}],
+         "fieldConfig":{"defaults":{"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"green","value":1}]}}},
+         "options":{"colorMode":"background"}},
+        {"id":21,"type":"stat","title":"DB Connections",
+         "gridPos":{"x":4,"y":20,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(cnpg_backends_total{namespace=\"n8n-prod\"})"}],
+         "fieldConfig":{"defaults":{"unit":"short"}}},
+        {"id":22,"type":"stat","title":"DB Size",
+         "gridPos":{"x":8,"y":20,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(cnpg_pg_database_size_bytes{namespace=\"n8n-prod\"})"}],
+         "fieldConfig":{"defaults":{"unit":"bytes"}}},
+        {"id":23,"type":"timeseries","title":"DB Connections Over Time",
+         "gridPos":{"x":12,"y":20,"w":12,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (state) (cnpg_backends{namespace=\"n8n-prod\"})","legendFormat":"{{state}}"}],
+         "fieldConfig":{"defaults":{"unit":"short"}}},
+        {"id":24,"type":"timeseries","title":"Postgres Replication Lag",
+         "gridPos":{"x":0,"y":24,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"max by (pod) (cnpg_pg_replication_lag{namespace=\"n8n-prod\"})","legendFormat":"{{pod}}"}],
+         "fieldConfig":{"defaults":{"unit":"s"}}},
+        {"id":25,"type":"timeseries","title":"Transactions / sec",
+         "gridPos":{"x":12,"y":24,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"sum by (datname) (rate(cnpg_pg_stat_database_xact_commit{namespace=\"n8n-prod\"}[5m]))","legendFormat":"commit {{datname}}"},
+           {"expr":"sum by (datname) (rate(cnpg_pg_stat_database_xact_rollback{namespace=\"n8n-prod\"}[5m]))","legendFormat":"rollback {{datname}}"}
+         ],
+         "fieldConfig":{"defaults":{"unit":"ops"}}},
+
+        {"id":930,"type":"row","title":"Redis (Queue) & Notes","gridPos":{"x":0,"y":31,"w":24,"h":1}},
+        {"id":30,"type":"timeseries","title":"Redis Memory Used",
+         "gridPos":{"x":0,"y":32,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"redis_memory_used_bytes{namespace=\"n8n-prod\"}","legendFormat":"{{pod}}"}],
+         "fieldConfig":{"defaults":{"unit":"bytes"}}},
+        {"id":31,"type":"text","title":"App-Side Metrics — TODO",
+         "gridPos":{"x":12,"y":32,"w":12,"h":7},
+         "options":{"mode":"markdown","content":"### Workflow-Level Metrics fehlen\n\nn8n exposed standardmäßig keine Prometheus-Metriken. Für Workflow-Erfolge/Fehler / Queue-Lag / Execution-Time setze:\n\n```yaml\nenv:\n  - name: N8N_METRICS\n    value: \"true\"\n  - name: N8N_METRICS_INCLUDE_DEFAULT_METRICS\n    value: \"true\"\n  - name: N8N_METRICS_INCLUDE_WORKFLOW_ID_LABEL\n    value: \"true\"\n```\n\nDann scrape `n8n_workflow_*` und `n8n_node_*` Metrics auf `:5678/metrics`.\n\nBis dahin: Dashboard zeigt nur Pod-Health + DB-Health.\n\n[ → Zu Loki Logs](/explore?left={\"datasource\":\"loki\",\"queries\":[{\"expr\":\"{namespace=\\\"n8n-prod\\\",app=\\\"n8n\\\"}\"}]})"}}
+      ]
+    }
