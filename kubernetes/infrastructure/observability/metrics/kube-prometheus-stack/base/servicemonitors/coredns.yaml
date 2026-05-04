@@ -1,0 +1,25 @@
+# PodMonitor for CoreDNS (Talos-native).
+#
+# The kube-prometheus-stack chart ships a helper Service in the monitoring
+# namespace with selector {k8s-app: kube-dns}, but CoreDNS pods live in
+# kube-system — Service selectors don't cross namespaces, so that Service has
+# zero Endpoints and the chart-shipped ServiceMonitor scrapes nothing. Easiest
+# fix: scrape the pods directly via PodMonitor.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: coredns
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  selector:
+    matchLabels:
+      k8s-app: kube-dns
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
