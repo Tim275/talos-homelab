@@ -6,38 +6,47 @@ metadata:
     release: kube-prometheus-stack
 spec:
   groups:
-    # ─────────────────────────────────────────────────────────────────────
     # Drova SLO — single SLO for the user-facing path: api-gateway
     # Target: 99.5% availability over 30d (Error budget: 3.6h/Monat)
     # Source: Google SRE Workbook §5 (Alerting on SLOs)
     # Two burn-rate windows: fast (page) + slow (page) — solo-engineer scope.
-    # ─────────────────────────────────────────────────────────────────────
+    #
+    # Note: `or vector(1)` defaults availability to 1.0 when no traffic
+    # (avoids 0/0=NaN and prevents false-positive burn-rate alerts at idle).
     - name: drova.slo.recording
       interval: 30s
       rules:
         - record: slo:drova_api_gateway_availability:ratio_rate5m
           expr: |
-            sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_response_status_code!~"5.."}[5m]))
-            /
-            clamp_min(sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[5m])), 0.001)
-
-        - record: slo:drova_api_gateway_availability:ratio_rate1h
-          expr: |
-            sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_response_status_code!~"5.."}[1h]))
-            /
-            clamp_min(sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[1h])), 0.001)
-
-        - record: slo:drova_api_gateway_availability:ratio_rate6h
-          expr: |
-            sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_response_status_code!~"5.."}[6h]))
-            /
-            clamp_min(sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[6h])), 0.001)
+            (
+              sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_response_status_code!~"5.."}[5m]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[5m]))
+            ) or vector(1)
 
         - record: slo:drova_api_gateway_availability:ratio_rate30m
           expr: |
-            sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_response_status_code!~"5.."}[30m]))
-            /
-            clamp_min(sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[30m])), 0.001)
+            (
+              sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_response_status_code!~"5.."}[30m]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[30m]))
+            ) or vector(1)
+
+        - record: slo:drova_api_gateway_availability:ratio_rate1h
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_response_status_code!~"5.."}[1h]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[1h]))
+            ) or vector(1)
+
+        - record: slo:drova_api_gateway_availability:ratio_rate6h
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_response_status_code!~"5.."}[6h]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[6h]))
+            ) or vector(1)
 
     - name: drova.slo.alerts
       interval: 1m
