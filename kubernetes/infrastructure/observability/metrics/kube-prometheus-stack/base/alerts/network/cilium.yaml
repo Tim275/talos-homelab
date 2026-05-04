@@ -46,3 +46,30 @@ spec:
           annotations:
             summary: "Hubble Relay down — flow visibility lost"
             description: "Cilium flow visibility unavailable. Network not affected."
+
+        - alert: CiliumEncryptionDisabled
+          expr: |
+            count(cilium_feature_adv_connect_and_lb_transparent_encryption == 0)
+            >
+            0
+          for: 5m
+          labels:
+            severity: critical
+            component: network
+          annotations:
+            summary: "Cilium WireGuard encryption disabled on {{ $value }} agents"
+            description: "Pod traffic NOT encrypted. WireGuard transparent encryption is off — investigate immediately."
+
+        - alert: CiliumAgentEncryptionMissing
+          expr: |
+            count(up{job=~".*cilium.*agent.*"} == 1)
+            -
+            count(cilium_feature_adv_connect_and_lb_transparent_encryption == 1)
+            > 0
+          for: 5m
+          labels:
+            severity: critical
+            component: network
+          annotations:
+            summary: "Cilium agents without active encryption"
+            description: "{{ $value }} cilium-agent pods are up but not reporting encryption — pod traffic on those nodes may be unencrypted."
