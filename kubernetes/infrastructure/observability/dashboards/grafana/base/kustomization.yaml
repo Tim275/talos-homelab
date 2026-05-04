@@ -1,27 +1,64 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-# Minimal Grafana stack — research-validated (May 2026)
-# Strategy: grafana-operator CRDs only, ZERO community dashboards.
-# Custom dashboards live in configs/drova/ (per-tenant) — that's it.
+# Grafana stack — Cloud-Native Pattern (May 2026)
+# Strategy:
+#   - Community dashboards via spec.url (grafana-operator fetches from grafana.com)
+#   - All dashboards use spec.datasources for ${DS_PROMETHEUS}/${DS_LOKI} substitution
+#   - Drova-tenant dashboards live separately in configs/drova/
 namespace: grafana
 
 resources:
-  # Grafana operator instance + ingress
+  # Grafana operator instance + ingress + auth
   - grafana.yaml
   - http-route.yaml
   - http-route-http.yaml
-
-  # Auth
   - oidc-sealed.yaml
   - elasticsearch-credentials.yaml
 
-  # 5 datasources
+  # Datasources (5)
   - datasources/alertmanager-operated.yaml
   - datasources/prometheus-operated.yaml
   - datasources/loki.yaml
   - datasources/tempo.yaml
   - datasources/elasticsearch.yaml
 
-# Note: dashboards are managed via:
-#   kubernetes/infrastructure/observability/dashboards/configs/drova/  (Drova tenant — 4 dashboards)
-#   kubernetes/infrastructure/observability/dashboards/configs/platform/  (TODO: K8s/Ceph/ArgoCD — 3 dashboards)
+  # Community Dashboards (24) — spec.url + spec.datasources pattern
+  # Kubernetes (6)
+  - community-dashboards/kubernetes/k8s-apiserver.yaml
+  - community-dashboards/kubernetes/k8s-kubelet.yaml
+  - community-dashboards/kubernetes/k8s-coredns.yaml
+  - community-dashboards/kubernetes/k8s-cluster-overview.yaml
+  - community-dashboards/kubernetes/k8s-node-overview.yaml
+  - community-dashboards/kubernetes/k8s-pod-overview.yaml
+
+  # Storage (4)
+  - community-dashboards/storage/ceph-cluster.yaml
+  - community-dashboards/storage/ceph-osd.yaml
+  - community-dashboards/storage/ceph-pools.yaml
+  - community-dashboards/storage/velero.yaml
+
+  # Network (4)
+  - community-dashboards/network/cilium-agent.yaml
+  - community-dashboards/network/cilium-operator.yaml
+  - community-dashboards/network/hubble.yaml
+  - community-dashboards/network/envoy-global.yaml
+
+  # Data / Databases (5)
+  - community-dashboards/data/cnpg-postgres.yaml
+  - community-dashboards/data/strimzi-kafka.yaml
+  - community-dashboards/data/kafka-exporter.yaml
+  - community-dashboards/data/redis-operator.yaml
+  - community-dashboards/data/elasticsearch.yaml
+
+  # Observability self (3)
+  - community-dashboards/observability/prometheus.yaml
+  - community-dashboards/observability/loki-stack.yaml
+  - community-dashboards/observability/otel-collector.yaml
+
+  # GitOps (1)
+  - community-dashboards/gitops/argocd-overview.yaml
+
+  # Security (1)
+  - community-dashboards/security/cert-manager.yaml
+
+# Drova tenant dashboards: see kubernetes/infrastructure/observability/dashboards/configs/drova/
