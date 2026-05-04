@@ -318,7 +318,14 @@ spec:
             description: "Redis instance not reachable >2min"
 
         - alert: DrovaRedisHighMemory
-          expr: redis_memory_used_bytes{namespace="drova"} / redis_memory_max_bytes{namespace="drova"} > 0.9
+          expr: |
+            (
+              redis_memory_used_bytes{namespace="drova"}
+              /
+              clamp_min(redis_memory_max_bytes{namespace="drova"}, 1)
+            ) > 0.9
+            and
+            redis_memory_max_bytes{namespace="drova"} > 0
           for: 5m
           labels:
             severity: warning
@@ -328,6 +335,23 @@ spec:
           annotations:
             summary: "Drova Redis {{ $labels.pod }} memory >90%"
             description: "Redis approaching max-memory — eviction will start"
+
+        - alert: DrovaRedisContainerMemoryPressure
+          expr: |
+            (
+              container_memory_working_set_bytes{namespace="drova",pod=~"redis-drova-.*",container="redis-drova"}
+              /
+              kube_pod_container_resource_limits{namespace="drova",pod=~"redis-drova-.*",resource="memory",container="redis-drova"}
+            ) > 0.85
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova-redis
+            tenant: drova
+          annotations:
+            summary: "Drova Redis {{ $labels.pod }} container memory >85% of limit"
+            description: "Container approaching OOM. maxmemory not set — Redis will not evict, kernel will OOM-kill"
 
         - alert: DrovaRedisLowHitRate
           expr: |
@@ -347,7 +371,9 @@ spec:
             description: "Cache hit-rate degraded — review key strategy"
 
         - alert: DrovaRedisReplicationBroken
-          expr: redis_connected_slaves{namespace="drova"} < 1
+          expr: |
+            redis_connected_slaves{namespace="drova"} < 1
+            and on(pod) redis_instance_info{namespace="drova",role="master"}
           for: 5m
           labels:
             severity: warning
@@ -355,5 +381,5 @@ spec:
             component: drova-redis
             tenant: drova
           annotations:
-            summary: "Drova Redis no replica connected"
-            description: "Master has no replica — failover impossible"
+            summary: "Drova Redis master {{ $labels.pod }} has no replica"
+            description: "Master has 0 connected replicas — failover impossible"
