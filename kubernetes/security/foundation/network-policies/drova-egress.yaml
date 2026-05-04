@@ -1,16 +1,14 @@
+---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: drova-services-egress
+  name: drova-services-egress-baseline
   namespace: drova
 spec:
   endpointSelector:
     matchExpressions:
       - { key: app, operator: In, values: [api-gateway, user-service, trip-service, driver-service, chat-service, payment-service] }
   egress:
-    - toEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: drova
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: kube-system
@@ -22,15 +20,133 @@ spec:
           rules:
             dns:
               - matchPattern: "*"
-    - toEntities:
-        - kube-apiserver
+    - toEntities: [kube-apiserver]
+      toPorts:
+        - ports:
+            - { port: "6443", protocol: TCP }
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: drova
+            strimzi.io/cluster: drova-kafka
+      toPorts:
+        - ports:
+            - { port: "9091", protocol: TCP }
+            - { port: "9095", protocol: TCP }
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: drova
+            cnpg.io/cluster: drova-postgres
+        - matchLabels:
+            io.kubernetes.pod.namespace: drova
+            cnpg.io/poolerName: drova-postgres-pooler
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: drova
+            app: schema-registry
+      toPorts:
+        - ports:
+            - { port: "8080", protocol: TCP }
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: opentelemetry
+      toPorts:
+        - ports:
+            - { port: "4317", protocol: TCP }
+            - { port: "4318", protocol: TCP }
+    - toEndpoints:
         - matchLabels:
-            io.kubernetes.pod.namespace: monitoring
+            io.kubernetes.pod.namespace: drova
+            app: api-gateway
+      toPorts:
+        - ports:
+            - { port: "8081", protocol: TCP }
+      authentication:
+        mode: required
+    - toEndpoints:
         - matchLabels:
-            io.kubernetes.pod.namespace: jaeger
+            io.kubernetes.pod.namespace: drova
+            app: user-service
+      toPorts:
+        - ports:
+            - { port: "8082", protocol: TCP }
+            - { port: "9091", protocol: TCP }
+      authentication:
+        mode: required
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: drova
+            app: trip-service
+      toPorts:
+        - ports:
+            - { port: "9093", protocol: TCP }
+      authentication:
+        mode: required
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: drova
+            app: driver-service
+      toPorts:
+        - ports:
+            - { port: "9092", protocol: TCP }
+      authentication:
+        mode: required
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: drova
+            app: chat-service
+      toPorts:
+        - ports:
+            - { port: "8084", protocol: TCP }
+      authentication:
+        mode: required
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: drova
+            app: payment-service
+      toPorts:
+        - ports:
+            - { port: "8085", protocol: TCP }
+      authentication:
+        mode: required
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: chat-service-redis-egress
+  namespace: drova
+spec:
+  endpointSelector:
+    matchLabels:
+      app: chat-service
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: drova
+            app.kubernetes.io/name: redis-drova
+      toPorts:
+        - ports:
+            - { port: "6379", protocol: TCP }
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: trip-service-redis-egress
+  namespace: drova
+spec:
+  endpointSelector:
+    matchLabels:
+      app: trip-service
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: drova
+            app.kubernetes.io/name: redis-drova
+      toPorts:
+        - ports:
+            - { port: "6379", protocol: TCP }
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
