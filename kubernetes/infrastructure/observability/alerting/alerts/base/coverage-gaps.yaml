@@ -1,0 +1,128 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: coverage-gaps
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+    role: alert-rules
+spec:
+  groups:
+    # ─────────────────────────────────────────────────────────────────────
+    # VELERO — Backup health (kritisch: keine backups = Datenverlust-Risk)
+    # ─────────────────────────────────────────────────────────────────────
+    - name: velero
+      interval: 60s
+      rules:
+        - alert: VeleroBackupFailure
+          expr: sum(increase(velero_backup_failure_total[1h])) > 0
+          for: 10m
+          labels:
+            severity: critical
+            priority: P1
+            component: velero
+          annotations:
+            summary: "Velero backup failed in last hour ({{ $value }} failures)"
+            description: "Backups are failing. DR-readiness compromised."
+            dashboard_url: "https://grafana.timourhomelab.org/d/velero-overview"
+
+        - alert: VeleroBackupPartialFailure
+          expr: sum(increase(velero_backup_partial_failure_total[1h])) > 0
+          for: 30m
+          labels:
+            severity: warning
+            priority: P2
+            component: velero
+          annotations:
+            summary: "Velero partial-failure backup ({{ $value }})"
+            description: "Backup completed with errors. Some volumes may be missing."
+
+        - alert: VeleroBackupNotRunning
+          expr: time() - velero_backup_last_successful_timestamp > 86400 * 2
+          for: 1h
+          labels:
+            severity: critical
+            priority: P1
+            component: velero
+          annotations:
+            summary: "Velero: no successful backup in >2 days"
+            description: "Last successful backup was >48h ago. Investigate scheduled backup pipeline."
+
+    # ─────────────────────────────────────────────────────────────────────
+    # ENVOY GATEWAY — 5xx errors at edge
+    # ─────────────────────────────────────────────────────────────────────
+    - name: envoy-gateway
+      interval: 60s
+      rules:
+        - alert: EnvoyGateway5xxRateHigh
+          expr: |
+            100 * sum by (envoy_response_code_class) (rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[5m]))
+            /
+            clamp_min(sum(rate(envoy_cluster_upstream_rq_total[5m])), 0.001)
+            > 5
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: envoy-gateway
+          annotations:
+            summary: "Envoy Gateway: 5xx rate >5% ({{ $value | humanize }}%)"
+            description: "Edge proxy seeing high upstream errors — backend services degraded."
+
+        - alert: EnvoyGatewayUpstreamConnectionFailure
+          expr: sum(rate(envoy_cluster_upstream_cx_connect_fail[5m])) > 1
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: envoy-gateway
+          annotations:
+            summary: "Envoy Gateway: upstream connection failures ({{ $value | humanize }}/s)"
+
+    # ─────────────────────────────────────────────────────────────────────
+    # HUBBLE / CILIUM — NetworkPolicy denials, drops
+    # ─────────────────────────────────────────────────────────────────────
+    - name: hubble
+      interval: 60s
+      rules:
+        - alert: HubbleHighPolicyDrops
+          expr: |
+            sum(rate(hubble_drop_total{reason="POLICY_DENIED"}[5m])) > 10
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: cilium
+          annotations:
+            summary: "Cilium: high NetworkPolicy denial rate ({{ $value | humanize }}/s)"
+            description: "Many flows being dropped by NetworkPolicies. Either misconfigured policy or attempted lateral movement."
+
+    # ─────────────────────────────────────────────────────────────────────
+    # KYVERNO — Policy violations (mutate failures, validate failures)
+    # ─────────────────────────────────────────────────────────────────────
+    - name: kyverno
+      interval: 60s
+      rules:
+        - alert: KyvernoPolicyAdmissionDenied
+          expr: |
+            sum(rate(kyverno_admission_requests_total{request_allowed="false"}[5m])) > 1
+          for: 15m
+          labels:
+            severity: warning
+            priority: P3
+            component: kyverno
+          annotations:
+            summary: "Kyverno: high admission denial rate"
+            description: "Many resources being rejected by Kyverno policies. Check policy reports."
+
+        - alert: KyvernoControllerDown
+          expr: |
+            kube_deployment_status_replicas_available{deployment=~"kyverno.*"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: kyverno
+          annotations:
+            summary: "Kyverno controller {{ $labels.deployment }} down"
+            description: "Policy enforcement disabled — security risk."
