@@ -1,0 +1,111 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: keycloak-health
+  namespace: grafana
+spec:
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  allowCrossNamespaceImport: true
+  folder: Security
+  json: |
+    {
+      "title": "Keycloak — Identity Provider Health",
+      "uid": "keycloak-health",
+      "tags": ["keycloak","auth","security"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "refresh": "30s",
+      "time": {"from": "now-1h", "to": "now"},
+      "templating": {"list": []},
+      "panels": [
+        {"id":900,"type":"row","title":"Pod Health","gridPos":{"x":0,"y":0,"w":24,"h":1}},
+        {"id":1,"type":"stat","title":"Keycloak Pods Ready",
+         "gridPos":{"x":0,"y":1,"w":6,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(kube_pod_status_ready{namespace=\"keycloak\",pod=~\"keycloak-[a-z0-9]+-.*\",condition=\"true\"})"}],
+         "fieldConfig":{"defaults":{"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"green","value":1}]}}},
+         "options":{"colorMode":"background"}},
+        {"id":2,"type":"stat","title":"Restarts (24h)",
+         "gridPos":{"x":6,"y":1,"w":6,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(increase(kube_pod_container_status_restarts_total{namespace=\"keycloak\",pod=~\"keycloak-[a-z0-9]+-.*\"}[24h]))"}],
+         "fieldConfig":{"defaults":{"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":3},{"color":"red","value":10}]}}},
+         "options":{"colorMode":"background"}},
+        {"id":3,"type":"stat","title":"CPU Used",
+         "gridPos":{"x":12,"y":1,"w":6,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(rate(container_cpu_usage_seconds_total{namespace=\"keycloak\",pod=~\"keycloak-[a-z0-9]+-.*\",container!=\"\"}[5m]))"}],
+         "fieldConfig":{"defaults":{"unit":"short","decimals":3}},
+         "options":{"colorMode":"value","graphMode":"area"}},
+        {"id":4,"type":"stat","title":"Memory Used",
+         "gridPos":{"x":18,"y":1,"w":6,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(container_memory_working_set_bytes{namespace=\"keycloak\",pod=~\"keycloak-[a-z0-9]+-.*\",container!=\"\"})"}],
+         "fieldConfig":{"defaults":{"unit":"bytes"}},
+         "options":{"colorMode":"value","graphMode":"area"}},
+
+        {"id":910,"type":"row","title":"Resources","gridPos":{"x":0,"y":5,"w":24,"h":1}},
+        {"id":10,"type":"timeseries","title":"CPU per Pod vs Limit",
+         "gridPos":{"x":0,"y":6,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"keycloak\",pod=~\"keycloak-[a-z0-9]+-.*\",container!=\"\"}[5m]))","legendFormat":"{{pod}}"},
+           {"expr":"sum(kube_pod_container_resource_limits{namespace=\"keycloak\",pod=~\"keycloak-[a-z0-9]+-.*\",resource=\"cpu\"}) / clamp_min(count(kube_pod_info{namespace=\"keycloak\",pod=~\"keycloak-[a-z0-9]+-.*\"}), 1)","legendFormat":"limit (per pod)"}
+         ],
+         "fieldConfig":{"defaults":{"unit":"short","decimals":3}}},
+        {"id":11,"type":"timeseries","title":"Memory per Pod vs Limit",
+         "gridPos":{"x":12,"y":6,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"sum by (pod) (container_memory_working_set_bytes{namespace=\"keycloak\",pod=~\"keycloak-[a-z0-9]+-.*\",container!=\"\"})","legendFormat":"{{pod}}"},
+           {"expr":"sum(kube_pod_container_resource_limits{namespace=\"keycloak\",pod=~\"keycloak-[a-z0-9]+-.*\",resource=\"memory\"}) / clamp_min(count(kube_pod_info{namespace=\"keycloak\",pod=~\"keycloak-[a-z0-9]+-.*\"}), 1)","legendFormat":"limit (per pod)"}
+         ],
+         "fieldConfig":{"defaults":{"unit":"bytes"}}},
+        {"id":12,"type":"timeseries","title":"Network Traffic",
+         "gridPos":{"x":0,"y":13,"w":24,"h":6},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"sum by (pod) (rate(container_network_receive_bytes_total{namespace=\"keycloak\",pod=~\"keycloak-[a-z0-9]+-.*\"}[5m]))","legendFormat":"RX {{pod}}"},
+           {"expr":"sum by (pod) (rate(container_network_transmit_bytes_total{namespace=\"keycloak\",pod=~\"keycloak-[a-z0-9]+-.*\"}[5m]))","legendFormat":"TX {{pod}}"}
+         ],
+         "fieldConfig":{"defaults":{"unit":"Bps"}}},
+
+        {"id":920,"type":"row","title":"Keycloak DB (CNPG)","gridPos":{"x":0,"y":19,"w":24,"h":1}},
+        {"id":20,"type":"stat","title":"DB Replicas Ready",
+         "gridPos":{"x":0,"y":20,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"count(cnpg_collector_up{namespace=\"keycloak\"} == 1) OR on() vector(0)"}],
+         "fieldConfig":{"defaults":{"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"green","value":1}]}}},
+         "options":{"colorMode":"background"}},
+        {"id":21,"type":"stat","title":"DB Connections",
+         "gridPos":{"x":4,"y":20,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(cnpg_backends_total{namespace=\"keycloak\"})"}],
+         "fieldConfig":{"defaults":{"unit":"short"}}},
+        {"id":22,"type":"stat","title":"DB Size",
+         "gridPos":{"x":8,"y":20,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(cnpg_pg_database_size_bytes{namespace=\"keycloak\"})"}],
+         "fieldConfig":{"defaults":{"unit":"bytes"}}},
+        {"id":23,"type":"timeseries","title":"DB Connections Over Time",
+         "gridPos":{"x":12,"y":20,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (state) (cnpg_backends{namespace=\"keycloak\"})","legendFormat":"{{state}}"}],
+         "fieldConfig":{"defaults":{"unit":"short"}}},
+        {"id":24,"type":"timeseries","title":"Transactions / sec",
+         "gridPos":{"x":0,"y":24,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"sum by (datname) (rate(cnpg_pg_stat_database_xact_commit{namespace=\"keycloak\"}[5m]))","legendFormat":"commit {{datname}}"},
+           {"expr":"sum by (datname) (rate(cnpg_pg_stat_database_xact_rollback{namespace=\"keycloak\"}[5m]))","legendFormat":"rollback {{datname}}"}
+         ],
+         "fieldConfig":{"defaults":{"unit":"ops"}}},
+
+        {"id":930,"type":"row","title":"App-Level Metrics — TODO","gridPos":{"x":0,"y":31,"w":24,"h":1}},
+        {"id":30,"type":"text","title":"Login-Rate / Failed-Logins / Active Sessions",
+         "gridPos":{"x":0,"y":32,"w":24,"h":7},
+         "options":{"mode":"markdown","content":"### App-Level Metriken aktivieren\n\nKeycloak (Quarkus-basiert) exposed `/q/metrics` auf dem **Management-Interface (Port 9000)** — aber nur wenn der Health-/Metrics-Pfad enabled ist.\n\n#### Helm-Values\n\n```yaml\nstatistics:\n  enabled: true\nmetrics:\n  enabled: true\n```\n\n#### Plus Quarkus-Args\n\n```yaml\nextraEnv: |\n  - name: KC_METRICS_ENABLED\n    value: \"true\"\n  - name: KC_HEALTH_ENABLED\n    value: \"true\"\n```\n\n#### Plus Service auf Port 9000 + ServiceMonitor\n\nNach Setup verfügbar:\n- `keycloak_logins_total{realm,client_id}` — Login-Versuche\n- `keycloak_failed_login_attempts{realm}` — Fehlversuche\n- `keycloak_user_event_*` — User-Events\n- `jvm_*` — JVM Metriken\n\n[→ Loki Logs (für Login-Events bis Metrics da sind)](/explore?left={\"datasource\":\"loki\",\"queries\":[{\"expr\":\"{namespace=\\\"keycloak\\\",app=\\\"keycloak\\\"} |~ \\\"LOGIN\\\"\"}]})"}}
+      ]
+    }
