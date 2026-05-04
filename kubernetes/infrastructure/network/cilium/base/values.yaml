@@ -7,6 +7,10 @@ kubeProxyReplacement: true
 hostFirewall:
   enabled: true
 
+policyAuditMode: false
+
+identityChangeGracePeriod: "30s"
+
 # 2025 PERFORMANCE OPTIMIZATIONS
 
 # Bypass iptables conntrack for max performance
@@ -241,6 +245,11 @@ hubble:
       - "policy:sourceContext=app|workload-name|reserved-identity;destinationContext=app|workload-name|reserved-identity;labelsContext=source_namespace,destination_namespace"
       - "httpV2:exemplars=true;labelsContext=source_ip,source_namespace,source_workload,destination_ip,destination_namespace,destination_workload,traffic_direction;sourceContext=workload-name|reserved-identity;destinationContext=workload-name|reserved-identity"
     enableOpenMetrics: true
+    port: 9965
+    serviceMonitor:
+      enabled: true
+    dashboards:
+      enabled: false
   export:
     static:
       enabled: true
@@ -250,12 +259,21 @@ hubble:
       fieldMask: []
       allowList: []
       denyList: []
-    port: 9965
-    serviceMonitor:
-      enabled: true
-    # DISABLED: Too large for ConfigMap annotations
-    dashboards:
-      enabled: false
+  redact:
+    enabled: true
+    http:
+      urlQuery: true
+      userInfo: true
+      headers:
+        allow: []
+        deny:
+          - authorization
+          - cookie
+          - x-api-key
+          - x-auth-token
+          - proxy-authorization
+    kafka:
+      apiKey: true
   relay:
     enabled: true
     rollOutPods: true
