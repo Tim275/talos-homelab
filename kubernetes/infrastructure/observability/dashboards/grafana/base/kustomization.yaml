@@ -1,166 +1,27 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-# : Parent manages namespaces, children inherit
-# Namespace managed by: monitoring/namespace.yaml (parent app)
+# Minimal Grafana stack — research-validated (May 2026)
+# Strategy: grafana-operator CRDs only, ZERO community dashboards.
+# Custom dashboards live in configs/drova/ (per-tenant) — that's it.
 namespace: grafana
 
 resources:
-  - grafana.yaml                           # Grafana Operator CR (manages Grafana instance)
-  # - grafana-operator-dashboard.yaml      # DISABLED: File doesn't exist
-  - http-route.yaml                        # ENABLED: HTTPS access via Envoy Gateway (Port 443)
-  - http-route-http.yaml                   # ENABLED: HTTP access for Cloudflare Tunnel (Port 80)
-  # - admin-credentials.yaml
+  # Grafana operator instance + ingress
+  - grafana.yaml
+  - http-route.yaml
+  - http-route-http.yaml
+
+  # Auth
   - oidc-sealed.yaml
   - elasticsearch-credentials.yaml
+
+  # 5 datasources
   - datasources/alertmanager-operated.yaml
   - datasources/prometheus-operated.yaml
-  # Removed prometheus-grafanacom.yaml - use default Prometheus datasource
   - datasources/loki.yaml
-  - datasources/tempo.yaml            # TEMPO: Distributed tracing datasource
-  - datasources/elasticsearch.yaml    # ELASTICSEARCH: Production cluster datasource
+  - datasources/tempo.yaml
+  - datasources/elasticsearch.yaml
 
-  # TIER 0 EXECUTIVE DASHBOARDS - Enterprise SRE Overview
-  - enterprise-dashboards/drova-overview.yaml
-  - enterprise-dashboards/tier0-executive/k8s-global-view.yaml
-  - enterprise-dashboards/tier0-executive/node-system-overview.yaml
-
-  # ARGOCD - GitOps Deployment (5 → 2 ausreichend)
-  - enterprise-dashboards/argocd/argocd-gitops.yaml                     # Custom GitOps overview
-  - enterprise-dashboards/argocd/official-argocd-overview-v3.yaml       # Official v3 (ID: 24192) — comprehensive
-  # - enterprise-dashboards/argocd/official-argocd-operational.yaml     # DISABLED: redundant
-  # - enterprise-dashboards/argocd/official-argocd-application.yaml     # DISABLED: redundant
-  # - enterprise-dashboards/argocd/official-argocd-notifications.yaml   # DISABLED: notifications nicht so kritisch
-  # - enterprise-dashboards/argocd/official-argocd-basic.yaml           # DISABLED: redundant
-
-  # CEPH - Storage
-  # - enterprise-dashboards/ceph/rook-ceph-storage.yaml                # DISABLED: Custom dashboard with JavaScript errors
-  - enterprise-dashboards/ceph/official-ceph-cluster.yaml              # Official Grafana.com dashboard (ID: 2842)
-  - enterprise-dashboards/ceph/official-ceph-pools.yaml                # Official Grafana.com dashboard (ID: 5342)
-  - enterprise-dashboards/ceph/official-ceph-osd.yaml                  # Official Grafana.com dashboard (ID: 5336)
-
-  # CERT-MANAGER - Certificate Management
-  # - enterprise-dashboards/cert-manager/cert-manager-status.yaml      # DISABLED: Custom dashboard with JavaScript errors
-  - enterprise-dashboards/cert-manager/official-cert-manager.yaml      # Official Grafana.com dashboard (ID: 20842)
-
-  # CILIUM - Networking & Security
-  - enterprise-dashboards/cilium/official-cilium-agent.yaml            # Official Grafana.com dashboard (ID: 16611)
-  - enterprise-dashboards/cilium/official-cilium-operator.yaml         # Official Grafana.com dashboard (ID: 16612)
-  - enterprise-dashboards/cilium/official-hubble.yaml                  # Official Grafana.com dashboard (ID: 16613)
-
-  # ELASTICSEARCH - Search & Analytics
-  # - enterprise-dashboards/elasticsearch/elasticsearch-cluster.yaml    # DISABLED: Custom dashboard with JavaScript errors
-  - enterprise-dashboards/elasticsearch/official-elasticsearch-overview.yaml # Official Grafana.com dashboard (ID: 14191)
-  # - enterprise-dashboards/elasticsearch/official-elasticsearch-xpack.yaml   # DISABLED: X-Pack stack monitoring nicht aktiviert (kein backend)
-  # - enterprise-dashboards/elasticsearch/official-kibana-monitoring.yaml     # DISABLED: braucht X-Pack monitoring (nicht aktiviert)
-
-  # ENVOY - Gateway & Proxy
-  - enterprise-dashboards/envoy/official-envoy-proxy.yaml              # Official Grafana.com dashboard (ID: 6693)
-  - enterprise-dashboards/envoy/official-envoy-global.yaml             # Official Grafana.com dashboard (ID: 11022)
-
-  # GRAFANA - Monitoring Platform
-  - enterprise-dashboards/grafana/official-grafana-operator.yaml       # Official Grafana.com dashboard (ID: 22785)
-
-  # GOLANG - Microservices Runtime Monitoring
-  - enterprise-dashboards/golang/official-go-runtime-metrics.yaml      # Official Grafana.com dashboard (ID: 14061)
-  - enterprise-dashboards/golang/official-golang-metrics.yaml          # Official Grafana.com dashboard (ID: 13076)
-
-  # GPU & ML - NVIDIA CUDA / Machine Learning
-  # DISABLED: kein NVIDIA-DCGM-Operator deployed, keine GPU im Cluster
-  # - enterprise-dashboards/gpu/official-nvidia-dcgm.yaml
-  # - enterprise-dashboards/gpu/official-nvidia-dcgm-mig.yaml
-
-  # INFLUXDB - Time Series Database
-  # DISABLED: influxdb application auskommentiert in platform/data/kustomization.yaml
-  # - enterprise-dashboards/influxdb/official-influxdb-metrics.yaml
-
-  # ISTIO - Service Mesh
-  # DISABLED: Istio komplett entfernt April 2026, ersetzt durch Cilium WireGuard+SPIRE
-  # - enterprise-dashboards/istio/official-istio-mesh.yaml
-  # - enterprise-dashboards/istio/official-istio-service.yaml
-  # - enterprise-dashboards/istio/official-istio-control-plane.yaml
-  # - enterprise-dashboards/istio/official-istio-performance.yaml
-  # - enterprise-dashboards/istio/official-istio-workload.yaml
-
-  # KAFKA - Event Streaming (Strimzi-compatible dashboards)
-  - enterprise-dashboards/kafka/kafka-strimzi.yaml                     # Tier 2: Quick Overview
-  - enterprise-dashboards/kafka/strimzi-kafka-cluster.yaml             # Kafka Cluster Metrics (Strimzi) - Brokers, Topics, Throughput
-  - enterprise-dashboards/kafka/official-kafka-exporter.yaml           # Consumer Group Lag (ID: 7589)
-  - enterprise-dashboards/kafka/kafka-consumer-performance.yaml        # Consumer Lag & Performance
-  - enterprise-dashboards/kafka/kafka-data-pipeline.yaml               # Data Pipeline & E2E Latency
-  # - enterprise-dashboards/kafka/spring-kafka-microservices.yaml      # DISABLED: keine Spring-Boot Apps im Cluster (Drova ist Go)
-  # DISABLED - incompatible metrics or ${DS_PROMETHEUS} variable issues:
-  # - enterprise-dashboards/kafka/official-kafka-cluster.yaml          # DISABLED: Wrong metric names for Strimzi
-  # - enterprise-dashboards/kafka/official-kafka-topics.yaml           # DISABLED: Wrong metric names for Strimzi
-  # - enterprise-dashboards/kafka/spring-boot-kafka-apps.yaml          # DISABLED: ${DS_PROMETHEUS} from grafana.com
-  # - enterprise-dashboards/kafka/kafka-spring-producer-consumer.yaml  # DISABLED: ${DS_PROMETHEUS} from grafana.com
-
-  # KUBERNETES - Control Plane & System Monitoring
-  - enterprise-dashboards/kubernetes/k8s-api-server.yaml               # Official Grafana.com dashboard (ID: 15761)
-  - enterprise-dashboards/kubernetes/k8s-coredns.yaml                  # Official Grafana.com dashboard (ID: 15762)
-  - enterprise-dashboards/kubernetes/k8s-views-global.yaml             # Official Grafana.com dashboard (ID: 15757)
-  - enterprise-dashboards/kubernetes/k8s-views-namespaces.yaml         # Official Grafana.com dashboard (ID: 15758)
-  - enterprise-dashboards/kubernetes/k8s-views-nodes.yaml              # Official Grafana.com dashboard (ID: 15759)
-  - enterprise-dashboards/kubernetes/k8s-views-pods.yaml               # Official Grafana.com dashboard (ID: 15760)
-  # Talos exposes scheduler/controller-manager/etcd metrics differently — official dashboards mostly empty
-  # - enterprise-dashboards/kubernetes/k8s-scheduler.yaml               # DISABLED: Talos hostNetwork, separate metric path
-  # - enterprise-dashboards/kubernetes/k8s-controller-manager.yaml      # DISABLED: Talos hostNetwork, separate metric path
-  # - enterprise-dashboards/kubernetes/k8s-etcd.yaml                    # DISABLED: Azure-managed Variante, Talos braucht andere Metrics
-  - enterprise-dashboards/kubernetes/k8s-persistent-volumes.yaml       # Official Grafana.com dashboard (ID: 13646)
-  - enterprise-dashboards/kubernetes/k8s-state-metrics-v2.yaml         # Official Grafana.com dashboard (ID: 21742)
-
-  # LOKI - Log Aggregation (5 dashboards waren overkill, 2 reichen)
-  - enterprise-dashboards/loki/loki-logging.yaml                        # Custom log query view
-  - enterprise-dashboards/loki/official-loki-stack.yaml                 # Official (ID: 14055) — Loki ops/health
-  # - enterprise-dashboards/loki/official-loki-dashboard.yaml            # DISABLED: redundant zu loki-stack
-  # - enterprise-dashboards/loki/official-loki-logs.yaml                 # DISABLED: redundant zu loki-logging
-  # - enterprise-dashboards/loki/official-loki-logging.yaml              # DISABLED: redundant
-  # - enterprise-dashboards/loki/official-loki-metrics.yaml              # DISABLED: Too large (>262KB)
-
-  # OPENTELEMETRY - Observability
-  - enterprise-dashboards/opentelemetry/official-opentelemetry-collector.yaml  # Official Grafana.com dashboard (ID: 15983)
-  - enterprise-dashboards/opentelemetry/official-opentelemetry-dataflow.yaml   # Official Grafana.com dashboard (ID: 18309)
-  - enterprise-dashboards/opentelemetry/official-opentelemetry-apm.yaml        # Official Grafana.com dashboard (ID: 19419)
-
-  # POSTGRESQL - Database
-  - enterprise-dashboards/postgresql/postgresql-cnpg.yaml
-  - enterprise-dashboards/postgresql/official-cloudnativepg.yaml       # Official CNPG dashboard (252KB, 66 panels)
-
-  # PROMETHEUS - Monitoring
-  - enterprise-dashboards/prometheus/prometheus-targets-health.yaml
-
-  # REDIS - Cache & Message Broker
-  - enterprise-dashboards/redis/redis-clusters.yaml
-  - enterprise-dashboards/redis/official-redis-operator.yaml           # Official Grafana.com dashboard (ID: 12165)
-
-  # SECURITY - Runtime Security & eBPF Observability
-  # - enterprise-dashboards/security/official-tetragon-kubectl-exec.yaml # DISABLED: Tetragon removed from cluster
-  - enterprise-dashboards/security/official-falco-security.yaml        # Official Grafana.com dashboard (ID: 11914)
-
-  # SLO & RELIABILITY - Service Level Objectives
-  - enterprise-dashboards/slo/official-service-level-sli-slo.yaml      # Official Grafana.com dashboard (ID: 8793)
-  - enterprise-dashboards/slo/official-slo-dashboard.yaml              # Official Grafana.com dashboard (ID: 11222)
-
-  # VELERO - Backup & Disaster Recovery
-  - enterprise-dashboards/velero/official-velero-stats.yaml            # Official Grafana.com dashboard (ID: 11055)
-  - enterprise-dashboards/velero/official-velero-exporter.yaml         # Official Grafana.com dashboard (ID: 15469)
-
-  # OMS - Order Management System Microservices
-  # DISABLED: OMS Tenant aktuell auskommentiert in apps/overlays/prod/kustomization.yaml
-  # Drova ist der aktive Microservices-Tenant (eigene Dashboards in tier0-executive/drova-overview.yaml)
-  # - enterprise-dashboards/oms/oms-overview.yaml
-  # - enterprise-dashboards/oms/oms-gateway.yaml
-  # - enterprise-dashboards/oms/oms-orders.yaml
-  # - enterprise-dashboards/oms/oms-stock.yaml
-  # - enterprise-dashboards/oms/oms-payments.yaml
-  # - enterprise-dashboards/oms/oms-kitchen.yaml
-
-# REMOVED: grafana-operator moved to separate infrastructure-grafana-operator application
-# This prevents duplicate CRD conflicts with grafana-operator/ directory
-# helmCharts:
-#   - name: grafana-operator
-#     repo: oci://ghcr.io/grafana/helm-charts
-#     includeCRDs: true
-#     namespace: grafana
-#     version: v5.22.2 # renovate: github-releases=grafana/grafana-operator
-#     releaseName: grafana-operator
-#     valuesFile: ./values.yaml
+# Note: dashboards are managed via:
+#   kubernetes/infrastructure/observability/dashboards/configs/drova/  (Drova tenant — 4 dashboards)
+#   kubernetes/infrastructure/observability/dashboards/configs/platform/  (TODO: K8s/Ceph/ArgoCD — 3 dashboards)
