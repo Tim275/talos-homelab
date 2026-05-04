@@ -225,6 +225,7 @@ alertmanager:
               storage: 5Gi
     secrets:
       - slack-webhook-url
+      - watchdog-webhook-url
       - telegram-bot-token
     resources:
       requests:
@@ -253,9 +254,22 @@ alertmanager:
 
       routes:
 
+        # Watchdog is the dead-man's-switch: it always fires while Alertmanager
+        # is healthy. We route it to the 'watchdog-heartbeat' receiver which
+        # POSTs to an external monitor (healthchecks.io) every 30s. If the
+        # external monitor stops receiving pings for >5min, IT pages — proving
+        # this cluster's observability stack itself is down. InfoInhibitor goes
+        # to /dev/null because it's only a routing helper, not a real alert.
         - matchers:
-            - alertname=~"Watchdog|InfoInhibitor"
+            - alertname="InfoInhibitor"
           receiver: 'null'
+
+        - matchers:
+            - alertname="Watchdog"
+          receiver: 'watchdog-heartbeat'
+          group_wait: 0s
+          group_interval: 30s
+          repeat_interval: 30s
 
         - matchers:
             - severity="critical"
@@ -379,6 +393,19 @@ alertmanager:
     receivers:
 
       - name: 'null'
+
+      # Dead-man's-switch external receiver. The webhook URL must be a
+      # healthchecks.io ping URL (or equivalent silent-alarm service). It must
+      # be sealed because the URL itself is the secret. To set up:
+      #   1. Create a check at https://healthchecks.io/ with period=1m, grace=2m
+      #   2. Copy the ping URL (looks like https://hc-ping.com/<uuid>)
+      #   3. Update the watchdog-webhook-sealed.yaml in this overlay
+      #   4. Configure healthchecks.io to email/SMS you when silent for >2m
+      - name: 'watchdog-heartbeat'
+        webhook_configs:
+          - url_file: /etc/alertmanager/secrets/watchdog-webhook-url/url
+            send_resolved: false
+            max_alerts: 1
 
       - name: 'slack-critical'
         slack_configs:
