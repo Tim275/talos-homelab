@@ -87,10 +87,25 @@ source = '''
 ."kubernetes.name" = string(.objectRef.name) ?? ""
 '''
 
+[sources.hubble_flows]
+type = "file"
+include = ["/var/run/cilium/hubble/events.log*"]
+read_from = "end"
+ignore_older_secs = 600
+
+[transforms.parse_hubble]
+type = "remap"
+inputs = ["hubble_flows"]
+source = '''
+. = parse_json!(.message)
+.source = "hubble"
+.cluster = "talos-homelab"
+'''
+
 # Forward to Vector Aggregator
 [sinks.vector_aggregator]
 type = "vector"
-inputs = ["filter_noise", "parse_kube_audit"]
+inputs = ["filter_noise", "parse_kube_audit", "parse_hubble"]
 address = "vector-aggregator.elastic-system.svc.cluster.local:6000"
 version = "2"
 
