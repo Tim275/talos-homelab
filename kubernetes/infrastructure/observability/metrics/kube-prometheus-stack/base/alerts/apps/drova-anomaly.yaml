@@ -7,97 +7,91 @@ metadata:
 spec:
   groups:
     # ─────────────────────────────────────────────────────────────────────
-    # Drova anomaly detection via Holt-Winters smoothing
+    # Drova anomaly detection via z-score (avg + stddev) over 1h baseline
     #
-    # Idea: compute an exponentially-smoothed forecast of each SLI signal
-    # over a 1h window, then alert when the *actual* current rate deviates
-    # by more than 3 standard deviations from the forecast for 10min.
+    # Idea: compute the 1h rolling baseline (avg + stddev) of each SLI signal,
+    # alert when the *current* value deviates by more than 3 standard
+    # deviations. Catches gradual degradation, traffic surges, and silent
+    # drift that fixed thresholds miss.
     #
-    # holt_winters(metric[range], sf, tf):
-    #   sf (smoothing factor)  0.0 = no smoothing, 1.0 = ignore old data → 0.5 balanced
-    #   tf (trend factor)      0.0 = ignore trend, 1.0 = full trend → 0.1 mild trend
+    # Why z-score and not Holt-Winters: Prometheus 3.x removed holt_winters,
+    # and its replacement double_exponential_smoothing requires the
+    # promql-experimental-functions feature flag. z-score uses standard
+    # PromQL functions and gives equivalent quality on stationary signals.
     #
-    # The 3-sigma threshold catches real anomalies (gradual degradation,
-    # traffic surges) that fixed thresholds miss. False-positive rate at
-    # 3-sigma is ~0.27% under normal Gaussian distribution.
-    #
-    # `or vector(0)` defaults all forecasts/stddevs to 0 at idle so alerts
-    # don't fire on missing data (stddev_over_time of empty range = NaN).
+    # 3-sigma threshold = ~0.27% false-positive rate under Gaussian noise.
+    # `or vector(0)` defaults all baselines to 0 at idle so alerts don't
+    # fire on missing data (stddev_over_time of empty range = NaN).
     # ─────────────────────────────────────────────────────────────────────
     - name: drova.anomaly.recording.http
       interval: 1m
       rules:
-        # Per-service request rate forecast + stddev
-        - record: anomaly:drova_http_rate:forecast
+        - record: anomaly:drova_http_rate:avg1h
           expr: |
             (
-              holt_winters(
-                sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"chat-service|user-service"}[5m]))[1h:5m],
-                0.5,
-                0.1
+              avg_over_time(
+                sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"chat-service|user-service"}[5m]))[1h:1m]
               )
             ) or vector(0)
 
-        - record: anomaly:drova_http_rate:stddev
+        - record: anomaly:drova_http_rate:stddev1h
           expr: |
             (
               stddev_over_time(
-                sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"chat-service|user-service"}[5m]))[1h:5m]
+                sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"chat-service|user-service"}[5m]))[1h:1m]
               )
             ) or vector(0)
 
-        # Per-service p99 latency forecast + stddev
-        - record: anomaly:drova_http_p99:forecast
+        - record: anomaly:drova_http_p99:avg1h
           expr: |
             (
-              holt_winters(
-                histogram_quantile(0.99, sum by (service_name, le) (rate(http_server_request_duration_seconds_bucket{service_name=~"chat-service|user-service"}[5m])))[1h:5m],
-                0.5,
-                0.1
+              avg_over_time(
+                histogram_quantile(0.99, sum by (service_name, le) (rate(http_server_request_duration_seconds_bucket{service_name=~"chat-service|user-service"}[5m])))[1h:1m]
               )
             ) or vector(0)
 
-        - record: anomaly:drova_http_p99:stddev
+        - record: anomaly:drova_http_p99:stddev1h
           expr: |
             (
               stddev_over_time(
-                histogram_quantile(0.99, sum by (service_name, le) (rate(http_server_request_duration_seconds_bucket{service_name=~"chat-service|user-service"}[5m])))[1h:5m]
+                histogram_quantile(0.99, sum by (service_name, le) (rate(http_server_request_duration_seconds_bucket{service_name=~"chat-service|user-service"}[5m])))[1h:1m]
               )
             ) or vector(0)
 
     - name: drova.anomaly.recording.grpc
       interval: 1m
       rules:
-        - record: anomaly:drova_grpc_rate:forecast
+        - record: anomaly:drova_grpc_rate:avg1h
           expr: |
             (
-              holt_winters(
-                sum by (service_name) (rate(rpc_server_call_duration_seconds_count{service_name=~"trip-service|driver-service"}[5m]))[1h:5m],
-                0.5,
-                0.1
+              avg_over_time(
+                sum by (service_name) (rate(rpc_server_call_duration_seconds_count{service_name=~"trip-service|driver-service"}[5m]))[1h:1m]
               )
             ) or vector(0)
 
-        - record: anomaly:drova_grpc_rate:stddev
+        - record: anomaly:drova_grpc_rate:stddev1h
           expr: |
             (
               stddev_over_time(
-                sum by (service_name) (rate(rpc_server_call_duration_seconds_count{service_name=~"trip-service|driver-service"}[5m]))[1h:5m]
+                sum by (service_name) (rate(rpc_server_call_duration_seconds_count{service_name=~"trip-service|driver-service"}[5m]))[1h:1m]
               )
             ) or vector(0)
 
     - name: drova.anomaly.alerts
       interval: 1m
       rules:
+        # Alert when |current - avg| > 3 * stddev AND stddev > minimum-noise
+        # threshold (avoids firing on numerically-tiny noise during idle).
         - alert: DrovaHttpRateAnomaly
           expr: |
             abs(
               sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"chat-service|user-service"}[5m]))
               -
-              anomaly:drova_http_rate:forecast
+              anomaly:drova_http_rate:avg1h
             )
-            >
-            (3 * anomaly:drova_http_rate:stddev > 0.1)
+            > (3 * anomaly:drova_http_rate:stddev1h)
+            and
+            anomaly:drova_http_rate:stddev1h > 0.1
           for: 10m
           labels:
             severity: warning
@@ -105,8 +99,8 @@ spec:
             tenant: drova
             kind: anomaly
           annotations:
-            summary: "Drova {{ $labels.service_name }}: HTTP rate >3σ from forecast"
-            description: "Current rate {{ $value | printf \"%.2f\" }} req/s deviates >3 standard deviations from the 1h Holt-Winters forecast."
+            summary: "Drova {{ $labels.service_name }}: HTTP rate >3σ from 1h baseline"
+            description: "Current rate {{ $value | printf \"%.2f\" }} req/s deviates >3σ from baseline (avg: {{ with query \"anomaly:drova_http_rate:avg1h\" }}{{ . | first | value | printf \"%.2f\" }}{{ end }})."
             dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail?var-service={{ $labels.service_name }}"
 
         - alert: DrovaHttpP99Anomaly
@@ -114,10 +108,11 @@ spec:
             abs(
               histogram_quantile(0.99, sum by (service_name, le) (rate(http_server_request_duration_seconds_bucket{service_name=~"chat-service|user-service"}[5m])))
               -
-              anomaly:drova_http_p99:forecast
+              anomaly:drova_http_p99:avg1h
             )
-            >
-            (3 * anomaly:drova_http_p99:stddev > 0.05)
+            > (3 * anomaly:drova_http_p99:stddev1h)
+            and
+            anomaly:drova_http_p99:stddev1h > 0.05
           for: 10m
           labels:
             severity: warning
@@ -125,8 +120,8 @@ spec:
             tenant: drova
             kind: anomaly
           annotations:
-            summary: "Drova {{ $labels.service_name }}: HTTP p99 latency >3σ from forecast"
-            description: "Current p99 {{ $value | printf \"%.2f\" }}s deviates >3 standard deviations from the 1h Holt-Winters forecast."
+            summary: "Drova {{ $labels.service_name }}: HTTP p99 latency >3σ from 1h baseline"
+            description: "Current p99 {{ $value | printf \"%.2f\" }}s deviates >3σ from the 1h baseline."
             dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail?var-service={{ $labels.service_name }}"
 
         - alert: DrovaGrpcRateAnomaly
@@ -134,10 +129,11 @@ spec:
             abs(
               sum by (service_name) (rate(rpc_server_call_duration_seconds_count{service_name=~"trip-service|driver-service"}[5m]))
               -
-              anomaly:drova_grpc_rate:forecast
+              anomaly:drova_grpc_rate:avg1h
             )
-            >
-            (3 * anomaly:drova_grpc_rate:stddev > 0.1)
+            > (3 * anomaly:drova_grpc_rate:stddev1h)
+            and
+            anomaly:drova_grpc_rate:stddev1h > 0.1
           for: 10m
           labels:
             severity: warning
@@ -145,6 +141,6 @@ spec:
             tenant: drova
             kind: anomaly
           annotations:
-            summary: "Drova {{ $labels.service_name }}: gRPC rate >3σ from forecast"
-            description: "Current rate {{ $value | printf \"%.2f\" }} req/s deviates >3 standard deviations from the 1h Holt-Winters forecast."
+            summary: "Drova {{ $labels.service_name }}: gRPC rate >3σ from 1h baseline"
+            description: "Current rate {{ $value | printf \"%.2f\" }} req/s deviates >3σ from baseline."
             dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail?var-service={{ $labels.service_name }}"
