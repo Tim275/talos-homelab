@@ -1,0 +1,61 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: drova-services-egress
+  namespace: drova
+spec:
+  endpointSelector:
+    matchExpressions:
+      - { key: app, operator: In, values: [api-gateway, user-service, trip-service, driver-service, chat-service, payment-service] }
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: drova
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+            - { port: "53", protocol: TCP }
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEntities:
+        - kube-apiserver
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: opentelemetry
+        - matchLabels:
+            io.kubernetes.pod.namespace: monitoring
+        - matchLabels:
+            io.kubernetes.pod.namespace: jaeger
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: payment-service-stripe-egress
+  namespace: drova
+spec:
+  endpointSelector:
+    matchLabels:
+      app: payment-service
+  egress:
+    - toFQDNs:
+        - matchName: api.stripe.com
+        - matchPattern: "*.stripe.com"
+      toPorts:
+        - ports:
+            - { port: "443", protocol: TCP }
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+          rules:
+            dns:
+              - matchPattern: "*.stripe.com"
+              - matchName: "api.stripe.com"
