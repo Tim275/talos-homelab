@@ -58,21 +58,7 @@ spec:
               echo "Waiting for Elasticsearch..."
               until curl -sk -u "$AUTH" "$ES/_cluster/health" | grep -q '"status":"\(green\|yellow\)"'; do sleep 5; done
 
-              echo "==> Composable index template: replicas=0 for log datastreams"
-              curl -sk -u "$AUTH" -X PUT "$ES/_index_template/single-node-zero-replicas" \
-                -H 'Content-Type: application/json' -d '{
-                  "index_patterns": ["logs-*", ".ds-logs-*", ".ds-traces-*", "filebeat-*"],
-                  "priority": 200,
-                  "template": {
-                    "settings": {
-                      "index.number_of_replicas": 0,
-                      "index.refresh_interval": "10s"
-                    }
-                  }
-                }'
-              echo
-
-              echo "==> Settings for system indices (.kibana, .security, etc): auto-expand 0-1"
+              echo "==> Cluster settings: disk watermarks (single-node tighter thresholds)"
               curl -sk -u "$AUTH" -X PUT "$ES/_cluster/settings" \
                 -H 'Content-Type: application/json' -d '{
                   "persistent": {
@@ -84,31 +70,19 @@ spec:
                 }'
               echo
 
-              echo "==> Force replicas=0 on all existing indices (one-time fix)"
+              echo "==> Force replicas=0 on all existing indices (single-node = green)"
               curl -sk -u "$AUTH" -X PUT "$ES/*/_settings" \
                 -H 'Content-Type: application/json' -d '{
                   "index": { "number_of_replicas": 0 }
                 }'
               echo
-
-              echo "==> SLM policy: daily snapshots @ 01:30 UTC, retain 7-30 days"
-              curl -sk -u "$AUTH" -X PUT "$ES/_slm/policy/daily-snapshots" \
-                -H 'Content-Type: application/json' -d '{
-                  "schedule": "0 30 1 * * ?",
-                  "name": "<daily-snap-{now/d}>",
-                  "repository": "s3-ceph",
-                  "config": {
-                    "indices": ["logs-*", ".ds-logs-*", ".ds-traces-*", "jaeger-*"],
-                    "ignore_unavailable": true,
-                    "include_global_state": true
-                  },
-                  "retention": {
-                    "expire_after": "30d",
-                    "min_count": 7,
-                    "max_count": 30
-                  }
-                }'
-              echo
+              # NOTE: Composable index-template for replicas=0 not used here because
+              # log indices are managed as data-streams by ECK ILM policies; assigning
+              # a non-data-stream template causes "would cause data streams to no longer
+              # match a data stream template" 400 error. The ECK-managed templates already
+              # set replicas correctly via existing ilm-policies Job.
+              # NOTE: SLM "daily-snapshots" policy is created by snapshots/slm-policy-job.yaml
+              # using repo "ceph-s3-snapshots" (registered by snapshots/register-repository-job.yaml).
 
               echo "==> Cluster health"
               curl -sk -u "$AUTH" "$ES/_cluster/health?pretty"
