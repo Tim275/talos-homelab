@@ -57,3 +57,104 @@ spec:
           annotations:
             summary: "Ceph PG recovery stalled"
             description: "{{ $value }} PGs not clean for >30min."
+
+    - name: p0.storage.critical
+      interval: 30s
+      rules:
+        - alert: CephClusterDown
+          expr: ceph_health_status == 3
+          for: 2m
+          labels:
+            severity: critical
+            priority: p0
+            component: storage
+            pagerduty_severity: critical
+          annotations:
+            summary: "Ceph cluster is in HEALTH_ERR state"
+            description: "Ceph cluster health CRITICAL - all storage at risk"
+            impact: "CRITICAL - All storage operations may fail"
+
+        - alert: CephQuorumLost
+          expr: (ceph_osd_up + ceph_osd_in) / (ceph_osd_up + ceph_osd_down) < 0.5
+          for: 1m
+          labels:
+            severity: critical
+            priority: p0
+            component: storage
+            pagerduty_severity: critical
+          annotations:
+            summary: "Ceph has lost quorum - majority of OSDs down"
+            description: "More than 50% of Ceph OSDs down - DATA LOSS RISK"
+            impact: "CRITICAL - Data unavailable"
+
+    - name: p1.storage.warning
+      interval: 60s
+      rules:
+        - alert: CephWarning
+          expr: ceph_health_status == 1
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: storage
+            pagerduty_severity: warning
+          annotations:
+            summary: "Ceph cluster is in HEALTH_WARN state"
+            description: "Ceph cluster has warnings - investigate"
+            impact: "Degraded storage performance"
+
+        - alert: CephOSDDownWarning
+          expr: ceph_osd_up == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: storage
+            pagerduty_severity: warning
+          annotations:
+            summary: "Ceph OSD {{ $labels.ceph_daemon }} is down"
+            description: "OSD {{ $labels.ceph_daemon }} has been down for 5+ minutes"
+            impact: "Reduced storage redundancy"
+
+        - alert: RookCephOperatorDown
+          expr: up{job="rook-ceph-operator"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: storage
+            pagerduty_severity: warning
+          annotations:
+            summary: "Rook Ceph Operator is down"
+            description: "Rook Ceph Operator unreachable for 5+ minutes"
+            impact: "Ceph management operations blocked"
+
+    - name: p2.storage.info
+      interval: 120s
+      rules:
+        - alert: CephSlowOps
+          expr: ceph_healthcheck_slow_ops > 10
+          for: 15m
+          labels:
+            severity: info
+            priority: p2
+            component: storage
+          annotations:
+            summary: "Ceph has {{ $value }} slow operations"
+            description: "Ceph cluster experiencing slow operations"
+            impact: "Storage performance degraded"
+
+    - name: p3.capacity.ceph
+      interval: 300s
+      rules:
+        - alert: CephCapacityWarning
+          expr: ceph_cluster_total_used_bytes / ceph_cluster_total_bytes > 0.75
+          for: 1h
+          labels:
+            severity: info
+            priority: p3
+            component: capacity
+          annotations:
+            summary: "Ceph cluster is {{ $value | humanizePercentage }} full"
+            description: "Ceph storage consumption over 75%"
+            impact: "Plan to expand Ceph cluster"

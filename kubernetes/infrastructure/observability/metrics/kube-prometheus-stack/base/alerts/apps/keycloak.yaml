@@ -16,3 +16,30 @@ spec:
           annotations:
             summary: "Keycloak down — auth provider unavailable"
             description: "All Keycloak replicas not ready. OIDC login broken cluster-wide."
+
+        - alert: KeycloakUnreachable
+          expr: up{job="keycloak"} == 0
+          for: 10m
+          labels:
+            severity: info
+            priority: p2
+            component: security
+          annotations:
+            summary: "Keycloak is down"
+            description: "Keycloak OIDC provider not responding"
+            impact: "SSO authentication unavailable"
+
+    - name: keycloak-auth
+      interval: 60s
+      rules:
+        - alert: KeycloakLoginFailureSpike
+          expr: |
+            sum by (realm) (rate(keycloak_failed_login_attempts[5m])) > 0.5
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: keycloak
+          annotations:
+            summary: "Keycloak realm {{ $labels.realm }} elevated failed-login rate"
+            description: "{{ $value }} failed logins/sec — possible credential-stuffing or brute-force"

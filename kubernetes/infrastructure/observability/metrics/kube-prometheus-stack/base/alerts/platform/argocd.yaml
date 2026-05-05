@@ -36,3 +36,134 @@ spec:
           annotations:
             summary: "ArgoCD app unhealthy: {{ $labels.name }}"
             description: "Application {{ $labels.name }} health is {{ $labels.health_status }}."
+
+    - name: p1.argocd.high
+      interval: 60s
+      rules:
+        - alert: ArgoCDControllerDown
+          expr: up{job="argocd-application-controller-metrics"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: gitops
+            pagerduty_severity: warning
+          annotations:
+            summary: "ArgoCD Application Controller is down"
+            description: "ArgoCD Controller has been unreachable for 3+ minutes - all GitOps reconciliation stopped"
+            impact: "NO application syncing, NO auto-healing, cluster drift possible"
+
+        - alert: ArgoCDAPIServerDown
+          expr: up{job="argocd-server-metrics"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: gitops
+            pagerduty_severity: warning
+          annotations:
+            summary: "ArgoCD API Server is down"
+            description: "ArgoCD API Server has been unreachable for 3+ minutes - Web UI and CLI unavailable"
+            impact: "NO GitOps operations possible, cluster management blocked"
+
+        - alert: ArgoCDRepoServerDown
+          expr: up{job="argocd-repo-server-metrics"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: gitops
+            pagerduty_severity: warning
+          annotations:
+            summary: "ArgoCD Repo Server is down"
+            description: "ArgoCD Repo Server has been unreachable for 3+ minutes - Git operations blocked"
+            impact: "NO manifest generation, NO application updates possible"
+
+        - alert: ArgoCDApplicationSetControllerDown
+          expr: up{job="argocd-applicationset-controller"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: operator
+            pagerduty_severity: warning
+          annotations:
+            summary: "ArgoCD ApplicationSet Controller is down"
+            description: "ApplicationSet Controller unreachable for 5+ minutes"
+            impact: "Multi-cluster application generation blocked"
+
+    - name: argocd.applications.sync
+      interval: 120s
+      rules:
+        - alert: ArgoCDApplicationOutOfSync
+          expr: argocd_app_info{sync_status!="Synced", name!~"druid|druid-operator"} == 1
+          for: 15m
+          labels:
+            severity: info
+            priority: argocd-gitops
+            component: gitops
+          annotations:
+            summary: "Application {{ $labels.name }} is OutOfSync"
+            description: "ArgoCD Application {{ $labels.name }} in project {{ $labels.project }} has been OutOfSync for 15+ minutes"
+            impact: "Configuration drift between Git and cluster"
+            application: "{{ $labels.name }}"
+            project: "{{ $labels.project }}"
+            sync_status: "{{ $labels.sync_status }}"
+
+        - alert: ArgoCDApplicationDegraded
+          expr: argocd_app_info{health_status!~"Healthy|Progressing", name!~"druid|druid-operator"} == 1
+          for: 10m
+          labels:
+            severity: info
+            priority: argocd-gitops
+            component: gitops
+          annotations:
+            summary: "Application {{ $labels.name }} is {{ $labels.health_status }}"
+            description: "ArgoCD Application {{ $labels.name }} health status is {{ $labels.health_status }} for 10+ minutes"
+            impact: "Application may not be functioning correctly"
+            application: "{{ $labels.name }}"
+            project: "{{ $labels.project }}"
+            health_status: "{{ $labels.health_status }}"
+
+        - alert: ArgoCDApplicationSyncFailed
+          expr: argocd_app_sync_total{phase="Failed"} > 0
+          for: 5m
+          labels:
+            severity: info
+            priority: argocd-gitops
+            component: gitops
+          annotations:
+            summary: "Application {{ $labels.name }} sync failed"
+            description: "ArgoCD Application {{ $labels.name }} sync operation failed"
+            impact: "Latest Git changes not applied to cluster"
+            application: "{{ $labels.name }}"
+            project: "{{ $labels.project }}"
+            phase: "Failed"
+
+        - alert: ArgoCDApplicationMissing
+          expr: argocd_app_info{health_status="Missing"} == 1
+          for: 5m
+          labels:
+            severity: info
+            priority: argocd-gitops
+            component: gitops
+          annotations:
+            summary: "Application {{ $labels.name }} resources missing"
+            description: "ArgoCD Application {{ $labels.name }} has missing resources"
+            impact: "Application components not deployed"
+            application: "{{ $labels.name }}"
+            project: "{{ $labels.project }}"
+
+        - alert: ArgoCDApplicationSuspended
+          expr: argocd_app_info{health_status="Suspended"} == 1
+          for: 5m
+          labels:
+            severity: info
+            priority: argocd-gitops
+            component: gitops
+          annotations:
+            summary: "Application {{ $labels.name }} is suspended"
+            description: "ArgoCD Application {{ $labels.name }} has been suspended"
+            impact: "Application updates paused"
+            application: "{{ $labels.name }}"
+            project: "{{ $labels.project }}"

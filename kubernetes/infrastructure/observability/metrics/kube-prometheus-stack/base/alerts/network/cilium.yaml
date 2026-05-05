@@ -73,3 +73,87 @@ spec:
           annotations:
             summary: "Cilium agents without active encryption"
             description: "{{ $value }} cilium-agent pods are up but not reporting encryption — pod traffic on those nodes may be unencrypted."
+
+    - name: p1.networking.warning
+      interval: 60s
+      rules:
+        - alert: CiliumAgentDown
+          expr: up{job="cilium-agent"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: networking
+            pagerduty_severity: warning
+          annotations:
+            summary: "Cilium agent down on node {{ $labels.instance }}"
+            description: "Cilium CNI agent unreachable for 3+ minutes"
+            impact: "Networking disruption on node, pods cannot communicate"
+
+        - alert: CiliumOperatorDownWarning
+          expr: up{job="cilium-operator"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: networking
+            pagerduty_severity: warning
+          annotations:
+            summary: "Cilium Operator is down"
+            description: "Cilium Operator unreachable for 3+ minutes"
+            impact: "Network policy enforcement degraded"
+
+        - alert: IstioControlPlaneDown
+          expr: up{job="istiod"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: service-mesh
+            pagerduty_severity: warning
+          annotations:
+            summary: "Istio control plane (istiod) is down"
+            description: "Istiod unreachable for 3+ minutes"
+            impact: "Service mesh configuration updates blocked"
+
+    - name: p2.network.info
+      interval: 120s
+      rules:
+        - alert: CiliumAgentDownInfo
+          expr: up{job="cilium-agent"} == 0
+          for: 10m
+          labels:
+            severity: info
+            priority: p2
+            component: network
+          annotations:
+            summary: "Cilium agent down on node {{ $labels.instance }}"
+            description: "Cilium CNI agent not responding for 10+ minutes"
+            impact: "Network policy enforcement degraded on this node"
+
+        - alert: IstioSidecarInjectionFailing
+          expr: sum(rate(sidecar_injection_failure_total[5m])) > 0
+          for: 15m
+          labels:
+            severity: info
+            priority: p2
+            component: network
+          annotations:
+            summary: "Istio sidecar injection is failing"
+            description: "Sidecar injection failures detected"
+            impact: "New pods won't have service mesh"
+
+    - name: hubble
+      interval: 60s
+      rules:
+        - alert: HubbleHighPolicyDrops
+          expr: |
+            sum(rate(hubble_drop_total{reason="POLICY_DENIED"}[5m])) > 10
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: cilium
+          annotations:
+            summary: "Cilium: high NetworkPolicy denial rate ({{ $value | humanize }}/s)"
+            description: "Many flows being dropped by NetworkPolicies. Either misconfigured policy or attempted lateral movement."

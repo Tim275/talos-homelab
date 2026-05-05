@@ -1,0 +1,32 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: observability-tempo
+spec:
+  groups:
+    # ─────────────────────────────────────────────────────────────────────
+    # TEMPO — Self-monitoring (Loki + Prom have, Tempo missed)
+    # ─────────────────────────────────────────────────────────────────────
+    - name: tempo
+      interval: 60s
+      rules:
+        - alert: TempoDistributorDown
+          expr: up{job=~".*tempo.*distributor.*"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: tempo
+          annotations:
+            summary: "Tempo distributor down — traces being dropped"
+            description: "Apps cannot push traces; OTel-Collector queue grows."
+
+        - alert: TempoIngesterDown
+          expr: up{job=~".*tempo.*ingester.*"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: tempo
+          annotations:
+            summary: "Tempo ingester down — trace data loss risk"

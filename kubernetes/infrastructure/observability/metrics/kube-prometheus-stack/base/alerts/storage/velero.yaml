@@ -5,18 +5,69 @@ metadata:
 spec:
   groups:
     - name: velero
-      interval: 5m
+      interval: 60s
       rules:
         - alert: VeleroBackupFailed
-          expr: increase(velero_backup_failure_total[1h]) > 0
+          expr: velero_backup_failure_total > 0
+          for: 5m
           labels:
             severity: critical
-            component: storage
+            priority: p0
+            component: backup
+            pagerduty_severity: critical
           annotations:
-            summary: "Velero backup failed: {{ $labels.schedule }}"
-            description: "Backup failure in last hour. Restoration capability at risk."
+            summary: "Velero backup failed for schedule {{ $labels.schedule }}"
+            description: "Velero backup {{ $labels.schedule }} has failed - backup protection compromised"
+            impact: "HIGH - No recent backup, data loss risk"
 
         - alert: VeleroNoRecentBackup
+          expr: time() - velero_backup_last_successful_timestamp{schedule!=""} > 86400
+          for: 10m
+          labels:
+            severity: critical
+            priority: p0
+            component: backup
+            pagerduty_severity: critical
+          annotations:
+            summary: "No successful backup in 24h for {{ $labels.schedule }}"
+            description: "Velero schedule {{ $labels.schedule }} no successful backup in 24+ hours"
+            impact: "CRITICAL - Extended backup window"
+
+        - alert: VeleroBackupFailure
+          expr: sum(increase(velero_backup_failure_total[1h])) > 0
+          for: 10m
+          labels:
+            severity: critical
+            priority: P1
+            component: velero
+          annotations:
+            summary: "Velero backup failed in last hour ({{ $value }} failures)"
+            description: "Backups are failing. DR-readiness compromised."
+            dashboard_url: "https://grafana.timourhomelab.org/d/velero-overview"
+
+        - alert: VeleroBackupPartialFailure
+          expr: sum(increase(velero_backup_partial_failure_total[1h])) > 0
+          for: 30m
+          labels:
+            severity: warning
+            priority: P2
+            component: velero
+          annotations:
+            summary: "Velero partial-failure backup ({{ $value }})"
+            description: "Backup completed with errors. Some volumes may be missing."
+
+        - alert: VeleroBackupNotRunning
+          expr: time() - velero_backup_last_successful_timestamp > 86400 * 2
+          for: 1h
+          labels:
+            severity: critical
+            priority: P1
+            component: velero
+          annotations:
+            summary: "Velero: no successful backup in >2 days"
+            description: "Last successful backup was >48h ago. Investigate scheduled backup pipeline."
+
+        - alert: VeleroNoRecentBackupExtended
           expr: time() - velero_backup_last_successful_timestamp > 26 * 3600
           for: 1h
           labels:
@@ -25,3 +76,16 @@ spec:
           annotations:
             summary: "No successful Velero backup in >26h"
             description: "Last successful backup older than 26h for schedule {{ $labels.schedule }}."
+
+        - alert: VeleroDown
+          expr: up{job="velero"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: operator
+            pagerduty_severity: warning
+          annotations:
+            summary: "Velero is down"
+            description: "Velero backup controller unreachable for 5+ minutes"
+            impact: "Backup operations blocked"
