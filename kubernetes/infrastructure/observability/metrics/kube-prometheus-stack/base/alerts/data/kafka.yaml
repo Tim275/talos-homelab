@@ -112,3 +112,110 @@ spec:
           annotations:
             summary: "Drova Kafka consumer lag >10000 on {{ $labels.topic }}"
             description: "{{ $labels.client_id }} severely behind ({{ $value }} msgs)"
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Kafka broker health (added 2026-05-05 after KRaft GC-pause incident)
+    # These would have caught the GC stop-the-world / NotLeader storm BEFORE
+    # consumers logged "Not Leader For Partition" / "Not Coordinator For Group".
+    # ─────────────────────────────────────────────────────────────────────
+    - name: kafka.broker.health
+      interval: 30s
+      rules:
+
+        # ROOT-CAUSE detector: JVM spending too much CPU on GC
+        # Healthy: <2% / Warning: >5% / Critical: >15%
+        - alert: KafkaJVMHighGCTime
+          expr: |
+            sum by (pod, namespace) (
+              rate(jvm_gc_collection_seconds_sum{pod=~".*kafka.*"}[5m])
+            ) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+            priority: P1
+            component: kafka
+          annotations:
+            summary: "Kafka {{ $labels.pod }} JVM spending >5% time in GC"
+            description: "{{ $value | humanizePercentage }} of CPU spent in garbage collection — heap pressure, raise -Xmx or memory limits"
+            action: "kubectl get kafkanodepool -n {{ $labels.namespace }} -o yaml; check jvmOptions.-Xmx vs memory request"
+
+        # SYMPTOM detector: controller event-loop stalled = cluster-wide chaos
+        # Healthy: p99 <100ms / Warning: >500ms / Critical: >2000ms
+        - alert: KafkaControllerEventSlow
+          expr: |
+            kafka_controller_controllereventmanager_eventqueueprocessingtimems{quantile="0.99"} > 500
+          for: 3m
+          labels:
+            severity: critical
+            priority: P0
+            component: kafka
+          annotations:
+            summary: "Kafka controller event-loop slow on {{ $labels.pod }} (p99 {{ $value }}ms)"
+            description: "Controller event processing exceeded 500ms p99 — partitions cannot be reassigned, leadership churn imminent"
+            impact: "Producers/Consumers see Not Leader For Partition errors"
+
+        # CAUSE detector: Old-Gen heap filling up = next GC will be expensive
+        - alert: KafkaJVMOldGenPressure
+          expr: |
+            (
+              jvm_memory_pool_collection_used_bytes{pool="G1 Old Gen", pod=~".*kafka.*"}
+              /
+              jvm_memory_bytes_max{area="heap", pod=~".*kafka.*"}
+            ) > 0.7
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: kafka
+          annotations:
+            summary: "Kafka {{ $labels.pod }} G1 Old Gen >70% of heap"
+            description: "Surviving objects fill old-gen — increase -Xmx or investigate retention/cache settings"
+
+        # ARCHITECTURAL detector: leadership churning more than expected
+        # Healthy cluster: 0-1 election per day. >0.001/s = >86/day = unhealthy
+        - alert: KafkaControllerChurning
+          expr: |
+            sum(rate(kafka_controller_kafkacontroller_newactivecontrollerscount[1h])) > 0.001
+          for: 30m
+          labels:
+            severity: warning
+            priority: P1
+            component: kafka
+          annotations:
+            summary: "Kafka controller leadership churning ({{ $value }} elections/sec)"
+            description: "Active controller changing rapidly — usually GC-pauses or network instability"
+
+        # SYMPTOM detector: client-visible errors
+        - alert: KafkaRequestErrorsHigh
+          expr: |
+            sum by (error) (
+              rate(kafka_network_requestmetrics_errors_total{
+                error=~"NOT_LEADER.*|COORDINATOR_NOT_AVAILABLE|NOT_COORDINATOR|FENCED_LEADER_EPOCH"
+              }[5m])
+            ) > 0.5
+          for: 3m
+          labels:
+            severity: warning
+            priority: P1
+            component: kafka
+          annotations:
+            summary: "Kafka {{ $labels.error }} errors >0.5/s"
+            description: "Clients seeing leadership/coordinator errors — broker stability issue (check JVM GC / controller events)"
+
+        # CAPACITY detector: pod approaching its memory limit (predictive of OOM kill)
+        - alert: KafkaPodMemoryNearLimit
+          expr: |
+            (
+              container_memory_working_set_bytes{namespace=~".*", pod=~".*kafka.*", container="kafka"}
+              /
+              kube_pod_container_resource_limits{namespace=~".*", pod=~".*kafka.*", container="kafka", resource="memory"}
+            ) > 0.85
+          for: 10m
+          labels:
+            severity: warning
+            priority: P1
+            component: kafka
+          annotations:
+            summary: "Kafka {{ $labels.pod }} memory >85% of limit"
+            description: "OOM kill risk. JVM heap (-Xmx) + non-heap overhead is too close to pod memory limit. Recommended: limit = -Xmx + 768Mi"
+            action: "Check kafkanodepool jvmOptions.-Xmx and resources.limits.memory; raise limit OR lower -Xmx"
