@@ -1,0 +1,35 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: compliance-kyverno
+spec:
+  groups:
+    # ─────────────────────────────────────────────────────────────────────
+    # KYVERNO — Policy violations (mutate failures, validate failures)
+    # ─────────────────────────────────────────────────────────────────────
+    - name: kyverno
+      interval: 60s
+      rules:
+        - alert: KyvernoPolicyAdmissionDenied
+          expr: |
+            sum(rate(kyverno_admission_requests_total{request_allowed="false"}[5m])) > 1
+          for: 15m
+          labels:
+            severity: warning
+            priority: P3
+            component: kyverno
+          annotations:
+            summary: "Kyverno: high admission denial rate"
+            description: "Many resources being rejected by Kyverno policies. Check policy reports."
+
+        - alert: KyvernoControllerDown
+          expr: |
+            kube_deployment_status_replicas_available{deployment=~"kyverno.*"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: kyverno
+          annotations:
+            summary: "Kyverno controller {{ $labels.deployment }} down"
+            description: "Policy enforcement disabled — security risk."

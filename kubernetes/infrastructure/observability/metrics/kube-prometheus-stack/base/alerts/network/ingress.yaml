@@ -27,6 +27,56 @@ spec:
             summary: "Envoy Gateway 5xx rate >10%: {{ $labels.envoy_cluster_name }}"
             description: "{{ $value }} 5xx/sec via gateway."
 
+        - alert: EnvoyGatewayDown
+          expr: up{job="envoy-gateway"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: gateway
+            pagerduty_severity: warning
+          annotations:
+            summary: "Envoy Gateway is down"
+            description: "Envoy Gateway controller unreachable for 3+ minutes"
+            impact: "Gateway configuration updates blocked"
+
+        - alert: EnvoyGatewayDownInfo
+          expr: up{job="envoy-gateway"} == 0
+          for: 10m
+          labels:
+            severity: info
+            priority: p2
+            component: network
+          annotations:
+            summary: "Envoy Gateway is down"
+            description: "Envoy Gateway not responding"
+            impact: "Ingress traffic may be affected"
+
+        - alert: EnvoyGateway5xxRateHigh
+          expr: |
+            100 * sum by (envoy_response_code_class) (rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[5m]))
+            /
+            clamp_min(sum(rate(envoy_cluster_upstream_rq_total[5m])), 0.001)
+            > 5
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: envoy-gateway
+          annotations:
+            summary: "Envoy Gateway: 5xx rate >5% ({{ $value | humanize }}%)"
+            description: "Edge proxy seeing high upstream errors — backend services degraded."
+
+        - alert: EnvoyGatewayUpstreamConnectionFailure
+          expr: sum(rate(envoy_cluster_upstream_cx_connect_fail[5m])) > 1
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: envoy-gateway
+          annotations:
+            summary: "Envoy Gateway: upstream connection failures ({{ $value | humanize }}/s)"
+
     - name: cloudflared
       interval: 1m
       rules:
