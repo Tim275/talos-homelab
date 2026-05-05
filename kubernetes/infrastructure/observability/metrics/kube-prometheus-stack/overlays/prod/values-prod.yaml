@@ -198,18 +198,19 @@ kube-state-metrics:
       cpu: 500m      # 10x burst for metrics collection
       memory: 512Mi  # ~20x headroom for cluster growth
 
-  # Fix CrashLoopBackOff: Increase probe delays (was 5s, now 30s)
-  # Root cause: kube-state-metrics needs time to start and expose health endpoints
+  # KSM tolerates slow API-server (talos single-node control-plane occasionally
+  # returns 503 → KSM /livez returns 503 → kubelet kills → restart loop).
+  # failureThreshold: 10 gives 100s tolerance for transient API-server slowness.
   livenessProbe:
-    initialDelaySeconds: 30  # Changed from default 5s to prevent premature probe failures
+    initialDelaySeconds: 60
     periodSeconds: 10
-    timeoutSeconds: 5
-    failureThreshold: 3
+    timeoutSeconds: 10
+    failureThreshold: 10
   readinessProbe:
-    initialDelaySeconds: 30  # Changed from default 5s to allow full startup
+    initialDelaySeconds: 30
     periodSeconds: 10
-    timeoutSeconds: 5
-    failureThreshold: 3
+    timeoutSeconds: 10
+    failureThreshold: 6
 
 alertmanager:
   alertmanagerSpec:
