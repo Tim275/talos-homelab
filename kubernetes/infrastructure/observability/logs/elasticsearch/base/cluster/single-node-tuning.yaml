@@ -1,0 +1,116 @@
+# Single-Node Cluster Tuning + Snapshot Lifecycle Management (SLM)
+# Goal: GREEN cluster status on 1-node setup + automated snapshots to Ceph-RGW.
+#
+# Without this:
+#   - All system + log indices default to 1 replica → unassigned on 1-node → cluster=YELLOW
+#   - No automated snapshots → manual backup or none
+#
+# With this:
+#   - Index template forces replicas=0 cluster-wide on logs-* + .ds-* indices
+#   - SLM policy snapshots daily at 01:30 UTC, retains 7-30 days
+#   - Existing snapshot repository (s3-ceph) is reused (created by snapshots/ Job)
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: elasticsearch-single-node-tuning
+  namespace: elastic-system
+  labels:
+    app.kubernetes.io/name: elasticsearch
+    app.kubernetes.io/component: tuning
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: elasticsearch
+        app.kubernetes.io/component: tuning
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: tune
+          image: curlimages/curl:8.18.0@sha256:d94d07ba9e7d6de898b6d96c1a072f6f8266c687af78a74f380087a0addf5d17
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          env:
+            - name: ES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: production-cluster-es-elastic-user
+                  key: elastic
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              ES="https://production-cluster-es-http.elastic-system.svc.cluster.local:9200"
+              AUTH="elastic:${ES_PASSWORD}"
+
+              echo "Waiting for Elasticsearch..."
+              until curl -sk -u "$AUTH" "$ES/_cluster/health" | grep -q '"status":"\(green\|yellow\)"'; do sleep 5; done
+
+              echo "==> Composable index template: replicas=0 for log datastreams"
+              curl -sk -u "$AUTH" -X PUT "$ES/_index_template/single-node-zero-replicas" \
+                -H 'Content-Type: application/json' -d '{
+                  "index_patterns": ["logs-*", ".ds-logs-*", ".ds-traces-*", "filebeat-*"],
+                  "priority": 200,
+                  "template": {
+                    "settings": {
+                      "index.number_of_replicas": 0,
+                      "index.refresh_interval": "10s"
+                    }
+                  }
+                }'
+              echo
+
+              echo "==> Settings for system indices (.kibana, .security, etc): auto-expand 0-1"
+              curl -sk -u "$AUTH" -X PUT "$ES/_cluster/settings" \
+                -H 'Content-Type: application/json' -d '{
+                  "persistent": {
+                    "cluster.routing.allocation.disk.threshold_enabled": true,
+                    "cluster.routing.allocation.disk.watermark.low": "85%",
+                    "cluster.routing.allocation.disk.watermark.high": "90%",
+                    "cluster.routing.allocation.disk.watermark.flood_stage": "95%"
+                  }
+                }'
+              echo
+
+              echo "==> Force replicas=0 on all existing indices (one-time fix)"
+              curl -sk -u "$AUTH" -X PUT "$ES/*/_settings" \
+                -H 'Content-Type: application/json' -d '{
+                  "index": { "number_of_replicas": 0 }
+                }'
+              echo
+
+              echo "==> SLM policy: daily snapshots @ 01:30 UTC, retain 7-30 days"
+              curl -sk -u "$AUTH" -X PUT "$ES/_slm/policy/daily-snapshots" \
+                -H 'Content-Type: application/json' -d '{
+                  "schedule": "0 30 1 * * ?",
+                  "name": "<daily-snap-{now/d}>",
+                  "repository": "s3-ceph",
+                  "config": {
+                    "indices": ["logs-*", ".ds-logs-*", ".ds-traces-*", "jaeger-*"],
+                    "ignore_unavailable": true,
+                    "include_global_state": true
+                  },
+                  "retention": {
+                    "expire_after": "30d",
+                    "min_count": 7,
+                    "max_count": 30
+                  }
+                }'
+              echo
+
+              echo "==> Cluster health"
+              curl -sk -u "$AUTH" "$ES/_cluster/health?pretty"
+              echo
+              echo "Done."
