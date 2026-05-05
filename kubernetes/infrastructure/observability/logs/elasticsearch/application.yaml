@@ -25,12 +25,25 @@ spec:
       - PruneLast=true
       - RespectIgnoreDifferences=true
       - ServerSideApply=true
+      # Force re-apply on every sync so ES CR can never silently disappear
+      # (recurring bug: ECK validation transient + ArgoCD claims "applied" → CR not actually present)
+      - Replace=false
+      - ApplyOutOfSyncOnly=false
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
   ignoreDifferences:
     - group: elasticsearch.k8s.elastic.co
       kind: Elasticsearch
       jsonPointers:
         - /spec/nodeSets/0/podTemplate/spec/containers/0/resources
         - /metadata/annotations/elasticsearch.k8s.elastic.co~1config-hash
+        - /status                                                     # ECK-managed runtime state
+      managedFieldsManagers:
+        - elastic-operator
     - group: kibana.k8s.elastic.co
       kind: Kibana
       jsonPointers:
