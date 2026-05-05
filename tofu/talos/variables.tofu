@@ -50,3 +50,10 @@ variable "nodes" {
     ceph_disk_size   = optional(number, 200)  # Ceph OSD disk size in GB (conservative)
   }))
 }
+
+variable "nipogi_ssh_password" {
+  description = "SSH root password for nipogi Proxmox host — enables automatic ZFS refreservation cleanup after VM creation"
+  type        = string
+  sensitive   = true
+  default     = ""
+}

@@ -5,9 +5,10 @@ module "talos" {
     proxmox = proxmox
   }
 
-  image   = var.talos_image
-  cluster = var.talos_cluster_config
-  nodes   = var.talos_nodes
+  image               = var.talos_image
+  cluster             = var.talos_cluster_config
+  nodes               = var.talos_nodes
+  nipogi_ssh_password = var.nipogi_ssh_password
 }
 
 module "sealed-secrets" {
