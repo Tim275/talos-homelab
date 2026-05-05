@@ -83,13 +83,6 @@ variable "sealed_secrets_config" {
   sensitive = true
 }
 
-variable "nipogi_ssh_password" {
-  description = "SSH root password for nipogi Proxmox host (ZFS refreservation cleanup)"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
 variable "kubernetes_volumes" {
   description = "Kubernetes volumes configuration"
   type = map(
