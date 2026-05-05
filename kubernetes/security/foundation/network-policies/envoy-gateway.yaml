@@ -1,0 +1,32 @@
+---
+# Lock Envoy Gateway proxy ingress to: cloudflared (public traffic), monitoring (scrape),
+# host (kubelet readiness probe). Prevents lateral movement from compromised in-cluster pods.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: envoy-gateway-ingress-lock
+  namespace: gateway
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/component: proxy
+      app.kubernetes.io/managed-by: envoy-gateway
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: cloudflared
+      toPorts:
+        - ports:
+            - { port: "10080", protocol: TCP }
+            - { port: "10443", protocol: TCP }
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - { port: "19001", protocol: TCP }
+    - fromEntities: [host]
+      toPorts:
+        - ports:
+            - { port: "19003", protocol: TCP }
+            - { port: "19001", protocol: TCP }
