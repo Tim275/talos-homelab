@@ -32,7 +32,60 @@ spec:
           for: 15m
           labels:
             severity: warning
+            priority: P2
             component: data
           annotations:
             summary: "Elasticsearch JVM heap >85%"
             description: "{{ $labels.instance }} heap at {{ $value | humanizePercentage }}."
+
+        # Disk-Filling-Up — predictive (avoid hitting flood watermark 95%)
+        - alert: ElasticsearchDiskFillingUp
+          expr: |
+            (elasticsearch_filesystem_data_size_bytes - elasticsearch_filesystem_data_free_bytes)
+            / elasticsearch_filesystem_data_size_bytes > 0.85
+          for: 10m
+          labels:
+            severity: warning
+            priority: P1
+            component: data
+          annotations:
+            summary: "Elasticsearch disk >85% on {{ $labels.instance }}"
+            description: "{{ $value | humanizePercentage }} used. ES blocks writes at 95% (flood watermark)."
+
+        # Unassigned shards (excluding expected single-node replica unassigned)
+        - alert: ElasticsearchUnassignedPrimaryShards
+          expr: elasticsearch_cluster_health_unassigned_primary_shards > 0
+          for: 10m
+          labels:
+            severity: critical
+            priority: P0
+            component: data
+          annotations:
+            summary: "Elasticsearch has {{ $value }} UNASSIGNED PRIMARY shards"
+            description: "Primary data unavailable. Check disk + node health."
+
+        # SLM Snapshots stale (snapshot policy not running daily)
+        - alert: ElasticsearchSnapshotStale
+          expr: |
+            (time() - elasticsearch_slm_stats_last_success_timestamp_seconds) > 86400 * 2
+          for: 1h
+          labels:
+            severity: warning
+            priority: P1
+            component: data
+          annotations:
+            summary: "Elasticsearch last successful snapshot >48h old"
+            description: "SLM policy not running. Check repository + cluster health."
+
+        # GC time high (catches heap pressure before OOM)
+        - alert: ElasticsearchHighGCTime
+          expr: |
+            sum by (instance) (rate(elasticsearch_jvm_gc_collection_seconds_sum[5m])) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: data
+          annotations:
+            summary: "Elasticsearch JVM spending >5% time in GC ({{ $labels.instance }})"
+            description: "Sustained GC pressure → query latency. Bump heap or scale out."
