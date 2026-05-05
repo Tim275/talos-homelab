@@ -1,0 +1,76 @@
+# Keycloak v2alpha1 CR — managed by keycloak-operator (installed via controllers/operators/)
+#
+# Replaces the plain Deployment + Service. Operator generates:
+#   - StatefulSet "keycloak"
+#   - Service "keycloak-service" (HTTP on 8080)
+#   - Service "keycloak-discovery" (JGroups headless)
+#   - PodDisruptionBudget
+#
+# Adopts existing CNPG keycloak-db (no data migration). Same admin secret.
+# Same Realm + Users + Clients survive — Operator just runs Keycloak against the existing DB.
+#
+# Reload: pods auto-restart when keycloak-db-credentials Secret rotates (via Stakater Reloader).
+---
+apiVersion: k8s.keycloak.org/v2alpha1
+kind: Keycloak
+metadata:
+  name: keycloak
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/component: oidc-provider
+    app.kubernetes.io/part-of: platform-identity
+  annotations:
+    secret.reloader.stakater.com/reload: keycloak-db-credentials,keycloak-admin
+spec:
+  instances: 1                              # 3 für HA (Phase 6) — heute 1 reicht
+  image: quay.io/keycloak/keycloak:25.0.6
+  startOptimized: false                     # JIT optimization for first start
+
+  db:
+    vendor: postgres
+    host: keycloak-db-rw.keycloak.svc.cluster.local
+    port: 5432
+    database: keycloak
+    usernameSecret:
+      name: keycloak-db-credentials
+      key: username
+    passwordSecret:
+      name: keycloak-db-credentials
+      key: password
+
+  hostname:
+    hostname: iam.timourhomelab.org
+    strict: false                           # Cloudflare Tunnel + Envoy already handle TLS termination
+    strictBackchannel: false
+
+  http:
+    httpEnabled: true                       # Envoy Gateway terminates TLS, KC speaks HTTP internally
+    httpPort: 8080
+    httpManagementPort: 9000
+
+  proxy:
+    headers: xforwarded                     # Trust X-Forwarded-* headers from Envoy
+
+  features:
+    enabled:
+      - admin-fine-grained-authz            # Per-realm fine-grained admin permissions
+      - declarative-user-profile            # User-Profile-as-Code
+
+  additionalOptions:
+    - name: log-level
+      value: INFO
+    - name: spi-sticky-session-encoder-infinispan-should-attach-route
+      value: "false"
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2
+      memory: 2Gi
+
+  bootstrapAdmin:
+    user:
+      secret: keycloak-admin
