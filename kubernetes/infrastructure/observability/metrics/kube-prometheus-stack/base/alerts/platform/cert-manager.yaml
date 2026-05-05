@@ -34,3 +34,28 @@ spec:
             component: platform
           annotations:
             summary: "cert-manager webhook down — renewals blocked"
+
+        - alert: CertManagerDown
+          expr: up{job="cert-manager"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: operator
+            pagerduty_severity: warning
+          annotations:
+            summary: "Cert-Manager is down"
+            description: "Cert-Manager controller unreachable for 5+ minutes"
+            impact: "Certificate renewals blocked, new certificates cannot be issued"
+
+        - alert: CertificateExpiringSoon
+          expr: (cert_manager_certificate_expiration_timestamp_seconds - time()) / 86400 < 14
+          for: 1h
+          labels:
+            severity: info
+            priority: p2
+            component: security
+          annotations:
+            summary: "Certificate {{ $labels.name }} expires in {{ $value }} days"
+            description: "Certificate in {{ $labels.namespace }} expires soon"
+            impact: "TLS certificate renewal needed"

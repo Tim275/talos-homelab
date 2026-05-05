@@ -46,3 +46,69 @@ spec:
           annotations:
             summary: "Kafka producer errors: {{ $labels.namespace }}"
             description: "Producer error rate {{ $value }}/sec."
+
+    # ─────────────────────────────────────────────────────────────────────
+    # KAFKA — broker-level (drova-kafka cluster)
+    # ─────────────────────────────────────────────────────────────────────
+    - name: drova.kafka
+      interval: 60s
+      rules:
+        - alert: DrovaKafkaBrokerDown
+          expr: count(up{namespace="drova",pod=~"drova-kafka-.*"}==1) < 3
+          for: 2m
+          labels:
+            severity: critical
+            priority: P1
+            component: drova-kafka
+            tenant: drova
+          annotations:
+            summary: "Drova Kafka: {{ $value }}/3 brokers up"
+            description: "Less than 3 Kafka brokers reachable — replication factor at risk"
+
+        - alert: DrovaKafkaUnderReplicatedPartitions
+          expr: kafka_server_replicamanager_under_replicated_partitions{namespace="drova"} > 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova-kafka
+            tenant: drova
+          annotations:
+            summary: "Drova Kafka: {{ $value }} under-replicated partitions"
+            description: "Some partitions have fewer in-sync replicas than configured RF"
+
+        - alert: DrovaKafkaOfflinePartitions
+          expr: kafka_controller_kafkacontroller_offline_partitions_count{namespace="drova"} > 0
+          for: 1m
+          labels:
+            severity: critical
+            priority: P1
+            component: drova-kafka
+            tenant: drova
+          annotations:
+            summary: "Drova Kafka: {{ $value }} offline partitions"
+            description: "Partitions completely unavailable — message production blocked"
+
+        - alert: DrovaKafkaConsumerLagHigh
+          expr: kafka_consumer_fetch_manager_records_lag_max{namespace="drova"} > 1000
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova-kafka
+            tenant: drova
+          annotations:
+            summary: "Drova Kafka consumer lag >1000 on {{ $labels.topic }}"
+            description: "{{ $labels.client_id }} is {{ $value }} messages behind"
+
+        - alert: DrovaKafkaConsumerLagCritical
+          expr: kafka_consumer_fetch_manager_records_lag_max{namespace="drova"} > 10000
+          for: 2m
+          labels:
+            severity: critical
+            priority: P1
+            component: drova-kafka
+            tenant: drova
+          annotations:
+            summary: "Drova Kafka consumer lag >10000 on {{ $labels.topic }}"
+            description: "{{ $labels.client_id }} severely behind ({{ $value }} msgs)"

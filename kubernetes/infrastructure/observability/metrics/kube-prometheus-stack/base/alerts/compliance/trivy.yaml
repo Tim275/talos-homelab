@@ -1,0 +1,24 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: compliance-trivy
+spec:
+  groups:
+    # ─────────────────────────────────────────────────────────────────────
+    # TRIVY — CVE detection (trivy-operator deployed, no alerts on findings)
+    # ─────────────────────────────────────────────────────────────────────
+    - name: trivy
+      interval: 5m
+      rules:
+        - alert: TrivyCriticalCVEFound
+          expr: |
+            sum by (namespace) (trivy_image_vulnerabilities{severity="Critical"}) > 0
+          for: 1h
+          labels:
+            severity: warning
+            priority: P2
+            component: trivy
+          annotations:
+            summary: "Critical CVE in {{ $labels.namespace }} ({{ $value }} findings)"
+            description: "Critical-severity vulnerability detected — patch image or accept exception."
+            action: "kubectl get vulnerabilityreports -n {{ $labels.namespace }} -o wide"

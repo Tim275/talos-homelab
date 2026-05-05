@@ -36,3 +36,103 @@ spec:
           annotations:
             summary: "Redis high eviction rate: {{ $labels.pod }}"
             description: "{{ $value }} keys/sec evicted. Memory pressure or undersized cache."
+
+        - alert: RedisInstanceDown
+          expr: up{job=~".*redis.*"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: cache
+            pagerduty_severity: warning
+          annotations:
+            summary: "Redis instance is down"
+            description: "Redis unreachable for 3+ minutes"
+            impact: "Cache unavailable, performance degradation"
+
+    # ─────────────────────────────────────────────────────────────────────
+    # REDIS — drova-redis cluster
+    # ─────────────────────────────────────────────────────────────────────
+    - name: drova.redis
+      interval: 60s
+      rules:
+        - alert: DrovaRedisDown
+          expr: redis_up{namespace="drova"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            priority: P1
+            component: drova-redis
+            tenant: drova
+          annotations:
+            summary: "Drova Redis {{ $labels.pod }} down"
+            description: "Redis instance not reachable >2min"
+
+        - alert: DrovaRedisHighMemory
+          expr: |
+            (
+              redis_memory_used_bytes{namespace="drova"}
+              /
+              clamp_min(redis_memory_max_bytes{namespace="drova"}, 1)
+            ) > 0.9
+            and
+            redis_memory_max_bytes{namespace="drova"} > 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova-redis
+            tenant: drova
+          annotations:
+            summary: "Drova Redis {{ $labels.pod }} memory >90%"
+            description: "Redis approaching max-memory — eviction will start"
+
+        - alert: DrovaRedisContainerMemoryPressure
+          expr: |
+            (
+              container_memory_working_set_bytes{namespace="drova",pod=~"redis-drova-.*",container="redis-drova"}
+              /
+              kube_pod_container_resource_limits{namespace="drova",pod=~"redis-drova-.*",resource="memory",container="redis-drova"}
+            ) > 0.85
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova-redis
+            tenant: drova
+          annotations:
+            summary: "Drova Redis {{ $labels.pod }} container memory >85% of limit"
+            description: "Container approaching OOM. maxmemory not set — Redis will not evict, kernel will OOM-kill"
+
+        - alert: DrovaRedisLowHitRate
+          expr: |
+            (
+              rate(redis_keyspace_hits_total{namespace="drova"}[5m])
+              /
+              clamp_min(rate(redis_keyspace_hits_total{namespace="drova"}[5m]) + rate(redis_keyspace_misses_total{namespace="drova"}[5m]), 1)
+            ) < 0.5
+            and
+            (rate(redis_keyspace_hits_total{namespace="drova"}[5m]) + rate(redis_keyspace_misses_total{namespace="drova"}[5m])) > 5
+          for: 15m
+          labels:
+            severity: warning
+            priority: P3
+            component: drova-redis
+            tenant: drova
+          annotations:
+            summary: "Drova Redis hit rate <50%"
+            description: "Cache hit-rate degraded — review key strategy"
+
+        - alert: DrovaRedisReplicationBroken
+          expr: |
+            redis_connected_slaves{namespace="drova"} < 1
+            and on(pod) redis_instance_info{namespace="drova",role="master"}
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova-redis
+            tenant: drova
+          annotations:
+            summary: "Drova Redis master {{ $labels.pod }} has no replica"
+            description: "Master has 0 connected replicas — failover impossible"

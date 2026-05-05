@@ -8,14 +8,18 @@ spec:
       interval: 1m
       rules:
         - alert: PodCrashLooping
-          expr: rate(kube_pod_container_status_restarts_total[10m]) * 600 > 3
+          expr: |
+            max_over_time(kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"}[5m]) == 1
           for: 5m
           labels:
             severity: warning
-            component: kubernetes
+            priority: p1
+            component: application
+            pagerduty_severity: warning
           annotations:
-            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} crashlooping"
-            description: ">3 restarts in 10 minutes for container {{ $labels.container }}."
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+            description: "Container {{ $labels.container }} in CrashLoopBackOff state for >5min"
+            impact: "Service degradation"
 
         - alert: PodPendingTooLong
           expr: kube_pod_status_phase{phase="Pending"} == 1
@@ -35,3 +39,44 @@ spec:
           annotations:
             summary: "OOM kill: {{ $labels.namespace }}/{{ $labels.pod }}/{{ $labels.container }}"
             description: "Container OOM-killed in last 15min."
+
+        - alert: PodNotReady
+          expr: kube_pod_status_phase{phase!~"Running|Succeeded"} == 1
+          for: 15m
+          labels:
+            severity: warning
+            priority: p1
+            component: application
+            pagerduty_severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} not ready"
+            description: "Pod in phase {{ $labels.phase }} for 15+ minutes"
+            impact: "Service degradation"
+
+        - alert: PodOOMKilled
+          expr: kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
+          for: 1m
+          labels:
+            severity: warning
+            priority: p1
+            component: application
+            pagerduty_severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} was OOMKilled"
+            description: "Container {{ $labels.container }} killed due to out of memory"
+            impact: "Insufficient memory limits"
+
+    - name: p3.performance.info
+      interval: 300s
+      rules:
+        - alert: HighPodRestartRate
+          expr: rate(kube_pod_container_status_restarts_total[1h]) > 0.5
+          for: 4h
+          labels:
+            severity: info
+            priority: p3
+            component: performance
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} restarting frequently"
+            description: "Pod restarting {{ $value }} times per hour"
+            impact: "Investigate application stability"
