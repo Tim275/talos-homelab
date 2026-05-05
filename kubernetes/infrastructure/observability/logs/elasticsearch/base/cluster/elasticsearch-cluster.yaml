@@ -96,17 +96,19 @@ spec:
           # Total: 9GB RAM for ES cluster
           containers:
             - name: elasticsearch
+              # Single-node homelab sizing (Kafka pattern: heap+overhead < limit)
+              # Heap = 2g, JVM non-heap ~500m, page cache ~500m → request 3Gi
+              # limit 4Gi gives 1Gi headroom for GC bursts + page cache
               resources:
                 requests:
                   memory: 3Gi
                   cpu: 500m
                 limits:
-                  memory: 3Gi
-                  cpu: 1500m
+                  memory: 4Gi
+                  cpu: 2
               env:
                 - name: ES_JAVA_OPTS
-                  # 50% of container memory (3GB 1.5GB heap)
-                  value: "-Xms1536m -Xmx1536m"
+                  value: "-Xms2g -Xmx2g"
           # Affinity - schedule on large memory nodes (worker-1, worker-2 have 28GB)
           affinity:
             nodeAffinity:
@@ -137,7 +139,7 @@ spec:
             storageClassName: rook-ceph-block-enterprise-retain
             resources:
               requests:
-                storage: 10Gi
+                storage: 50Gi
   # HTTP service configuration
   http:
     service:
