@@ -64,3 +64,65 @@ spec:
           annotations:
             summary: "Ceph OSD {{ $labels.ceph_daemon }} flapping (>2 state changes in 10min)"
             description: "OSD bouncing up/down — investigate disk health, network, or memory pressure."
+
+    - name: p0.storage.pvc
+      interval: 30s
+      rules:
+        - alert: PVCCriticallyFull
+          expr: |
+            (kubelet_volume_stats_available_bytes{job="kubelet"} / kubelet_volume_stats_capacity_bytes{job="kubelet"}) < 0.10
+          for: 5m
+          labels:
+            severity: critical
+            priority: p0
+            component: storage
+            pagerduty_severity: critical
+          annotations:
+            summary: "PVC {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full"
+            description: "PVC {{ $labels.persistentvolumeclaim }} in namespace {{ $labels.namespace }} has less than 10% free space. IMMEDIATE action required."
+            impact: "HIGH - Application may fail, potential data loss"
+
+        - alert: PVCPredictedFull
+          expr: |
+            predict_linear(kubelet_volume_stats_available_bytes{job="kubelet"}[1h], 4 * 3600) < 0
+          for: 10m
+          labels:
+            severity: critical
+            priority: p0
+            component: storage
+            pagerduty_severity: critical
+          annotations:
+            summary: "PVC {{ $labels.persistentvolumeclaim }} will be full in <4 hours"
+            description: "PVC {{ $labels.persistentvolumeclaim }} predicted to be full within 4 hours"
+            impact: "HIGH - Proactive alert to prevent PVC full"
+
+    - name: p1.storage.pvc
+      interval: 60s
+      rules:
+        - alert: PVCWarningFull
+          expr: (kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes) < 0.20
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: storage
+            pagerduty_severity: warning
+          annotations:
+            summary: "PVC {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full"
+            description: "PVC {{ $labels.persistentvolumeclaim }} in {{ $labels.namespace }} has less than 20% free"
+            impact: "Will hit critical threshold soon"
+
+    - name: p3.capacity.pvc
+      interval: 300s
+      rules:
+        - alert: PVCWillFillIn7Days
+          expr: predict_linear(kubelet_volume_stats_available_bytes[6h], 7 * 24 * 3600) < 0
+          for: 1h
+          labels:
+            severity: info
+            priority: p3
+            component: capacity
+          annotations:
+            summary: "PVC {{ $labels.persistentvolumeclaim }} will fill in <7 days"
+            description: "PVC predicted to be full within a week based on growth trend"
+            impact: "Plan to expand PVC or clean up data"
