@@ -100,26 +100,26 @@ resource "proxmox_virtual_environment_vm" "this" {
 }
 
 locals {
-  nipogi_ceph_nodes = {
-    for k, v in var.nodes : k => v
-    if v.host_node == "nipogi" && v.ceph_disk_size > 0
+  proxmox_host_ips = {
+    "nipogi"      = "192.168.0.57"
+    "msa2proxmox" = "192.168.0.50"
   }
 }
 
-# Proxmox automatically sets refreservation=size on every ZFS zvol it creates.
-# For Ceph OSD disks this wastes the full disk capacity twice (reserved + actual data).
-# This clears it post-creation so the ZFS pool reports realistic usage.
-# Uses the same SSH key (~/.ssh/id_rsa_proxmox) as the Proxmox provider.
-resource "null_resource" "zfs_clear_nipogi_refreservation" {
-  for_each = local.nipogi_ceph_nodes
+# Proxmox sets refreservation=size on every ZFS zvol it creates.
+# This wastes full disk capacity twice (reserved + actual data) and causes
+# apparent pool fullness. Clear on all VM disks post-creation.
+# disk-0 = Ceph OSD, disk-1 = OS disk (both get cleared; 2>/dev/null ignores missing disks).
+# Uses the same SSH key as the Proxmox provider (~/.ssh/id_rsa_proxmox).
+resource "null_resource" "zfs_clear_refreservation" {
+  for_each = var.nodes
 
   triggers = {
-    vm_id          = each.value.vm_id
-    ceph_disk_size = each.value.ceph_disk_size
+    vm_id = each.value.vm_id
   }
 
   provisioner "local-exec" {
-    command = "ssh -i ~/.ssh/id_rsa_proxmox -o StrictHostKeyChecking=no root@192.168.0.57 'zfs set refreservation=none rpool/data/vm-${each.value.vm_id}-disk-1 2>/dev/null || true'"
+    command = "ssh -i ~/.ssh/id_rsa_proxmox -o StrictHostKeyChecking=no root@${local.proxmox_host_ips[each.value.host_node]} 'zfs set refreservation=none rpool/vm-${each.value.vm_id}-disk-0 2>/dev/null; zfs set refreservation=none rpool/vm-${each.value.vm_id}-disk-1 2>/dev/null; true'"
   }
 
   depends_on = [proxmox_virtual_environment_vm.this]
