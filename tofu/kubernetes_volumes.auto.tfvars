@@ -1,14 +1,14 @@
 kubernetes_volumes = {
   "argocd-data" = {
-    node = "nipogi"
+    node = "msa2proxmox"
     size = "10G"
   }
   "prometheus-data" = {
-    node = "nipogi"
+    node = "msa2proxmox"
     size = "20G"
   }
   "grafana-data" = {
-    node = "nipogi"
+    node = "msa2proxmox"
     size = "5G"
   }
   "storage-loki-0" = {

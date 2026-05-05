@@ -98,3 +98,31 @@ resource "proxmox_virtual_environment_vm" "this" {
     proxmox_virtual_environment_download_file.this
   ]
 }
+
+locals {
+  nipogi_ceph_nodes = {
+    for k, v in var.nodes : k => v
+    if v.host_node == "nipogi" && v.ceph_disk_size > 0
+  }
+}
+
+# Proxmox automatically sets refreservation=size on every ZFS zvol it creates.
+# For Ceph OSD disks this wastes the full disk capacity twice (reserved + actual data).
+# This clears it post-creation so the ZFS pool reports realistic usage.
+resource "null_resource" "zfs_clear_nipogi_refreservation" {
+  for_each = var.nipogi_ssh_password != "" ? local.nipogi_ceph_nodes : {}
+
+  triggers = {
+    vm_id          = each.value.vm_id
+    ceph_disk_size = each.value.ceph_disk_size
+  }
+
+  provisioner "local-exec" {
+    command     = "sshpass -p \"$NIPOGI_PASS\" ssh -o StrictHostKeyChecking=no root@192.168.0.57 'zfs set refreservation=none rpool/data/vm-${each.value.vm_id}-disk-1 2>/dev/null || true'"
+    environment = {
+      NIPOGI_PASS = var.nipogi_ssh_password
+    }
+  }
+
+  depends_on = [proxmox_virtual_environment_vm.this]
+}
