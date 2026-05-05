@@ -36,3 +36,104 @@ spec:
           annotations:
             summary: "Kubescape down — compliance scanning halted"
             description: "Kubescape unavailable >30min."
+
+    - name: p0.observability.critical
+      interval: 30s
+      rules:
+        - alert: PrometheusDown
+          expr: up{job="prometheus"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            priority: p0
+            component: monitoring
+            pagerduty_severity: critical
+          annotations:
+            summary: "Prometheus is down - ALL ALERTS WILL STOP"
+            description: "Prometheus not responding - blind to cluster state"
+            impact: "CRITICAL - No monitoring, no alerts"
+
+        - alert: AlertmanagerDown
+          expr: up{job="alertmanager"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            priority: p0
+            component: monitoring
+            pagerduty_severity: critical
+          annotations:
+            summary: "Alertmanager down - alerts not routed"
+            description: "Alertmanager not responding - no alert notifications"
+            impact: "CRITICAL - No alert notifications"
+
+    - name: p1.monitoring.warning
+      interval: 60s
+      rules:
+        - alert: PrometheusDownWarning
+          expr: up{job="prometheus"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: observability
+            pagerduty_severity: warning
+          annotations:
+            summary: "Prometheus is down"
+            description: "Prometheus unreachable for 3+ minutes"
+            impact: "NO metrics collection, alerting blind"
+
+        - alert: AlertmanagerDownWarning
+          expr: up{job="alertmanager"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: observability
+            pagerduty_severity: warning
+          annotations:
+            summary: "Alertmanager is down"
+            description: "Alertmanager unreachable for 3+ minutes"
+            impact: "NO alert notifications sent"
+
+        - alert: GrafanaDown
+          expr: up{job="grafana"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: observability
+            pagerduty_severity: warning
+          annotations:
+            summary: "Grafana is down"
+            description: "Grafana unreachable for 5+ minutes"
+            impact: "Dashboard visualizations unavailable"
+
+    - name: p2.observability.info
+      interval: 120s
+      rules:
+        - alert: GrafanaDownInfo
+          expr: up{job="grafana"} == 0
+          for: 10m
+          labels:
+            severity: info
+            priority: p2
+            component: observability
+          annotations:
+            summary: "Grafana is down"
+            description: "Grafana not responding for 10+ minutes"
+            impact: "No dashboard access"
+
+    - name: p3.observability.info
+      interval: 300s
+      rules:
+        - alert: PrometheusHighCardinality
+          expr: prometheus_tsdb_symbol_table_size_bytes > 100000000
+          for: 2h
+          labels:
+            severity: info
+            priority: p3
+            component: observability
+          annotations:
+            summary: "Prometheus has high cardinality metrics"
+            description: "Symbol table size: {{ $value | humanize1024 }}B"
+            impact: "Prometheus performance may degrade"

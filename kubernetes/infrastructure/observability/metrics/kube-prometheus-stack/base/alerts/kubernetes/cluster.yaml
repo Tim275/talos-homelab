@@ -38,7 +38,7 @@ spec:
             summary: "Multiple worker nodes NotReady"
             description: "{{ $value }} worker nodes have been NotReady for >5 minutes."
 
-        - alert: NodeMemoryPressure
+        - alert: NodeMemoryPressureLow
           expr: (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) < 0.20
           for: 10m
           labels:
@@ -57,3 +57,283 @@ spec:
           annotations:
             summary: "Disk >75% full on {{ $labels.instance }}:{{ $labels.mountpoint }}"
             description: "Disk usage at {{ $value | humanizePercentage }}."
+
+    - name: p0.controlplane.critical
+      interval: 15s
+      rules:
+        - alert: KubernetesAPIServerDown
+          expr: up{job="apiserver"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            priority: p0
+            component: control-plane
+            pagerduty_severity: critical
+          annotations:
+            summary: "Kubernetes API Server is DOWN"
+            description: "API Server not responding - COMPLETE CLUSTER OUTAGE"
+            impact: "CRITICAL - Complete management plane outage"
+
+        - alert: EtcdClusterUnhealthy
+          expr: (count(up{job="etcd"} == 1) / count(up{job="etcd"})) < 0.5
+          for: 1m
+          labels:
+            severity: critical
+            priority: p0
+            component: control-plane
+            pagerduty_severity: critical
+          annotations:
+            summary: "etcd cluster has lost quorum"
+            description: "More than 50% of etcd members down - cluster cannot persist state"
+            impact: "CRITICAL - Cluster effectively read-only"
+
+    - name: p0.nodes.critical
+      interval: 30s
+      rules:
+        - alert: MajorityOfNodesDown
+          expr: (count(kube_node_status_condition{condition="Ready",status="true"}) / count(kube_node_info)) < 0.5
+          for: 2m
+          labels:
+            severity: critical
+            priority: p0
+            component: infrastructure
+            pagerduty_severity: critical
+          annotations:
+            summary: "More than 50% of nodes are down"
+            description: "Cluster lost majority compute capacity - many workloads failing"
+            impact: "CRITICAL - Massive capacity loss"
+
+        - alert: ControlPlaneNodeDown
+          expr: kube_node_status_condition{condition="Ready",status="true",node="ctrl-0"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            priority: p0
+            component: control-plane
+            pagerduty_severity: critical
+          annotations:
+            summary: "Control plane node {{ $labels.node }} is down"
+            description: "Control plane node offline - complete outage"
+            impact: "CRITICAL - Control plane offline"
+
+    - name: p1.talos.controlplane
+      interval: 60s
+      rules:
+        - alert: TalosApiserverDown
+          expr: up{job="apiserver"} == 0
+          for: 2m
+          labels:
+            severity: warning
+            priority: p1
+            component: control-plane
+            pagerduty_severity: warning
+          annotations:
+            summary: "Talos Kubernetes API Server is down"
+            description: "Talos control plane API server unreachable for 2+ minutes"
+            impact: "Cluster management unavailable"
+
+        - alert: TalosSchedulerDown
+          expr: up{job="kube-scheduler"} == 0
+          for: 2m
+          labels:
+            severity: warning
+            priority: p1
+            component: control-plane
+            pagerduty_severity: warning
+          annotations:
+            summary: "Talos Scheduler is down"
+            description: "Kubernetes Scheduler unreachable for 2+ minutes"
+            impact: "New pods cannot be scheduled"
+
+        - alert: TalosControllerManagerDown
+          expr: up{job="kube-controller-manager"} == 0
+          for: 2m
+          labels:
+            severity: warning
+            priority: p1
+            component: control-plane
+            pagerduty_severity: warning
+          annotations:
+            summary: "Talos Controller Manager is down"
+            description: "Kubernetes Controller Manager unreachable for 2+ minutes"
+            impact: "Resource controllers not running"
+
+    - name: p1.nodes.warning
+      interval: 60s
+      rules:
+        - alert: NodeNotReady
+          expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: infrastructure
+            pagerduty_severity: warning
+          annotations:
+            summary: "Node {{ $labels.node }} is NotReady"
+            description: "Node {{ $labels.node }} has been NotReady for 5+ minutes"
+            impact: "Reduced capacity, pods may be evicted"
+
+        - alert: NodeMemoryPressure
+          expr: kube_node_status_condition{condition="MemoryPressure",status="true"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: infrastructure
+            pagerduty_severity: warning
+          annotations:
+            summary: "Node {{ $labels.node }} has memory pressure"
+            description: "Node {{ $labels.node }} is under memory pressure"
+            impact: "Pods may be evicted"
+
+        - alert: NodeDiskPressure
+          expr: kube_node_status_condition{condition="DiskPressure",status="true"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: infrastructure
+            pagerduty_severity: warning
+          annotations:
+            summary: "Node {{ $labels.node }} has disk pressure"
+            description: "Node {{ $labels.node }} is under disk pressure"
+            impact: "Pods may be evicted"
+
+        - alert: NodeHighCPU
+          expr: (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) by (instance)) > 0.80
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: infrastructure
+            pagerduty_severity: warning
+          annotations:
+            summary: "Node {{ $labels.instance }} has high CPU usage"
+            description: "Node CPU usage is {{ $value | humanizePercentage }} for 10+ minutes"
+            impact: "Performance degradation"
+
+        - alert: NodeHighMemory
+          expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 0.85
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: infrastructure
+            pagerduty_severity: warning
+          annotations:
+            summary: "Node {{ $labels.instance }} has high memory usage"
+            description: "Node memory usage is {{ $value | humanizePercentage }} for 10+ minutes"
+            impact: "Risk of OOM kills"
+
+    - name: p1.controlplane.warning
+      interval: 60s
+      rules:
+        - alert: KubeAPIServerHighLatency
+          expr: histogram_quantile(0.99, sum(rate(apiserver_request_duration_seconds_bucket{verb!="WATCH"}[5m])) by (verb, le)) > 1
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: control-plane
+            pagerduty_severity: warning
+          annotations:
+            summary: "Kubernetes API Server has high latency"
+            description: "99th percentile API latency is {{ $value }}s for {{ $labels.verb }} requests"
+            impact: "Slow cluster operations"
+
+        - alert: EtcdHighLatency
+          expr: histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m])) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            priority: p1
+            component: control-plane
+            pagerduty_severity: warning
+          annotations:
+            summary: "etcd has high disk latency"
+            description: "99th percentile etcd fsync is {{ $value }}s"
+            impact: "Slow state persistence"
+
+        - alert: EtcdNoLeader
+          expr: etcd_server_has_leader == 0
+          for: 1m
+          labels:
+            severity: warning
+            priority: p1
+            component: control-plane
+            pagerduty_severity: warning
+          annotations:
+            summary: "etcd cluster has no leader"
+            description: "etcd is performing leader election"
+            impact: "Temporary unavailability"
+
+    - name: p3.capacity.info
+      interval: 300s
+      rules:
+        - alert: NodeCPUCapacityWarning
+          expr: sum(rate(node_cpu_seconds_total{mode!="idle"}[5m])) / count(node_cpu_seconds_total{mode="idle"}) > 0.70
+          for: 2h
+          labels:
+            severity: info
+            priority: p3
+            component: capacity
+          annotations:
+            summary: "Cluster CPU usage is {{ $value | humanizePercentage }}"
+            description: "Sustained high CPU usage across cluster"
+            impact: "Consider adding nodes"
+
+        - alert: NodeMemoryCapacityWarning
+          expr: (1 - sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes)) > 0.70
+          for: 2h
+          labels:
+            severity: info
+            priority: p3
+            component: capacity
+          annotations:
+            summary: "Cluster memory usage is {{ $value | humanizePercentage }}"
+            description: "Sustained high memory usage across cluster"
+            impact: "Consider adding nodes"
+
+    - name: p3.maintenance.info
+      interval: 300s
+      rules:
+        - alert: KubernetesVersionOld
+          expr: (kubernetes_build_info{gitVersion=~"v1\\.(2[0-9]|3[0-2])\\.*"}) * 0 + 1
+          for: 24h
+          labels:
+            severity: info
+            priority: p3
+            component: maintenance
+          annotations:
+            summary: "Kubernetes version {{ $labels.gitVersion }} is old"
+            description: "Running Kubernetes version older than 1.33"
+            impact: "Consider upgrading to latest stable"
+
+        - alert: NodeKernelVersionMismatch
+          expr: count(count by (release) (node_uname_info)) > 1
+          for: 6h
+          labels:
+            severity: info
+            priority: p3
+            component: maintenance
+          annotations:
+            summary: "Nodes running different kernel versions"
+            description: "Cluster has mixed kernel versions"
+            impact: "Consider standardizing node images"
+
+    # APISERVER — Serving cert expiry (Client-Cert ist drin, Server-Cert nicht)
+    - name: apiserver-cert
+      interval: 5m
+      rules:
+        - alert: APIServerServingCertExpiringSoon
+          expr: |
+            (apiserver_certificate_expiration_seconds - time()) / 86400 < 30
+          for: 1h
+          labels:
+            severity: warning
+            priority: P2
+            component: control-plane
+          annotations:
+            summary: "kube-apiserver serving cert expires in <30 days ({{ $value }})"
+            description: "Talos rotates automatically, but verify before relying on it."

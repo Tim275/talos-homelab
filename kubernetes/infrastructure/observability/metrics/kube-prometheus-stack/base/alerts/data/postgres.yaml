@@ -46,3 +46,143 @@ spec:
           annotations:
             summary: "PostgreSQL connection pool >80%: {{ $labels.cluster }}"
             description: "{{ $value | humanizePercentage }} of max_connections used."
+
+    - name: postgres-availability
+      interval: 60s
+      rules:
+        - alert: PostgreSQLDown
+          expr: pg_up == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: database
+            pagerduty_severity: warning
+          annotations:
+            summary: "PostgreSQL {{ $labels.namespace }}/{{ $labels.pod }} is down"
+            description: "PostgreSQL instance unreachable for 3+ minutes"
+            impact: "Database unavailable for applications"
+
+        - alert: PostgreSQLHighConnections
+          expr: (sum(pg_stat_database_numbackends) by (namespace, pod) / sum(pg_settings_max_connections) by (namespace, pod)) > 0.80
+          for: 5m
+          labels:
+            severity: warning
+            priority: p1
+            component: database
+            pagerduty_severity: warning
+          annotations:
+            summary: "PostgreSQL {{ $labels.namespace }}/{{ $labels.pod }} connection limit"
+            description: "Using {{ $value | humanizePercentage }} of max connections"
+            impact: "Connection exhaustion risk"
+
+        - alert: PostgreSQLReplicationLag
+          expr: pg_replication_lag > 30
+          for: 10m
+          labels:
+            severity: info
+            priority: p2
+            component: database
+          annotations:
+            summary: "PostgreSQL replication lag is {{ $value }}s"
+            description: "Replication lag exceeds 30 seconds"
+            impact: "Stale replica data"
+
+    # ─────────────────────────────────────────────────────────────────────
+    # POSTGRES — drova-postgres cluster
+    # ─────────────────────────────────────────────────────────────────────
+    - name: drova.database
+      interval: 60s
+      rules:
+        - alert: DrovaPostgresDown
+          expr: cnpg_collector_up{namespace="drova"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            priority: P1
+            component: drova-postgres
+            tenant: drova
+          annotations:
+            summary: "Drova Postgres {{ $labels.pod }} down"
+            description: "CNPG instance not reachable for >2min"
+
+        - alert: DrovaPostgresReplicationLag
+          expr: cnpg_pg_replication_lag{namespace="drova"} > 30
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova-postgres
+            tenant: drova
+          annotations:
+            summary: "Drova Postgres replication lag {{ $value }}s"
+            description: "Standby falling behind primary — data loss risk on failover"
+
+        - alert: DrovaPostgresConnectionsHigh
+          expr: cnpg_backends_total{namespace="drova"} > 80
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova-postgres
+            tenant: drova
+          annotations:
+            summary: "Drova Postgres connections {{ $value }}/100"
+            description: "Approaching max_connections limit"
+
+        - alert: DrovaPostgresWALArchivingFailed
+          expr: cnpg_collector_last_failed_wal_archive_seconds{namespace="drova"} > 0
+          for: 15m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova-postgres
+            tenant: drova
+          annotations:
+            summary: "Drova Postgres WAL archiving failing"
+            description: "Last failed archive {{ $value | humanizeTimestamp }} — disk fill risk"
+
+    # ─────────────────────────────────────────────────────────────────────
+    # CNPG — Backup-stale (Velero hat eigenes Rule, CNPG bisher nicht)
+    # ─────────────────────────────────────────────────────────────────────
+    - name: cnpg-backups
+      interval: 60s
+      rules:
+        - alert: CNPGBackupStale
+          expr: |
+            (time() - max by (cluster) (cnpg_collector_last_available_backup_timestamp))
+            > 86400
+          for: 30m
+          labels:
+            severity: critical
+            priority: P1
+            component: cnpg
+          annotations:
+            summary: "CNPG cluster {{ $labels.cluster }} no successful backup in 24h"
+            description: "Last backup is older than 24h — RPO exceeded, data-loss risk on failure."
+            action: "kubectl get backup -n <ns> | grep <cluster> ; check ScheduledBackup CR + barman plugin pod"
+
+        - alert: CNPGBackupNeverRan
+          expr: |
+            absent_over_time(cnpg_collector_last_available_backup_timestamp[7d])
+            and on() count(kube_customresource_count{customresource_kind="Cluster",customresource_group="postgresql.cnpg.io"} > 0) > 0
+          for: 1h
+          labels:
+            severity: warning
+            priority: P2
+            component: cnpg
+          annotations:
+            summary: "CNPG metric for backup timestamp absent — backups likely not running"
+
+        - alert: MongoDBDown
+          expr: up{job=~".*mongodb.*"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: p1
+            component: database
+            pagerduty_severity: warning
+          annotations:
+            summary: "MongoDB instance is down"
+            description: "MongoDB unreachable for 3+ minutes"
+            impact: "Database unavailable"

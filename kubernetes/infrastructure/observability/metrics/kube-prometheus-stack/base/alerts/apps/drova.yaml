@@ -70,3 +70,176 @@ spec:
           annotations:
             summary: "Drova service down: {{ $labels.deployment }}"
             description: "0 ready replicas for {{ $labels.deployment }} >2min."
+
+    # ─────────────────────────────────────────────────────────────────────
+    # PODS / DEPLOYMENTS — Resource layer
+    # ─────────────────────────────────────────────────────────────────────
+    - name: drova.pods
+      interval: 60s
+      rules:
+        - alert: DrovaPodNotReady
+          expr: |
+            kube_pod_status_ready{namespace="drova", condition="true"} == 0
+            unless on (namespace, pod)
+            kube_pod_status_phase{namespace="drova", phase=~"Succeeded|Failed"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova
+            tenant: drova
+          annotations:
+            summary: "Drova pod {{ $labels.pod }} not ready"
+            description: "Pod {{ $labels.pod }} not ready for >2min"
+            impact: "Reduced capacity"
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-overview"
+
+        - alert: DrovaPodCrashLooping
+          expr: rate(kube_pod_container_status_restarts_total{namespace="drova"}[5m]) * 60 > 0.5
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: drova
+            tenant: drova
+          annotations:
+            summary: "Drova {{ $labels.container }} crash-looping"
+            description: "Container {{ $labels.container }} in {{ $labels.pod }} restarting >0.5/min"
+            impact: "Service instability"
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail?var-service={{ $labels.container }}"
+
+        - alert: DrovaDeploymentUnavailable
+          expr: kube_deployment_status_replicas_unavailable{namespace="drova"} > 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova
+            tenant: drova
+          annotations:
+            summary: "Drova {{ $labels.deployment }} has unavailable replicas"
+            description: "{{ $value }} replicas unavailable >3min"
+
+        - alert: DrovaPodMemoryPressure
+          expr: |
+            (
+              container_memory_working_set_bytes{namespace="drova",container!=""}
+              /
+              kube_pod_container_resource_limits{namespace="drova",resource="memory"}
+            ) > 0.9
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova
+            tenant: drova
+          annotations:
+            summary: "Drova {{ $labels.pod }} memory >90% of limit"
+            description: "OOMKill risk — memory at {{ $value | humanizePercentage }} of limit"
+
+        - alert: DrovaPodCPUThrottling
+          expr: rate(container_cpu_cfs_throttled_periods_total{namespace="drova",container!=""}[5m]) / rate(container_cpu_cfs_periods_total{namespace="drova",container!=""}[5m]) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova
+            tenant: drova
+          annotations:
+            summary: "Drova {{ $labels.pod }} CPU throttled >50%"
+            description: "Container is being CPU-throttled — increase limits or scale horizontally"
+
+    # ─────────────────────────────────────────────────────────────────────
+    # HTTP — RED method per service (uses service_name, NOT job)
+    # ─────────────────────────────────────────────────────────────────────
+    - name: drova.http
+      interval: 30s
+      rules:
+        # NOTE: DrovaServiceDown moved to drova-availability group above.
+        # The old definition fired permanently for api-gateway because that service
+        # only emits http_server_request_body_size_bytes (no duration histogram), so
+        # the absent()/==0 logic incorrectly flagged the service as down. The new
+        # definition uses kube_deployment_status_replicas_available which is the
+        # correct signal for "is the service running".
+
+        - alert: DrovaHighErrorRate
+          expr: |
+            100 * sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service",http_response_status_code=~"5.."}[5m]))
+            /
+            clamp_min(sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service"}[5m])), 0.001)
+            > 5
+          for: 3m
+          labels:
+            severity: critical
+            priority: P1
+            component: drova
+            tenant: drova
+          annotations:
+            summary: "Drova {{ $labels.service_name }} 5xx rate >5% ({{ $value | humanize }}%)"
+            description: "Sustained 5xx errors above 5% threshold"
+            impact: "Users experiencing errors"
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail?var-service={{ $labels.service_name }}"
+
+        - alert: DrovaHighErrorRateWarning
+          expr: |
+            100 * sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service",http_response_status_code=~"5.."}[5m]))
+            /
+            clamp_min(sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service"}[5m])), 0.001)
+            > 1
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova
+            tenant: drova
+          annotations:
+            summary: "Drova {{ $labels.service_name }} 5xx rate >1%"
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail?var-service={{ $labels.service_name }}"
+
+        - alert: DrovaP99LatencyCritical
+          expr: |
+            histogram_quantile(0.99,
+              sum by (service_name, le) (rate(http_server_request_duration_seconds_bucket{service_name=~"api-gateway|chat-service|user-service"}[5m]))
+            ) > 2
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: drova
+            tenant: drova
+          annotations:
+            summary: "Drova {{ $labels.service_name }} p99 latency >2s ({{ $value | humanizeDuration }})"
+            description: "Severe latency degradation"
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail?var-service={{ $labels.service_name }}"
+
+        - alert: DrovaP99LatencyWarning
+          expr: |
+            histogram_quantile(0.99,
+              sum by (service_name, le) (rate(http_server_request_duration_seconds_bucket{service_name=~"api-gateway|chat-service|user-service"}[5m]))
+            ) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova
+            tenant: drova
+          annotations:
+            summary: "Drova {{ $labels.service_name }} p99 >500ms"
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail?var-service={{ $labels.service_name }}"
+
+        - alert: DrovaTrafficDropped
+          expr: |
+            (
+              sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service"}[5m]))
+              <
+              sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service"}[1h] offset 1h)) * 0.3
+            )
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: drova
+            tenant: drova
+          annotations:
+            summary: "Drova {{ $labels.service_name }} traffic dropped >70% vs 1h ago"
+            description: "Anomalous traffic drop — possibly client-side issue or upstream outage"
