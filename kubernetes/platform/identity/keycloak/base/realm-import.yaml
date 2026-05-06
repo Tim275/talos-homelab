@@ -98,6 +98,32 @@ spec:
       composite: true
       clientRole: false
 
+    # ── 2FA enforcement (TOTP via Authenticator-App) ──────────────────────
+    # Phase 4 (re-enabled 2026-05-06 nach Phase D fix):
+    # Jeder neue User → CONFIGURE_TOTP als Required-Action.
+    # Beim ersten Browser-Login zeigt KC QR-Code für Authy/Google Authenticator.
+    # WICHTIG: blockt grant_type=password (curl) — Test ausschließlich via Browser.
+    requiredActions:
+      - alias: CONFIGURE_TOTP
+        name: "Configure OTP"
+        providerId: CONFIGURE_TOTP
+        enabled: true
+        defaultAction: true
+        priority: 10
+      - alias: UPDATE_PASSWORD
+        name: "Update Password"
+        providerId: UPDATE_PASSWORD
+        enabled: true
+        defaultAction: false
+        priority: 30
+
+    # OTP Policy
+    otpPolicyType: totp
+    otpPolicyAlgorithm: HmacSHA1
+    otpPolicyDigits: 6
+    otpPolicyPeriod: 30
+    otpPolicyLookAheadWindow: 1
+
     # ── CLIENT SCOPES ──────────────────────────────────────────────────────
     # 'groups' scope: maps user's KC groups to JWT 'groups' claim.
     # ArgoCD/Grafana use this for RBAC: cluster-admins → role:admin etc.
@@ -181,7 +207,7 @@ spec:
             connectionUrl: ["ldap://lldap-ldap.lldap.svc.cluster.local:389"]
             usersDn: ["ou=people,dc=homelab,dc=local"]
             bindDn: ["uid=admin,ou=people,dc=homelab,dc=local"]
-            bindCredential: ["homelab-admin-2024"]
+            bindCredential: ["${LLDAP_BIND_PASSWORD}"]
             usernameLDAPAttribute: ["uid"]
             rdnLDAPAttribute: ["uid"]
             uuidLDAPAttribute: ["uid"]
@@ -205,7 +231,7 @@ spec:
         enabled: true
         protocol: openid-connect
         publicClient: false
-        secret: "ArgoCD-OIDC-Secret-2025!"
+        secret: "${ARGOCD_CLIENT_SECRET}"
         standardFlowEnabled: true
         directAccessGrantsEnabled: true
         serviceAccountsEnabled: false
@@ -229,7 +255,7 @@ spec:
         enabled: true
         protocol: openid-connect
         publicClient: false
-        secret: "EWrgYwYxLHhrPHeyu0OflfzphuquqyEZ"
+        secret: "${GRAFANA_CLIENT_SECRET}"
         standardFlowEnabled: true
         directAccessGrantsEnabled: true
         serviceAccountsEnabled: false
@@ -254,7 +280,7 @@ spec:
         enabled: true
         protocol: openid-connect
         publicClient: false
-        secret: "jDgdBfBSDsCOIn4g0E0tgqkHAG3nRsjJ"
+        secret: "${KUBECTL_CLIENT_SECRET}"
         standardFlowEnabled: true
         directAccessGrantsEnabled: true
         serviceAccountsEnabled: false
