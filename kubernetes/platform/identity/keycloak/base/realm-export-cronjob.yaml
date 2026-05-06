@@ -1,0 +1,110 @@
+# Daily Realm Export CronJob — DR-Resilience
+# Exports realm 'kubernetes' (config + clients + roles + groups; users skipped — they live in LLDAP)
+# to a PVC. Velero backs up the PVC nightly to S3 → restorable to ANY new cluster in <2 min.
+#
+# Restore: copy realm-export-latest.json into a new KC pod, run
+#   kc.sh import --file=/path/to/realm-export-latest.json --override=true
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: keycloak-realm-export
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak-realm-export
+    app.kubernetes.io/part-of: platform-identity
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: rook-ceph-block-enterprise-retain
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: keycloak-realm-export
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak-realm-export
+    app.kubernetes.io/part-of: platform-identity
+spec:
+  schedule: "0 4 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 86400
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: export
+              image: quay.io/keycloak/keycloak:25.0.6@sha256:82c5b7a110456dbd42b86ea572e728878549954cc8bd03cd65410d75328095d2
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: false
+                capabilities:
+                  drop: [ALL]
+              env:
+                - name: KC_URL
+                  value: "http://keycloak-service.keycloak.svc.cluster.local:8080"
+                - name: KC_ADMIN
+                  value: admin
+                - name: KC_ADMIN_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: keycloak-admin
+                      key: password
+                - name: REALM
+                  value: kubernetes
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -e
+                  TS=$(date -u +%Y-%m-%dT%H-%M-%SZ)
+                  OUT_DIR=/backup
+                  mkdir -p "$OUT_DIR"
+
+                  echo "=== Authenticating ==="
+                  /opt/keycloak/bin/kcadm.sh config credentials \
+                    --server "$KC_URL" --realm master \
+                    --user "$KC_ADMIN" --password "$KC_ADMIN_PASSWORD"
+
+                  echo "=== Partial-export realm $REALM (config + clients + roles + groups) ==="
+                  TOKEN=$(/opt/keycloak/bin/kcadm.sh get-token 2>&1)
+                  /opt/keycloak/bin/kcadm.sh create realms/$REALM/partial-export \
+                    -q exportClients=true \
+                    -q exportGroupsAndRoles=true \
+                    -o > "$OUT_DIR/realm-${REALM}-${TS}.json"
+
+                  ln -sf "realm-${REALM}-${TS}.json" "$OUT_DIR/realm-${REALM}-latest.json"
+
+                  echo "=== Rotation: keep last 7 days ==="
+                  cd "$OUT_DIR"
+                  ls -1t realm-${REALM}-*Z.json 2>/dev/null | tail -n +8 | xargs -r rm -f
+
+                  echo "=== Export complete ==="
+                  ls -la "$OUT_DIR/"
+                  echo ""
+                  echo "Latest export size:"
+                  wc -c "$OUT_DIR/realm-${REALM}-latest.json" || true
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+              resources:
+                requests: { cpu: 50m,  memory: 256Mi }
+                limits:   { cpu: 500m, memory: 512Mi }
+          volumes:
+            - name: backup
+              persistentVolumeClaim:
+                claimName: keycloak-realm-export
