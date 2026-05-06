@@ -8,9 +8,60 @@ helm = "latest"        # ⛵ Helm package manager
 kustomize = "latest"   #  Kustomize for manifests
 argocd = "latest"      #  ArgoCD CLI
 kubeseal = "latest"    #  Sealed Secrets CLI
+"int128/kubelogin" = "latest"   # 🔑 OIDC kubectl-Plugin (kubectl-oidc_login)
 
 [settings]
 experimental = true
+
+# ════════════════════════════════════════════════════════════════════════
+# KUBECONFIG-MANAGEMENT — 2 parallele Auth-Pfade zum Talos-Cluster
+# ════════════════════════════════════════════════════════════════════════
+#
+# Datei                              | Wer du bist          | Wann nutzen
+# ──────────────────────────────────  | ──────────────────── | ──────────────
+# ~/.kube/config-oidc                | oidc:<your-user>     | Daily-Driver
+#   ↑ kubelogin → KC-Login + 2FA    | OIDC-User aus LDAP   | (Default-Pfad)
+#                                    |                      |
+# ~/.kube/config-break-glass         | admin (system:masters)| KC kaputt /
+#   ↑ X.509 Talos-Admin-Cert        | Cluster-Admin direkt  | OIDC tot /
+#                                    |                      | Notfall-Recovery
+#                                    |                      |
+# ~/.kube/config-talos-backup        | (Talos-API-Cert)     | Backup von ~/.talos/config
+#   ↑ NICHT für kubectl —           |                      | für talosctl
+#   sondern für talosctl-Notfall    |                      |
+#
+# ─── Wie wechseln ────────────────────────────────────────────────────────
+#
+# Option A: Mit mise (auto, in diesem Repo)
+#   cd ~/Desktop/.../talos-homelab-scratch    # → mise lädt KUBECONFIG=config-oidc
+#
+# Option B: Per Hand (überall)
+#   export KUBECONFIG=~/.kube/config-oidc        # OIDC daily
+#   export KUBECONFIG=~/.kube/config-break-glass # Notfall
+#   export KUBECONFIG=~/.kube/config             # Default-Mac-config
+#
+# Option C: Einmal-Befehl (ohne shell-export)
+#   KUBECONFIG=~/.kube/config-break-glass kubectl get nodes
+#
+# ─── Erstellen / Re-generieren ───────────────────────────────────────────
+#
+# Wenn config-break-glass kaputt/abgelaufen:
+#   talosctl --talosconfig ~/.talos/config --nodes 192.168.0.101 \
+#     kubeconfig ~/.kube/config-break-glass
+#   chmod 600 ~/.kube/config-break-glass
+#
+# Wenn config-oidc kaputt: einfach diese Datei wieder erstellen mit
+# dem User-Block aus CLAUDE.md "Phase 8 — kubelogin Setup".
+#
+# ════════════════════════════════════════════════════════════════════════
+[env]
+# Default beim `cd` in dieses Repo: OIDC-Pfad (Keycloak-Login Pflicht)
+KUBECONFIG = "{{ env.HOME }}/.kube/config-oidc"
+
+# Aliases via mise tasks (siehe unten):
+#   mise run kube-oidc        → zeigt OIDC-Pfad an
+#   mise run kube-break-glass → zeigt X.509 Notfall-Pfad an
+#   mise run kube-status      → welche config aktuell aktiv + welcher User
 
 [tasks.setup]
 description = "Trust and install all tools"
@@ -65,6 +116,42 @@ cd tofu
 tofu apply
 """
 
+# ─── Kubeconfig-Switcher ────────────────────────────────────────────────
+[tasks.kube-oidc]
+description = "🔑 Switch to OIDC kubeconfig (Daily-Driver via Keycloak)"
+run = """
+echo "export KUBECONFIG=$HOME/.kube/config-oidc"
+echo ""
+echo " OIDC kubeconfig active:"
+echo "   • User: oidc:<your-keycloak-user>"
+echo "   • Auth: kubelogin → Browser → KC Login + 2FA"
+echo "   • Permissions: cluster-admin via group cluster-admins"
+"""
+
+[tasks.kube-break-glass]
+description = "🚨 Switch to Break-Glass kubeconfig (X.509 admin, KC bypassen)"
+run = """
+echo "export KUBECONFIG=$HOME/.kube/config-break-glass"
+echo ""
+echo "🚨 BREAK-GLASS kubeconfig active:"
+echo "   • User: admin (system:masters)"
+echo "   • Auth: X.509 cert (umgeht OIDC + KC komplett)"
+echo "   • NUR im Notfall! Cert valid bis: $(openssl x509 -noout -enddate -in <(awk \\"/client-certificate-data/{print \\$2}\\" $HOME/.kube/config-break-glass | base64 -d 2>/dev/null) 2>/dev/null | cut -d= -f2)"
+"""
+
+[tasks.kube-status]
+description = "Show which kubeconfig is active"
+run = """
+echo "Active KUBECONFIG: ${KUBECONFIG:-$HOME/.kube/config (default)}"
+echo ""
+echo "Available configs:"
+ls -la $HOME/.kube/config* 2>/dev/null
+echo ""
+echo "Current user:"
+kubectl config current-context 2>/dev/null
+kubectl auth whoami 2>/dev/null || true
+"""
+
 [hooks]
 enter = """
 echo ' Talos K8s DevContainer Ready!'
@@ -82,5 +169,10 @@ echo ' Quick tasks:'
 echo '  mise run setup            # Install all tools'
 echo '  mise run cluster-info     # Show cluster information'
 echo '  mise run cluster-status   # Check cluster health'
+echo ''
+echo '🔐 Kubeconfig:'
+echo '  KUBECONFIG=~/.kube/config-oidc         # OIDC (default in this repo)'
+echo '  KUBECONFIG=~/.kube/config-break-glass  # X.509 admin (Notfall)'
+echo '  mise run kube-status                    # Show active kubeconfig'
 echo ''
 """
