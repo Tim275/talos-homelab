@@ -1,0 +1,206 @@
+# Realm-as-Code via Keycloak Operator (Phase D — 2026-05-06).
+# REPLACES the imperative setup-jobs (ldap-federation, argocd-client, grafana-client,
+# oidc-client, mfa, druid). Single declarative source-of-truth for KC realm-state.
+#
+# What this CR creates:
+#   - Realm "kubernetes" with displayName, events config, OTP policy
+#   - LDAP user-federation to LLDAP (READ_ONLY, sync users from LLDAP)
+#   - OIDC clients: argocd, grafana, kubernetes (für Phase 8)
+#   - Groups: cluster-admins, argocd-admins (synced via group-mapper)
+#   - Realm roles: grafana-admin, grafana-editor (für Grafana role_attribute_path)
+#
+# Secrets resolved via placeholderReplacements from existing SealedSecrets:
+#   - keycloak-lldap-admin       → LDAP-Federation bindCredential
+#   - argocd-oidc-client-secret  → argocd client secret
+#   - keycloak-client-secret     → kubernetes client secret (Phase 8)
+#   - grafana-oauth-secret-mirror → grafana client secret
+#
+# NOTE: 2FA enforcement (CONFIGURE_TOTP defaultAction) ist NICHT enabled by default —
+# verursacht in KC v25 + Federation NPE-bug. Re-enable manuell bei Bedarf via UI
+# nach erfolgreichem Login-Test.
+---
+apiVersion: k8s.keycloak.org/v2alpha1
+kind: KeycloakRealmImport
+metadata:
+  name: kubernetes-realm
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/component: realm-import
+    app.kubernetes.io/part-of: platform-identity
+spec:
+  keycloakCRName: keycloak
+  realm:
+    realm: kubernetes
+    displayName: "Kubernetes Homelab"
+    enabled: true
+    sslRequired: external
+    registrationAllowed: false
+    loginWithEmailAllowed: true
+    duplicateEmailsAllowed: false
+    resetPasswordAllowed: false
+    editUsernameAllowed: false
+    bruteForceProtected: true
+    failureFactor: 5
+    waitIncrementSeconds: 60
+    maxFailureWaitSeconds: 900
+    quickLoginCheckMilliSeconds: 1000
+
+    # Audit Events → stdout → Vector → ES logs-* index
+    eventsEnabled: true
+    eventsExpiration: 2592000
+    eventsListeners:
+      - jboss-logging
+    enabledEventTypes:
+      - LOGIN
+      - LOGIN_ERROR
+      - LOGOUT
+      - LOGOUT_ERROR
+      - REGISTER
+      - REFRESH_TOKEN
+      - REFRESH_TOKEN_ERROR
+      - CODE_TO_TOKEN
+      - CODE_TO_TOKEN_ERROR
+      - CLIENT_LOGIN
+      - CLIENT_LOGIN_ERROR
+      - UPDATE_PASSWORD
+      - UPDATE_TOTP
+      - REMOVE_TOTP
+      - SEND_RESET_PASSWORD
+      - RESET_PASSWORD
+      - IDENTITY_PROVIDER_LOGIN
+    adminEventsEnabled: true
+    adminEventsDetailsEnabled: true
+
+    # Token lifetimes
+    accessTokenLifespan: 300         # 5min
+    ssoSessionIdleTimeout: 1800      # 30min
+    ssoSessionMaxLifespan: 36000     # 10h
+
+    # Realm-Roles
+    roles:
+      realm:
+        - name: grafana-admin
+          description: "Grafana GrafanaAdmin role"
+        - name: grafana-editor
+          description: "Grafana Editor role"
+
+    # Groups (LDAP-Federation will sync these from LLDAP, but defining here ensures they exist)
+    groups:
+      - name: cluster-admins
+        path: /cluster-admins
+      - name: argocd-admins
+        path: /argocd-admins
+
+    # Default-roles attached to every user (not modified)
+    defaultRole:
+      name: default-roles-kubernetes
+      composite: true
+      clientRole: false
+
+    # ── LDAP USER FEDERATION (LLDAP) ──────────────────────────────────────
+    components:
+      org.keycloak.storage.UserStorageProvider:
+        - name: lldap-federation
+          providerId: ldap
+          subComponents:
+            org.keycloak.storage.ldap.mappers.LDAPStorageMapper:
+              - name: username
+                providerId: user-attribute-ldap-mapper
+                config:
+                  ldap.attribute: ["uid"]
+                  user.model.attribute: ["username"]
+                  is.mandatory.in.ldap: ["true"]
+                  read.only: ["false"]
+                  always.read.value.from.ldap: ["false"]
+              - name: email
+                providerId: user-attribute-ldap-mapper
+                config:
+                  ldap.attribute: ["mail"]
+                  user.model.attribute: ["email"]
+                  is.mandatory.in.ldap: ["false"]
+                  read.only: ["true"]
+                  always.read.value.from.ldap: ["true"]
+              - name: first-name
+                providerId: user-attribute-ldap-mapper
+                config:
+                  ldap.attribute: ["givenName"]
+                  user.model.attribute: ["firstName"]
+                  is.mandatory.in.ldap: ["false"]
+                  read.only: ["true"]
+              - name: last-name
+                providerId: user-attribute-ldap-mapper
+                config:
+                  ldap.attribute: ["sn"]
+                  user.model.attribute: ["lastName"]
+                  is.mandatory.in.ldap: ["false"]
+                  read.only: ["true"]
+              - name: groups
+                providerId: group-ldap-mapper
+                config:
+                  groups.dn: ["ou=groups,dc=homelab,dc=local"]
+                  group.name.ldap.attribute: ["cn"]
+                  group.object.classes: ["groupOfUniqueNames"]
+                  membership.attribute.type: ["DN"]
+                  membership.ldap.attribute: ["member"]
+                  membership.user.ldap.attribute: ["uid"]
+                  preserve.group.inheritance: ["false"]
+                  ignore.missing.groups: ["false"]
+                  user.roles.retrieve.strategy: ["LOAD_GROUPS_BY_MEMBER_ATTRIBUTE"]
+                  mode: ["READ_ONLY"]
+                  groups.path: ["/"]
+                  drop.non.existing.groups.during.sync: ["false"]
+          config:
+            enabled: ["true"]
+            priority: ["0"]
+            vendor: ["other"]
+            authType: ["simple"]
+            connectionUrl: ["ldap://lldap-ldap.lldap.svc.cluster.local:389"]
+            usersDn: ["ou=people,dc=homelab,dc=local"]
+            bindDn: ["uid=admin,ou=people,dc=homelab,dc=local"]
+            bindCredential: ["${LLDAP_BIND_PASSWORD}"]
+            usernameLDAPAttribute: ["uid"]
+            rdnLDAPAttribute: ["uid"]
+            uuidLDAPAttribute: ["uid"]
+            userObjectClasses: ["person"]
+            searchScope: ["1"]
+            useTruststoreSpi: ["ldapsOnly"]
+            connectionPooling: ["true"]
+            pagination: ["false"]
+            editMode: ["READ_ONLY"]
+            syncRegistrations: ["false"]
+            importEnabled: ["true"]
+            cachePolicy: ["NO_CACHE"]   # KC v25-bug workaround
+            batchSizeForSync: ["1000"]
+            fullSyncPeriod: ["-1"]
+            changedSyncPeriod: ["86400"]
+            trustEmail: ["true"]
+
+    # ── OIDC CLIENTS ───────────────────────────────────────────────────────
+    clients:
+      - clientId: argocd
+        enabled: true
+        protocol: openid-connect
+        publicClient: false
+        secret: "${ARGOCD_CLIENT_SECRET}"
+        standardFlowEnabled: true
+        directAccessGrantsEnabled: true
+        serviceAccountsEnabled: false
+        consentRequired: false
+        fullScopeAllowed: true
+        redirectUris:
+          - "https://argo.timourhomelab.org/auth/callback"
+          - "https://argo.timourhomelab.org/api/dex/callback"
+        webOrigins:
+          - "https://argo.timourhomelab.org"
+        defaultClientScopes:
+          - web-origins
+          - acr
+          - roles
+          - profile
+          - basic
+          - email
+          - groups
+
+      # Phase D iteration 1 — only argocd client.
+      # grafana + kubernetes clients add später wenn deren sealed-secrets generiert.
