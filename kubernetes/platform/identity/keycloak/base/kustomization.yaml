@@ -2,29 +2,48 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: keycloak
 
+# Phase D (2026-05-06): Realm-as-Code via KeycloakRealmImport CR.
+# Replaces 5 imperative setup-jobs (mfa, ldap-federation, oidc-client, argocd-client,
+# druid-client) with single declarative realm-import.yaml. No more setup-job race
+# conditions, no more federation duplicates, no more drift between live + git.
+
 resources:
   - namespace.yaml
-  - admin-sealed-secret.yaml
-  - db-credentials-sealed.yaml
-  - lldap-admin-sealed-secret.yaml
-  - argocd-oidc-client-secret-sealed.yaml
-  # Phase 2 (2026-05-05): Operator-managed Keycloak.
-  # Plain Deployment + Service replaced by Keycloak CR — Operator creates
-  # StatefulSet + keycloak-service automatically. Same DB, same secrets.
+
+  # Sealed Secrets (creds für KC + LDAP + OIDC clients)
+  - admin-sealed-secret.yaml             # KC admin login
+  - db-credentials-sealed.yaml           # KC ↔ Postgres
+  - lldap-admin-sealed-secret.yaml       # LDAP-Federation bindCredential
+  - argocd-oidc-client-secret-sealed.yaml # argocd OIDC client secret
+  # TODO: grafana-oauth-secret-mirror-sealed.yaml + keycloak-kubectl-client-secret-sealed.yaml
+  # Need to be sealed (kubeseal) — placeholder env-vars in keycloak-cr.yaml expect them.
+
+  # Operator-managed KC StatefulSet
   - keycloak-cr.yaml
-  # - deployment.yaml      # superseded by keycloak-cr.yaml
-  # - service.yaml         # superseded by Operator-generated keycloak-service
-  - mfa-setup.yaml
-  - ldap-federation-setup.yaml
-  - oidc-client-setup.yaml
-  - argocd-client-setup.yaml
-  - realm-export-cronjob.yaml          # Daily DR backup of realm config to PVC
-  # grafana-client-setup.yaml requires `grafana-oauth-secret-mirror` SealedSecret
-  # in this namespace. Until that SealedSecret is created, the Job is gated below.
-  # See CLAUDE.md "OIDC Client per App — Grafana Recipe".
-  # - grafana-client-setup.yaml
-  - policy-exception.yaml
+
+  # Realm-as-Code (Phase D — replaces all setup-jobs below)
+  - realm-import.yaml
+
+  # Daily DR backup of realm-config to PVC (Phase A)
+  - realm-export-cronjob.yaml
+
+  # Public route via envoy gateway
   - httproute.yaml
+  - policy-exception.yaml
+
+  # ─── DEPRECATED — replaced by realm-import.yaml ──────────────────────────
+  # The following imperative setup-jobs are obsolete after Phase D. They are
+  # kept in the repo for git-history but NOT in resources to prevent re-runs:
+  #   - mfa-setup.yaml             → realm-import OTP-policy + requiredActions
+  #   - ldap-federation-setup.yaml → realm-import.components.UserStorageProvider
+  #   - oidc-client-setup.yaml     → realm-import.clients[kubernetes]
+  #   - argocd-client-setup.yaml   → realm-import.clients[argocd]
+  #   - druid-client-setup.yaml    → druid is gone, no client needed
+  #   - grafana-client-setup.yaml  → realm-import.clients[grafana]
+  #   - deployment.yaml            → keycloak-cr.yaml (Operator-managed)
+  #   - service.yaml               → keycloak-cr.yaml (Operator-managed)
+  #   - certificate.yaml           → not needed (HTTPRoute handles TLS)
+  #   - enterprise-config.yaml     → ConfigMap that nothing references
 
 labels:
   - pairs:
