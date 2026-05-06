@@ -1,0 +1,41 @@
+# OIDC ClusterRoleBindings — kubectl OIDC via Keycloak
+#
+# Apps to that user logs in via kubelogin → KC → JWT, kube-apiserver verifies and:
+#   - sets username to "oidc:<preferred_username>" (because oidc-username-prefix=oidc:)
+#   - sets groups to "oidc-grp:<group_name>" (because oidc-groups-prefix=oidc-grp:)
+#
+# These bindings give:
+#   - LLDAP group cluster-admins → K8s cluster-admin (full root)
+#   - Future: more granular roles (developers, viewers, etc.)
+#
+# REQUIREMENT: Talos machineconfig must have oidc-* extraArgs set.
+# See runbooks/RUNBOOK-kubectl-oidc.md for the full procedure.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: oidc-cluster-admins
+  labels:
+    app.kubernetes.io/part-of: rbac-oidc
+    app.kubernetes.io/component: oidc-binding
+subjects:
+  - kind: Group
+    name: "oidc-grp:cluster-admins"
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
+---
+# Future: developer group (bei more users)
+# apiVersion: rbac.authorization.k8s.io/v1
+# kind: ClusterRoleBinding
+# metadata: { name: oidc-developers }
+# subjects:
+#   - kind: Group
+#     name: "oidc-grp:developers"
+#     apiGroup: rbac.authorization.k8s.io
+# roleRef:
+#   kind: ClusterRole
+#   name: edit
+#   apiGroup: rbac.authorization.k8s.io
