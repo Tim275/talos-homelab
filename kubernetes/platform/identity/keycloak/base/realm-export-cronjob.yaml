@@ -77,27 +77,39 @@ spec:
 
                   echo "=== Authenticating ==="
                   /opt/keycloak/bin/kcadm.sh config credentials \
+                    --config /tmp/kc.cfg \
                     --server "$KC_URL" --realm master \
                     --user "$KC_ADMIN" --password "$KC_ADMIN_PASSWORD"
 
-                  echo "=== Partial-export realm $REALM (config + clients + roles + groups) ==="
-                  TOKEN=$(/opt/keycloak/bin/kcadm.sh get-token 2>&1)
+                  echo "=== Partial-export realm $REALM ==="
+                  OUT_FILE="$OUT_DIR/realm-${REALM}-${TS}.json"
+                  # Disable -e temporarily; kcadm exit-code mit -o + redirect ist edge-case
+                  set +e
                   /opt/keycloak/bin/kcadm.sh create realms/$REALM/partial-export \
+                    --config /tmp/kc.cfg \
                     -q exportClients=true \
                     -q exportGroupsAndRoles=true \
-                    -o > "$OUT_DIR/realm-${REALM}-${TS}.json"
+                    -o > "$OUT_FILE"
+                  EXPORT_RC=$?
+                  set -e
+
+                  # Verify file is valid JSON, not error-text
+                  if [ ! -s "$OUT_FILE" ] || ! head -c 1 "$OUT_FILE" | grep -q '{'; then
+                    echo "ERROR: export failed (rc=$EXPORT_RC). file content:"
+                    head -c 500 "$OUT_FILE"
+                    exit 1
+                  fi
+
+                  echo "Export size: $(wc -c < "$OUT_FILE") bytes"
 
                   ln -sf "realm-${REALM}-${TS}.json" "$OUT_DIR/realm-${REALM}-latest.json"
 
-                  echo "=== Rotation: keep last 7 days ==="
+                  echo "=== Rotation: keep last 7 ==="
                   cd "$OUT_DIR"
                   ls -1t realm-${REALM}-*Z.json 2>/dev/null | tail -n +8 | xargs -r rm -f
 
                   echo "=== Export complete ==="
-                  ls -la "$OUT_DIR/"
-                  echo ""
-                  echo "Latest export size:"
-                  wc -c "$OUT_DIR/realm-${REALM}-latest.json" || true
+                  ls -la "$OUT_DIR/" | head -10
               volumeMounts:
                 - name: backup
                   mountPath: /backup
