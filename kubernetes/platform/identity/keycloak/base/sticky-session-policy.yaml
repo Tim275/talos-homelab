@@ -1,0 +1,27 @@
+# Sticky Session für Keycloak (Phase 6 — HA prep).
+#
+# KC HA mit 3 Replicas + Browser-Login = Race-Condition:
+#   1. GET login page → Pod A (auth-session-cookie in Pod-A's lokalem Cache)
+#   2. POST credentials → Pod B (Pod B sieht Cookie nicht in seinem Cache)
+#   3. Cookie-not-found error → 504
+#
+# Lösung: ConsistentHash auf Source-IP → derselbe Browser → derselbe Pod
+# Plus: Infinispan-Cluster repliziert sessions zwischen Pods (auto-failover)
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: keycloak-sticky-session
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/part-of: platform-identity
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: keycloak
+  loadBalancer:
+    type: ConsistentHash
+    consistentHash:
+      type: SourceIP
