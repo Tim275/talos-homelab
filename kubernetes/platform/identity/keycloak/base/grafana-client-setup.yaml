@@ -1,0 +1,122 @@
+# Keycloak Grafana OIDC Client Setup Job
+# Creates the 'grafana' OIDC client in Keycloak kubernetes realm.
+# Client secret read from grafana-oauth-secret in grafana namespace
+# (synced here via grafana-oauth-secret-mirror SealedSecret).
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-grafana-client-setup
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak-grafana-client-setup
+    app.kubernetes.io/part-of: platform-identity
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        app: keycloak-grafana-client-setup
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: setup
+          image: quay.io/keycloak/keycloak:25.0.6@sha256:82c5b7a110456dbd42b86ea572e728878549954cc8bd03cd65410d75328095d2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: KEYCLOAK_ADMIN
+              value: admin
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: password
+            - name: KEYCLOAK_URL
+              value: "http://keycloak-service.keycloak.svc.cluster.local:8080"
+            - name: GRAFANA_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-oauth-secret-mirror
+                  key: OAUTH_CLIENT_SECRET
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              echo "=== Waiting for Keycloak admin REST API ==="
+              for i in $(seq 1 60); do
+                if /opt/keycloak/bin/kcadm.sh config credentials \
+                    --server "$KEYCLOAK_URL" --realm master \
+                    --user "$KEYCLOAK_ADMIN" --password "$KEYCLOAK_ADMIN_PASSWORD" 2>/dev/null; then
+                  echo "Admin API ready (after $((i*5))s)."
+                  break
+                fi
+                echo "  attempt $i/60 — admin API not ready, retry in 5s"
+                sleep 5
+              done
+
+              /opt/keycloak/bin/kcadm.sh config credentials \
+                --server "$KEYCLOAK_URL" --realm master \
+                --user "$KEYCLOAK_ADMIN" --password "$KEYCLOAK_ADMIN_PASSWORD"
+
+              echo "=== Ensuring 'grafana' client exists in 'kubernetes' realm ==="
+              EXISTING=$(/opt/keycloak/bin/kcadm.sh get clients -r kubernetes -q clientId=grafana --fields id 2>/dev/null | grep '"id"' | cut -d'"' -f4 || true)
+
+              if [ -n "$EXISTING" ]; then
+                echo "Updating existing grafana client ($EXISTING)..."
+                /opt/keycloak/bin/kcadm.sh update clients/$EXISTING -r kubernetes \
+                  -s enabled=true \
+                  -s 'redirectUris=["https://grafana.timourhomelab.org/login/generic_oauth"]' \
+                  -s 'webOrigins=["https://grafana.timourhomelab.org"]' \
+                  -s secret="$GRAFANA_CLIENT_SECRET"
+              else
+                echo "Creating grafana client..."
+                /opt/keycloak/bin/kcadm.sh create clients -r kubernetes \
+                  -s clientId=grafana \
+                  -s enabled=true \
+                  -s protocol=openid-connect \
+                  -s publicClient=false \
+                  -s standardFlowEnabled=true \
+                  -s directAccessGrantsEnabled=false \
+                  -s serviceAccountsEnabled=false \
+                  -s 'redirectUris=["https://grafana.timourhomelab.org/login/generic_oauth"]' \
+                  -s 'webOrigins=["https://grafana.timourhomelab.org"]' \
+                  -s consentRequired=false \
+                  -s fullScopeAllowed=true \
+                  -s secret="$GRAFANA_CLIENT_SECRET"
+              fi
+
+              CID=$(/opt/keycloak/bin/kcadm.sh get clients -r kubernetes -q clientId=grafana --fields id 2>/dev/null | grep '"id"' | cut -d'"' -f4)
+
+              echo "=== Ensuring roles client-scope mapper for grafana ==="
+              # Grafana role_attribute_path expects 'roles' claim with realm roles
+              SCOPES=$(/opt/keycloak/bin/kcadm.sh get clients/$CID/default-client-scopes -r kubernetes --fields name 2>/dev/null | grep '"name"' | cut -d'"' -f4)
+              if echo "$SCOPES" | grep -q '^roles$'; then
+                echo "roles scope already attached"
+              else
+                ROLES_SCOPE_ID=$(/opt/keycloak/bin/kcadm.sh get client-scopes -r kubernetes --fields id,name 2>/dev/null | grep -B1 '"name" : "roles"' | grep '"id"' | cut -d'"' -f4 || true)
+                if [ -n "$ROLES_SCOPE_ID" ]; then
+                  /opt/keycloak/bin/kcadm.sh update clients/$CID/default-client-scopes/$ROLES_SCOPE_ID -r kubernetes 2>/dev/null || true
+                  echo "Attached roles scope"
+                fi
+              fi
+
+              echo "=== Grafana OIDC client setup complete ==="
+              echo "  Issuer:   https://iam.timourhomelab.org/realms/kubernetes"
+              echo "  ClientID: grafana"
+              echo "  Redirect: https://grafana.timourhomelab.org/login/generic_oauth"
