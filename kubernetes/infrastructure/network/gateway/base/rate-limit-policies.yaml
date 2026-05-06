@@ -56,13 +56,16 @@ spec:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
       name: keycloak
-  # Sticky Session (Phase 6 KC HA): ConsistentHash auf Source-IP →
-  # derselbe Browser landet immer beim selben KC-Pod → auth-session-cookie
-  # überlebt. Plus Infinispan repliziert sessions zwischen Pods (failover).
+  # Sticky Session (Phase 6 KC HA): ConsistentHash auf CF-Connecting-IP HEADER.
+  # KEIN SourceIP weil ALLE Requests durch cloudflared-Pod kommen → derselbe
+  # source-IP für alle User → kein Load-Balancing.
+  # CF-Connecting-IP wird von Cloudflare injected (echte User-IP).
   loadBalancer:
     type: ConsistentHash
     consistentHash:
-      type: SourceIP
+      type: Header
+      header:
+        name: CF-Connecting-IP
   rateLimit:
     type: Local
     local:
