@@ -55,11 +55,35 @@ spec:
     enabled:
       - admin-fine-grained-authz            # Per-realm fine-grained admin permissions
 
-  # NOTE: Keycloak v2alpha1 CRD unterstützt KEIN spec.env field.
-  # Realm-import-Placeholders müssen literal sein (oder wir nutzen
-  # unsupported.podTemplate.spec.containers[0].env in v2alpha1, aber das
-  # propagiert nicht zum KeycloakRealmImport-Operator).
-  # → Literale credentials in realm-import.yaml (matches SealedSecrets in git).
+  # Phase D iter-2: Env-vars via unsupported.podTemplate für realm-import-CR
+  # placeholder substitution. KC liest ${VAR_NAME} aus pod env beim realm-import.
+  # SealedSecrets in this NS bereitstellen.
+  unsupported:
+    podTemplate:
+      spec:
+        containers:
+          - name: keycloak
+            env:
+              - name: LLDAP_BIND_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: keycloak-lldap-admin
+                    key: password
+              - name: ARGOCD_CLIENT_SECRET
+                valueFrom:
+                  secretKeyRef:
+                    name: argocd-oidc-client-secret
+                    key: clientSecret
+              - name: GRAFANA_CLIENT_SECRET
+                valueFrom:
+                  secretKeyRef:
+                    name: keycloak-grafana-client-secret
+                    key: clientSecret
+              - name: KUBECTL_CLIENT_SECRET
+                valueFrom:
+                  secretKeyRef:
+                    name: keycloak-kubectl-client-secret
+                    key: clientSecret
 
   additionalOptions:
     - name: log-level
