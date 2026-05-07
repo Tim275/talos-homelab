@@ -1,0 +1,59 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-probe-timeouts
+  annotations:
+    policies.kyverno.io/title: Require Probe Timeouts >= 3s
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: |
+      Liveness/readiness/startupProbe with default timeoutSeconds=1 kills
+      pods under temporary load (GC pause, slow DB query). Causes mystery
+      restarts (eg. drova/user-service: 39 restarts in 46h). Enforce min 3s.
+spec:
+  background: false              # Audit-mode for now — flip to Enforce after grace period
+  rules:
+    - name: check-liveness-probe-timeout
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+                - argocd
+                - cert-manager
+                - rook-ceph
+                - sealed-secrets
+                - cnpg-system
+                - elastic-system
+                - monitoring
+                - envoy-gateway-system
+                - gateway
+                - tailscale
+                - cloudflared
+                - keycloak
+                - lldap
+                - drova
+                - kafka
+                - n8n-prod
+                - n8n-dev
+                - velero
+                - flux-system
+                - vector
+                - opentelemetry
+      validate:
+        failureAction: Audit       # Audit only — would block too many existing apps
+        message: "livenessProbe timeoutSeconds should be >= 3 (default 1s kills under load)"
+        pattern:
+          spec:
+            containers:
+              - =(livenessProbe):
+                  =(timeoutSeconds): ">=3"
+              - =(readinessProbe):
+                  =(timeoutSeconds): ">=3"
