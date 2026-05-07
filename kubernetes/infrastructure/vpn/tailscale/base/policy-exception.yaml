@@ -1,0 +1,38 @@
+---
+# Tailscale Operator generates connector pods with privileged initContainers
+# (NET_ADMIN required for tunnel device). Pods are auto-managed — we cannot
+# patch them via kustomize. This PolicyException allows the operator-generated
+# pods to bypass kyverno-enforce policies.
+#
+# Affected policies (all enforce since 2026-05-03 audit-marathon):
+#   - disallow-privileged-containers   → Tailscale needs privileged for /dev/net/tun
+#   - require-resource-limits          → Operator-generated initContainer has none
+#   - require-resource-requests        → Operator-generated initContainer has none
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: tailscale-connector
+  namespace: tailscale
+spec:
+  background: false
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+            - StatefulSet
+          namespaces:
+            - tailscale
+  exceptions:
+    - policyName: disallow-privileged-containers
+      ruleNames:
+        - privileged-containers
+        - autogen-privileged-containers
+    - policyName: require-resource-limits
+      ruleNames:
+        - check-resource-limits
+        - autogen-check-resource-limits
+    - policyName: require-resource-requests
+      ruleNames:
+        - check-resource-requests
+        - autogen-check-resource-requests
