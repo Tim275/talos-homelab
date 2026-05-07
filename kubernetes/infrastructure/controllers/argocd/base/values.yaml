@@ -15,7 +15,10 @@ configs:
   cm:
     create: true
     application.resourceTrackingMethod: annotation+label
-    admin.enabled: true
+    # Force SSO via Keycloak. Local admin disabled — break-glass via
+    # break-glass-kubeconfig + temporary `kubectl edit cm argocd-cm`
+    # → set admin.enabled: true if KC down. See CLAUDE.md "Break-Glass".
+    admin.enabled: false
     url: https://argo.timourhomelab.org
     # Enable Helm support in Kustomize for all applications
     kustomize.buildOptions: --enable-helm
@@ -368,7 +371,14 @@ crds:
 
 controller:
   # SCALING CONFIGURATION
-  replicas: 1  # Homelab scale - single controller for bootstrap
+  # 2 replicas + sharding via ARGOCD_CONTROLLER_REPLICAS env.
+  # Pod-restart visible-less; sharding splits managed clusters across replicas.
+  replicas: 2
+
+  # Pod-Disruption-Budget — kein voluntary-eviction wenn nur 1 Pod left.
+  pdb:
+    enabled: true
+    minAvailable: 1
 
   resources:
     requests:
@@ -553,7 +563,12 @@ redis-ha:
 
 server:
   # HIGH AVAILABILITY SERVER CONFIGURATION
-  replicas: 1  # Homelab scale - single server for bootstrap
+  # 2 replicas + PDB. Server is stateless → no sharding nötig.
+  replicas: 2
+
+  pdb:
+    enabled: true
+    minAvailable: 1
 
   service:
     type: ClusterIP  # No LoadBalancer - use Ingress instead
@@ -619,7 +634,12 @@ server:
 
 repoServer:
   # REPO SERVER - ULTRA PERFORMANCE CONFIG
-  replicas: 1  # Homelab scale - single replica for bootstrap
+  # 2 replicas → parallel manifest-generation für 65+ apps.
+  replicas: 2
+
+  pdb:
+    enabled: true
+    minAvailable: 1
 
   # PROMETHEUS METRICS CONFIGURATION
   podAnnotations:
@@ -793,6 +813,10 @@ repoServer:
 applicationSet:
 
   replicas: 2  # HA configuration
+
+  pdb:
+    enabled: true
+    minAvailable: 1
 
   resources:
     requests:
