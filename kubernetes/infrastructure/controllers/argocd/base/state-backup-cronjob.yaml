@@ -1,0 +1,128 @@
+# ArgoCD State-Backup CronJob — DR-Resilience für 9.5/10
+#
+# Exports the COMPLETE ArgoCD state daily:
+#   - Application + ApplicationSet manifests
+#   - AppProject definitions
+#   - Repositories + Cluster registrations
+#   - RBAC policy.csv
+# → Backup file as YAML to PVC (Ceph-block-retain).
+# → Velero-Schedule backups the PVC nightly to Ceph-RGW S3.
+#
+# RESTORE: in fresh cluster after argocd installed:
+#   kubectl exec -n argocd deploy/argocd-server -- argocd admin import \
+#     --argocd-namespace argocd /backup/argocd-state-latest.yaml
+#
+# Why: ArgoCD `Application.status.history` (sync history, last-applied-revision,
+# operation-log) is NOT in Git. After cluster recreate, all apps go "Synced" but
+# history weg. For Compliance (NIS-2 "wann wurde X deployed") this is required.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: argocd-state-backup
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-state-backup
+    app.kubernetes.io/part-of: argocd
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: rook-ceph-block-enterprise-retain
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argocd-state-backup
+  namespace: argocd
+---
+# Read-only RBAC: list+get all argocd CRs + secrets + configmaps
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argocd-state-backup
+  namespace: argocd
+rules:
+  - apiGroups: [argoproj.io]
+    resources: [applications, applicationsets, appprojects]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [secrets, configmaps]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argocd-state-backup
+  namespace: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argocd-state-backup
+subjects:
+  - kind: ServiceAccount
+    name: argocd-state-backup
+    namespace: argocd
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: argocd-state-backup
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-state-backup
+    app.kubernetes.io/part-of: argocd
+spec:
+  schedule: "0 3 * * *"     # 03:00 UTC daily
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 86400
+      backoffLimit: 2
+      template:
+        spec:
+          serviceAccountName: argocd-state-backup
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: export
+              image: quay.io/argoproj/argocd:v2.13.0
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: false
+                capabilities:
+                  drop: [ALL]
+              command:
+                - sh
+                - -ec
+                - |
+                  TS=$(date +%F-%H%M)
+                  OUT="/backup/argocd-state-${TS}.yaml"
+                  echo "[+] Exporting ArgoCD state to ${OUT}"
+                  argocd admin export argocd > "$OUT"
+                  ln -sf "argocd-state-${TS}.yaml" /backup/argocd-state-latest.yaml
+                  ls -lh /backup/ | tail -10
+                  # Rotation: keep last 7 days
+                  find /backup -name "argocd-state-*.yaml" -mtime +7 -delete -print
+                  echo "[+] Done. Velero will backup the PVC tonight."
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+              volumeMounts:
+                - { name: backup, mountPath: /backup }
+          volumes:
+            - name: backup
+              persistentVolumeClaim:
+                claimName: argocd-state-backup
