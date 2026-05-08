@@ -5,41 +5,83 @@
     ":dependencyDashboard",
     ":semanticCommits",
     ":separateMajorReleases",
+    ":maintainLockFilesWeekly",
     "docker:enableMajor",
     "helpers:pinGitHubActionDigests",
     "group:monorepos",
     "group:recommended"
   ],
+  "configMigration": true,
+  "forkProcessing": "disabled",
+  "platformCommit": "enabled",
+  "automergeStrategy": "squash",
+  "internalChecksAsSuccess": true,
+  "transitiveRemediation": true,
+  "separateMinorPatch": true,
+  "separateMultipleMajor": true,
   "dependencyDashboard": true,
-  "dependencyDashboardTitle": "Renovate Dashboard",
+  "dependencyDashboardTitle": "🔄 Renovate Dashboard",
   "dependencyDashboardLabels": [
     "renovate",
     "dependencies"
   ],
+  "dependencyDashboardOSVVulnerabilitySummary": "all",
+  "osvVulnerabilityAlerts": true,
   "schedule": [
-    "before 6am every weekday"
+    "after 21:00 every weekday",
+    "before 06:00 every weekday",
+    "every weekend"
   ],
   "timezone": "Europe/Berlin",
-  "prConcurrentLimit": 10,
+  "prConcurrentLimit": 15,
   "prHourlyLimit": 5,
-  "branchConcurrentLimit": 15,
+  "branchConcurrentLimit": 20,
+  "rangeStrategy": "bump",
+  "rebaseWhen": "behind-base-branch",
+  "rebaseLabel": "rebase",
+  "stopUpdatingLabel": "stop-updating",
+  "internalChecksFilter": "strict",
+  "semanticCommits": "enabled",
+  "commitMessagePrefix": "chore(deps):",
   "labels": [
-    "dependencies",
-    "renovate"
+    "renovate",
+    "dependencies"
+  ],
+  "prHeader": "📦 Dependency update — review labels for risk classification.",
+  "prBodyDefinitions": {
+    "OpenSSF": "[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/{{sourceUrl.replace('https://github.com/', '')}}/badge)](https://securityscorecards.dev/viewer/?uri=github.com/{{sourceUrl.replace('https://github.com/', '')}})"
+  },
+  "prBodyColumns": [
+    "Package",
+    "Update",
+    "Type",
+    "New value",
+    "Pending",
+    "OpenSSF",
+    "References"
   ],
   "vulnerabilityAlerts": {
     "enabled": true,
     "labels": [
       "security",
       "vulnerability",
-      "priority-high"
-    ]
+      "priority-critical",
+      "fast-track"
+    ],
+    "schedule": [
+      "at any time"
+    ],
+    "automerge": false,
+    "minimumReleaseAge": "0 days",
+    "prCreation": "immediate"
   },
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": [
-      "before 5am on monday"
-    ]
+      "before 5am on sunday"
+    ],
+    "automerge": true,
+    "automergeType": "branch"
   },
   "kubernetes": {
     "managerFilePatterns": [
@@ -48,8 +90,7 @@
     ]
   },
   "ignorePaths": [
-    "tofu/talos_cluster.auto.tfvars",
-    "tofu/talos_image.auto.tfvars",
+    "tofu/**",
     "**/charts/**",
     "kubernetes/components/**",
     "kubernetes/projects/**",
@@ -58,7 +99,34 @@
   ],
   "packageRules": [
     {
-      "description": "Grafana Helm Charts registry",
+      "description": "PARANOIA-SAFE: NIEMALS Talos via Renovate bumpen (manual via talosctl)",
+      "matchPackageNames": [
+        "/siderolabs/talos/",
+        "/siderolabs/installer/"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "PARANOIA-SAFE: NIEMALS Kubernetes-Core via Renovate (manual via talosctl upgrade-k8s)",
+      "matchPackageNames": [
+        "/^kubernetes$/",
+        "/^k8s.io/",
+        "/registry.k8s.io/kube-/",
+        "/etcd-io/etcd/"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Block: pinned-by-Talos system tooling",
+      "matchPackageNames": [
+        "/cri-tools/",
+        "/cni-plugins/",
+        "/containerd/"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Registry override: Grafana Helm Charts",
       "matchDatasources": [
         "helm"
       ],
@@ -67,162 +135,296 @@
         "tempo-distributed",
         "grafana",
         "promtail",
-        "grafana-operator"
+        "grafana-operator",
+        "mimir-distributed"
       ],
       "registryUrls": [
         "https://grafana.github.io/helm-charts"
       ]
     },
     {
-      "description": "Talos Docker images - use ghcr.io",
-      "matchDatasources": [
-        "docker"
-      ],
-      "registryUrls": [
-        "https://ghcr.io"
-      ],
-      "matchPackageNames": [
-        "/siderolabs/talos/"
-      ]
-    },
-    {
-      "description": "Group Cilium updates",
+      "description": "GROUP: Cilium ecosystem",
       "groupName": "Cilium CNI",
       "matchPackageNames": [
         "/cilium/"
       ]
     },
     {
-      "description": "Group ArgoCD ecosystem",
+      "description": "GROUP: ArgoCD ecosystem",
       "groupName": "ArgoCD Ecosystem",
       "matchPackageNames": [
         "/argo/",
-        "/argocd/"
+        "/argocd/",
+        "/argo-cd/",
+        "/argo-rollouts/"
       ]
     },
     {
-      "description": "Group monitoring stack",
+      "description": "GROUP: Monitoring Stack",
       "groupName": "Monitoring Stack",
       "matchPackageNames": [
         "/prometheus/",
         "/grafana/",
         "/loki/",
         "/tempo/",
-        "/victoriametrics/"
+        "/mimir/",
+        "/victoriametrics/",
+        "/alertmanager/",
+        "/blackbox/",
+        "/exporter/"
       ]
     },
     {
-      "description": "Group security tools",
-      "groupName": "Security Tools",
+      "description": "GROUP: Security Stack",
+      "groupName": "Security Stack",
       "matchPackageNames": [
         "/cert-manager/",
         "/sealed-secrets/",
         "/kyverno/",
-        "/trivy/"
+        "/trivy/",
+        "/falco/",
+        "/tetragon/",
+        "/kubescape/"
       ]
     },
     {
-      "description": "Group storage tools",
+      "description": "GROUP: Storage Stack",
       "groupName": "Storage Stack",
       "matchPackageNames": [
         "/rook/",
         "/ceph/",
         "/velero/",
         "/longhorn/",
-        "/minio/"
+        "/minio/",
+        "/csi-/"
       ]
     },
     {
-      "description": "Group Kafka/messaging",
+      "description": "GROUP: Messaging Stack",
       "groupName": "Messaging Stack",
       "matchPackageNames": [
         "/kafka/",
         "/strimzi/",
         "/redpanda/",
-        "/rabbitmq/"
+        "/rabbitmq/",
+        "/nats/",
+        "/apicurio/"
       ]
     },
     {
-      "description": "PATCH updates - PRs created, NO automerge (n8n decides)",
+      "description": "GROUP: Identity Stack",
+      "groupName": "Identity Stack",
+      "matchPackageNames": [
+        "/keycloak/",
+        "/authelia/",
+        "/lldap/",
+        "/dex/",
+        "/oauth2-proxy/",
+        "/authentik/"
+      ]
+    },
+    {
+      "description": "GROUP: Observability Stack (traces+logs)",
+      "groupName": "Observability Stack",
+      "matchPackageNames": [
+        "/jaeger/",
+        "/opentelemetry/",
+        "/elasticsearch/",
+        "/kibana/",
+        "/fluent/",
+        "/vector/"
+      ]
+    },
+    {
+      "description": "GROUP: VPN + Network",
+      "groupName": "VPN Network Stack",
+      "matchPackageNames": [
+        "/tailscale/",
+        "/cloudflare/",
+        "/cloudflared/",
+        "/netbird/",
+        "/wireguard/"
+      ]
+    },
+    {
+      "description": "GROUP: GitHub Actions",
+      "groupName": "GitHub Actions",
+      "matchManagers": [
+        "github-actions"
+      ]
+    },
+    {
+      "description": "TIER 1 — PATCH (non-critical): auto-merge after 2d stability + n8n review",
       "matchUpdateTypes": [
         "patch"
       ],
-      "automerge": false,
+      "matchPackageNames": [
+        "!/cilium/",
+        "!/cert-manager/",
+        "!/cloudnative-pg/",
+        "!/postgresql/",
+        "!/postgres/",
+        "!/etcd/",
+        "!/barman-cloud/",
+        "!/sealed-secrets/",
+        "!/talos/",
+        "!/argocd/",
+        "!/argo-cd/",
+        "!/kyverno/",
+        "!/keycloak/",
+        "!/strimzi/",
+        "!/rook/",
+        "!/ceph/"
+      ],
+      "automerge": true,
+      "automergeType": "branch",
+      "platformAutomerge": true,
+      "minimumReleaseAge": "2 days",
       "labels": [
         "patch",
-        "low-risk"
+        "low-risk",
+        "auto-merge-candidate"
       ]
     },
     {
-      "description": "MINOR updates - PRs created, NO automerge (n8n decides)",
+      "description": "TIER 2 — MINOR (non-critical): auto-merge after 5d stability + n8n review",
       "matchUpdateTypes": [
         "minor"
       ],
-      "automerge": false,
+      "matchPackageNames": [
+        "!/cilium/",
+        "!/cert-manager/",
+        "!/cloudnative-pg/",
+        "!/postgresql/",
+        "!/postgres/",
+        "!/etcd/",
+        "!/barman-cloud/",
+        "!/sealed-secrets/",
+        "!/talos/",
+        "!/argocd/",
+        "!/argo-cd/",
+        "!/kyverno/",
+        "!/keycloak/",
+        "!/strimzi/",
+        "!/rook/",
+        "!/ceph/",
+        "!/redis/",
+        "!/elasticsearch/",
+        "!/mongodb/"
+      ],
+      "automerge": true,
+      "automergeType": "branch",
+      "platformAutomerge": true,
+      "minimumReleaseAge": "5 days",
       "labels": [
         "minor",
-        "medium-risk"
+        "medium-risk",
+        "auto-merge-candidate"
       ]
     },
     {
-      "description": "MAJOR updates - require manual review",
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "automerge": false,
-      "labels": [
-        "major",
-        "high-risk",
-        "breaking-change"
-      ]
-    },
-    {
-      "description": "Security updates - high priority",
-      "matchDepTypes": [
-        "security"
-      ],
-      "labels": [
-        "security",
-        "priority-high"
-      ],
-      "automerge": false
-    },
-    {
-      "description": "Critical infrastructure - never automerge",
-      "automerge": false,
-      "labels": [
-        "critical-infrastructure"
-      ],
+      "description": "TIER 3 — CRITICAL infrastructure: NEVER auto-merge, 7d stability",
       "matchPackageNames": [
         "/cilium/",
         "/cert-manager/",
         "/cloudnative-pg/",
         "/postgresql/",
+        "/postgres/",
         "/etcd/",
         "/barman-cloud/",
-        "/sealed-secrets/"
+        "/sealed-secrets/",
+        "/talos/",
+        "/argocd/",
+        "/argo-cd/",
+        "/kyverno/"
+      ],
+      "automerge": false,
+      "minimumReleaseAge": "7 days",
+      "labels": [
+        "critical-infrastructure",
+        "manual-review-required",
+        "high-risk"
+      ],
+      "reviewers": [
+        "Tim275"
       ]
     },
     {
-      "description": "Databases - extra careful",
-      "automerge": false,
-      "labels": [
-        "database",
-        "high-risk"
-      ],
+      "description": "TIER 4 — Stateful databases: manual review, 7d stability",
       "matchPackageNames": [
         "/postgres/",
         "/mysql/",
         "/mongodb/",
         "/redis/",
-        "/elasticsearch/"
+        "/elasticsearch/",
+        "/influxdb/"
+      ],
+      "automerge": false,
+      "minimumReleaseAge": "7 days",
+      "labels": [
+        "database",
+        "stateful",
+        "manual-review-required"
+      ]
+    },
+    {
+      "description": "TIER 5 — MAJOR updates: require manual review + 7d soak",
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "automerge": false,
+      "minimumReleaseAge": "7 days",
+      "labels": [
+        "major",
+        "breaking-change",
+        "high-risk",
+        "manual-review-required"
+      ],
+      "reviewers": [
+        "Tim275"
+      ],
+      "prBodyNotes": [
+        "⚠️ MAJOR version update — review CHANGELOG, run kustomize-validate locally, plan rollback before merge."
+      ]
+    },
+    {
+      "description": "Docker digest pinning updates: auto-merge instantly",
+      "matchUpdateTypes": [
+        "digest"
+      ],
+      "automerge": true,
+      "automergeType": "branch",
+      "platformAutomerge": true,
+      "minimumReleaseAge": "0 days",
+      "labels": [
+        "digest",
+        "auto-merge-candidate"
+      ]
+    },
+    {
+      "description": "GitHub Actions: auto-merge after 2d stability",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "patch",
+        "minor",
+        "digest"
+      ],
+      "automerge": true,
+      "automergeType": "branch",
+      "platformAutomerge": true,
+      "minimumReleaseAge": "2 days",
+      "labels": [
+        "github-actions",
+        "auto-merge-candidate"
       ]
     }
   ],
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Generic renovate comments",
+      "description": "Generic renovate comments in tf/yaml/yml/sh files (kubernetes/ only — tofu/ excluded via ignorePaths)",
       "managerFilePatterns": [
         "/\\.tf$/",
         "/\\.yaml$/",
@@ -235,7 +437,7 @@
     },
     {
       "customType": "regex",
-      "description": "Talos Docker images",
+      "description": "Talos Docker images (k8s manifests only — tofu/ ignored)",
       "managerFilePatterns": [
         "/\\.yaml$/"
       ],
@@ -259,7 +461,7 @@
     },
     {
       "customType": "regex",
-      "description": "LLDAP date-based image tags (no semver)",
+      "description": "LLDAP date-based image tags",
       "managerFilePatterns": [
         "/lldap/.*\\.yaml$/"
       ],
