@@ -15,14 +15,18 @@
 # =============================================================================
 
 ---
-# Default-Deny Ingress: Pods in drova akzeptieren NUR Traffic der explizit erlaubt
+# Default-Deny Ingress NUR für Drova-Microservices (haben mTLS)
+# NICHT für Kafka/Postgres/Redis — die brauchen eigene Policies wenn überhaupt
+# Selector: app.kubernetes.io/part-of=drova matcht nur die 6 services
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   name: drova-default-deny-ingress
   namespace: drova
 spec:
-  endpointSelector: {}    # alle Pods in drova ns
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: drova
   ingress:
     # System-Namespaces dürfen rein (Monitoring, kube-system probes, gateway)
     - fromEndpoints:
@@ -34,20 +38,26 @@ spec:
             io.kubernetes.pod.namespace: gateway
         - matchLabels:
             io.kubernetes.pod.namespace: cloudflared
+    # Drova-intern: Microservice ↔ Microservice (zusätzlich zu mTLS-Policies)
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: drova
     # Kubelet-Probes (von Host)
     - fromEntities:
         - host
         - kube-apiserver
 
 ---
-# Egress-Allow: Pods dürfen DNS, kube-apiserver, intra-namespace + System-NS erreichen
+# Egress-Allow für Microservices (gleicher Selector — additive zu mTLS-Policies)
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   name: drova-egress-baseline
   namespace: drova
 spec:
-  endpointSelector: {}
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: drova
   egress:
     # PFLICHT: DNS zu CoreDNS (sonst kein Service-Discovery)
     - toEndpoints:
