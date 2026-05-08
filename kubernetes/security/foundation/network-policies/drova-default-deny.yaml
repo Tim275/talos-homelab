@@ -1,0 +1,105 @@
+# =============================================================================
+# Drova Tenant Default-Deny (Cilium NetworkPolicy)
+# =============================================================================
+#
+# Pattern: Per-Tenant Default-Deny statt cluster-wide.
+#  - Niedriges Risiko (bricht NICHT andere Tenants/Ceph)
+#  - Drova ist mTLS-enabled (6 CNPs aktiv via SPIRE)
+#  - Diese Policy SCHLIESST den Default-Deny-Loop für Drova
+#
+# Pre-existing CNPs (NICHT überschreiben — additive Policies):
+#  - api-gateway-mtls, chat-service-mtls, driver-service-mtls,
+#    payment-service-mtls, trip-service-mtls, user-service-mtls
+#
+# Diese Policy fügt cluster-internal default-deny + DNS-egress hinzu.
+# =============================================================================
+
+---
+# Default-Deny Ingress: Pods in drova akzeptieren NUR Traffic der explizit erlaubt
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: drova-default-deny-ingress
+  namespace: drova
+spec:
+  endpointSelector: {}    # alle Pods in drova ns
+  ingress:
+    # System-Namespaces dürfen rein (Monitoring, kube-system probes, gateway)
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+        - matchLabels:
+            io.kubernetes.pod.namespace: monitoring
+        - matchLabels:
+            io.kubernetes.pod.namespace: gateway
+        - matchLabels:
+            io.kubernetes.pod.namespace: cloudflared
+    # Kubelet-Probes (von Host)
+    - fromEntities:
+        - host
+        - kube-apiserver
+
+---
+# Egress-Allow: Pods dürfen DNS, kube-apiserver, intra-namespace + System-NS erreichen
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: drova-egress-baseline
+  namespace: drova
+spec:
+  endpointSelector: {}
+  egress:
+    # PFLICHT: DNS zu CoreDNS (sonst kein Service-Discovery)
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+
+    # kube-apiserver für Service-Account-Auth
+    - toEntities:
+        - kube-apiserver
+
+    # Intra-namespace (drova ↔ drova) für Microservice-Chains
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: drova
+
+    # cnpg-system (Postgres-Operator-Webhook)
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: cnpg-system
+
+    # External: Stripe API (Payment-Service braucht das)
+    - toFQDNs:
+        - matchPattern: "*.stripe.com"
+        - matchName: api.stripe.com
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+    # External: Cloudflare STUN (NetBird/WebRTC if used)
+    - toFQDNs:
+        - matchName: stun.cloudflare.com
+      toPorts:
+        - ports:
+            - port: "3478"
+              protocol: UDP
+
+    # OIDC: Keycloak via Public-Hostname (für Service-zu-Service Auth wenn nötig)
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: keycloak
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
