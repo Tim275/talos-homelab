@@ -41,12 +41,19 @@ management:
   env:
     STUN_PROTOCOL: udp
     STUN_URI: stun:stun.cloudflare.com:3478
-    # CF Free-Tier strippt HTTP/2-Trailers (gRPC) und blockt WebSocket-Relay (403).
-    # Daher Signal+Relay via Cluster-IP — Mac/Clients erreichen sie über Tailscale.
-    # Browser-Dashboard läuft weiter via CF (HTTP, keine Trailers nötig).
-    RELAY_URI: rel://10.100.108.22:33080
-    SIGNAL_PROTOCOL: http
-    SIGNAL_URI: 10.105.120.148:80
+    # === Aktiv: Public hostname mit CF Zero Trust DNS-Override ===
+    # CF Free-Tier strippt HTTP/2-Trailers (gRPC). Lösung: WARP-Clients erhalten
+    # via CF Zero Trust Firewall-Policy "netbird-cluster-override" eine DNS-Override
+    # für netbird.timourhomelab.org → 192.168.0.151 (Envoy LoadBalancer-IP).
+    # → CLI umgeht CF-Edge, Browser ohne WARP nutzt weiter CF (HTTP-Dashboard).
+    RELAY_URI: rels://netbird.timourhomelab.org:443/relay
+    SIGNAL_PROTOCOL: https
+    SIGNAL_URI: netbird.timourhomelab.org:443
+    # === Backup-Variante: Direct Cluster-IPs (falls Resolver-Policy ausfällt) ===
+    # Erfordert separate VPN (Tailscale) damit Clients Cluster-IPs erreichen.
+    # RELAY_URI: rel://10.100.108.22:33080
+    # SIGNAL_PROTOCOL: http
+    # SIGNAL_URI: 10.105.120.148:80
     AUTH_AUTHORITY: https://iam.timourhomelab.org/realms/kubernetes
     AUTH_AUDIENCE: netbird
     AUTH_USER_ID_CLAIM: sub
@@ -165,8 +172,9 @@ relay:
       add: [ NET_ADMIN, NET_RAW, BPF ]
   env:
     NB_LISTEN_ADDRESS: ":33080"
-    # Cluster-IP — Clients erreichen Relay via Tailscale (CF-Bypass).
-    NB_EXPOSED_ADDRESS: rel://10.100.108.22:33080
+    # Public-URL — WARP-Clients lösen via CF Zero Trust DNS-Override zu Envoy LB-IP auf.
+    NB_EXPOSED_ADDRESS: rels://netbird.timourhomelab.org:443/relay
+    # Backup: NB_EXPOSED_ADDRESS: rel://10.100.108.22:33080
   envFromSecret:
     NB_AUTH_SECRET: relay-secret/NB_AUTH_SECRET
   metrics:
