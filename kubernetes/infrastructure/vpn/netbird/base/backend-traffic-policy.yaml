@@ -1,0 +1,36 @@
+# Forces Envoy Gateway to use HTTP/2 upstream to NetBird Management.
+#
+# Ohne das routet Envoy gRPC-Requests via HTTP/1.1 zum Backend, obwohl der
+# Service `appProtocol: kubernetes.io/h2c` deklariert. Resultat: 60-Byte
+# Trailer-Only Error Responses, NetBird-CLI bricht mit
+# "server closed the stream without sending trailers".
+#
+# Ende-zu-Ende-gRPC-Pfad braucht HTTP/2 auf JEDEM Hop:
+#   Mac CLI ──HTTP/2──► CF Edge ──HTTP/2──► cloudflared ──HTTP/2──► Envoy ──HTTP/2/h2c──► Mgmt
+#                                            (http2Origin: true)        (diese Policy)
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: netbird-management-h2c
+  namespace: netbird
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: GRPCRoute
+      name: netbird-management-grpc-grpc-route
+  http2:
+    onInvalidMessage: TerminateStream
+---
+# Same für signal-service (auch gRPC)
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: netbird-signal-h2c
+  namespace: netbird
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: GRPCRoute
+      name: netbird-signal-grpc-route
+  http2:
+    onInvalidMessage: TerminateStream
