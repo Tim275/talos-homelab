@@ -1,0 +1,252 @@
+## Netbird Self-Hosted — Helm Values
+## Chart: https://vehagn.github.io/helms
+## Docs:  https://docs.netbird.io/selfhosted/selfhosted-guide
+
+gateway-route: &gateway-route
+  enabled: true
+  hostnames: [ netbird.timourhomelab.org ]
+  parentRefs:
+    - { name: envoy-gateway, namespace: gateway, sectionName: https }
+
+management:
+  enabled: true
+  image:
+    repository: ghcr.io/netbirdio/management
+    tag: 0.70.5
+  podSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    runAsNonRoot: false
+    capabilities:
+      drop: [ ALL ]
+      add: [ NET_ADMIN, NET_RAW, BPF ]
+  podCommand:
+    args:
+      - --port=80
+      - --log-file=console
+      - --log-level=info
+      - --disable-anonymous-metrics=true
+      - --single-account-mode-domain=netbird.timourhomelab.org
+      - --dns-domain=netbird.timourhomelab.org
+      - --idp-sign-key-refresh-enabled
+  metrics:
+    enabled: true
+  httpRoute: *gateway-route
+  grpcRoute: *gateway-route
+  ingress:
+    enabled: false
+  env:
+    STUN_PROTOCOL: udp
+    STUN_URI: stun:stun.cloudflare.com:3478
+    RELAY_URI: rels://netbird.timourhomelab.org:443/relay
+    SIGNAL_PROTOCOL: https
+    SIGNAL_URI: netbird.timourhomelab.org:443
+    AUTH_AUTHORITY: https://keycloak.timourhomelab.org/realms/homelab
+    AUTH_AUDIENCE: netbird
+    AUTH_USER_ID_CLAIM: sub
+    AUTH_SUPPORTED_SCOPES: openid profile email offline_access
+    AUTH_PKCE_USE_ID_TOKEN: true
+  envFromSecret:
+    RELAY_SECRET: relay-secret/NB_AUTH_SECRET
+    AUTH_CLIENT_ID: keycloak-oidc-credentials/AUTH_CLIENT_ID
+    AUTH_CLIENT_SECRET: keycloak-oidc-credentials/AUTH_CLIENT_SECRET
+    DATASTORE_ENCRYPTION_KEY: management/datastoreEncryptionKey
+  configmap: |-
+    {
+      "Stuns": [
+        {
+          "Proto": "{{ .STUN_PROTOCOL }}",
+          "URI": "{{ .STUN_URI }}",
+          "Username": "",
+          "Password": null
+        }
+      ],
+      "TURNConfig": {
+        "Turns": [],
+        "CredentialsTTL": "12h0m0s",
+        "Secret": "secret",
+        "TimeBasedCredentials": false
+      },
+      "Relay": {
+        "Addresses": [ "{{ .RELAY_URI }}" ],
+        "CredentialsTTL": "24h",
+        "Secret": "{{ .RELAY_SECRET }}"
+      },
+      "Signal": {
+        "Proto": "{{ .SIGNAL_PROTOCOL }}",
+        "URI": "{{ .SIGNAL_URI }}",
+        "Username": "",
+        "Password": null
+      },
+      "Datadir": "/var/lib/netbird/",
+      "DataStoreEncryptionKey": "{{ .DATASTORE_ENCRYPTION_KEY }}",
+      "HttpConfig": {
+        "AuthAudience": "{{ .AUTH_CLIENT_ID }}",
+        "AuthUserIDClaim": "{{ .AUTH_USER_ID_CLAIM }}",
+        "OIDCConfigEndpoint": "{{ .AUTH_AUTHORITY }}/.well-known/openid-configuration",
+        "IdpSignKeyRefreshEnabled": false
+      },
+      "IdpManagerConfig": { },
+      "DeviceAuthorizationFlow": { },
+      "PKCEAuthorizationFlow": {
+        "ProviderConfig": {
+          "Audience": "{{ .AUTH_AUDIENCE }}",
+          "ClientID": "{{ .AUTH_CLIENT_ID }}",
+          "ClientSecret": "{{ .AUTH_CLIENT_SECRET }}",
+          "Domain": "",
+          "Scope": "{{ .AUTH_SUPPORTED_SCOPES }}",
+          "RedirectURLs": [ "http://localhost:53000", "http://localhost:54000" ],
+          "UseIDToken": {{ .AUTH_PKCE_USE_ID_TOKEN }}
+        }
+      }
+    }
+  resources:
+    requests:
+      cpu: 10m
+      memory: 512Mi
+    limits:
+      memory: 512Mi
+  persistentVolume:
+    enabled: true
+    storageClass: rook-ceph-block
+    size: 512M
+    accessModes:
+      - ReadWriteOnce
+
+signal:
+  enabled: true
+  logLevel: info
+  image:
+    repository: ghcr.io/netbirdio/signal
+    tag: 0.70.5
+  podSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: false
+    capabilities:
+      drop: [ ALL ]
+      add: [ NET_ADMIN, NET_RAW, BPF ]
+  metrics:
+    enabled: true
+  grpcRoute: *gateway-route
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 32Mi
+
+relay:
+  enabled: true
+  logLevel: info
+  image:
+    repository: ghcr.io/netbirdio/relay
+    tag: 0.70.5
+  podSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: false
+    capabilities:
+      drop: [ ALL ]
+      add: [ NET_ADMIN, NET_RAW, BPF ]
+  env:
+    NB_LISTEN_ADDRESS: ":33080"
+    NB_EXPOSED_ADDRESS: rels://netbird.timourhomelab.org:443/relay
+  envFromSecret:
+    NB_AUTH_SECRET: relay-secret/NB_AUTH_SECRET
+  metrics:
+    enabled: true
+  httpRoute: *gateway-route
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      memory: 32Mi
+      cpu: 10m
+    limits:
+      memory: 32Mi
+
+dashboard:
+  enabled: true
+  loglevel: info
+  image:
+    repository: docker.io/netbirdio/dashboard
+    tag: v2.36.0
+  podSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: [ ALL ]
+      add: [ NET_BIND_SERVICE, CHOWN, SETGID, SETUID, DAC_OVERRIDE ]
+  env:
+    AUTH_AUDIENCE: netbird
+    AUTH_AUTHORITY: https://keycloak.timourhomelab.org/realms/homelab
+    AUTH_REDIRECT_URI: /callback
+    AUTH_SILENT_REDIRECT_URI: /silent-callback
+    AUTH_SUPPORTED_SCOPES: openid profile email
+    USE_AUTH0: false
+    NETBIRD_MGMT_API_ENDPOINT: https://netbird.timourhomelab.org
+    NETBIRD_MGMT_GRPC_API_ENDPOINT: https://netbird.timourhomelab.org
+    NETBIRD_TOKEN_SOURCE: idToken
+  envFromSecret:
+    AUTH_CLIENT_ID: keycloak-oidc-credentials/AUTH_CLIENT_ID
+    AUTH_CLIENT_SECRET: keycloak-oidc-credentials/AUTH_CLIENT_SECRET
+  httpRoute: *gateway-route
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 10m
+    limits:
+      memory: 64Mi
+  volumeMounts:
+    - name: tmp
+      mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir: { }
+
+agent:
+  enabled: true
+  image:
+    repository: ghcr.io/netbirdio/netbird
+    tag: 0.70.5
+  podSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
+    sysctls:
+      - name: net.ipv4.conf.all.src_valid_mark
+        value: "1"
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    runAsNonRoot: false
+    capabilities:
+      drop: [ ALL ]
+      add: [ NET_ADMIN, NET_RAW, PERFMON, BPF ]
+  env:
+    NB_HOSTNAME: talos-homelab-agent
+    NB_LOG_LEVEL: info
+    NB_MANAGEMENT_URL: https://netbird.timourhomelab.org
+    NB_ADMIN_URL: https://netbird.timourhomelab.org
+  envFromSecret:
+    NB_SETUP_KEY: agent-setup-key/NB_SETUP_KEY
+
+metrics:
+  serviceMonitor:
+    enabled: true
