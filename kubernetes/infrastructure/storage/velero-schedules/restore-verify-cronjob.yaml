@@ -74,14 +74,9 @@ spec:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
                 capabilities: { drop: [ALL] }
-              env:
-                - name: SLACK_WEBHOOK
-                  valueFrom:
-                    secretKeyRef:
-                      name: slack-webhook-url
-                      namespace: monitoring
-                      key: webhook-url
-                      optional: true
+              # Slack-Alert via Prometheus → Alertmanager: CronJob-Fail wird über
+              # KubeJobFailed Alert detected (siehe alerts/kubernetes/workloads.yaml).
+              # Slack-Webhook nicht direkt mountbar (cross-namespace secret-ref unsupported).
               volumeMounts:
                 - { name: tmp, mountPath: /tmp }
               command: [/bin/bash, -c]
@@ -150,17 +145,12 @@ spec:
                   kubectl delete restore -n velero "$RESTORE" --ignore-not-found=true >/dev/null 2>&1
                   kubectl delete ns "$TEST_NS" --ignore-not-found=true >/dev/null 2>&1
 
-                  # 6. Final verdict + Slack-Alert
+                  # 6. Final verdict — exit code triggers KubeJobFailed Prometheus alert
                   if [ "$PHASE" = "Completed" ]; then
                     echo "═══ ✓ DR-Verify SUCCESS for backup $LATEST ═══"
                     exit 0
                   else
                     echo "═══ ✗ DR-Verify FAILED ($ERROR_REASON) for backup $LATEST ═══"
-                    if [ -n "${SLACK_WEBHOOK:-}" ]; then
-                      curl -fsSL -X POST -H 'Content-Type: application/json' \
-                        --data "{\"text\":\":fire: *DR-Verify FAILED*\\nBackup: \`$LATEST\`\\nReason: $ERROR_REASON\\nTime: $TS\"}" \
-                        "$SLACK_WEBHOOK" || true
-                    fi
                     exit 1
                   fi
               resources:
