@@ -1,0 +1,87 @@
+# Observability Stack — 1 ApplicationSet ersetzt 15 separate Application-CRs
+#
+# Selector: clusters mit Label observability.tier=enabled
+# Multi-Cluster-Ready: Pi-Spoke registrieren mit Label → 15 Apps auto-generated
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: observability-stack
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    infrastructure.domain: observability
+    team: timour
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  observability.tier: enabled
+          - list:
+              elements:
+                # METRICS
+                - { component: prometheus,             appName: kube-prometheus-stack-in-cluster, path: kubernetes/infrastructure/observability/metrics/kube-prometheus-stack/overlays/prod, namespace: monitoring,   wave: "5" }
+                - { component: metrics-server,         appName: metrics-server,                   path: kubernetes/infrastructure/observability/metrics/metrics-server/overlays/prod,         namespace: kube-system,  wave: "5" }
+                - { component: blackbox-exporter,      appName: blackbox-exporter,                path: kubernetes/infrastructure/observability/metrics/blackbox-exporter/overlays/prod,      namespace: monitoring,   wave: "6" }
+                - { component: pve-exporter,           appName: pve-exporter,                     path: kubernetes/infrastructure/observability/metrics/pve-exporter/overlays/prod,           namespace: monitoring,   wave: "6" }
+                # LOGS
+                - { component: elasticsearch,          appName: elasticsearch,                    path: kubernetes/infrastructure/observability/logs/elasticsearch/overlays/prod,             namespace: elastic-system, wave: "5" }
+                - { component: loki,                   appName: loki,                             path: kubernetes/infrastructure/observability/logs/loki/overlays/prod,                     namespace: monitoring,   wave: "5" }
+                - { component: vector,                 appName: vector,                           path: kubernetes/infrastructure/observability/logs/vector/overlays/prod,                   namespace: monitoring,   wave: "6" }
+                - { component: kibana,                 appName: kibana,                           path: kubernetes/infrastructure/observability/logs/kibana/overlays/prod,                   namespace: elastic-system, wave: "7" }
+                # TRACES
+                - { component: tempo,                  appName: tempo,                            path: kubernetes/infrastructure/observability/traces/tempo/overlays/prod,                  namespace: monitoring,   wave: "5" }
+                - { component: jaeger,                 appName: jaeger,                           path: kubernetes/infrastructure/observability/traces/jaeger/overlays/prod,                 namespace: jaeger,       wave: "6" }
+                - { component: opentelemetry,          appName: opentelemetry,                    path: kubernetes/infrastructure/observability/traces/opentelemetry/overlays/prod,          namespace: opentelemetry, wave: "6" }
+                # DASHBOARDS / UI
+                - { component: grafana,                appName: grafana,                          path: kubernetes/infrastructure/observability/dashboards/grafana/overlays/prod,            namespace: grafana,      wave: "8" }
+                - { component: dashboards,             appName: dashboards,                       path: kubernetes/infrastructure/observability/dashboards/configs/overlays/prod,            namespace: grafana,      wave: "9" }
+                - { component: hubble,                 appName: hubble,                           path: kubernetes/infrastructure/observability/dashboards/hubble/overlays/prod,             namespace: kube-system,  wave: "9" }
+                # ALERTING
+                - { component: infrastructure-alerts,  appName: infrastructure-alerts,            path: kubernetes/infrastructure/observability/alerting/alerts/overlays/prod,               namespace: monitoring,   wave: "9" }
+  template:
+    metadata:
+      name: '{{.appName}}'
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        infrastructure.domain: observability
+        infrastructure.component: '{{.component}}'
+        team: timour
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{.wave}}'
+    spec:
+      project: infrastructure
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: '{{.namespace}}'
+      ignoreDifferences:
+        - group: bitnami.com
+          kind: SealedSecret
+          jsonPointers:
+            - /metadata/annotations
+            - /metadata/labels
+        - group: monitoring.coreos.com
+          kind: ServiceMonitor
+          jsonPointers:
+            - /metadata/annotations
+            - /metadata/labels
+      syncPolicy:
+        automated: { prune: true, selfHeal: true }
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }
