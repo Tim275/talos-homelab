@@ -55,6 +55,23 @@ else
   echo "    FIX: trigger LDAP sync OR re-run lldap-bootstrap CronJob"
 fi
 
+# Verify MFA still enforced (fresh imports lose TOTP credential)
+TOTP_USERS=$(kubectl exec -n keycloak keycloak-0 -- bash -c "
+/opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user admin --password '$ADMIN_PASS' >/dev/null 2>&1
+for U in timour tim275; do
+  TID=\$(/opt/keycloak/bin/kcadm.sh get users -r kubernetes -q username=\$U --fields id 2>&1 | grep '\"id\"' | head -1 | cut -d'\"' -f4)
+  HAS_TOTP=\$(/opt/keycloak/bin/kcadm.sh get users/\$TID -r kubernetes --fields totp 2>&1 | grep -c 'true' || echo 0)
+  REQ_TOTP=\$(/opt/keycloak/bin/kcadm.sh get users/\$TID -r kubernetes --fields requiredActions 2>&1 | grep -c 'CONFIGURE_TOTP' || echo 0)
+  [ \"\$HAS_TOTP\" = '1' ] || [ \"\$REQ_TOTP\" = '1' ] && echo \"\$U:OK\" || echo \"\$U:NO_MFA\"
+done
+" 2>/dev/null)
+if echo "$TOTP_USERS" | grep -q "NO_MFA"; then
+  fail "User(s) without TOTP/CONFIGURE_TOTP: $TOTP_USERS"
+  echo "    FIX: kcadm.sh update users/<id> -r kubernetes -s 'requiredActions=[\"CONFIGURE_TOTP\"]'"
+else
+  ok "MFA enforced on timour + tim275"
+fi
+
 echo
 echo "=== 4. LLDAP — bootstrap CronJob healthy ==="
 LAST_OK=$(kubectl get cronjob -n lldap lldap-bootstrap -o jsonpath='{.status.lastSuccessfulTime}' 2>/dev/null)
