@@ -1,112 +1,107 @@
-# Phase D iter-2 (2026-05-06): Enforce CONFIGURE_TOTP für existing federated users.
+# MFA Self-Heal CronJob (hourly).
+# Catches the LDAP-Federation-Reimport bug: when LLDAP user gets recreated, KC
+# may re-import as fresh user and lose TOTP credential → silent MFA-bypass.
+# This CronJob hourly checks all federated users and re-asserts CONFIGURE_TOTP
+# for any user without TOTP credential.
 #
-# Hintergrund: realm-import.yaml setzt CONFIGURE_TOTP defaultAction=true → NEW users
-# get the requiredAction beim Sync. ABER existing LDAP-federated users sind schon
-# in KC user-table OHNE requiredAction (LDAP-Federation legt User ohne Required-
-# Actions an). Diese müssen retroaktiv gepatched werden.
-#
-# Dieser Job läuft als ArgoCD PostSync-Hook ONCE nach realm-import-CR Done.
-# Idempotent: setzt requiredActions=[CONFIGURE_TOTP] für alle non-admin-users
-# die noch kein TOTP konfiguriert haben.
-#
-# Liste der User wird dynamisch aus LDAP-Federation gelesen — keine hardcoded users.
----
+# Idempotent: skippt User die TOTP schon haben.
+# Wenn alle non-admin-users TOTP haben → CronJob no-op.
+
 apiVersion: batch/v1
-kind: Job
+kind: CronJob
 metadata:
-  name: keycloak-2fa-enforce-existing
+  name: keycloak-2fa-enforce
   namespace: keycloak
   labels:
     app.kubernetes.io/name: keycloak-2fa-enforce
     app.kubernetes.io/part-of: platform-identity
-  annotations:
-    argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
-  ttlSecondsAfterFinished: 600
-  backoffLimit: 3
-  template:
-    metadata:
-      labels:
-        app: keycloak-2fa-enforce
+  schedule: "15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 600
+  jobTemplate:
     spec:
-      restartPolicy: OnFailure
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        fsGroup: 1000
-        seccompProfile:
-          type: RuntimeDefault
-      containers:
-        - name: enforce
-          image: quay.io/keycloak/keycloak:25.0.6@sha256:82c5b7a110456dbd42b86ea572e728878549954cc8bd03cd65410d75328095d2
+      backoffLimit: 3
+      template:
+        metadata:
+          labels:
+            app: keycloak-2fa-enforce
+        spec:
+          restartPolicy: OnFailure
           securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false
-            capabilities:
-              drop: [ALL]
-          env:
-            - name: KC_URL
-              value: "http://keycloak-service.keycloak.svc.cluster.local:8080"
-            - name: KC_ADMIN
-              value: admin
-            - name: KC_ADMIN_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: keycloak-admin
-                  key: password
-            - name: REALM
-              value: kubernetes
-          command:
-            - /bin/bash
-            - -c
-            - |
-              set -e
-              echo "=== Wait for KC ready ==="
-              for i in $(seq 1 60); do
-                if /opt/keycloak/bin/kcadm.sh config credentials \
-                    --server "$KC_URL" --realm master \
-                    --user "$KC_ADMIN" --password "$KC_ADMIN_PASSWORD" 2>/dev/null; then
-                  break
-                fi
-                sleep 5
-              done
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: enforce
+              image: quay.io/keycloak/keycloak:25.0.6@sha256:82c5b7a110456dbd42b86ea572e728878549954cc8bd03cd65410d75328095d2
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: false
+                capabilities:
+                  drop: [ALL]
+              env:
+                - name: KC_URL
+                  value: "http://keycloak-service.keycloak.svc.cluster.local:8080"
+                - name: KC_ADMIN
+                  value: admin
+                - name: KC_ADMIN_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: keycloak-admin
+                      key: password
+                - name: REALM
+                  value: kubernetes
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -e
+                  echo "=== Wait for KC ready ==="
+                  for i in $(seq 1 60); do
+                    if /opt/keycloak/bin/kcadm.sh config credentials \
+                        --server "$KC_URL" --realm master \
+                        --user "$KC_ADMIN" --password "$KC_ADMIN_PASSWORD" 2>/dev/null; then
+                      break
+                    fi
+                    sleep 5
+                  done
 
-              echo ""
-              echo "=== Find users without TOTP configured ==="
-              # Get all users in realm (excluding admin)
-              USERS=$(/opt/keycloak/bin/kcadm.sh get users -r "$REALM" --fields username,id 2>/dev/null \
-                | grep -B1 '"username"' | grep -E '"id"|"username"' \
-                | paste -d, - - \
-                | sed 's/.*"id" : "\([^"]*\)".*"username" : "\([^"]*\)".*/\2 \1/')
+                  echo ""
+                  echo "=== Find users without TOTP configured ==="
+                  USERS=$(/opt/keycloak/bin/kcadm.sh get users -r "$REALM" --fields username,id 2>/dev/null \
+                    | grep -B1 '"username"' | grep -E '"id"|"username"' \
+                    | paste -d, - - \
+                    | sed 's/.*"id" : "\([^"]*\)".*"username" : "\([^"]*\)".*/\2 \1/')
 
-              echo "$USERS" | while read username uid; do
-                [ -z "$username" ] && continue
-                # Skip admin (technical user)
-                [ "$username" = "admin" ] && { echo "  skip $username (admin)"; continue; }
+                  echo "$USERS" | while read username uid; do
+                    [ -z "$username" ] && continue
+                    [ "$username" = "admin" ] && { echo "  skip $username (admin)"; continue; }
 
-                # Check current required-actions
-                CURRENT=$(/opt/keycloak/bin/kcadm.sh get users/$uid -r "$REALM" --fields requiredActions 2>/dev/null)
+                    CURRENT=$(/opt/keycloak/bin/kcadm.sh get users/$uid -r "$REALM" --fields requiredActions 2>/dev/null)
 
-                if echo "$CURRENT" | grep -q "CONFIGURE_TOTP"; then
-                  echo "  $username: already has CONFIGURE_TOTP"
-                else
-                  # Check if user already has TOTP credential (skip if yes)
-                  HAS_TOTP=$(/opt/keycloak/bin/kcadm.sh get users/$uid/credentials -r "$REALM" 2>/dev/null \
-                    | grep -c '"type" : "otp"' || echo "0")
+                    if echo "$CURRENT" | grep -q "CONFIGURE_TOTP"; then
+                      echo "  $username: already has CONFIGURE_TOTP"
+                    else
+                      HAS_TOTP=$(/opt/keycloak/bin/kcadm.sh get users/$uid/credentials -r "$REALM" 2>/dev/null \
+                        | grep -c '"type" : "otp"' || echo "0")
 
-                  if [ "$HAS_TOTP" -gt 0 ]; then
-                    echo "  $username: TOTP already configured, skip"
-                  else
-                    /opt/keycloak/bin/kcadm.sh update users/$uid -r "$REALM" \
-                      -s 'requiredActions=["CONFIGURE_TOTP"]' 2>&1 | tail -1
-                    echo "  $username: CONFIGURE_TOTP enforced"
-                  fi
-                fi
-              done
+                      if [ "$HAS_TOTP" -gt 0 ]; then
+                        echo "  $username: TOTP already configured, skip"
+                      else
+                        /opt/keycloak/bin/kcadm.sh update users/$uid -r "$REALM" \
+                          -s 'requiredActions=["CONFIGURE_TOTP"]' 2>&1 | tail -1
+                        echo "  $username: CONFIGURE_TOTP enforced"
+                      fi
+                    fi
+                  done
 
-              echo ""
-              echo "=== Done ==="
-          resources:
-            requests: { cpu: 50m,  memory: 256Mi }
-            limits:   { cpu: 500m, memory: 512Mi }
+                  echo ""
+                  echo "=== Done ==="
+              resources:
+                requests: { cpu: 50m,  memory: 256Mi }
+                limits:   { cpu: 500m, memory: 512Mi }
