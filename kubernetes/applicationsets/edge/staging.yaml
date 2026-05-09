@@ -1,0 +1,85 @@
+# Staging Edge-Cluster AppSet — selective Light-Workloads
+#
+# Pi ist KEIN Production-Mirror — Pi ist Edge-Monitoring-Spoke mit:
+#   - Cilium (CNI Foundation, eBPF läuft super auf ARM)
+#   - kube-prometheus-stack (short-retention 3d, single-replica)
+#   - Grafana (single-replica, lokales UI für Pi-Metriken)
+#   - ArgoCD (selbst-managed, klein)
+#   - cert-manager (TLS für Pi-Apps)
+#   - sealed-secrets (Foundation für GitOps)
+#
+# Pi bekommt NICHT: Loki, Tempo, ES, Kafka, Postgres, Drova, n8n, Velero, Rook-Ceph
+# (zu RAM-hungry für 4-8GB Pi)
+#
+# Selector: environment=staging (Pi-Cluster-Secret hat dieses Label)
+# Existing prod-AppSets haben environment=prod → werden auf Pi NICHT generiert.
+#
+# Path-Pattern: jede Komponente hat overlays/staging mit components:
+#   - arm64-arch (kubernetes.io/arch: arm64 nodeSelector)
+#   - short-retention (3d retention für Prom)
+#   - single-replica (1 statt 3 für StatefulSets/Deployments)
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: staging-edge
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    edge.cluster: staging
+    team: timour
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  environment: staging
+          - list:
+              elements:
+                # Foundation
+                - { component: sealed-secrets,  appName: sealed-secrets-staging,  appProject: infrastructure, path: kubernetes/infrastructure/controllers/sealed-secrets/overlays/staging, namespace: sealed-secrets, wave: "-3" }
+                - { component: cert-manager,    appName: cert-manager-staging,    appProject: infrastructure, path: kubernetes/infrastructure/controllers/cert-manager/overlays/staging,    namespace: cert-manager,   wave: "-2" }
+                - { component: argocd,          appName: argocd-staging,          appProject: infrastructure, path: kubernetes/infrastructure/controllers/argocd/overlays/staging,         namespace: argocd,         wave: "1" }
+                # Network
+                - { component: cilium,          appName: cilium-staging,          appProject: infrastructure, path: kubernetes/infrastructure/network/cilium/overlays/staging,            namespace: kube-system,    wave: "0" }
+                # Edge-Monitoring
+                - { component: prometheus,      appName: prometheus-staging,      appProject: infrastructure, path: kubernetes/infrastructure/observability/metrics/kube-prometheus-stack/overlays/staging, namespace: monitoring, wave: "5" }
+                - { component: grafana,         appName: grafana-staging,         appProject: infrastructure, path: kubernetes/infrastructure/observability/dashboards/grafana/overlays/staging,            namespace: grafana,    wave: "8" }
+  template:
+    metadata:
+      name: '{{.appName}}'
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        edge.cluster: staging
+        edge.component: '{{.component}}'
+        team: timour
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{.wave}}'
+    spec:
+      project: '{{.appProject}}'
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: '{{.namespace}}'
+      ignoreDifferences:
+        - group: bitnami.com
+          kind: SealedSecret
+          jsonPointers: [/metadata/annotations, /metadata/labels]
+      syncPolicy:
+        automated: { prune: true, selfHeal: true }
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }

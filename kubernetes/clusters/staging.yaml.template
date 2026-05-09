@@ -1,0 +1,59 @@
+# Staging Edge-Cluster — Cluster-Secret Template
+#
+# WIE DIESES FILE NUTZEN (wenn Pi angeschlossen):
+#
+# 1. Pi mit Talos ARM64 (oder k3s) bootstrappen
+# 2. ArgoCD-cluster registrieren:
+#    argocd cluster add <pi-context> --name staging
+#
+# 3. Resultierendes cluster-secret-Yaml aus argocd ns holen:
+#    kubectl get secret cluster-staging -n argocd -o yaml > /tmp/raw.yaml
+#
+# 4. Labels MERGEN (siehe unten) + sealen:
+#    CERT=tofu/bootstrap/sealed-secrets/certificate/sealed-secrets.crt
+#    cat /tmp/raw.yaml | kubeseal --cert "$CERT" --format yaml --scope strict \
+#      > kubernetes/clusters/staging.yaml
+#
+# 5. clusters/kustomization.yaml ergänzen:
+#    resources:
+#      - in-cluster.yaml
+#      - staging.yaml
+#
+# 6. git push → ArgoCD synct → staging-edge AppSet generiert 6 Apps:
+#    - sealed-secrets-pi, cert-manager-pi, argocd-pi
+#    - cilium-pi, prometheus-pi, grafana-pi
+#
+# WAS Pi NICHT bekommt (existing AppSets haben environment: prod selector):
+#   - Loki, Tempo, ES, Jaeger (zu RAM-hungry)
+#   - Drova-Tenant + n8n-Tenant (production-only)
+#   - Rook-Ceph + Velero (single-node Pi, kein distributed-storage)
+#   - Keycloak + LLDAP + CNPG (production-only)
+#
+# WICHTIGE LABELS (must-have für AppSet-Selector):
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cluster-staging
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: cluster
+    environment: staging          # ← staging-edge AppSet selector
+    arch: arm64                         # ← components/arm64-arch nodeSelector
+    cni: cilium                         # ← descriptive
+    edge.cluster: staging          # ← edge cluster role identifier
+    # Optional Multi-Cluster-Tier-Filter (zukünftige AppSets können das nutzen)
+    cilium.tier: enabled
+    observability.edge: enabled         # NICHT observability.tier (das ist heavy)
+type: Opaque
+stringData:
+  name: staging
+  server: https://<PI_IP>:6443         # ← Pi-Cluster API
+  config: |
+    {
+      "tlsClientConfig": {
+        "insecure": false,
+        "caData": "<base64 ca.crt aus Pi kubeconfig>"
+      },
+      "bearerToken": "<service-account-token aus Pi argocd-manager>"
+    }
