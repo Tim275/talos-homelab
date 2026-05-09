@@ -145,19 +145,51 @@ spec:
 
                   USERS_JSON=$(sed "s|\${LLDAP_USER_PASSWORD}|$LLDAP_USER_PASSWORD|g" /config/users.json)
 
+                  FAILED=0
                   echo "$USERS_JSON" | jq -c '.[]' | while read user; do
                     ID=$(echo "$user" | jq -r '.id')
                     PASSWORD=$(echo "$user" | jq -r '.password // empty')
 
                     if [ -n "$PASSWORD" ]; then
                       echo "Setting password for: $ID"
+
+                      # 1. Verify if existing password ALREADY works → skip if yes
+                      if ldapwhoami -x -H ldap://lldap-ldap:389 \
+                          -D "uid=$ID,ou=people,dc=homelab,dc=local" \
+                          -w "$PASSWORD" >/dev/null 2>&1; then
+                        echo "  ✓ already correct, skip"
+                        continue
+                      fi
+
+                      # 2. Set password (don't suppress errors — see them)
                       ldappasswd -x -H ldap://lldap-ldap:389 \
                         -D "uid=$LLDAP_ADMIN_USERNAME,ou=people,dc=homelab,dc=local" \
                         -w "$LLDAP_ADMIN_PASSWORD" \
                         -s "$PASSWORD" \
-                        "uid=$ID,ou=people,dc=homelab,dc=local" 2>/dev/null && echo "  Password set!" || echo "  Password set (or user is new)"
+                        "uid=$ID,ou=people,dc=homelab,dc=local"
+                      RC=$?
+                      if [ $RC -ne 0 ]; then
+                        echo "  ✗ ldappasswd FAILED (rc=$RC) for $ID"
+                        FAILED=$((FAILED+1))
+                        continue
+                      fi
+
+                      # 3. Verify the new password actually works (catches dual-store-bug)
+                      if ldapwhoami -x -H ldap://lldap-ldap:389 \
+                          -D "uid=$ID,ou=people,dc=homelab,dc=local" \
+                          -w "$PASSWORD" >/dev/null 2>&1; then
+                        echo "  ✓ password verified"
+                      else
+                        echo "  ✗ ldappasswd reported OK but ldap-bind STILL fails (LLDAP dual-store bug?)"
+                        FAILED=$((FAILED+1))
+                      fi
                     fi
                   done
+
+                  if [ ${FAILED:-0} -gt 0 ]; then
+                    echo "ERROR: $FAILED password operations failed — job will be marked failed"
+                    exit 1
+                  fi
 
                   echo ""
                   echo "============================================"
