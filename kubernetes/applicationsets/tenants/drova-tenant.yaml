@@ -1,0 +1,124 @@
+# Drova Tenant — 1 ApplicationSet ersetzt 4 separate Application-CRs.
+#
+# Vorher (fragmentiert über 4 Layer):
+#   - platform/data/drova-postgres/application.yaml          (drova-postgres)
+#   - platform/messaging/drova-kafka/application.yaml        (drova-kafka)
+#   - platform/drova-infra/redis-drova-app.yaml              (redis-drova)
+#   - apps/overlays/prod/drova/application.yaml              (drova-prod)
+#   PLUS: platform/drova-infra-app.yaml                       (drova-infra parent)
+#
+# Nachher (1 Source-of-Truth):
+#   - applicationsets/tenants/drova-tenant.yaml              → generates 4 Apps
+#
+# Migration-Strategie:
+#   AppSet generiert Apps mit GLEICHEN Namen wie alte single-CRs (drova-postgres,
+#   drova-kafka, redis-drova, drova-prod). ArgoCD adoption-takeover ohne Resource-
+#   Churn. Old single-CRs werden in derselben Commit aus parent kustomizations
+#   entfernt — Argo's instance-tracking annotation matched (selber Name).
+#
+# Multi-Cluster (zukünftig):
+#   - Pi-Spoke registrieren mit Label `drova.tier: enabled`
+#   - Aktuell: nur in-cluster matched (Pi nicht produktionsreif für Drova)
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: drova-tenant
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    platform.homelab/tenant: drova
+    team: timour
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+
+  generators:
+    - matrix:
+        generators:
+          # Welche Cluster bekommen Drova?
+          - clusters:
+              selector:
+                matchLabels:
+                  drova.tier: enabled
+          # Welche Komponenten innerhalb Drova?
+          # appName + appProject explizit für seamless Migration ohne Rename.
+          - list:
+              elements:
+                - component: postgres
+                  appName: drova-postgres
+                  appProject: platform
+                  repoURL: https://github.com/Tim275/talos-homelab
+                  path: kubernetes/platform/data/drova-postgres/overlays/prod
+                  wave: "10"
+                - component: kafka
+                  appName: drova-kafka
+                  appProject: platform
+                  repoURL: https://github.com/Tim275/talos-homelab
+                  path: kubernetes/platform/messaging/drova-kafka/overlays/prod
+                  wave: "11"
+                - component: redis
+                  appName: redis-drova
+                  appProject: platform
+                  repoURL: https://github.com/Tim275/talos-homelab
+                  path: kubernetes/platform/data/redis-drova/overlays/prod
+                  wave: "12"
+                - component: app
+                  appName: drova-prod
+                  appProject: apps
+                  repoURL: https://github.com/Tim275/drova-gitops
+                  path: overlays/production
+                  wave: "20"
+
+  template:
+    metadata:
+      name: '{{.appName}}'
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        app.kubernetes.io/part-of: timour-homelab
+        platform.homelab/tenant: drova
+        platform.homelab/component: '{{.component}}'
+        team: timour
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{.wave}}'
+    spec:
+      project: '{{.appProject}}'
+      source:
+        repoURL: '{{.repoURL}}'
+        targetRevision: HEAD
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: drova
+      ignoreDifferences:
+        - group: bitnami.com
+          kind: SealedSecret
+          jsonPointers:
+            - /metadata/annotations/kubectl.kubernetes.io~1last-applied-configuration
+            - /metadata/annotations
+            - /metadata/labels
+        - group: postgresql.cnpg.io
+          kind: Cluster
+          managedFieldsManagers:
+            - cnpg-controller-manager
+        - group: argoproj.io
+          kind: Application
+          jqPathExpressions:
+            - .status
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=false
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+          - ServerSideDiff=false
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
