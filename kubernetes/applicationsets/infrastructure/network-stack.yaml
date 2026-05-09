@@ -1,0 +1,64 @@
+# Network Stack — 1 ApplicationSet ersetzt 5 separate Application-CRs
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: network-stack
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    infrastructure.domain: network
+    team: timour
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  argocd.argoproj.io/secret-type: cluster
+          - list:
+              elements:
+                - { component: cilium,        appName: cilium,        path: kubernetes/infrastructure/network/cilium/overlays/prod,        namespace: kube-system,  wave: "0" }
+                - { component: coredns,       appName: coredns,       path: kubernetes/infrastructure/network/coredns/base,                namespace: kube-system,  wave: "0" }
+                - { component: gateway,       appName: gateway,       path: kubernetes/infrastructure/network/gateway/overlays/prod,       namespace: gateway,      wave: "2" }
+                - { component: cloudflared,   appName: cloudflared,   path: kubernetes/infrastructure/network/cloudflared/overlays/prod,   namespace: cloudflared,  wave: "3" }
+                - { component: redis-gateway, appName: redis-gateway, path: kubernetes/infrastructure/network/redis-gateway,               namespace: gateway,      wave: "3" }
+  template:
+    metadata:
+      name: '{{.appName}}'
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        infrastructure.domain: network
+        infrastructure.component: '{{.component}}'
+        team: timour
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{.wave}}'
+    spec:
+      project: infrastructure
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: '{{.namespace}}'
+      ignoreDifferences:
+        - group: bitnami.com
+          kind: SealedSecret
+          jsonPointers:
+            - /metadata/annotations
+            - /metadata/labels
+      syncPolicy:
+        automated: { prune: true, selfHeal: true }
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }
