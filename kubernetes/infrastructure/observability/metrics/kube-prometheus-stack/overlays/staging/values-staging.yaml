@@ -1,0 +1,57 @@
+# Prometheus Stack — Staging Edge Profile
+# RAM-Budget: ~1.5 GB für Prometheus + ~200 MB Alertmanager + ~150 MB Operator
+# Total: ~2 GB → passt auf 4-8 GB Pi mit Reserve für Cilium/Grafana/etc.
+
+# Prometheus
+prometheus:
+  prometheusSpec:
+    retention: 3d                        # short retention für Pi
+    retentionSize: "5GB"
+    replicas: 1                          # NO HA on Pi (single node)
+    resources:
+      requests: { cpu: 200m, memory: 1Gi }
+      limits:   { cpu: 1, memory: 2Gi }
+    # Pi-only: kein remote-write zu prod (independent monitoring)
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: ""           # default storage on Pi (e.g. local-path-provisioner)
+          resources: { requests: { storage: 10Gi } }
+
+# Alertmanager
+alertmanager:
+  alertmanagerSpec:
+    replicas: 1                          # NO HA on Pi
+    retention: 72h
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits:   { cpu: 200m, memory: 256Mi }
+
+# Operator
+prometheusOperator:
+  resources:
+    requests: { cpu: 50m, memory: 100Mi }
+    limits:   { cpu: 200m, memory: 250Mi }
+
+# kube-state-metrics
+kube-state-metrics:
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits:   { cpu: 100m, memory: 128Mi }
+
+# node-exporter — DaemonSet, läuft auf Pi-Node
+prometheus-node-exporter:
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits:   { cpu: 50m, memory: 64Mi }
+
+# Disable was nicht-Pi-friendly
+grafana:
+  enabled: false                         # Grafana hat eigene App
+defaultRules:
+  create: true                            # Standard-Regeln behalten
+  rules:
+    etcd: false                          # Talos-managed
+    kubeProxy: false                     # Cilium replaces
+
+# kein OIDC/SSO komplex auf Edge
