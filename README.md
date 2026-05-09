@@ -27,49 +27,64 @@ everything under `kubernetes/`. The full bootstrap order:
 2. `kubectl apply -k kubernetes/bootstrap/` → installs Argo CD + Sealed Secrets + ApplicationSets.
 3. Argo CD takes over and syncs the rest of the repo automatically.
 
-## Folder Structure
+## 🗃️ Folder Structure
 
 ```
 .
-├── kubernetes
-│   ├── bootstrap
-│   ├── clusters
-│   ├── projects
-│   ├── applicationsets
-│   │   ├── tenants
-│   │   ├── infrastructure
-│   │   ├── platform
-│   │   ├── security
-│   │   └── edge
-│   ├── components
-│   ├── security
-│   │   ├── foundation
-│   │   ├── governance
-│   │   └── compliance
-│   ├── infrastructure
-│   │   ├── controllers
-│   │   ├── network
-│   │   ├── storage
-│   │   ├── observability
-│   │   └── vpn
-│   ├── platform
-│   │   ├── identity
-│   │   ├── data
-│   │   ├── messaging
-│   │   └── governance/tenants
-│   └── apps
-│       ├── base
-│       └── overlays/{dev,staging,prod}
+├── 📂 kubernetes                     # All cluster state (managed by Argo CD)
+│   │
+│   ├── 🚀 bootstrap                  # App-of-Apps root (kubectl apply -k bootstrap/)
+│   ├── 🌐 clusters                   # Cluster registrations + tier-labels
+│   ├── 🔐 projects                   # Argo CD AppProjects (RBAC + sync-windows)
+│   │
+│   ├── ⭐ applicationsets             # ApplicationSet-based deployment
+│   │   ├── 👥 tenants                #   1 AppSet per tenant (drova, n8n)
+│   │   ├── 🏗️  infrastructure         #   controllers, network, storage, observability
+│   │   ├── 🏛️  platform               #   data-stack, identity-stack
+│   │   ├── 🛡️  security               #   foundation + compliance
+│   │   └── 🍓 edge                   #   raspberry-pi staging cluster
+│   │
+│   ├── 🧩 components                 # Reusable Kustomize components
+│   │                                 #   (arm64-arch, short-retention, single-replica)
+│   │
+│   ├── 🛡️  security                   # Security & policies
+│   │   ├── foundation               #   network-policies, pod-security, rate-limiting, RBAC
+│   │   ├── governance               #   Kyverno + future runtime-security
+│   │   └── compliance               #   kube-bench, kubescape
+│   │
+│   ├── 🏗️  infrastructure             # Cluster-shared infrastructure
+│   │   ├── controllers              #   Argo CD, cert-manager, sealed-secrets, operators
+│   │   ├── network                  #   Cilium, Envoy Gateway, Cloudflare Tunnel, CoreDNS
+│   │   ├── storage                  #   Rook-Ceph, RGW (S3), Velero
+│   │   ├── observability            #   Prometheus, Loki, Tempo, Jaeger, Grafana, ES, Vector
+│   │   └── vpn                      #   NetBird (self-hosted Mesh-VPN)
+│   │
+│   ├── 🏛️  platform                   # Platform services
+│   │   ├── identity                 #   Keycloak (OIDC IdP, HA 3-replicas), LLDAP
+│   │   ├── data                     #   CNPG Postgres, Redis, CloudBeaver
+│   │   ├── messaging                #   Strimzi Kafka clusters
+│   │   └── governance/tenants       #   Per-tenant RBAC (drova/, oms/, ...)
+│   │
+│   └── 👤 apps                       # User-facing applications
+│       ├── base                     #   Tenant-shared manifests
+│       └── overlays/{dev,staging,prod}  # Environment-specific patches
 │
-├── tofu
-│   ├── bootstrap
-│   ├── talos
-│   └── gitlab
+├── 🧱 tofu                           # OpenTofu (Terraform fork) — Infrastructure
+│   ├── bootstrap                    #   Sealed-secrets cert + key bootstrap
+│   ├── talos                        #   Talos machine-configs + inline-manifests
+│   └── gitlab                       #   GitLab VM
 │
-└── scripts
-    ├── identity
-    └── upgrades
+└── ⚙️  scripts                        # Operations scripts
+    ├── identity                     #   onboard-user, kubeconfig-oidc
+    └── upgrades                     #   pre-upgrade snapshot + post-upgrade-verify
 ```
+
+### 🚦 GitOps Pattern
+
+The cluster uses **11 ApplicationSets** for selective multi-cluster deployment:
+- **Multi-Cluster-Ready** — new cluster registers with `<tier>.tier=enabled` labels → AppSet auto-generates apps
+- **Tenant-Encapsulation** — each tenant (Drova, n8n) managed by **1 AppSet** instead of 4 single Applications
+- **Edge-Selective** — Raspberry-Pi staging cluster gets only light-workloads (Cilium + Prom + Grafana), not heavy stuff like Loki/Tempo/Kafka
 
 ## 📦 Applications
 
