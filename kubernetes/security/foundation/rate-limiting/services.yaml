@@ -24,6 +24,12 @@ spec:
 ---
 # ArgoCD — UI ist polling-heavy (status pro App alle 10s × 65 Apps = ~400/min minimum).
 # 2000/min gibt Headroom für UI-Navigation + Concurrent-User + WebSocket-Heartbeats.
+#
+# StickySession via ConsistentHash CF-Connecting-IP:
+# Verhindert "data length is less than nonce size" Fehler bei 2+ argocd-server Replicas.
+# OIDC-Session wird auf einem Pod erstellt — wenn nächster Request auf anderem Pod landet,
+# kann session-cookie nicht entschlüsselt werden (selbst mit shared Redis race-condition möglich).
+# Sticky-Session pinned User auf einen Pod → Session konsistent.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:
@@ -34,6 +40,12 @@ spec:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
       name: argocd
+  loadBalancer:
+    type: ConsistentHash
+    consistentHash:
+      type: Header
+      header:
+        name: CF-Connecting-IP
   rateLimit:
     type: Local
     local:
