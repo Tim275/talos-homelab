@@ -1,0 +1,58 @@
+# Storage Stack — 1 ApplicationSet ersetzt 5 separate Application-CRs
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: storage-stack
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    infrastructure.domain: storage
+    team: timour
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  storage.tier: enabled
+          - list:
+              elements:
+                - { component: rook-ceph,                appName: rook-ceph,                appProject: infrastructure, repoURL: https://github.com/Tim275/talos-homelab,     path: kubernetes/infrastructure/storage/rook-ceph/overlays/prod,     namespace: rook-ceph,   wave: "3" }
+                - { component: rook-ceph-rgw,            appName: rook-ceph-rgw,            appProject: infrastructure, repoURL: https://github.com/Tim275/talos-homelab,     path: kubernetes/infrastructure/storage/radosgateway/overlays/prod,  namespace: rook-ceph,   wave: "4" }
+                - { component: csi-snapshot-controller,  appName: csi-snapshot-controller,  appProject: storage,        repoURL: https://github.com/Tim275/talos-homelab.git, path: kubernetes/infrastructure/storage/csi-drivers/overlays/prod,   namespace: kube-system, wave: "3" }
+                - { component: velero,                   appName: velero,                   appProject: infrastructure, repoURL: https://github.com/Tim275/talos-homelab,     path: kubernetes/infrastructure/storage/velero/overlays/prod,        namespace: velero,      wave: "5" }
+                # Note: velero-ui ist Helm-Chart Application (chart-source statt path) — bleibt standalone
+  template:
+    metadata:
+      name: '{{.appName}}'
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        infrastructure.domain: storage
+        infrastructure.component: '{{.component}}'
+        team: timour
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{.wave}}'
+    spec:
+      project: '{{.appProject}}'
+      source:
+        repoURL: '{{.repoURL}}'
+        targetRevision: HEAD
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated: { prune: true, selfHeal: true }
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }

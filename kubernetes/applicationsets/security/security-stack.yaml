@@ -1,0 +1,58 @@
+# Security Stack — 1 ApplicationSet ersetzt 2 separate Application-CRs
+# foundation, compliance
+# Note: kyverno wird von 'security-governance' AppSet (governance-app.yaml) gemanaged
+#       → es bleibt aktiv für zukünftige governance-Komponenten (falco, kubescape, ...)
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: security-stack
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    security.layer: stack
+    team: timour
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  argocd.argoproj.io/secret-type: cluster
+          - list:
+              elements:
+                - { component: foundation,  appName: security-foundation,  path: kubernetes/security/foundation,  wave: "0" }
+                - { component: compliance,  appName: security-compliance,  path: kubernetes/security/compliance,  wave: "1" }
+  template:
+    metadata:
+      name: '{{.appName}}'
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        security.layer: stack
+        security.component: '{{.component}}'
+        team: timour
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{.wave}}'
+    spec:
+      project: security
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: HEAD
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: argocd
+      syncPolicy:
+        automated: { prune: true, selfHeal: true }
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }
