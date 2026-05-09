@@ -43,8 +43,45 @@ cluster:
       # API server stability fixes only
       max-requests-inflight: "400"
       max-mutating-requests-inflight: "200"
-      # NOTE: OIDC-Flags werden MANUELL via `talosctl patch machineconfig --patch @oidc-apiserver-patch.yaml`
-      # gesetzt, NICHT hier ins template (Phase 8). Siehe CLAUDE.md "Phase 8 — kubectl OIDC".
+
+      # ═══════════════════════════════════════════════════════════════════
+      # ║  OIDC-INTEGRATION mit KEYCLOAK (Phase 8 — kubectl-OIDC-Login)   ║
+      # ║                                                                 ║
+      # ║  Battle-tested 2026-05-09: war zuvor NUR via `talosctl patch`   ║
+      # ║  live → IaC-Drift → bei tofu-apply weg.                         ║
+      # ║  → Jetzt permanent in IaC für Cluster-Recreate-Resilience.      ║
+      # ║                                                                 ║
+      # ║  CHICKEN-AND-EGG bei FRESH-BOOTSTRAP — KEIN echtes Problem:     ║
+      # ║                                                                 ║
+      # ║   t=0  tofu apply → Talos boots                                 ║
+      # ║        kube-apiserver startet, versucht OIDC-discovery zu KC    ║
+      # ║        DNS schlägt fehl (CoreDNS noch nicht up)                 ║
+      # ║        → kube-apiserver loggt WARNING, läuft trotzdem weiter    ║
+      # ║        → admin-cert-auth (X.509) funktioniert sofort            ║
+      # ║                                                                 ║
+      # ║   t=5  ArgoCD bootstrap → CoreDNS + KC deployed                 ║
+      # ║                                                                 ║
+      # ║   t=10 First kubectl-OIDC-Login Versuch                         ║
+      # ║        kube-apiserver fetcht JWKS lazy from KC                  ║
+      # ║        → OIDC funktioniert ab hier                              ║
+      # ║                                                                 ║
+      # ║  K8s-Spec: OIDC-discovery ist non-blocking on boot. Kein Risk.  ║
+      # ║                                                                 ║
+      # ║  Bei Cluster-Crash (KC dauerhaft down):                         ║
+      # ║   → break-glass-kubeconfig (X.509 admin-cert, in 1Password)     ║
+      # ║   → bypass OIDC komplett                                        ║
+      # ║                                                                 ║
+      # ║  Bei Issuer-URL-Change (Migration KC → Okta):                   ║
+      # ║   → diese 6 Werte ändern → tofu apply → kube-apiserver-restart  ║
+      # ║                                                                 ║
+      # ║  Distribution-portable Werte (auch für vanilla/k3s/RKE2 gleich) ║
+      # ═══════════════════════════════════════════════════════════════════
+      oidc-issuer-url: https://iam.timourhomelab.org/realms/kubernetes
+      oidc-client-id: kubernetes
+      oidc-username-claim: preferred_username
+      oidc-username-prefix: "oidc:"
+      oidc-groups-claim: groups
+      oidc-groups-prefix: "oidc-grp:"
     auditPolicy:
       apiVersion: audit.k8s.io/v1
       kind: Policy
