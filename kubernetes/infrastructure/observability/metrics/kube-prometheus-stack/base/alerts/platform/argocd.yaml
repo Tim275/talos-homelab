@@ -142,17 +142,44 @@ spec:
 
         - alert: ArgoCDApplicationMissing
           expr: argocd_app_info{health_status="Missing"} == 1
-          for: 5m
+          for: 10m
           labels:
-            severity: info
-            priority: P3
+            severity: critical
+            priority: P1
             component: gitops
           annotations:
-            summary: "Application {{ $labels.name }} resources missing"
-            description: "ArgoCD Application {{ $labels.name }} has missing resources"
-            impact: "Application components not deployed"
+            summary: "Application {{ $labels.name }} MISSING (resources gone)"
+            description: "ArgoCD Application {{ $labels.name }} has missing resources for 10+ min"
+            impact: "Application components not deployed — bootstrap likely never ran or got pruned"
+            action: "kubectl get application {{ $labels.name }} -n argocd -o yaml; trigger sync if needed"
             application: "{{ $labels.name }}"
             project: "{{ $labels.project }}"
+
+        - alert: ArgoCDApplicationOutOfSyncCritical
+          expr: argocd_app_info{sync_status!="Synced", name!~"druid|druid-operator"} == 1
+          for: 6h
+          labels:
+            severity: warning
+            priority: P2
+            component: gitops
+          annotations:
+            summary: "Application {{ $labels.name }} OutOfSync >6h (forgotten drift)"
+            description: "Long-term drift means selfHeal is not catching this — investigate"
+            application: "{{ $labels.name }}"
+
+        - alert: LLDAPBootstrapCronJobFailing
+          expr: |
+            (time() - kube_cronjob_status_last_successful_time{namespace="lldap",cronjob="lldap-bootstrap"}) > 10800
+            or absent(kube_cronjob_status_last_successful_time{namespace="lldap",cronjob="lldap-bootstrap"})
+          for: 30m
+          labels:
+            severity: critical
+            priority: P1
+            component: identity
+          annotations:
+            summary: "LLDAP bootstrap CronJob hasn't succeeded in 3h"
+            description: "User reconciliation broken — Keycloak login may fail"
+            action: "kubectl get cronjob -n lldap; kubectl logs -n lldap -l cronjob=lldap-bootstrap"
 
         - alert: ArgoCDApplicationSuspended
           expr: argocd_app_info{health_status="Suspended"} == 1
