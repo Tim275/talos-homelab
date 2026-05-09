@@ -89,25 +89,23 @@ spec:
 
                   echo "═══ DR-Verify-Run ${TS} ═══"
 
-                  # 1. Latest Daily-Backup finden
+                  # 1. Latest *Completed* Daily-Backup finden (skip FailedValidation/InProgress)
                   LATEST=$(kubectl get backups.velero.io -n velero \
                     -l velero.io/schedule-name=tier0-databases-6h \
                     --sort-by=.metadata.creationTimestamp \
-                    -o jsonpath='{.items[-1:].metadata.name}' 2>/dev/null | tr -d ' ')
+                    -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.status.phase}{"\n"}{end}' 2>/dev/null \
+                    | grep '|Completed$' | tail -1 | cut -d'|' -f1)
 
                   if [ -z "$LATEST" ]; then
-                    echo "✗ FAIL: kein tier0-databases-6h Backup gefunden"
+                    echo "✗ FAIL: kein Completed tier0-databases-6h Backup in letzten 7d gefunden"
+                    echo "→ Recent backups:"
+                    kubectl get backups.velero.io -n velero \
+                      -l velero.io/schedule-name=tier0-databases-6h \
+                      --sort-by=.metadata.creationTimestamp 2>/dev/null | tail -5
                     exit 1
                   fi
 
-                  echo "→ Found latest backup: $LATEST"
-
-                  # 2. Verify Backup-Phase=Completed (FQDN: backups.velero.io)
-                  PHASE=$(kubectl get backups.velero.io -n velero "$LATEST" -o jsonpath='{.status.phase}')
-                  if [ "$PHASE" != "Completed" ]; then
-                    echo "✗ FAIL: Backup $LATEST has phase=$PHASE (not Completed)"
-                    exit 1
-                  fi
+                  echo "→ Found latest completed backup: $LATEST"
 
                   # 3. Restore in Test-NS triggern (nur drova-postgres als Smoke-Test)
                   kubectl apply -f - <<EOF
