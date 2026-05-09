@@ -1,0 +1,86 @@
+# n8n Tenant — 1 ApplicationSet ersetzt 3 separate Application-CRs
+#
+# Vorher: n8n-prod-cnpg, redis-n8n, n8n-prod (verstreut über data + apps)
+# Nachher: 1 AppSet, 3 generated Apps mit owner=n8n-tenant
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: n8n-tenant
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    platform.homelab/tenant: n8n
+    team: timour
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  n8n.tier: enabled
+          - list:
+              elements:
+                - component: postgres
+                  appName: n8n-prod-cnpg
+                  appProject: platform
+                  repoURL: https://github.com/Tim275/talos-homelab
+                  path: kubernetes/platform/data/n8n-prod-cnpg/overlays/prod
+                  namespace: n8n-prod
+                  wave: "10"
+                - component: redis
+                  appName: redis-n8n
+                  appProject: platform
+                  repoURL: https://github.com/Tim275/talos-homelab
+                  path: kubernetes/platform/data/redis-n8n/overlays/prod
+                  namespace: n8n-prod
+                  wave: "11"
+                - component: app
+                  appName: n8n-prod
+                  appProject: apps
+                  repoURL: https://github.com/Tim275/talos-homelab
+                  path: kubernetes/apps/overlays/prod/n8n
+                  namespace: n8n-prod
+                  wave: "20"
+  template:
+    metadata:
+      name: '{{.appName}}'
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        platform.homelab/tenant: n8n
+        platform.homelab/component: '{{.component}}'
+        team: timour
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{.wave}}'
+    spec:
+      project: '{{.appProject}}'
+      source:
+        repoURL: '{{.repoURL}}'
+        targetRevision: HEAD
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: '{{.namespace}}'
+      ignoreDifferences:
+        - group: bitnami.com
+          kind: SealedSecret
+          jsonPointers:
+            - /metadata/annotations
+            - /metadata/labels
+        - group: postgresql.cnpg.io
+          kind: Cluster
+          managedFieldsManagers: [cnpg-controller-manager]
+      syncPolicy:
+        automated: { prune: true, selfHeal: true }
+        syncOptions:
+          - CreateNamespace=false
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }
