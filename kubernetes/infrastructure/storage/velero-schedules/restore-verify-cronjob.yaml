@@ -102,8 +102,8 @@ spec:
 
                   echo "→ Found latest backup: $LATEST"
 
-                  # 2. Verify Backup-Phase=Completed
-                  PHASE=$(kubectl get backup -n velero "$LATEST" -o jsonpath='{.status.phase}')
+                  # 2. Verify Backup-Phase=Completed (FQDN: backups.velero.io)
+                  PHASE=$(kubectl get backups.velero.io -n velero "$LATEST" -o jsonpath='{.status.phase}')
                   if [ "$PHASE" != "Completed" ]; then
                     echo "✗ FAIL: Backup $LATEST has phase=$PHASE (not Completed)"
                     exit 1
@@ -125,16 +125,17 @@ spec:
                     restorePVs: false
                   EOF
 
+                  ERROR_REASON=""
                   # 4. Wait for restore to complete (max 10min)
                   for i in $(seq 1 60); do
-                    PHASE=$(kubectl get restore -n velero "$RESTORE" -o jsonpath='{.status.phase}' 2>/dev/null)
+                    PHASE=$(kubectl get restores.velero.io -n velero "$RESTORE" -o jsonpath='{.status.phase}' 2>/dev/null)
                     if [ "$PHASE" = "Completed" ]; then
                       echo "✓ Restore Completed"
                       break
                     fi
                     if [ "$PHASE" = "PartiallyFailed" ] || [ "$PHASE" = "Failed" ]; then
                       echo "✗ FAIL: Restore phase=$PHASE"
-                      kubectl get restore -n velero "$RESTORE" -o yaml | grep -A 5 "errors:" | head -10
+                      kubectl get restores.velero.io -n velero "$RESTORE" -o yaml | grep -A 5 "errors:" | head -10
                       ERROR_REASON="phase=$PHASE"
                       break
                     fi
@@ -142,7 +143,7 @@ spec:
                   done
 
                   # 5. Cleanup
-                  kubectl delete restore -n velero "$RESTORE" --ignore-not-found=true >/dev/null 2>&1
+                  kubectl delete restores.velero.io -n velero "$RESTORE" --ignore-not-found=true >/dev/null 2>&1
                   kubectl delete ns "$TEST_NS" --ignore-not-found=true >/dev/null 2>&1
 
                   # 6. Final verdict — exit code triggers KubeJobFailed Prometheus alert
