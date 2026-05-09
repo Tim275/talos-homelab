@@ -1,0 +1,171 @@
+# Auto-Verify Nightly Restore — Schrödinger's Backup eliminieren.
+#
+# Backup das nicht restorebar ist = kein Backup. Dieser CronJob restored täglich
+# um 04:00 UTC vom letzten Backup in Test-Namespace, validiert Restore.Phase=Completed,
+# cleanup, sendet Slack-Alert wenn Restore fehlschlägt.
+#
+# Backup-Schedule: tier0-databases-6h (alle 6h) → Backup-Name pattern: tier0-databases-6h-<TIMESTAMP>
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: velero-restore-verify
+  namespace: velero
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: velero-restore-verify
+rules:
+  - apiGroups: ["velero.io"]
+    resources: [backups, restores]
+    verbs: [get, list, create, delete]
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [get, create, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: velero-restore-verify
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: velero-restore-verify
+subjects:
+  - kind: ServiceAccount
+    name: velero-restore-verify
+    namespace: velero
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: velero-restore-verify
+  namespace: velero
+  labels:
+    app.kubernetes.io/name: velero-restore-verify
+    app.kubernetes.io/part-of: backup-validation
+spec:
+  schedule: "0 4 * * *"          # täglich 04:00 UTC (nach 03:00 Daily-Backup)
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 7      # 7 days history für DR-Drill-Tracking
+  startingDeadlineSeconds: 600
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app: velero-restore-verify
+        spec:
+          serviceAccountName: velero-restore-verify
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: verify
+              image: bitnami/kubectl:1.33.0
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              env:
+                - name: SLACK_WEBHOOK
+                  valueFrom:
+                    secretKeyRef:
+                      name: slack-webhook-url
+                      namespace: monitoring
+                      key: webhook-url
+                      optional: true
+              volumeMounts:
+                - { name: tmp, mountPath: /tmp }
+              command: [/bin/bash, -c]
+              args:
+                - |
+                  set -uo pipefail
+                  TS=$(date +%Y%m%d-%H%M)
+                  TEST_NS="dr-verify-${TS}"
+                  RESTORE="dr-verify-${TS}"
+
+                  echo "═══ DR-Verify-Run ${TS} ═══"
+
+                  # 1. Latest Daily-Backup finden
+                  LATEST=$(kubectl get backups.velero.io -n velero \
+                    -l velero.io/schedule-name=tier0-databases-6h \
+                    --sort-by=.metadata.creationTimestamp \
+                    -o jsonpath='{.items[-1:].metadata.name}' 2>/dev/null | tr -d ' ')
+
+                  if [ -z "$LATEST" ]; then
+                    echo "✗ FAIL: kein tier0-databases-6h Backup gefunden"
+                    exit 1
+                  fi
+
+                  echo "→ Found latest backup: $LATEST"
+
+                  # 2. Verify Backup-Phase=Completed
+                  PHASE=$(kubectl get backup -n velero "$LATEST" -o jsonpath='{.status.phase}')
+                  if [ "$PHASE" != "Completed" ]; then
+                    echo "✗ FAIL: Backup $LATEST has phase=$PHASE (not Completed)"
+                    exit 1
+                  fi
+
+                  # 3. Restore in Test-NS triggern (nur drova-postgres als Smoke-Test)
+                  kubectl apply -f - <<EOF
+                  apiVersion: velero.io/v1
+                  kind: Restore
+                  metadata:
+                    name: ${RESTORE}
+                    namespace: velero
+                  spec:
+                    backupName: ${LATEST}
+                    includedNamespaces: [drova]
+                    namespaceMapping:
+                      drova: ${TEST_NS}
+                    includedResources: [secrets, configmaps]
+                    restorePVs: false
+                  EOF
+
+                  # 4. Wait for restore to complete (max 10min)
+                  for i in $(seq 1 60); do
+                    PHASE=$(kubectl get restore -n velero "$RESTORE" -o jsonpath='{.status.phase}' 2>/dev/null)
+                    if [ "$PHASE" = "Completed" ]; then
+                      echo "✓ Restore Completed"
+                      break
+                    fi
+                    if [ "$PHASE" = "PartiallyFailed" ] || [ "$PHASE" = "Failed" ]; then
+                      echo "✗ FAIL: Restore phase=$PHASE"
+                      kubectl get restore -n velero "$RESTORE" -o yaml | grep -A 5 "errors:" | head -10
+                      ERROR_REASON="phase=$PHASE"
+                      break
+                    fi
+                    sleep 10
+                  done
+
+                  # 5. Cleanup
+                  kubectl delete restore -n velero "$RESTORE" --ignore-not-found=true >/dev/null 2>&1
+                  kubectl delete ns "$TEST_NS" --ignore-not-found=true >/dev/null 2>&1
+
+                  # 6. Final verdict + Slack-Alert
+                  if [ "$PHASE" = "Completed" ]; then
+                    echo "═══ ✓ DR-Verify SUCCESS for backup $LATEST ═══"
+                    exit 0
+                  else
+                    echo "═══ ✗ DR-Verify FAILED ($ERROR_REASON) for backup $LATEST ═══"
+                    if [ -n "${SLACK_WEBHOOK:-}" ]; then
+                      curl -fsSL -X POST -H 'Content-Type: application/json' \
+                        --data "{\"text\":\":fire: *DR-Verify FAILED*\\nBackup: \`$LATEST\`\\nReason: $ERROR_REASON\\nTime: $TS\"}" \
+                        "$SLACK_WEBHOOK" || true
+                    fi
+                    exit 1
+                  fi
+              resources:
+                requests: { cpu: 50m,  memory: 128Mi }
+                limits:   { cpu: 500m, memory: 256Mi }
+          volumes:
+            - name: tmp
+              emptyDir: {}
