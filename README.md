@@ -31,22 +31,62 @@ everything under `kubernetes/`. The full bootstrap order:
 
 ```
 .
-├── 📂 kubernetes               # Kubernetes manifests
-│   ├── 📂 bootstrap            # Bootstrap config
-│   ├── 📂 clusters             # Cluster registrations
-│   ├── 📂 projects             # Argo CD projects
-│   ├── 📂 applicationsets      # Bootstrapping ApplicationSets
-│   ├── 📂 components           # Kustomize components
-│   ├── 📂 security             # Security & policies
-│   ├── 📂 infrastructure       # Infrastructure components
-│   ├── 📂 platform             # Platform services
-│   └── 📂 apps                 # Applications
-├── 📂 tools                    # Operator tooling
-└── 📂 tofu                     # Tofu configuration
-    ├── 📂 bootstrap            # Bootstrap config
-    ├── 📂 talos                # Talos configuration
-    └── 📂 gitlab               # GitLab VM
+├── 📂 kubernetes                          # All cluster state (managed by Argo CD)
+│   ├── 📂 bootstrap                       # App-of-Apps root (kubectl apply -k bootstrap/)
+│   ├── 📂 clusters                        # Cluster registrations + tier-labels for AppSet selectors
+│   ├── 📂 projects                        # Argo CD AppProjects (RBAC + sync-windows)
+│   ├── 📂 applicationsets                 # 🆕 ApplicationSet-based deployment (replaces 39 single Apps)
+│   │   ├── 📂 tenants                     #   drova-tenant, n8n-tenant (1 AppSet per tenant)
+│   │   ├── 📂 infrastructure              #   controllers, network, storage, observability stacks
+│   │   ├── 📂 platform                    #   data-stack, identity-stack
+│   │   ├── 📂 security                    #   security-stack (foundation + compliance)
+│   │   └── observability-set.yaml         #   legacy: kube-prometheus-stack only
+│   ├── 📂 components                      # Reusable Kustomize components (arm64-arch, short-retention, single-replica)
+│   ├── 📂 security                        # Security & policies
+│   │   ├── 📂 foundation                  #   network-policies, pod-security, rate-limiting, RBAC
+│   │   ├── 📂 governance                  #   Kyverno + future runtime-security
+│   │   └── 📂 compliance                  #   kube-bench, kubescape
+│   ├── 📂 infrastructure                  # Cluster-shared infrastructure
+│   │   ├── 📂 controllers                 #   Argo CD, cert-manager, sealed-secrets, operators
+│   │   ├── 📂 network                     #   Cilium, Envoy Gateway, Cloudflare Tunnel, CoreDNS
+│   │   ├── 📂 storage                     #   Rook-Ceph, RGW (S3), Velero
+│   │   ├── 📂 observability               #   Prometheus, Loki, Tempo, Jaeger, Grafana, ES, Vector
+│   │   └── 📂 vpn                         #   NetBird (self-hosted Mesh-VPN)
+│   ├── 📂 platform                        # Platform services
+│   │   ├── 📂 identity                    #   Keycloak (OIDC IdP), LLDAP (User-DB)
+│   │   ├── 📂 data                        #   CNPG Postgres, Redis, CloudBeaver
+│   │   ├── 📂 messaging                   #   Strimzi Kafka clusters
+│   │   └── 📂 governance/tenants          #   Per-tenant RBAC (drova/, oms/, ...)
+│   ├── 📂 apps                            # User-facing applications (base/overlays)
+│   │   ├── 📂 base                        #   Tenant-shared manifests (n8n, audiobookshelf, ...)
+│   │   └── 📂 overlays/{dev,staging,prod} #   Environment-specific patches
+│   └── 📄 PARKED-INDEX.md                 # 🆕 Index parked components (Istio, Longhorn, MinIO, ...)
+│
+├── 📂 tools                               # Operator tooling
+│
+├── 📂 tofu                                # OpenTofu (Terraform fork)
+│   ├── 📂 bootstrap                       #   Sealed-secrets cert + key bootstrap
+│   ├── 📂 talos                           #   Talos machine-configs + inline-manifests
+│   └── 📂 gitlab                          #   GitLab VM
+│
+└── 📂 scripts                             # Operations scripts
+    ├── 📂 identity                        #   onboard-user, kubeconfig-oidc
+    └── 📂 upgrades                        #   pre-upgrade snapshot + post-upgrade-verify
 ```
+
+### 🚦 GitOps Pattern: ApplicationSets over single Applications
+
+The cluster uses **11 ApplicationSets** (instead of 65 individual Applications) for:
+- **Multi-Cluster-Ready:** new cluster registers with `<tier>.tier=enabled` labels → AppSet auto-generates apps
+- **1 Source-of-Truth per Tenant:** Drova has 4 components (postgres + kafka + redis + app) managed by 1 `drova-tenant.yaml`
+- **Reduced PR-Surface:** Drova-version-bump = 1 file changed instead of 4
+- **Consistent Naming:** generated apps follow `<component>-<cluster>` pattern
+
+### 🅿️ Parked Components Pattern
+
+Components removed from active deployment (Istio, Longhorn, MinIO, ...) keep their folders + a `PARKED.md`
+with restore instructions. ArgoCD doesn't sync them, but git preserves them. See `PARKED-INDEX.md` for the
+master list.
 
 ## 📦 Applications
 
