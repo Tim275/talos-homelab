@@ -50,13 +50,11 @@ kind: Pod
 metadata: { name: $HELPER, namespace: lldap }
 spec:
   restartPolicy: Never
-  securityContext: { runAsNonRoot: true, runAsUser: 1000, seccompProfile: { type: RuntimeDefault }}
   containers:
     - name: helper
       image: alpine:3.23
       command: ["sleep", "180"]
       resources: { requests: { cpu: "10m", memory: "32Mi" }, limits: { cpu: "200m", memory: "128Mi" }}
-      securityContext: { allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 1000, capabilities: { drop: ["ALL"] }}
 EOF
 kubectl wait pod $HELPER -n lldap --for=condition=Ready --timeout=60s >/dev/null
 
