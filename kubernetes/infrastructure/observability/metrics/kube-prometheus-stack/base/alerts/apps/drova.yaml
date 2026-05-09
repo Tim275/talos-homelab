@@ -56,6 +56,107 @@ spec:
             summary: "Drova {{ $labels.service_name }}: gRPC error rate >5%"
             description: "gRPC errors {{ $value | humanizePercentage }} for service {{ $labels.service_name }}."
 
+        # NEW: gRPC P99-Latency for trip/driver-service inter-service calls
+        - alert: DrovaGrpcP99LatencyHigh
+          expr: |
+            histogram_quantile(0.99,
+              sum by (service_name, le) (rate(rpc_server_call_duration_seconds_bucket{service_name=~"trip-service|driver-service"}[5m]))
+            ) > 1
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: apps
+            tenant: drova
+          annotations:
+            summary: "Drova {{ $labels.service_name }} gRPC p99 >1s"
+            description: "gRPC p99 latency {{ $value }}s for {{ $labels.service_name }}. Inter-service slow."
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail?var-service={{ $labels.service_name }}"
+
+        - alert: DrovaGrpcP99LatencyCritical
+          expr: |
+            histogram_quantile(0.99,
+              sum by (service_name, le) (rate(rpc_server_call_duration_seconds_bucket{service_name=~"trip-service|driver-service"}[5m]))
+            ) > 5
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: apps
+            tenant: drova
+          annotations:
+            summary: "Drova {{ $labels.service_name }} gRPC p99 >5s — CRITICAL"
+            description: "Severe inter-service slowness: {{ $labels.service_name }} p99 = {{ $value }}s"
+
+    # ─────────────────────────────────────────────────────────────────────
+    # KAFKA INTEGRATION — Detect "Not Leader For Partition" loops
+    # ─────────────────────────────────────────────────────────────────────
+    - name: drova-kafka-integration
+      interval: 1m
+      rules:
+        # Detect Kafka-Consumer stuck (zero messages consumed despite active topic)
+        - alert: DrovaKafkaConsumerStuck
+          expr: |
+            sum by (consumergroup, topic) (
+              kafka_consumergroup_lag{consumergroup=~"payment-service-.*|trip-service-.*|driver-service-.*|chat-service-.*"}
+            ) > 100
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: apps
+            tenant: drova
+          annotations:
+            summary: "Drova consumer-group {{ $labels.consumergroup }} lag >100 on {{ $labels.topic }}"
+            description: "Consumer cannot keep up OR is stuck (e.g. NotLeaderForPartition loop). Lag={{ $value }}."
+            action: "kubectl logs -n drova deploy/<service> | grep -i kafka  # check for 'Not Leader' loop"
+
+        # Detect Kafka-Consumer with NO consumption (suggests Not Leader / broken)
+        - alert: DrovaKafkaConsumerNoActivity
+          expr: |
+            sum by (consumergroup, topic) (rate(kafka_consumergroup_current_offset{consumergroup=~"payment-.*|trip-.*|driver-.*"}[15m])) == 0
+            and on (consumergroup, topic) sum by (consumergroup, topic) (kafka_topic_partitions{topic=~"payment.*|trip.*|driver.*"}) > 0
+          for: 30m
+          labels:
+            severity: critical
+            priority: P1
+            component: apps
+            tenant: drova
+          annotations:
+            summary: "Drova consumer {{ $labels.consumergroup }} consumed 0 messages from {{ $labels.topic }} in 30min"
+            description: "Either no traffic OR consumer is broken (e.g. Not-Leader-For-Partition stuck loop). Check pod logs."
+
+    # ─────────────────────────────────────────────────────────────────────
+    # OTel SILENT-BROKEN DETECTION — Service emits 0 spans = broken instrumentation
+    # ─────────────────────────────────────────────────────────────────────
+    - name: drova-tracing-health
+      interval: 5m
+      rules:
+        - alert: DrovaServiceNoSpansEmitted
+          expr: |
+            (
+              sum by (service_name) (
+                rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|user-service|chat-service"}[15m])
+              ) == 0
+            )
+            or
+            (
+              sum by (service_name) (
+                rate(rpc_server_call_duration_seconds_count{service_name=~"trip-service|driver-service"}[15m])
+              ) == 0
+            )
+          for: 30m
+          labels:
+            severity: warning
+            priority: P3
+            component: apps
+            tenant: drova
+            kind: silent-broken
+          annotations:
+            summary: "Drova {{ $labels.service_name }} emitted 0 spans in 15min"
+            description: "Service might be: (a) idle, (b) tracer init failed, (c) network blocking OTel-Collector. Verify via Jaeger UI."
+            action: "kubectl logs -n drova deploy/{{ $labels.service_name }} | grep -i 'tracer\\|otel'"
+
     - name: drova-availability
       interval: 1m
       rules:
