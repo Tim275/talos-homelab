@@ -1,0 +1,61 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: backstage-ingress
+  namespace: backstage
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: backstage
+  ingress:
+    # Public via Cloudflare Tunnel → Envoy Gateway
+    - fromEndpoints:
+        - matchLabels: { io.kubernetes.pod.namespace: gateway }
+        - matchLabels: { io.kubernetes.pod.namespace: cloudflared }
+      toPorts:
+        - ports: [{port: "7007", protocol: TCP}]
+    # Prometheus scrape
+    - fromEndpoints:
+        - matchLabels: { io.kubernetes.pod.namespace: monitoring }
+      toPorts:
+        - ports: [{port: "7007", protocol: TCP}]
+    # Kubelet probes
+    - fromEntities: [host]
+      toPorts: [{ports: [{port: "7007", protocol: TCP}]}]
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: backstage-egress
+  namespace: backstage
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: backstage
+  egress:
+    # PFLICHT: DNS
+    - toEndpoints:
+        - matchLabels: { io.kubernetes.pod.namespace: kube-system, k8s-app: kube-dns }
+      toPorts:
+        - ports: [{port: "53", protocol: UDP}, {port: "53", protocol: TCP}]
+          rules: { dns: [{matchPattern: "*"}] }
+    # Postgres (CNPG cluster intra-NS)
+    - toEndpoints:
+        - matchLabels: { io.kubernetes.pod.namespace: backstage, cnpg.io/cluster: backstage-db }
+      toPorts: [{ports: [{port: "5432", protocol: TCP}]}]
+    # Kubernetes API (für Plugin)
+    - toEntities: [kube-apiserver]
+      toPorts: [{ports: [{port: "6443", protocol: TCP}]}]
+    # ArgoCD intra-cluster
+    - toEndpoints:
+        - matchLabels: { io.kubernetes.pod.namespace: argocd }
+      toPorts: [{ports: [{port: "443", protocol: TCP}, {port: "8080", protocol: TCP}]}]
+    # External: GitHub-API, Keycloak via CF (FQDN-egress)
+    - toFQDNs:
+        - matchName: api.github.com
+        - matchPattern: "*.github.com"
+        - matchName: iam.timourhomelab.org
+        - matchName: argo.timourhomelab.org
+        - matchName: grafana.timourhomelab.org
+        - matchName: jaeger.timourhomelab.org
+      toPorts: [{ports: [{port: "443", protocol: TCP}]}]
