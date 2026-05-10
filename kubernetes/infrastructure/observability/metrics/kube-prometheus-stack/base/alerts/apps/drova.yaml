@@ -4,38 +4,8 @@ metadata:
   name: apps-drova
 spec:
   groups:
-    - name: drova-http
-      interval: 30s
-      rules:
-        - alert: DrovaHttpErrorRateHigh
-          expr: |
-            (
-              sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service",http_response_status_code=~"5.."}[5m]))
-              /
-              sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"api-gateway|chat-service|user-service"}[5m]))
-            ) > 0.05
-          for: 5m
-          labels:
-            severity: critical
-            component: apps
-            tenant: drova
-          annotations:
-            summary: "Drova {{ $labels.service_name }}: HTTP error rate >5%"
-            description: "Error rate {{ $value | humanizePercentage }} for service {{ $labels.service_name }}."
-
-        - alert: DrovaHttpP99LatencyHigh
-          expr: |
-            histogram_quantile(0.99,
-              sum by (service_name, le) (rate(http_server_request_duration_seconds_bucket{service_name=~"api-gateway|chat-service|user-service"}[5m]))
-            ) > 2
-          for: 10m
-          labels:
-            severity: warning
-            component: apps
-            tenant: drova
-          annotations:
-            summary: "Drova {{ $labels.service_name }}: P99 latency >2s"
-            description: "P99 latency {{ $value }}s for service {{ $labels.service_name }}."
+    # NOTE: drova-http group merged into drova.http (lower in this file) to remove
+    # duplicate Error+Latency-alerts. Single-source-of-truth for HTTP RED-method.
 
     - name: drova-grpc
       interval: 30s
@@ -196,7 +166,8 @@ spec:
             dashboard_url: "https://grafana.timourhomelab.org/d/drova-overview"
 
         - alert: DrovaPodCrashLooping
-          expr: rate(kube_pod_container_status_restarts_total{namespace="drova"}[5m]) * 60 > 0.5
+          # Filter: NUR Drova-Microservices (nicht postgres/kafka/redis-Pods im selben NS)
+          expr: rate(kube_pod_container_status_restarts_total{namespace="drova",container=~"api-gateway|user-service|trip-service|driver-service|chat-service|payment-service"}[5m]) * 60 > 0.5
           for: 5m
           labels:
             severity: critical
@@ -327,6 +298,63 @@ spec:
           annotations:
             summary: "Drova {{ $labels.service_name }} p99 >500ms"
             dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail?var-service={{ $labels.service_name }}"
+
+    # ─────────────────────────────────────────────────────────────────────
+    # PAYMENT-SERVICE — Kafka-Worker (no HTTP) → custom-coverage
+    # ─────────────────────────────────────────────────────────────────────
+    - name: drova-payment-service
+      interval: 1m
+      rules:
+        # payment-service should ALWAYS be consuming from payment.* topics
+        # 0 consumption for >15min = stuck-loop OR upstream-broken
+        - alert: DrovaPaymentServiceConsumerStalled
+          expr: |
+            sum by (consumergroup) (rate(kafka_consumergroup_current_offset{consumergroup=~"payment-service.*"}[15m])) == 0
+          for: 15m
+          labels:
+            severity: critical
+            priority: P1
+            component: apps
+            tenant: drova
+            service: payment-service
+          annotations:
+            summary: "payment-service Kafka-Consumer 0 progress in 15min"
+            description: "Either no payment-events upstream OR consumer broken (Not-Leader-loop). Pod-Logs prüfen."
+            action: "kubectl logs -n drova deploy/payment-service --tail=50 | grep -iE 'kafka|leader|partition'"
+
+        # payment-service Pod absent (Deployment scaled to 0 OR all crashed)
+        - alert: DrovaPaymentServiceAbsent
+          expr: |
+            absent(kube_deployment_status_replicas_available{namespace="drova",deployment="payment-service"})
+            or
+            kube_deployment_status_replicas_available{namespace="drova",deployment="payment-service"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: P0
+            component: apps
+            tenant: drova
+            service: payment-service
+          annotations:
+            summary: "payment-service Deployment absent OR 0 replicas ready"
+            description: "Money-Pipeline DOWN. Customer-payments cannot be processed."
+
+        # payment-service span-emission stop = OTel-broken or pod dead
+        - alert: DrovaPaymentServiceNoSpans
+          expr: |
+            sum(rate(traces_spanmetrics_calls_total{service_name="payment-service"}[15m])) == 0
+            unless on() (kube_deployment_status_replicas_available{namespace="drova",deployment="payment-service"} == 0)
+          for: 30m
+          labels:
+            severity: warning
+            priority: P2
+            component: apps
+            tenant: drova
+            service: payment-service
+            kind: silent-broken
+          annotations:
+            summary: "payment-service emitted 0 traces in 30min (Pod is up)"
+            description: "OTel-tracer initialization may have failed. Verify via Jaeger UI."
 
         - alert: DrovaTrafficDropped
           expr: |
