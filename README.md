@@ -31,52 +31,43 @@ everything under `kubernetes/`. The full bootstrap order:
 
 ```
 .
-├── 📂 kubernetes                     # All cluster state (managed by Argo CD)
+├── 📂 kubernetes                  # All cluster state (managed by Argo CD)
 │   │
-│   ├── 🚀 bootstrap                  # App-of-Apps root (kubectl apply -k bootstrap/)
-│   ├── 🌐 clusters                   # Cluster registrations + tier-labels
-│   ├── 🔐 projects                   # Argo CD AppProjects (RBAC + sync-windows)
-│   │
-│   ├── ⭐ applicationsets             # ApplicationSet-based deployment
-│   │   ├── 👥 tenants                #   1 AppSet per tenant (drova, n8n)
-│   │   ├── 🏗️  infrastructure         #   controllers, network, storage, observability
-│   │   ├── 🏛️  platform               #   data-stack, identity-stack
-│   │   ├── 🛡️  security               #   foundation + compliance
-│   │   └── 🍓 edge                   #   raspberry-pi staging cluster
-│   │
-│   ├── 🧩 components                 # Reusable Kustomize components
-│   │                                 #   (arm64-arch, short-retention, single-replica)
-│   │
-│   ├── 🛡️  security                   # Security & policies
-│   │   ├── foundation               #   network-policies, pod-security, rate-limiting, RBAC
-│   │   ├── governance               #   Kyverno + future runtime-security
-│   │   └── compliance               #   kube-bench, kubescape
-│   │
-│   ├── 🏗️  infrastructure             # Cluster-shared infrastructure
-│   │   ├── controllers              #   Argo CD, cert-manager, sealed-secrets, operators
-│   │   ├── network                  #   Cilium, Envoy Gateway, Cloudflare Tunnel, CoreDNS
-│   │   ├── storage                  #   Rook-Ceph, RGW (S3), Velero
-│   │   ├── observability            #   Prometheus, Loki, Tempo, Jaeger, Grafana, ES, Vector
-│   │   └── vpn                      #   NetBird (self-hosted Mesh-VPN)
-│   │
-│   ├── 🏛️  platform                   # Platform services
-│   │   ├── identity                 #   Keycloak (OIDC IdP, HA 3-replicas), LLDAP
-│   │   ├── data                     #   CNPG Postgres, Redis, CloudBeaver
-│   │   ├── messaging                #   Strimzi Kafka clusters
-│   │   └── governance/tenants       #   Per-tenant RBAC (drova/, oms/, ...)
-│   │
-│   └── 👤 apps                       # User-facing applications
-│       ├── base                     #   Tenant-shared manifests
-│       └── overlays/{dev,staging,prod}  # Environment-specific patches
+│   ├── bootstrap                 # App-of-Apps root (kubectl apply -k bootstrap/)
+│   ├── clusters                  # Cluster registrations + tier-labels
+│   ├── projects                  # Argo CD AppProjects (RBAC + sync-windows)
+│   ├── applicationsets           # ApplicationSet-based deployment
+│   │   ├── tenants               #   1 AppSet per tenant (drova, n8n)
+│   │   ├── infrastructure        #   controllers, network, storage, observability
+│   │   ├── platform              #   data-stack, identity-stack
+│   │   ├── security              #   foundation + compliance
+│   │   └── edge                  #   raspberry-pi staging cluster
+│   ├── components                # Reusable Kustomize components
+│   │                             #   (arm64-arch, short-retention, single-replica)
+│   ├── security                  # Network-policies, RBAC, Kyverno, compliance
+│   ├── infrastructure            # Cluster-shared services
+│   │   ├── controllers           #   Argo CD, cert-manager, sealed-secrets, operators
+│   │   ├── network               #   Cilium, Envoy Gateway, Cloudflare Tunnel, CoreDNS
+│   │   ├── storage               #   Rook-Ceph, RGW (S3), Velero
+│   │   ├── observability         #   Prometheus, Loki, Tempo, Jaeger, Grafana, ES, Vector
+│   │   └── vpn                   #   Tailscale + NetBird (self-hosted Mesh-VPN)
+│   ├── platform                  # Platform services
+│   │   ├── identity              #   Keycloak (OIDC IdP, HA 3-replicas), LLDAP
+│   │   ├── data                  #   CNPG Postgres, Redis, CloudBeaver
+│   │   ├── messaging             #   Strimzi Kafka clusters
+│   │   └── governance/tenants    #   Per-tenant RBAC (drova, oms, ...)
+│   └── apps                      # User-facing applications
+│       ├── base                  #   Tenant-shared manifests
+│       └── overlays              #   Environment-specific patches (dev/staging/prod)
 │
-├── 🧱 tofu                           # OpenTofu (Terraform fork) — Infrastructure
-│   ├── bootstrap                    #   Sealed-secrets cert + key bootstrap
-│   ├── talos                        #   Talos machine-configs + inline-manifests
-│   └── gitlab                       #   GitLab VM
+├── 🧱 tofu                        # OpenTofu (Terraform fork) — Infrastructure
+│   ├── bootstrap                 #   Sealed-secrets cert + key bootstrap
+│   ├── talos                     #   Talos machine-configs + inline-manifests
+│   └── gitlab                    #   GitLab VM
 │
-└── ⚙️  scripts                        # Operations scripts
-    ├── identity                     #   onboard-user, kubeconfig-oidc
-    └── upgrades                     #   pre-upgrade snapshot + post-upgrade-verify
+└── ⚙️  scripts                     # Operations scripts
+    ├── identity                  #   onboard-user, kubeconfig-oidc
+    └── upgrades                  #   pre-upgrade snapshot + post-upgrade-verify
 ```
 
 ### 🚦 GitOps Pattern
@@ -178,7 +169,12 @@ Lifecycle, scaling, and HA management for stateful workloads:
     <tr>
         <td><img width="32" src="https://tailscale.com/files/press/tailscale-symbol-color.svg"></td>
         <td><a href="https://tailscale.com/kb/1236/kubernetes-operator">Tailscale Operator</a></td>
-        <td>VPN connectors and subnet routes via Connector CRDs</td>
+        <td>SaaS-coordinated Mesh-VPN for kubectl + cluster-internal access</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://raw.githubusercontent.com/netbirdio/netbird/main/docs/media/logo-full.png"></td>
+        <td><a href="https://docs.netbird.io/selfhosted/selfhosted-quickstart">NetBird</a></td>
+        <td>Self-hosted Mesh-VPN — coordination in cluster, OIDC via Keycloak</td>
     </tr>
     <tr>
         <td><img width="32" src="https://raw.githubusercontent.com/argoproj/argo-cd/master/docs/assets/argo.png"></td>
