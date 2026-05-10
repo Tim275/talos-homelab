@@ -140,22 +140,13 @@ spec:
     # EXPORTERS - Send telemetry to backends
 
     exporters:
-      # --- TRACES ---
-      # Jaeger (stores in Elasticsearch)
-      otlp/jaeger:
-        endpoint: jaeger-collector.jaeger:4317
+      # --- TRACES → GATEWAY (für tail_sampling) ---
+      # Agent-Tier forwarded raw traces zum Gateway-Tier (Deployment).
+      # Gateway entscheidet via tail_sampling welche Traces zu Jaeger+Tempo gehen.
+      otlp/gateway:
+        endpoint: otel-gateway-collector.opentelemetry:4317
         tls:
           insecure: true
-        headers:
-          x-scope-orgid: talos-homelab
-
-      # Tempo (stores in S3/Ceph)
-      otlp/tempo:
-        endpoint: tempo-distributor.monitoring:4317
-        tls:
-          insecure: true
-        headers:
-          x-scope-orgid: talos-homelab
 
       # --- LOGS ---
       # Loki via native OTLP endpoint (lokiexporter removed in otelcol-contrib 0.116+)
@@ -218,7 +209,7 @@ spec:
         - health_check
 
       pipelines:
-        # Traces pipeline Jaeger + Tempo
+        # Traces pipeline → Gateway-Tier (für tail_sampling)
         traces:
           receivers:
             - otlp
@@ -228,8 +219,7 @@ spec:
             - resource
             - batch
           exporters:
-            - otlp/jaeger
-            - otlp/tempo
+            - otlp/gateway
 
         # Logs pipeline Loki + Elasticsearch
         logs:
