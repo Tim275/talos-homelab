@@ -20,56 +20,69 @@ spec:
       "time": {"from": "now-1h", "to": "now"},
       "templating": {
         "list": [
+          {"name":"namespace","label":"Namespace","type":"query",
+           "datasource":{"type":"prometheus","uid":"prometheus"},
+           "query":"label_values(kube_namespace_status_phase, namespace)",
+           "refresh":1,"includeAll":false,"sort":1,
+           "current":{"text":"drova","value":"drova"}},
           {"name":"service","label":"Service","type":"query",
            "datasource":{"type":"prometheus","uid":"prometheus"},
-           "query":"label_values(go_goroutine_count{k8s_namespace_name=\"drova\"}, service_name)",
+           "query":"label_values(go_goroutine_count{k8s_namespace_name=\"$namespace\"}, service_name)",
            "refresh":1,"includeAll":false,"sort":1,
            "current":{"text":"api-gateway","value":"api-gateway"}}
+        ]
+      },
+      "annotations": {
+        "list": [
+          {"name":"Deployments","datasource":{"type":"prometheus","uid":"prometheus"},
+           "enable":true,"iconColor":"rgba(255, 96, 96, 1)",
+           "expr":"changes(kube_deployment_status_observed_generation{namespace=\"$namespace\",deployment=\"$service\"}[1m]) > 0",
+           "tagKeys":"deployment","textFormat":"Deploy: {{ deployment }}"}
         ]
       },
       "links": [
         {"title":"Drova Tenant Overview","url":"/d/drova-overview","type":"link","icon":"dashboard"},
         {"title":"Drova SLO","url":"/d/drova-slo","type":"link","icon":"dashboard"},
         {"title":"Drova Dependencies","url":"/d/drova-dependencies","type":"link","icon":"dashboard"},
-        {"title":"Logs in Explore","url":"/explore?left={\"datasource\":\"loki\",\"queries\":[{\"expr\":\"{namespace=\\\"drova\\\",app=\\\"$service\\\"}\"}]}","type":"link","icon":"external link","targetBlank":true},
-        {"title":"Traces in Explore","url":"/explore?left={\"datasource\":\"tempo\",\"queries\":[{\"query\":\"{ resource.k8s.namespace.name=\\\"drova\\\" && resource.service.name=\\\"$service\\\" }\"}]}","type":"link","icon":"external link","targetBlank":true}
+        {"title":"Logs in Explore","url":"/explore?left={\"datasource\":\"loki\",\"queries\":[{\"expr\":\"{namespace=\\\"$namespace\\\",app=\\\"$service\\\"}\"}]}","type":"link","icon":"external link","targetBlank":true},
+        {"title":"Traces in Explore","url":"/explore?left={\"datasource\":\"tempo\",\"queries\":[{\"query\":\"{ resource.k8s.namespace.name=\\\"$namespace\\\" && resource.service.name=\\\"$service\\\" }\"}]}","type":"link","icon":"external link","targetBlank":true}
       ],
       "panels": [
         {"id":1000,"type":"row","title":"Pod Health — $service","gridPos":{"x":0,"y":0,"w":24,"h":1}},
         {"id":1,"type":"stat","title":"Pods Ready",
          "gridPos":{"x":0,"y":1,"w":4,"h":4},
          "datasource":{"type":"prometheus","uid":"prometheus"},
-         "targets":[{"expr":"sum(kube_pod_status_ready{namespace=\"drova\",pod=~\"$service-.*\",condition=\"true\"})"}],
+         "targets":[{"expr":"sum(kube_pod_status_ready{namespace=\"$namespace\",pod=~\"$service-.*\",condition=\"true\"})"}],
          "fieldConfig":{"defaults":{"unit":"short","decimals":0,"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"yellow","value":1},{"color":"green","value":2}]}}},
          "options":{"colorMode":"background","graphMode":"none"}},
         {"id":2,"type":"stat","title":"Restarts (24h)",
          "gridPos":{"x":4,"y":1,"w":4,"h":4},
          "datasource":{"type":"prometheus","uid":"prometheus"},
-         "targets":[{"expr":"sum(increase(kube_pod_container_status_restarts_total{namespace=\"drova\",pod=~\"$service-.*\"}[24h]))"}],
+         "targets":[{"expr":"sum(increase(kube_pod_container_status_restarts_total{namespace=\"$namespace\",pod=~\"$service-.*\"}[24h]))"}],
          "fieldConfig":{"defaults":{"unit":"short","decimals":0,"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":1},{"color":"red","value":5}]}}},
          "options":{"colorMode":"background","graphMode":"area"}},
         {"id":3,"type":"stat","title":"CPU Used",
          "gridPos":{"x":8,"y":1,"w":4,"h":4},
          "datasource":{"type":"prometheus","uid":"prometheus"},
-         "targets":[{"expr":"sum(rate(container_cpu_usage_seconds_total{namespace=\"drova\",pod=~\"$service-.*\",container!=\"\"}[5m]))"}],
+         "targets":[{"expr":"sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\",pod=~\"$service-.*\",container!=\"\"}[5m]))"}],
          "fieldConfig":{"defaults":{"unit":"short","decimals":3}},
          "options":{"colorMode":"value","graphMode":"area"}},
         {"id":4,"type":"stat","title":"CPU Saturation",
          "gridPos":{"x":12,"y":1,"w":4,"h":4},
          "datasource":{"type":"prometheus","uid":"prometheus"},
-         "targets":[{"expr":"100 * sum(rate(container_cpu_usage_seconds_total{namespace=\"drova\",pod=~\"$service-.*\",container!=\"\"}[5m])) / clamp_min(sum(kube_pod_container_resource_limits{namespace=\"drova\",pod=~\"$service-.*\",resource=\"cpu\"}), 0.001)"}],
+         "targets":[{"expr":"100 * sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\",pod=~\"$service-.*\",container!=\"\"}[5m])) / clamp_min(sum(kube_pod_container_resource_limits{namespace=\"$namespace\",pod=~\"$service-.*\",resource=\"cpu\"}), 0.001)"}],
          "fieldConfig":{"defaults":{"unit":"percent","decimals":1,"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":70},{"color":"red","value":90}]}}},
          "options":{"colorMode":"background","graphMode":"area"}},
         {"id":5,"type":"stat","title":"Memory Used",
          "gridPos":{"x":16,"y":1,"w":4,"h":4},
          "datasource":{"type":"prometheus","uid":"prometheus"},
-         "targets":[{"expr":"sum(container_memory_working_set_bytes{namespace=\"drova\",pod=~\"$service-.*\",container!=\"\"})"}],
+         "targets":[{"expr":"sum(container_memory_working_set_bytes{namespace=\"$namespace\",pod=~\"$service-.*\",container!=\"\"})"}],
          "fieldConfig":{"defaults":{"unit":"bytes"}},
          "options":{"colorMode":"value","graphMode":"area"}},
         {"id":6,"type":"stat","title":"Memory Saturation",
          "gridPos":{"x":20,"y":1,"w":4,"h":4},
          "datasource":{"type":"prometheus","uid":"prometheus"},
-         "targets":[{"expr":"100 * sum(container_memory_working_set_bytes{namespace=\"drova\",pod=~\"$service-.*\",container!=\"\"}) / clamp_min(sum(kube_pod_container_resource_limits{namespace=\"drova\",pod=~\"$service-.*\",resource=\"memory\"}), 0.001)"}],
+         "targets":[{"expr":"100 * sum(container_memory_working_set_bytes{namespace=\"$namespace\",pod=~\"$service-.*\",container!=\"\"}) / clamp_min(sum(kube_pod_container_resource_limits{namespace=\"$namespace\",pod=~\"$service-.*\",resource=\"memory\"}), 0.001)"}],
          "fieldConfig":{"defaults":{"unit":"percent","decimals":1,"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":75},{"color":"red","value":90}]}}},
          "options":{"colorMode":"background","graphMode":"area"}},
 
@@ -78,8 +91,8 @@ spec:
          "gridPos":{"x":0,"y":6,"w":12,"h":8},
          "datasource":{"type":"prometheus","uid":"prometheus"},
          "targets":[
-           {"expr":"sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"drova\",pod=~\"$service-.*\",container!=\"\"}[5m]))","legendFormat":"{{pod}}"},
-           {"expr":"sum(kube_pod_container_resource_limits{namespace=\"drova\",pod=~\"$service-.*\",resource=\"cpu\"}) / count(kube_pod_info{namespace=\"drova\",pod=~\"$service-.*\"})","legendFormat":"limit (per pod)"}
+           {"expr":"sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\",pod=~\"$service-.*\",container!=\"\"}[5m]))","legendFormat":"{{pod}}"},
+           {"expr":"sum(kube_pod_container_resource_limits{namespace=\"$namespace\",pod=~\"$service-.*\",resource=\"cpu\"}) / count(kube_pod_info{namespace=\"$namespace\",pod=~\"$service-.*\"})","legendFormat":"limit (per pod)"}
          ],
          "fieldConfig":{"defaults":{"unit":"short","decimals":3}},
          "options":{"legend":{"placement":"bottom","showLegend":true}}},
@@ -87,20 +100,20 @@ spec:
          "gridPos":{"x":12,"y":6,"w":12,"h":8},
          "datasource":{"type":"prometheus","uid":"prometheus"},
          "targets":[
-           {"expr":"sum by (pod) (container_memory_working_set_bytes{namespace=\"drova\",pod=~\"$service-.*\",container!=\"\"})","legendFormat":"{{pod}}"},
-           {"expr":"sum(kube_pod_container_resource_limits{namespace=\"drova\",pod=~\"$service-.*\",resource=\"memory\"}) / count(kube_pod_info{namespace=\"drova\",pod=~\"$service-.*\"})","legendFormat":"limit (per pod)"}
+           {"expr":"sum by (pod) (container_memory_working_set_bytes{namespace=\"$namespace\",pod=~\"$service-.*\",container!=\"\"})","legendFormat":"{{pod}}"},
+           {"expr":"sum(kube_pod_container_resource_limits{namespace=\"$namespace\",pod=~\"$service-.*\",resource=\"memory\"}) / count(kube_pod_info{namespace=\"$namespace\",pod=~\"$service-.*\"})","legendFormat":"limit (per pod)"}
          ],
          "fieldConfig":{"defaults":{"unit":"bytes"}},
          "options":{"legend":{"placement":"bottom","showLegend":true}}},
         {"id":12,"type":"timeseries","title":"Network RX (per Pod)",
          "gridPos":{"x":0,"y":14,"w":12,"h":7},
          "datasource":{"type":"prometheus","uid":"prometheus"},
-         "targets":[{"expr":"sum by (pod) (rate(container_network_receive_bytes_total{namespace=\"drova\",pod=~\"$service-.*\"}[5m]))","legendFormat":"{{pod}}"}],
+         "targets":[{"expr":"sum by (pod) (rate(container_network_receive_bytes_total{namespace=\"$namespace\",pod=~\"$service-.*\"}[5m]))","legendFormat":"{{pod}}"}],
          "fieldConfig":{"defaults":{"unit":"Bps"}}},
         {"id":13,"type":"timeseries","title":"Network TX (per Pod)",
          "gridPos":{"x":12,"y":14,"w":12,"h":7},
          "datasource":{"type":"prometheus","uid":"prometheus"},
-         "targets":[{"expr":"sum by (pod) (rate(container_network_transmit_bytes_total{namespace=\"drova\",pod=~\"$service-.*\"}[5m]))","legendFormat":"{{pod}}"}],
+         "targets":[{"expr":"sum by (pod) (rate(container_network_transmit_bytes_total{namespace=\"$namespace\",pod=~\"$service-.*\"}[5m]))","legendFormat":"{{pod}}"}],
          "fieldConfig":{"defaults":{"unit":"Bps"}}},
 
         {"id":1200,"type":"row","title":"HTTP RED (when service exposes HTTP metrics)","gridPos":{"x":0,"y":21,"w":24,"h":1}},
@@ -178,6 +191,54 @@ spec:
          "gridPos":{"x":16,"y":62,"w":8,"h":6},
          "datasource":{"type":"prometheus","uid":"prometheus"},
          "targets":[{"expr":"go_memory_gc_goal_bytes{service_name=\"$service\"}","legendFormat":"{{k8s_pod_name}}"}],
-         "fieldConfig":{"defaults":{"unit":"bytes"}}}
+         "fieldConfig":{"defaults":{"unit":"bytes"}}},
+
+        {"id":1500,"type":"row","title":"SLO Burn-Rate (Multi-Window Multi-Burn)","gridPos":{"x":0,"y":68,"w":24,"h":1}},
+        {"id":50,"type":"timeseries","title":"Availability — Success Ratio (5m / 1h / 6h)",
+         "gridPos":{"x":0,"y":69,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"(sum(rate(http_server_request_duration_seconds_count{service_name=\"$service\",http_response_status_code!~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_request_duration_seconds_count{service_name=\"$service\"}[5m])), 0.001)) or vector(1)","legendFormat":"5m"},
+           {"expr":"(sum(rate(http_server_request_duration_seconds_count{service_name=\"$service\",http_response_status_code!~\"5..\"}[1h])) / clamp_min(sum(rate(http_server_request_duration_seconds_count{service_name=\"$service\"}[1h])), 0.001)) or vector(1)","legendFormat":"1h"},
+           {"expr":"(sum(rate(http_server_request_duration_seconds_count{service_name=\"$service\",http_response_status_code!~\"5..\"}[6h])) / clamp_min(sum(rate(http_server_request_duration_seconds_count{service_name=\"$service\"}[6h])), 0.001)) or vector(1)","legendFormat":"6h"}
+         ],
+         "fieldConfig":{"defaults":{"unit":"percentunit","min":0.95,"max":1,"noValue":"no HTTP metrics"}}},
+        {"id":51,"type":"stat","title":"Error Budget Remaining (30d, target 99.5%)",
+         "gridPos":{"x":12,"y":69,"w":6,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"(1 - ((1 - (sum(rate(http_server_request_duration_seconds_count{service_name=\"$service\",http_response_status_code!~\"5..\"}[30d])) / clamp_min(sum(rate(http_server_request_duration_seconds_count{service_name=\"$service\"}[30d])), 0.001))) / 0.005)) or vector(1)"}],
+         "fieldConfig":{"defaults":{"unit":"percentunit","decimals":2,"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"yellow","value":0.2},{"color":"green","value":0.5}]}}},
+         "options":{"colorMode":"background","graphMode":"area"}},
+        {"id":52,"type":"timeseries","title":"Burn-Rate (1h) — alert >14.4× = budget exhausted in 2d",
+         "gridPos":{"x":18,"y":69,"w":6,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"((1 - (sum(rate(http_server_request_duration_seconds_count{service_name=\"$service\",http_response_status_code!~\"5..\"}[1h])) / clamp_min(sum(rate(http_server_request_duration_seconds_count{service_name=\"$service\"}[1h])), 0.001))) / 0.005) or vector(0)","legendFormat":"burn-rate"}
+         ],
+         "fieldConfig":{"defaults":{"unit":"short","thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":3},{"color":"orange","value":6},{"color":"red","value":14.4}]}}}},
+
+        {"id":1600,"type":"row","title":"Kafka (when service is consumer/producer)","gridPos":{"x":0,"y":76,"w":24,"h":1}},
+        {"id":60,"type":"timeseries","title":"Consumer Lag (per group, per topic)",
+         "gridPos":{"x":0,"y":77,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (consumergroup, topic) (kafka_consumergroup_lag{consumergroup=~\"$service.*\"})","legendFormat":"{{consumergroup}}/{{topic}}"}],
+         "fieldConfig":{"defaults":{"unit":"short","noValue":"$service is not a Kafka consumer"}}},
+        {"id":61,"type":"timeseries","title":"Consumer Throughput (msg/s consumed)",
+         "gridPos":{"x":12,"y":77,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (consumergroup, topic) (rate(kafka_consumergroup_current_offset{consumergroup=~\"$service.*\"}[5m]))","legendFormat":"{{consumergroup}}/{{topic}}"}],
+         "fieldConfig":{"defaults":{"unit":"short","noValue":"$service is not a Kafka consumer"}}},
+
+        {"id":1700,"type":"row","title":"Tracing (Tempo metrics-generator)","gridPos":{"x":0,"y":84,"w":24,"h":1}},
+        {"id":70,"type":"timeseries","title":"Span Rate (calls/s) per Operation",
+         "gridPos":{"x":0,"y":85,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (span_name) (rate(traces_spanmetrics_calls_total{service_name=\"$service\"}[5m]))","legendFormat":"{{span_name}}"}],
+         "fieldConfig":{"defaults":{"unit":"reqps","noValue":"no spans emitted by $service"}}},
+        {"id":71,"type":"timeseries","title":"Span Error Rate per Operation",
+         "gridPos":{"x":12,"y":85,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (span_name) (rate(traces_spanmetrics_calls_total{service_name=\"$service\",status_code=\"STATUS_CODE_ERROR\"}[5m])) / clamp_min(sum by (span_name) (rate(traces_spanmetrics_calls_total{service_name=\"$service\"}[5m])), 0.001)","legendFormat":"{{span_name}}"}],
+         "fieldConfig":{"defaults":{"unit":"percentunit","decimals":2,"noValue":"no spans"}}}
       ]
     }
