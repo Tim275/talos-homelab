@@ -205,3 +205,33 @@ spec:
             dns:
               - matchPattern: "*.stripe.com"
               - matchName: "api.stripe.com"
+---
+# trip-service braucht api.mapbox.com für Routing/Directions
+# Battle-tested 2026-05-10: ohne diese FQDN-Allow timeout → 500 auf /trip/preview
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: trip-service-mapbox-egress
+  namespace: drova
+spec:
+  endpointSelector:
+    matchLabels:
+      app: trip-service
+  egress:
+    - toFQDNs:
+        - matchName: api.mapbox.com
+        - matchPattern: "*.mapbox.com"
+      toPorts:
+        - ports:
+            - { port: "443", protocol: TCP }
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+          rules:
+            dns:
+              - matchPattern: "*.mapbox.com"
+              - matchName: "api.mapbox.com"
