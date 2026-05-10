@@ -72,7 +72,7 @@ spec:
             seccompProfile: { type: RuntimeDefault }
           containers:
             - name: verify
-              image: alpine/k8s:1.33.0
+              image: docker.io/bitnami/kubectl:1.33.0
               command: [/bin/bash, -c]
               args:
                 - |
@@ -101,24 +101,15 @@ spec:
                   kubectl create ns $TEST_NS
                   trap "kubectl delete ns $TEST_NS --wait=false 2>/dev/null || true" EXIT
 
-                  # 3. Copy backup-credentials secret
+                  # 3. Copy backup-credentials secret (jq statt python3)
                   kubectl get secret -n $SOURCE_NS cnpg-drova-backup -o json | \
-                    python3 -c "
-                  import sys,json
-                  d=json.load(sys.stdin)
-                  d['metadata']={'name':d['metadata']['name'],'namespace':'$TEST_NS'}
-                  print(json.dumps(d))
-                  " | kubectl apply -f -
+                    jq --arg ns "$TEST_NS" '.metadata = {name: .metadata.name, namespace: $ns}' | \
+                    kubectl apply -f -
 
                   # 4. Copy ObjectStore CR
                   kubectl get objectstore.barmancloud.cnpg.io -n $SOURCE_NS drova-backup-store -o json | \
-                    python3 -c "
-                  import sys,json
-                  d=json.load(sys.stdin)
-                  d['metadata']={'name':d['metadata']['name'],'namespace':'$TEST_NS'}
-                  d.pop('status',None)
-                  print(json.dumps(d))
-                  " | kubectl apply -f -
+                    jq --arg ns "$TEST_NS" '.metadata = {name: .metadata.name, namespace: $ns} | del(.status)' | \
+                    kubectl apply -f -
 
                   # 5. Apply restore Cluster CR
                   cat <<EOF | kubectl apply -f -
