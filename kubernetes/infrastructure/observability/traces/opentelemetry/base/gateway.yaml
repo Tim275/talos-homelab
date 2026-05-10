@@ -1,0 +1,122 @@
+# OTel Collector Gateway-Tier (3-replica Deployment with tail_sampling)
+#
+# Architecture: Agent + Gateway 2-Tier (Senior-DAX Pattern)
+#
+#   Apps → otel-collector (DaemonSet, Agent) → otel-gateway (Deployment, Gateway) → Backends
+#          ├─ k8sattributes                     ├─ tail_sampling (1% normal, 100% errors+slow)
+#          ├─ memory_limiter                    ├─ heavy enrichment
+#          └─ batch (cheap)                     └─ routing per tenant
+#
+# Why split? tail_sampling REQUIRES all spans of a trace land on same pod.
+# DaemonSet violates that (spans of same trace land on different agents).
+# Gateway with consistent hashing fixes it.
+
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: otel-gateway
+  namespace: opentelemetry
+spec:
+  mode: deployment
+  replicas: 3
+  image: otel/opentelemetry-collector-contrib:0.150.1
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 200m
+    limits:
+      memory: 1Gi
+      cpu: 1000m
+  env:
+    - name: K8S_POD_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.name
+  config:
+    receivers:
+      # Receives from Agent-Tier (DaemonSet) via OTLP
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      memory_limiter:
+        limit_mib: 900
+        spike_limit_mib: 200
+        check_interval: 1s
+
+      # tail_sampling — DAS Feature warum Gateway-Tier existiert
+      # Strategie: Errors immer behalten, Slow-Traces immer behalten,
+      #            Rest 1% probabilistisch
+      tail_sampling:
+        decision_wait: 30s              # warten bis alle Spans eines Trace da sind
+        num_traces: 50000               # max in-flight Traces im Memory
+        expected_new_traces_per_sec: 100
+        policies:
+          # Policy 1: ALWAYS keep traces with errors
+          - name: keep-errors
+            type: status_code
+            status_code:
+              status_codes: [ERROR]
+
+          # Policy 2: ALWAYS keep slow traces (>1s total)
+          - name: keep-slow-traces
+            type: latency
+            latency:
+              threshold_ms: 1000
+
+          # Policy 3: ALWAYS keep all Drova-services (active development tenant)
+          - name: keep-drova-services
+            type: string_attribute
+            string_attribute:
+              key: service.name
+              values: [api-gateway, user-service, chat-service, trip-service, driver-service, payment-service]
+
+          # Policy 4: 10% probabilistic for everything else (n8n, keycloak, infra)
+          # → Homelab-tuned: aggressive enough to reduce volume, lax enough to keep debugging useful
+          - name: probabilistic-10pct
+            type: probabilistic
+            probabilistic:
+              sampling_percentage: 10
+
+      batch:
+        timeout: 10s
+        send_batch_size: 1024
+        send_batch_max_size: 2048
+
+    exporters:
+      # Forward TRACES to Jaeger + Tempo (after tail_sampling)
+      otlp/jaeger:
+        endpoint: jaeger-collector.jaeger:4317
+        tls:
+          insecure: true
+      otlp/tempo:
+        endpoint: tempo-distributor.monitoring:4317
+        tls:
+          insecure: true
+
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    service:
+      extensions: [health_check]
+      pipelines:
+        # Only TRACES go through Gateway (sampling-relevant)
+        # Logs + Metrics gehen direkt vom Agent zu Backends (kein Sampling sinnvoll)
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, tail_sampling, batch]
+          exporters: [otlp/jaeger, otlp/tempo]
+
+      telemetry:
+        metrics:
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: 0.0.0.0
+                    port: 8888
