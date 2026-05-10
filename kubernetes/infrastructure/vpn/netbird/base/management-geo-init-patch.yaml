@@ -1,6 +1,7 @@
-# Patch: add init-container that downloads NetBird geolocation DBs
-# (geonames.db + GeoLite2-City.mmdb) before management container starts.
-# Without these the management pod crashes with: "no such table: source.geonames"
+# Patch: pre-fetch NetBird geolocation DBs to avoid auto-download race-condition.
+# NetBird's built-in downloader has been observed crashing during init when SHA256
+# verification or file-extraction fails silently. We download deterministically
+# in an init-container with proper query-string + permissions.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -17,25 +18,31 @@ spec:
             - |
               set -e
               cd /var/lib/netbird
-              if [ ! -f geonames.db ]; then
-                echo "→ Downloading geonames.db…"
-                URL=$(curl -sfL https://pkgs.netbird.io/geolocation-dbs/geonames/download.txt)
-                curl -sfL -o /tmp/geonames.tar.gz "$URL"
-                tar -xzf /tmp/geonames.tar.gz -C /var/lib/netbird/
-                # NetBird expects file as geonames.db (not versioned)
-                mv -v /var/lib/netbird/geonames_*.db /var/lib/netbird/geonames.db 2>/dev/null || true
-                rm -f /tmp/geonames.tar.gz
-              fi
+
               if [ ! -f GeoLite2-City.mmdb ]; then
-                echo "→ Downloading GeoLite2-City.mmdb…"
-                URL=$(curl -sfL https://pkgs.netbird.io/geolocation-dbs/GeoLite2-City/download.txt)
-                curl -sfL -o /tmp/geo.tar.gz "$URL"
-                tar -xzf /tmp/geo.tar.gz -C /var/lib/netbird/
-                mv -v /var/lib/netbird/GeoLite2-City_*.mmdb /var/lib/netbird/GeoLite2-City.mmdb 2>/dev/null || true
-                rm -f /tmp/geo.tar.gz
+                echo "→ Downloading GeoLite2-City.mmdb (tar.gz)…"
+                curl -sfL --retry 3 -o /tmp/geo.tar.gz \
+                  "https://pkgs.netbird.io/geolocation-dbs/GeoLite2-City/download?suffix=tar.gz"
+                tar -xzf /tmp/geo.tar.gz -C /tmp/
+                find /tmp -name "GeoLite2-City.mmdb" -exec mv {} /var/lib/netbird/GeoLite2-City.mmdb \;
+                rm -rf /tmp/geo.tar.gz /tmp/GeoLite2*
               fi
+
+              if [ ! -f geonames.db ]; then
+                echo "→ Downloading geonames CSV (will be imported to SQLite)…"
+                curl -sfL --retry 3 -o /tmp/geo-csv.zip \
+                  "https://pkgs.netbird.io/geolocation-dbs/GeoLite2-City-CSV/download?suffix=zip"
+                # Note: NetBird's own importer creates geonames.db from this CSV at first start.
+                # Just ensure the zip is present in /var/lib/netbird/ for NetBird to find.
+                cp /tmp/geo-csv.zip /var/lib/netbird/GeoLite2-City-CSV.zip
+                rm -f /tmp/geo-csv.zip
+              fi
+
+              # Make sure files readable by NetBird (any uid)
+              chmod -R a+r /var/lib/netbird/ 2>/dev/null || true
+              chmod a+wx /var/lib/netbird/ 2>/dev/null || true
               ls -la /var/lib/netbird/
-              echo "✓ Geolocation DBs ready"
+              echo "✓ Geo files staged"
           volumeMounts:
             - name: management
               mountPath: /var/lib/netbird
