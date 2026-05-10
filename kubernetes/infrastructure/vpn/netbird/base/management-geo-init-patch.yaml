@@ -1,0 +1,49 @@
+# Patch: add init-container that downloads NetBird geolocation DBs
+# (geonames.db + GeoLite2-City.mmdb) before management container starts.
+# Without these the management pod crashes with: "no such table: source.geonames"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netbird-management
+  namespace: netbird
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: geo-init
+          image: docker.io/curlimages/curl:8.10.1
+          command: [/bin/sh, -c]
+          args:
+            - |
+              set -e
+              cd /var/lib/netbird
+              if [ ! -f geonames.db ]; then
+                echo "→ Downloading geonames.db…"
+                URL=$(curl -sfL https://pkgs.netbird.io/geolocation-dbs/geonames/download.txt)
+                curl -sfL -o /tmp/geonames.tar.gz "$URL"
+                tar -xzf /tmp/geonames.tar.gz -C /var/lib/netbird/
+                # NetBird expects file as geonames.db (not versioned)
+                mv -v /var/lib/netbird/geonames_*.db /var/lib/netbird/geonames.db 2>/dev/null || true
+                rm -f /tmp/geonames.tar.gz
+              fi
+              if [ ! -f GeoLite2-City.mmdb ]; then
+                echo "→ Downloading GeoLite2-City.mmdb…"
+                URL=$(curl -sfL https://pkgs.netbird.io/geolocation-dbs/GeoLite2-City/download.txt)
+                curl -sfL -o /tmp/geo.tar.gz "$URL"
+                tar -xzf /tmp/geo.tar.gz -C /var/lib/netbird/
+                mv -v /var/lib/netbird/GeoLite2-City_*.mmdb /var/lib/netbird/GeoLite2-City.mmdb 2>/dev/null || true
+                rm -f /tmp/geo.tar.gz
+              fi
+              ls -la /var/lib/netbird/
+              echo "✓ Geolocation DBs ready"
+          volumeMounts:
+            - name: netbird-management
+              mountPath: /var/lib/netbird
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 10m, memory: 64Mi }
+            limits:   { cpu: 500m, memory: 256Mi }
