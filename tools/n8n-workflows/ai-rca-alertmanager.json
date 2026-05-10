@@ -1,0 +1,128 @@
+{
+  "name": "AI-RCA — Alertmanager Webhook",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "alertmanager-rca",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Alertmanager Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 384],
+      "webhookId": "alertmanager-rca"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Alertmanager sends 1 webhook with N alerts → loop\nconst body = $input.item.json.body || $input.item.json;\nconst alerts = body.alerts || [];\n\n// Filter: only firing critical alerts\nconst critical = alerts.filter(a =>\n  a.status === 'firing' &&\n  (a.labels.severity === 'critical' || a.labels.priority?.match(/p[01]|P[01]/))\n);\n\nreturn critical.map(alert => ({\n  alertname: alert.labels.alertname || 'unknown',\n  severity: alert.labels.severity || '?',\n  priority: alert.labels.priority || '?',\n  namespace: alert.labels.namespace || '?',\n  pod: alert.labels.pod || '',\n  service: alert.labels.service || alert.labels.service_name || '',\n  summary: alert.annotations.summary || '',\n  description: alert.annotations.description || '',\n  startsAt: alert.startsAt,\n  generatorURL: alert.generatorURL || '',\n  runbook_url: alert.annotations.runbook_url || '',\n  dashboard_url: alert.annotations.dashboard_url || '',\n  query_url: alert.annotations.query_url || '',\n  raw_labels: alert.labels\n}));"
+      },
+      "id": "parse-alerts",
+      "name": "Parse + Filter Critical",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [224, 384]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "loop",
+      "name": "Loop Per Alert",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [448, 384]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=# Kubernetes Alert RCA\n\nDu bist ein erfahrener SRE der Kubernetes-Alerts diagnostiziert.\n\n## Alert\n\n- **AlertName:** {{ $json.alertname }}\n- **Severity:** {{ $json.severity }} (Priority: {{ $json.priority }})\n- **Namespace:** {{ $json.namespace }}\n- **Pod:** {{ $json.pod }}\n- **Service:** {{ $json.service }}\n- **Summary:** {{ $json.summary }}\n- **Description:** {{ $json.description }}\n- **Labels:** {{ JSON.stringify($json.raw_labels) }}\n\n## Aufgabe\n\nGib eine kurze Diagnose:\n1. Wahrscheinlicher Root-Cause (1-2 Sätze)\n2. Konkrete Fix-Schritte (kubectl-Commands oder YAML-Edits)\n3. Confidence: LOW / MEDIUM / HIGH\n\n## Cluster-Kontext (zur besseren Diagnose)\n\n- Cluster: talos-homelab\n- Drova-Tenant: 6 Microservices (api-gateway, user-service, trip-service, driver-service, chat-service, payment-service) — verwenden OTel + Kafka + Postgres\n- Network: Cilium mit FQDN-Egress (drova-default-deny.yaml)\n  - Erlaubt: stripe, mapbox, mongodb-atlas, cloudflare-stun\n  - Pattern: \"context deadline exceeded\" → wahrscheinlich FQDN-Allowlist fehlt\n- Storage: Rook-Ceph (block + RWX + S3)\n- Identity: Keycloak realm 'kubernetes'\n- GitOps: ArgoCD ApplicationSets\n\n## Output\n\nResponde NUR als JSON in diesem Format:\n\n```json\n{\n  \"diagnosis\": \"kurze Root-Cause-Erklärung\",\n  \"fix_steps\": [\"kubectl ...\", \"oder yaml-edit ...\"],\n  \"confidence\": \"LOW|MEDIUM|HIGH\",\n  \"category\": \"network|storage|database|app-bug|resource|kafka|other\",\n  \"urgency\": \"P0|P1|P2\",\n  \"affected_users\": \"Estimate (z.B. 'all drova customers' oder 'internal-only')\"\n}\n```",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "Du bist ein Senior-SRE für einen Talos-Kubernetes-Cluster mit Drova-SaaS-App. Sei präzise, conservative bei Fix-Vorschlägen. NIEMALS destructive Commands (delete, drop, force) ohne explizite Warning. Use deutsche Sprache."
+        }
+      },
+      "id": "ai-rca",
+      "name": "AI RCA Analyzer",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [672, 384]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-sonnet-4-5-20250929",
+          "mode": "list",
+          "cachedResultName": "Claude Sonnet 4.5"
+        },
+        "options": {"maxTokensToSample": 1024}
+      },
+      "id": "claude",
+      "name": "Anthropic Claude",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [680, 608],
+      "credentials": {
+        "anthropicApi": {"id": "YOUR_ANTHROPIC_CRED_ID", "name": "Anthropic API"}
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"diagnosis\": \"Pod ist OOMKilled wegen Memory-Limit zu niedrig\",\n  \"fix_steps\": [\"kubectl edit deploy/foo -n bar — bump memory limit\"],\n  \"confidence\": \"HIGH\",\n  \"category\": \"resource\",\n  \"urgency\": \"P1\",\n  \"affected_users\": \"customer-facing\"\n}"
+      },
+      "id": "json-parser",
+      "name": "JSON Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [808, 608]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=🚨 *AI-RCA: {{ $('Loop Per Alert').item.json.alertname }}*\n\n*Severity:* {{ $('Loop Per Alert').item.json.severity }} | Priority {{ $('Loop Per Alert').item.json.priority }}\n*Namespace:* `{{ $('Loop Per Alert').item.json.namespace }}`\n*Pod:* `{{ $('Loop Per Alert').item.json.pod }}`\n\n*Summary:* {{ $('Loop Per Alert').item.json.summary }}\n\n━━━━━━━━━━━━━━━━━━━━━\n🤖 *AI-Diagnose ({{ $json.output.confidence }} confidence)*\n\n{{ $json.output.diagnosis }}\n\n*Category:* {{ $json.output.category }} | *Urgency:* {{ $json.output.urgency }}\n*Impact:* {{ $json.output.affected_users }}\n\n*Fix-Schritte:*\n{{ $json.output.fix_steps.map((s, i) => `${i+1}. \\`${s}\\``).join('\\n') }}\n\n━━━━━━━━━━━━━━━━━━━━━\n🔗 [Dashboard]({{ $('Loop Per Alert').item.json.dashboard_url }}) | [Runbook]({{ $('Loop Per Alert').item.json.runbook_url }}) | [Query]({{ $('Loop Per Alert').item.json.query_url }})",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "telegram-notify",
+      "name": "Telegram AI-RCA",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1056, 384],
+      "credentials": {
+        "telegramApi": {"id": "YOUR_TELEGRAM_CRED_ID", "name": "Telegram"}
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"ok\",\n  \"alerts_processed\": {{ $('Parse + Filter Critical').all().length }}\n}",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Respond to AM",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [224, 192]
+    }
+  ],
+  "connections": {
+    "Alertmanager Webhook": {
+      "main": [[
+        {"node": "Respond to AM", "type": "main", "index": 0},
+        {"node": "Parse + Filter Critical", "type": "main", "index": 0}
+      ]]
+    },
+    "Parse + Filter Critical": {"main": [[{"node": "Loop Per Alert", "type": "main", "index": 0}]]},
+    "Loop Per Alert": {"main": [[], [{"node": "AI RCA Analyzer", "type": "main", "index": 0}]]},
+    "AI RCA Analyzer": {"main": [[{"node": "Telegram AI-RCA", "type": "main", "index": 0}]]},
+    "Anthropic Claude": {"ai_languageModel": [[{"node": "AI RCA Analyzer", "type": "ai_languageModel", "index": 0}]]},
+    "JSON Output Parser": {"ai_outputParser": [[{"node": "AI RCA Analyzer", "type": "ai_outputParser", "index": 0}]]},
+    "Telegram AI-RCA": {"main": [[{"node": "Loop Per Alert", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"}
+}
