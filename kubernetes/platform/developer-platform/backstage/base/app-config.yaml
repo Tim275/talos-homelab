@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backstage-app-config
+  namespace: backstage
+data:
+  app-config.yaml: |
+    app:
+      title: Tim275 Homelab Developer Portal
+      baseUrl: https://backstage.timourhomelab.org
+
+    organization:
+      name: Tim275 Homelab
+
+    backend:
+      baseUrl: https://backstage.timourhomelab.org
+      listen:
+        port: 7007
+      cors:
+        origin: https://backstage.timourhomelab.org
+        methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
+        credentials: true
+      database:
+        client: pg
+        connection:
+          host: ${POSTGRES_HOST}
+          port: ${POSTGRES_PORT}
+          user: ${username}
+          password: ${password}
+
+    integrations:
+      github:
+        - host: github.com
+          token: ${GITHUB_TOKEN}
+
+    auth:
+      environment: production
+      providers:
+        oidc:
+          production:
+            metadataUrl: ${KEYCLOAK_BASE_URL}/.well-known/openid-configuration
+            clientId: backstage
+            clientSecret: ${BACKSTAGE_OIDC_CLIENT_SECRET}
+            prompt: auto
+            signIn:
+              resolvers:
+                - resolver: emailMatchingUserEntityProfileEmail
+
+    catalog:
+      import:
+        entityFilename: catalog-info.yaml
+        pullRequestBranchName: backstage-integration
+      rules:
+        - allow: [Component, System, API, Group, User, Resource, Location, Domain, Template]
+      locations:
+        # Drova Microservices via GitHub
+        - type: url
+          target: https://github.com/Tim275/drova-gitops/blob/main/catalog-info.yaml
+          rules:
+            - allow: [Component, System, API]
+        # Selber-Repo Catalog
+        - type: url
+          target: https://github.com/Tim275/talos-homelab/blob/main/catalog-info.yaml
+
+    kubernetes:
+      serviceLocatorMethod:
+        type: multiTenant
+      clusterLocatorMethods:
+        - type: config
+          clusters:
+            - url: https://kubernetes.default.svc
+              name: prod-talos
+              authProvider: serviceAccount
+              skipTLSVerify: true
+              skipMetricsLookup: false
+              serviceAccountToken: ${SA_TOKEN}
+
+    argocd:
+      baseUrl: https://argo.timourhomelab.org
+      username: backstage
+      password: ${ARGOCD_PASSWORD}
+
+    grafana:
+      domain: https://grafana.timourhomelab.org
+      unifiedAlerting: true
+
+    techdocs:
+      builder: local
+      generator:
+        runIn: docker
+      publisher:
+        type: local
+
+    proxy:
+      endpoints:
+        '/jaeger':
+          target: https://jaeger.timourhomelab.org
+        '/loki':
+          target: http://loki-gateway.monitoring.svc.cluster.local
+
+    permission:
+      enabled: true
