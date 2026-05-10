@@ -33,41 +33,40 @@ everything under `kubernetes/`. The full bootstrap order:
 .
 ├── 📂 kubernetes                  # All cluster state (managed by Argo CD)
 │   │
-│   ├── bootstrap                 # App-of-Apps root (kubectl apply -k bootstrap/)
-│   ├── clusters                  # Cluster registrations + tier-labels
-│   ├── projects                  # Argo CD AppProjects (RBAC + sync-windows)
+│   ├── bootstrap                 # App-of-Apps root
+│   ├── clusters                  # Cluster registrations
+│   ├── projects                  # Argo CD AppProjects
 │   ├── applicationsets           # ApplicationSet-based deployment
-│   │   ├── tenants               #   1 AppSet per tenant (drova, n8n)
+│   │   ├── tenants               #   per-tenant AppSets
 │   │   ├── infrastructure        #   controllers, network, storage, observability
-│   │   ├── platform              #   data-stack, identity-stack
-│   │   ├── security              #   foundation + compliance
-│   │   └── edge                  #   raspberry-pi staging cluster
+│   │   ├── platform              #   data, identity
+│   │   ├── security              #   foundation, compliance
+│   │   └── edge                  #   staging cluster
 │   ├── components                # Reusable Kustomize components
-│   │                             #   (arm64-arch, short-retention, single-replica)
 │   ├── security                  # Network-policies, RBAC, Kyverno, compliance
 │   ├── infrastructure            # Cluster-shared services
 │   │   ├── controllers           #   Argo CD, cert-manager, sealed-secrets, operators
 │   │   ├── network               #   Cilium, Envoy Gateway, Cloudflare Tunnel, CoreDNS
-│   │   ├── storage               #   Rook-Ceph, RGW (S3), Velero
+│   │   ├── storage               #   Rook-Ceph, Velero
 │   │   ├── observability         #   Prometheus, Loki, Tempo, Jaeger, Grafana, ES, Vector
-│   │   └── vpn                   #   Tailscale + NetBird (self-hosted Mesh-VPN)
+│   │   └── vpn                   #   Tailscale, NetBird
 │   ├── platform                  # Platform services
-│   │   ├── identity              #   Keycloak (OIDC IdP, HA 3-replicas), LLDAP
+│   │   ├── identity              #   Keycloak, LLDAP
 │   │   ├── data                  #   CNPG Postgres, Redis, CloudBeaver
-│   │   ├── messaging             #   Strimzi Kafka clusters
-│   │   └── governance/tenants    #   Per-tenant RBAC (drova, oms, ...)
+│   │   ├── messaging             #   Strimzi Kafka
+│   │   └── governance/tenants    #   per-tenant RBAC
 │   └── apps                      # User-facing applications
-│       ├── base                  #   Tenant-shared manifests
-│       └── overlays              #   Environment-specific patches (dev/staging/prod)
+│       ├── base                  #   shared manifests
+│       └── overlays              #   environment patches
 │
-├── 🧱 tofu                        # OpenTofu (Terraform fork) — Infrastructure
-│   ├── bootstrap                 #   Sealed-secrets cert + key bootstrap
-│   ├── talos                     #   Talos machine-configs + inline-manifests
+├── 🧱 tofu                        # OpenTofu (Terraform fork)
+│   ├── bootstrap                 #   Sealed-secrets cert + key
+│   ├── talos                     #   Talos machine-configs
 │   └── gitlab                    #   GitLab VM
 │
 └── ⚙️  scripts                     # Operations scripts
     ├── identity                  #   onboard-user, kubeconfig-oidc
-    └── upgrades                  #   pre-upgrade snapshot + post-upgrade-verify
+    └── upgrades                  #   pre-upgrade, post-upgrade-verify
 ```
 
 ### 🚦 GitOps Pattern
