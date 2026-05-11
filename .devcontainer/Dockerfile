@@ -1,6 +1,6 @@
-FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04
+FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04@sha256:d94c97dd9cacf183d0a6fd12a8e87b526e9e928307674ae9c94139139c0c6eae
 
-COPY --from=jdxcode/mise /usr/local/bin/mise /usr/local/bin/
+COPY --from=jdxcode/mise@sha256:f35e977dcf05c0a835d8549c98acd9edde845aab4680131ac7785d96f5160620 /usr/local/bin/mise /usr/local/bin/
 
 # Install Cilium CLI (funktioniert für ARM und x86_64)
 ARG CILIUM_CLI_VERSION="v0.18.5"
