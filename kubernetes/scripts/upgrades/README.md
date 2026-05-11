@@ -18,7 +18,7 @@ These scripts catch that pattern in <60s.
 
 ```bash
 # 1. Snapshot current state
-./scripts/upgrades/pre-upgrade.sh
+./kubernetes/scripts/upgrades/pre-upgrade.sh
 # → /tmp/pre-upgrade-<timestamp>/ created
 
 # 2. Do the upgrade
@@ -26,7 +26,7 @@ talosctl upgrade-k8s --to 1.36.0
 # (or talosctl upgrade --image ..., or tofu apply)
 
 # 3. Verify nothing regressed
-./scripts/upgrades/post-upgrade-verify.sh /tmp/pre-upgrade-<timestamp>/
+./kubernetes/scripts/upgrades/post-upgrade-verify.sh /tmp/pre-upgrade-<timestamp>/
 # → exits 0 on success, 1 with concrete fixes on failure
 ```
 
