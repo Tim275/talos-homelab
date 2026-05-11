@@ -90,7 +90,7 @@ Im KC Admin-UI: `iam.timourhomelab.org/admin/master/console/` → Realm `kuberne
 ## Onboarding eines Mitarbeiters
 
 ```bash
-./scripts/identity/onboard-user.sh max max@firma.de "Max Mustermann" engineers
+./kubernetes/scripts/identity/onboard-user.sh max max@firma.de "Max Mustermann" engineers
 ```
 
 Was passiert:
@@ -119,7 +119,7 @@ Email-Link ist **12h gültig**. Falls abgelaufen: Script nochmal laufen lassen.
 ## Offboarding (Mitarbeiter verlässt Firma)
 
 ```bash
-./scripts/identity/offboard-user.sh max
+./kubernetes/scripts/identity/offboard-user.sh max
 # (TODO: not yet implemented — disable in LLDAP + revoke KC sessions)
 ```
 
