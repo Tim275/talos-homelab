@@ -1,0 +1,34 @@
+## RenovateJob CR for Tim275/talos-homelab repo
+## Operator: mogenius/renovate-operator (deployed in operators/ tree)
+## Schedule: hourly (default cron-style)
+apiVersion: renovate-operator.mogenius.com/v1alpha1
+kind: RenovateJob
+metadata:
+  name: renovate-talos-homelab
+  namespace: renovate-operator
+spec:
+  # Discovery: scan ONLY the talos-homelab repo
+  discoveryFilters:
+    - Tim275/talos-homelab
+  provider:
+    name: github
+    endpoint: ""  # defaults to https://api.github.com
+  image: ghcr.io/renovatebot/renovate:43.176.3   # renovate: docker=ghcr.io/renovatebot/renovate
+  ## parallelism: 5 — Workaround für v43-Quirk "Repository has changed during renovation".
+  ## Jeder Pod schafft ~5 PRs vor Abort. Mit 5 parallel = ~25 PRs/Run statt 5.
+  ## RAM-Last: ~2.5Gi peak (5× 512Mi). Wenn v44+ released → zurück auf 1.
+  parallelism: 5
+  schedule: "0 */2 * * *"   # every 2h at minute 0
+  secretRef: renovate-secret
+  extraEnv:
+    - name: LOG_LEVEL
+      value: info
+    - name: RENOVATE_GIT_AUTHOR
+      value: "Renovate Bot <tim275@users.noreply.github.com>"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1500m
+      memory: 2Gi
