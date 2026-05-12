@@ -1,0 +1,32 @@
+## RenovateJob CR for Tim275/drova repo (Code-Repository)
+## Different schedule than talos-homelab — separate parallel job.
+apiVersion: renovate-operator.mogenius.com/v1alpha1
+kind: RenovateJob
+metadata:
+  name: renovate-drova
+  namespace: renovate-operator
+spec:
+  discoveryFilters:
+    - Tim275/drova
+  provider:
+    name: github
+    endpoint: ""
+  image: ghcr.io/renovatebot/renovate:43.176.3   # renovate: docker=ghcr.io/renovatebot/renovate
+  ## parallelism: 5 — Workaround für v43-Quirk "Repository has changed during renovation".
+  ## Jeder Pod schafft ~5 PRs vor Abort. Mit 5 parallel = ~25 PRs/Run statt 5.
+  ## RAM-Last: ~2.5Gi peak (5× 512Mi). Wenn v44+ released → zurück auf 1.
+  parallelism: 5
+  schedule: "30 */2 * * *"   # every 2h at minute 30 (offset von talos-homelab)
+  secretRef: renovate-secret
+  extraEnv:
+    - name: LOG_LEVEL
+      value: info
+    - name: RENOVATE_GIT_AUTHOR
+      value: "Renovate Bot <tim275@users.noreply.github.com>"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1500m
+      memory: 2Gi

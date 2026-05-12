@@ -99,7 +99,7 @@ helmCharts:
 
   - name: opentelemetry-operator
     repo: https://open-telemetry.github.io/opentelemetry-helm-charts
-    version: "0.107.0"
+    version: "0.107.2"
     releaseName: opentelemetry-operator
     namespace: opentelemetry
     includeCRDs: true
@@ -133,6 +133,46 @@ helmCharts:
     releaseName: reloader
     namespace: reloader
     includeCRDs: true
+
+  # Renovate Operator (mogenius — MIT-licensed open-source)
+  # Replaces previous self-host CronJob — gives us:
+  #   - CRD-based scheduling (RenovateJob)
+  #   - Web-UI with run-status (HTTPRoute below → renovate.timourhomelab.org)
+  #   - Built-in retry-logic (no orphan-PR-opener workaround needed)
+  #   - Prometheus-metrics + health-checks
+  #   - Parallel execution with concurrency control
+  # Source: https://github.com/mogenius/renovate-operator
+  - name: renovate-operator
+    repo: oci://ghcr.io/mogenius/helm-charts
+    version: "4.7.1"
+    releaseName: renovate-operator
+    namespace: renovate-operator
+    includeCRDs: true
+    valuesInline:
+      # ServiceMonitor for Prometheus scraping
+      serviceMonitor:
+        enabled: true
+        labels:
+          release: kube-prometheus-stack
+      # Resource limits (Kyverno require-resource-limits policy)
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      # HTTPRoute via Envoy-Gateway → public Web-UI
+      route:
+        enabled: true
+        hostnames:
+          - renovate.timourhomelab.org
+        parentRefs:
+          - name: envoy-gateway
+            namespace: gateway
+            sectionName: https
+            group: gateway.networking.k8s.io
+            kind: Gateway
 
 patches:
   # Strimzi: watch all namespaces for Kafka CRs
