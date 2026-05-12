@@ -1,0 +1,80 @@
+## Self-hosted Renovate — Helm-Chart values
+## Chart: https://github.com/renovatebot/helm-charts/tree/main/charts/renovate
+##
+## Replaces: Renovate-Cloud GitHub-App (Mend.io SaaS)
+##
+## Setup steps see ./SETUP.md
+## Renovate-Config (group/tier/etc) is in /renovate.json (root of each target repo)
+
+cronjob:
+  schedule: "0 */2 * * *"           # every 2 hours
+  jobName: renovate-bot
+  concurrencyPolicy: Forbid          # never overlap two runs
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  backoffLimit: 1
+
+image:
+  repository: ghcr.io/renovatebot/renovate
+  tag: 41.107.4                       # renovate: docker=ghcr.io/renovatebot/renovate
+  pullPolicy: IfNotPresent
+
+# Mount RENOVATE_TOKEN from SealedSecret
+existingSecret: renovate-secrets
+
+# Global Renovate-Bot env-vars
+# (per-repo config lives in each repo's renovate.json)
+env:
+  LOG_LEVEL: info
+  RENOVATE_PLATFORM: github
+  RENOVATE_AUTODISCOVER: "false"
+  RENOVATE_REPOSITORIES: '["Tim275/talos-homelab","Tim275/drova-gitops"]'
+  RENOVATE_GIT_AUTHOR: "Renovate Bot (self-hosted) <renovate-bot@timourhomelab.org>"
+  RENOVATE_REQUIRE_CONFIG: required   # repos MUST have renovate.json
+  RENOVATE_PRINT_CONFIG: "true"        # log effective config (debugging)
+  RENOVATE_DRY_RUN: "false"             # set to "full" for first runs to verify
+  # Performance limits
+  RENOVATE_PR_HOURLY_LIMIT: "10"
+  RENOVATE_PR_CONCURRENT_LIMIT: "30"
+  RENOVATE_TIMEZONE: Europe/Berlin
+
+# Resources: CronJob runs typically 5-15min per cycle
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 1500m
+    memory: 2Gi
+
+# Restricted PodSecurity → Renovate writes only to /tmp + emptyDir
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 12021                    # Renovate-bot user
+  runAsGroup: 12021
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+  seccompProfile:
+    type: RuntimeDefault
+
+# Renovate writes to /tmp + workdir — emptyDir volumes
+extraVolumes:
+  - name: workdir
+    emptyDir: {}
+  - name: tmp
+    emptyDir: {}
+extraVolumeMounts:
+  - name: workdir
+    mountPath: /tmp/renovate
+  - name: tmp
+    mountPath: /tmp
+
+# Renovate-Bot reads PAT from existingSecret RENOVATE_TOKEN
+# → mounted automatically as env-var by Helm-Chart
+
+# Disable ServiceMonitor (CronJob has no Service — short-lived pods)
+# For metrics: use Renovate's prometheus pushgateway integration later
+serviceMonitor:
+  enabled: false
