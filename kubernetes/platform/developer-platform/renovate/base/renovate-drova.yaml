@@ -12,11 +12,13 @@ spec:
     name: github
     endpoint: ""
   image: ghcr.io/renovatebot/renovate:43.176.3   # renovate: docker=ghcr.io/renovatebot/renovate
-  ## parallelism: 5 — Workaround für v43-Quirk "Repository has changed during renovation".
-  ## Jeder Pod schafft ~5 PRs vor Abort. Mit 5 parallel = ~25 PRs/Run statt 5.
-  ## RAM-Last: ~2.5Gi peak (5× 512Mi). Wenn v44+ released → zurück auf 1.
-  parallelism: 5
-  schedule: "30 */2 * * *"   # every 2h at minute 30 (offset von talos-homelab)
+  ## parallelism = "max projects scanned in parallel" (per Mogenius CRD semantics).
+  ## Bei 1 Repo per Job ist parallelism>1 wirkungslos. Daher: 1.
+  parallelism: 1
+  ## schedule */15 — v43-Quirk Workaround: jeder Run abortet nach ~5 PRs,
+  ## 15-min-cron = 4 Runs/h × 5 PRs = 20 PRs/h durchgehend.
+  ## 56 pending PRs → ~3h durch (statt 24h bei 2h-Intervall).
+  schedule: "*/15 * * * *"
   secretRef: renovate-secret
   extraEnv:
     - name: LOG_LEVEL
