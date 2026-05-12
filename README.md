@@ -69,13 +69,6 @@ everything under `kubernetes/`. The full bootstrap order:
     └── upgrades                  #   pre-upgrade, post-upgrade-verify
 ```
 
-### 🚦 GitOps Pattern
-
-The cluster uses **11 ApplicationSets** for selective multi-cluster deployment:
-- **Multi-Cluster-Ready** — new cluster registers with `<tier>.tier=enabled` labels → AppSet auto-generates apps
-- **Tenant-Encapsulation** — each tenant (Drova, n8n) managed by **1 AppSet** instead of 4 single Applications
-- **Edge-Selective** — Raspberry-Pi staging cluster gets only light-workloads (Cilium + Prom + Grafana), not heavy stuff like Loki/Tempo/Kafka
-
 ## 📦 Applications
 
 End-user applications deployed via Argo CD across dev / staging / production overlays:
