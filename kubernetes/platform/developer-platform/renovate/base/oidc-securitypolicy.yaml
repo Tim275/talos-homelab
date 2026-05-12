@@ -1,0 +1,36 @@
+## OIDC Auth via Keycloak for Renovate-Operator Web-UI
+## Matches the Hubble-OIDC pattern (cilium/base/hubble-securitypolicy.yaml)
+##
+## ALL requests to renovate.timourhomelab.org must go through KC login.
+## Unauthenticated requests → redirected to KC.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: renovate-operator-oidc
+  namespace: renovate-operator
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: renovate-operator-renovate-operator
+  oidc:
+    provider:
+      issuer: https://iam.timourhomelab.org/realms/kubernetes
+    clientIDRef:
+      name: renovate-oidc-credentials
+      group: ""
+      kind: Secret
+    clientSecret:
+      name: renovate-oidc-credentials
+    cookieNames:
+      accessToken: AccessToken-Renovate
+      idToken: IdToken-Renovate
+    redirectURL: https://renovate.timourhomelab.org/oauth2/callback
+    logoutPath: /oauth2/logout
+    forwardAccessToken: true
+    refreshToken: true
+    scopes:
+      - openid
+      - profile
+      - email
+      - groups
