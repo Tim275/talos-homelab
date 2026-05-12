@@ -1,0 +1,38 @@
+## Kyverno PolicyException for Renovate-Operator + RenovateJob-spawned pods
+## Operator runs in renovate-operator namespace + spawns Job-pods there.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: renovate-operator
+  namespace: renovate-operator
+spec:
+  background: false
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+            - Deployment
+            - ReplicaSet
+            - Job
+            - CronJob
+          namespaces:
+            - renovate-operator
+  exceptions:
+    # Renovate-bot writes to /tmp during scan (readonly-rootfs not possible)
+    - policyName: require-non-root-filesystem
+      ruleNames:
+        - check-root-filesystem
+        - autogen-check-root-filesystem
+        - autogen-cronjob-check-root-filesystem
+    # Operator chart sometimes ships without resource-limits (mogenius defaults)
+    - policyName: require-resource-limits
+      ruleNames:
+        - check-resource-limits
+        - autogen-check-resource-limits
+        - autogen-cronjob-check-resource-limits
+    - policyName: require-resource-requests
+      ruleNames:
+        - check-resource-requests
+        - autogen-check-resource-requests
+        - autogen-cronjob-check-resource-requests

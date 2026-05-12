@@ -1,0 +1,133 @@
+## Auto-PR-Opener — Workaround for Renovate v43 "Repository has changed" Quirk
+##
+## Renovate v43 has a known bug: after creating a branch + pushing commit,
+## the next ref-check detects the push itself as "repo changed" → abort.
+## Operator does NOT auto-retry on this specific error.
+##
+## This CronJob runs 10min after each scheduled Renovate-Run (operator schedule:
+## 0/30 */2 * * *), finds orphan-branches, creates PRs via GitHub-API.
+##
+## Smart title-parsing: detects update-type from branch-name and uses
+## Renovate-style commit-prefixes (fix:/feat:/chore:).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: renovate-orphan-pr-opener
+  namespace: renovate-operator
+  labels:
+    app.kubernetes.io/name: renovate-orphan-pr-opener
+    app.kubernetes.io/part-of: devops-platform
+spec:
+  schedule: "10/30 * * * *"   # 10min offset every 30min — catches both 18:00+18:30 runs
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: opener
+              image: docker.io/library/python:3.12-alpine
+              command: ["/usr/local/bin/python3", "-c"]
+              args:
+                - |
+                  import json, os, re, urllib.request, urllib.error
+                  REPOS = ["Tim275/drova", "Tim275/talos-homelab"]
+                  TOKEN = os.environ["GH_TOKEN"]
+                  HEADERS = {
+                    "Authorization": f"Bearer {TOKEN}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                  }
+                  def api(method, path, body=None):
+                    url = f"https://api.github.com{path}"
+                    data = json.dumps(body).encode() if body else None
+                    req = urllib.request.Request(url, data=data, headers=HEADERS, method=method)
+                    if data: req.add_header("Content-Type", "application/json")
+                    try:
+                      with urllib.request.urlopen(req) as r:
+                        return json.loads(r.read())
+                    except urllib.error.HTTPError as e:
+                      print(f"  ERR {method} {path}: {e.code} {e.reason}", flush=True)
+                      return None
+
+                  def parse_branch(b):
+                    name = b.removeprefix("renovate/")
+                    if name == "pin-dependencies":
+                      return "chore(deps)", "pin dependencies"
+                    if name.startswith("patch-"):
+                      dep = name.removeprefix("patch-")
+                      return "fix(deps)", f"update {dep} (patch)"
+                    m = re.match(r"^major-(.+?)-(\d+(?:\.\d+)*\.x)$", name)
+                    if m:
+                      return "feat(deps)", f"update {m.group(1)} to v{m.group(2).replace('.x','')} (major)"
+                    m = re.match(r"^(.+?)-(\d+\.\d+)\.x$", name)
+                    if m:
+                      return "chore(deps)", f"update {m.group(1)} to v{m.group(2)}"
+                    m = re.match(r"^(.+?)-(\d+)\.x$", name)
+                    if m:
+                      return "chore(deps)", f"update {m.group(1)} to v{m.group(2)}"
+                    return "chore(deps)", f"update {name}"
+
+                  for repo in REPOS:
+                    print(f"═══ {repo} ═══", flush=True)
+                    branches, page = [], 1
+                    while True:
+                      r = api("GET", f"/repos/{repo}/branches?per_page=100&page={page}")
+                      if not r: break
+                      branches.extend(b["name"] for b in r if b["name"].startswith("renovate/"))
+                      if len(r) < 100: break
+                      page += 1
+                    prs = api("GET", f"/repos/{repo}/pulls?state=open&per_page=100") or []
+                    pr_heads = {p["head"]["ref"] for p in prs}
+                    orphans = [b for b in branches if b not in pr_heads]
+                    print(f"  branches={len(branches)} with_pr={len(pr_heads)} orphans={len(orphans)}", flush=True)
+                    for b in orphans:
+                      prefix, body = parse_branch(b)
+                      title = f"{prefix}: {body}"
+                      print(f"  → opening PR for {b}  →  '{title}'", flush=True)
+                      pr = api("POST", f"/repos/{repo}/pulls", {
+                        "title": title,
+                        "head": b,
+                        "base": "main",
+                        "body": f"Auto-PR for orphan Renovate branch (v43 quirk workaround).\n\nBranch: `{b}`",
+                      })
+                      if pr:
+                        pr_num = pr["number"]
+                        print(f"    ✓ PR #{pr_num}", flush=True)
+                        api("POST", f"/repos/{repo}/issues/{pr_num}/labels",
+                            {"labels": ["renovate", "dependencies"]})
+              env:
+                - name: GH_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: renovate-secret
+                      key: RENOVATE_TOKEN
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 1000
+                capabilities:
+                  drop: [ALL]
+                seccompProfile:
+                  type: RuntimeDefault
+              resources:
+                requests: { cpu: 50m, memory: 64Mi }
+                limits:   { cpu: 200m, memory: 128Mi }
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}
