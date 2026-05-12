@@ -18,7 +18,8 @@ metadata:
     app.kubernetes.io/name: renovate-orphan-pr-opener
     app.kubernetes.io/part-of: devops-platform
 spec:
-  schedule: "10/30 * * * *"   # 10min offset every 30min — catches both 18:00+18:30 runs
+  schedule: "*/5 * * * *"   # every 5min — catches orphan branches quickly
+                            # safety: <24h age + <5 commits ahead filter (siehe Script)
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 2
   failedJobsHistoryLimit: 3
@@ -41,8 +42,20 @@ spec:
               command: ["/usr/local/bin/python3", "-c"]
               args:
                 - |
+                  ## v43-Quirk Workaround: Renovate v43 erstellt Branches aber abortet
+                  ## vor PR-Creation ("Repository has changed during renovation - aborting").
+                  ## Dieser Script öffnet PRs für orphan Renovate-Branches.
+                  ##
+                  ## SAFETY-FEATURES (battle-tested 2026-05-12):
+                  ##   1. Max-age 24h: keine PRs für stale-branches die Wochen alt sind
+                  ##   2. Max-ahead 5 commits: stale branches haben oft 30+ commits drift
+                  ##   3. Skip if branch can't fast-forward (Konflikte = wahrscheinlich stale)
                   import json, os, re, urllib.request, urllib.error
+                  from datetime import datetime, timezone, timedelta
                   REPOS = ["Tim275/drova", "Tim275/talos-homelab"]
+                  MAX_AGE = timedelta(hours=24)        # only branches < 24h old
+                  MAX_COMMITS_AHEAD = 5                 # stale branches have many more
+                  NOW = datetime.now(timezone.utc)
                   TOKEN = os.environ["GH_TOKEN"]
                   HEADERS = {
                     "Authorization": f"Bearer {TOKEN}",
@@ -91,8 +104,32 @@ spec:
                     prs = api("GET", f"/repos/{repo}/pulls?state=open&per_page=100") or []
                     pr_heads = {p["head"]["ref"] for p in prs}
                     orphans = [b for b in branches if b not in pr_heads]
-                    print(f"  branches={len(branches)} with_pr={len(pr_heads)} orphans={len(orphans)}", flush=True)
+                    print(f"  total_branches={len(branches)} with_pr={len(pr_heads)} orphans={len(orphans)}", flush=True)
+                    fresh_orphans = []
                     for b in orphans:
+                      cmp = api("GET", f"/repos/{repo}/compare/main...{b}")
+                      if not cmp:
+                        print(f"  ⚠ skip {b}: compare-API failed", flush=True)
+                        continue
+                      ahead = cmp.get("ahead_by", 999)
+                      behind = cmp.get("behind_by", 999)
+                      last_commit_date = cmp.get("commits", [{}])[-1].get("commit", {}).get("author", {}).get("date") if cmp.get("commits") else None
+                      if last_commit_date:
+                        commit_age = NOW - datetime.fromisoformat(last_commit_date.replace("Z", "+00:00"))
+                      else:
+                        commit_age = MAX_AGE * 999
+                      if ahead > MAX_COMMITS_AHEAD:
+                        print(f"  ⏭ skip {b}: too many commits ahead ({ahead}>{MAX_COMMITS_AHEAD}) — likely stale", flush=True)
+                        continue
+                      if commit_age > MAX_AGE:
+                        print(f"  ⏭ skip {b}: too old ({commit_age}) — likely stale", flush=True)
+                        continue
+                      if behind > 100:
+                        print(f"  ⏭ skip {b}: too far behind main ({behind}) — likely abandoned", flush=True)
+                        continue
+                      fresh_orphans.append(b)
+                    print(f"  fresh_orphans={len(fresh_orphans)} (after age+commits filter)", flush=True)
+                    for b in fresh_orphans:
                       prefix, body = parse_branch(b)
                       title = f"{prefix}: {body}"
                       print(f"  → opening PR for {b}  →  '{title}'", flush=True)
@@ -100,7 +137,7 @@ spec:
                         "title": title,
                         "head": b,
                         "base": "main",
-                        "body": f"Auto-PR for orphan Renovate branch (v43 quirk workaround).\n\nBranch: `{b}`",
+                        "body": f"Auto-PR for orphan Renovate branch (v43 quirk workaround).\n\nBranch: `{b}`\nFilter passed: <24h old, <5 commits ahead.",
                       })
                       if pr:
                         pr_num = pr["number"]
