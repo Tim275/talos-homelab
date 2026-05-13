@@ -1,6 +1,9 @@
 
 
 machine:
+  certSANs:
+    - ${hostname}.timourhomelab.org
+    - talos.timourhomelab.org
   install:
     # System extensions
     extensions:
@@ -21,6 +24,8 @@ machine:
     hostDNS:
       enabled: true
       forwardKubeDNSToHost: true
+    imageCache:
+      localEnabled: true
   kernel:
     modules:
       # Required for Longhorn distributed storage
@@ -40,6 +45,15 @@ machine:
           - bind
           - rshared
           - rw
+      # Required for Tetragon eBPF tracing
+      - destination: /sys/kernel/tracing
+        type: tracefs
+        source: tracefs
+        options:
+          - rw
+          - nosuid
+          - nodev
+          - noexec
     extraArgs:
       # Minimal stable configuration
       eviction-hard: "nodefs.available<5%,imagefs.available<5%,memory.available<100Mi"
@@ -54,6 +68,13 @@ machine:
       # Reserve less resources for system
       system-reserved: "cpu=100m,memory=200Mi"
       kube-reserved: "cpu=100m,memory=200Mi"
+    extraConfig:
+      authentication:
+        anonymous:
+          enabled: false
+      protectKernelDefaults: true
+      eventRecordQPS: 5
+      serializeImagePulls: false
   nodeLabels:
     topology.kubernetes.io/region: ${cluster_name}
     topology.kubernetes.io/zone: ${node_name}
@@ -102,6 +123,14 @@ machine:
     net.ipv4.tcp_wmem: 4096 65536 16777216  # Reduced
     # File system optimizations
     fs.file-max: 2097152
+    # Container security hardening (KSPP-aligned)
+    kernel.kptr_restrict: 2
+    kernel.yama.ptrace_scope: 1
+    kernel.dmesg_restrict: 1
+    fs.protected_hardlinks: 1
+    fs.protected_symlinks: 1
+    fs.protected_fifos: 1
+    fs.protected_regular: 2
 
 # ========================================================================
 # ERKLÄRUNG: Was diese common.yaml.tftpl bewirkt
