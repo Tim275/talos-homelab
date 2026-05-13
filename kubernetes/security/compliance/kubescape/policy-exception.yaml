@@ -1,0 +1,23 @@
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: kubescape
+  namespace: security
+spec:
+  background: false
+  match:
+    any:
+      - resources:
+          kinds: [Pod, Deployment, ReplicaSet, StatefulSet, DaemonSet, Job, CronJob]
+          namespaces: [security]
+          names: ["kubescape*", "node-agent*", "operator*", "synchronizer*", "kollector*", "storage*", "kubevuln*"]
+  exceptions:
+    ## Kubescape (Helm-Chart von ARMO) hat probes mit timeoutSeconds=1.
+    ## Wir koennen den Helm-Chart-Default nicht ueberschreiben ohne Risiko,
+    ## daher Exception fuer diesen vendor-managed Stack.
+    - policyName: require-probe-timeouts
+      ruleNames:
+        - check-liveness-probe-timeout
+        - check-readiness-probe-timeout
+        - autogen-check-liveness-probe-timeout
+        - autogen-check-readiness-probe-timeout
