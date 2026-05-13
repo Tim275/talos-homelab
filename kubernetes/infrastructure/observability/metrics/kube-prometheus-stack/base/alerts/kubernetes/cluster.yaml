@@ -29,14 +29,36 @@ spec:
             description: "etcd has lost quorum — cluster state at risk of corruption."
 
         - alert: WorkerNodesDown
-          expr: count(kube_node_status_condition{condition="Ready", status="false"} == 1) > 1
-          for: 5m
+          expr: count(kube_node_status_condition{condition="Ready", status="false"} == 1) >= 1
+          for: 2m
           labels:
             severity: critical
             component: kubernetes
           annotations:
-            summary: "Multiple worker nodes NotReady"
-            description: "{{ $value }} worker nodes have been NotReady for >5 minutes."
+            summary: "{{ $value }} worker nodes NotReady"
+            description: "{{ $value }} worker nodes have been NotReady for >2 minutes."
+
+        - alert: AnyNodeNotReady
+          expr: max_over_time(kube_node_status_condition{condition="Ready",status="true"}[5m]) == 0
+          for: 2m
+          labels:
+            severity: critical
+            component: kubernetes
+            priority: P1
+          annotations:
+            summary: "Node {{ $labels.node }} NotReady"
+            description: "Node {{ $labels.node }} has been NotReady for >2 minutes."
+
+        - alert: ImagePullBackoff
+          expr: kube_pod_container_status_waiting_reason{reason=~"ImagePullBackOff|ErrImagePull"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            component: kubernetes
+            priority: P2
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} cannot pull image"
+            description: "Container {{ $labels.container }} is in {{ $labels.reason }} state for >5 minutes."
 
         - alert: NodeMemoryPressureLow
           expr: (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) < 0.20
@@ -163,7 +185,7 @@ spec:
       rules:
         - alert: NodeNotReady
           expr: kube_node_status_condition{condition="Ready",status="true"} == 0
-          for: 5m
+          for: 2m
           labels:
             severity: warning
             priority: P1
