@@ -1,0 +1,32 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: network-vpn
+spec:
+  groups:
+    - name: tailscale
+      interval: 60s
+      rules:
+        - alert: TailscaleConnectorDown
+          expr: |
+            absent(kube_pod_status_ready{namespace="tailscale",pod=~"ts-.*-connector-.*",condition="true"} == 1)
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: vpn
+          annotations:
+            summary: "Tailscale subnet-router is down"
+            description: "No healthy ts-*-connector pod — Engineers cannot reach Pod/Service-CIDRs via Tailnet"
+            action: "kubectl get pods -n tailscale ; kubectl logs <connector-pod> ; check OAuth credentials"
+
+        - alert: TailscaleOperatorDown
+          expr: absent(up{namespace="tailscale",job="tailscale-operator"} == 1)
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: vpn
+          annotations:
+            summary: "Tailscale operator is down"
+            description: "Connector CRs cannot be reconciled — existing tunnels stay up, but no new routes can be added"

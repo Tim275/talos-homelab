@@ -381,3 +381,121 @@ spec:
           annotations:
             summary: "kube-apiserver serving cert expires in <30 days ({{ $value }})"
             description: "Talos rotates automatically, but verify before relying on it."
+
+    - name: p0.dns.critical
+      interval: 30s
+      rules:
+        - alert: CoreDNSDown
+          expr: absent(up{job="kube-dns"} == 1) or sum(up{job="kube-dns"} == 1) < 1
+          for: 2m
+          labels:
+            severity: critical
+            priority: P0
+            component: dns
+          annotations:
+            summary: "CoreDNS has no healthy replicas"
+            description: "CoreDNS down >2min — cluster DNS resolution broken, expect cascade failures"
+            action: "kubectl get pods -n kube-system -l k8s-app=kube-dns + restart"
+
+        - alert: CoreDNSErrorsHigh
+          expr: |
+            sum(rate(coredns_dns_responses_total{rcode=~"SERVFAIL|FORMERR|REFUSED"}[5m]))
+            / sum(rate(coredns_dns_responses_total[5m])) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: dns
+          annotations:
+            summary: "CoreDNS error rate >5%"
+            description: "DNS resolution failures spike — check upstream resolvers + CoreDNS-Corefile"
+
+    - name: p0.apiserver.critical
+      interval: 30s
+      rules:
+        - alert: APIServerErrorRateHigh
+          expr: |
+            sum(rate(apiserver_request_total{code=~"5.."}[5m]))
+            / sum(rate(apiserver_request_total[5m])) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: control-plane
+          annotations:
+            summary: "kube-apiserver 5xx-rate >5%"
+            description: "Many requests returning 5xx errors — check etcd, controller-manager, webhook-availability"
+
+        - alert: APIServerLatencyHigh
+          expr: |
+            histogram_quantile(0.99,
+              sum by (le, verb) (rate(apiserver_request_duration_seconds_bucket{verb=~"GET|LIST|POST|PUT|PATCH|DELETE"}[5m]))
+            ) > 5
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: control-plane
+          annotations:
+            summary: "kube-apiserver p99 latency >5s for {{ $labels.verb }}"
+            description: "API server slow — typically etcd-related; check ZFS-IOPS + etcd-compaction"
+
+    - name: p0.webhooks.critical
+      interval: 60s
+      rules:
+        - alert: WebhookFailing
+          expr: |
+            sum by (name) (rate(apiserver_admission_webhook_rejection_count[5m])) > 0
+            and
+            sum by (name) (rate(apiserver_admission_webhook_admission_duration_seconds_count[5m])) < 0.01
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: webhooks
+          annotations:
+            summary: "Admission webhook {{ $labels.name }} failing"
+            description: "Webhook rejecting requests AND not responding — investigate cert-manager-webhook, cnpg-webhook, kyverno"
+            action: "kubectl delete secret <webhook-cert> -n <ns>; kubectl rollout restart deploy/<webhook>"
+
+    - name: p1.workload.warning
+      interval: 60s
+      rules:
+        - alert: HPAAtMaxReplicas
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas
+            >= kube_horizontalpodautoscaler_spec_max_replicas
+          for: 15m
+          labels:
+            severity: warning
+            priority: P2
+            component: autoscaling
+          annotations:
+            summary: "HPA {{ $labels.namespace }}/{{ $labels.horizontalpodautoscaler }} at maxReplicas"
+            description: "Auto-scaling exhausted for >15min — increase maxReplicas or investigate load"
+
+        - alert: PDBViolation
+          expr: |
+            (kube_poddisruptionbudget_status_desired_healthy - kube_poddisruptionbudget_status_current_healthy) > 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: scheduling
+          annotations:
+            summary: "PDB {{ $labels.namespace }}/{{ $labels.poddisruptionbudget }} violated"
+            description: "Cannot drain nodes — fewer healthy pods than PDB requires"
+
+        - alert: CronJobFailureRateHigh
+          expr: |
+            sum by (namespace, cronjob) (
+              rate(kube_job_status_failed{job_name=~".+"}[1h])
+            ) > 0.5
+          for: 2h
+          labels:
+            severity: warning
+            priority: P2
+            component: jobs
+          annotations:
+            summary: "CronJob {{ $labels.namespace }}/{{ $labels.cronjob }} failure-rate high"
+            description: ">50% of last-hour jobs failed for >2h — check job logs"

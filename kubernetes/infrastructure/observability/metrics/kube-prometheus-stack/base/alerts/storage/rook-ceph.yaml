@@ -158,3 +158,32 @@ spec:
             summary: "Ceph cluster is {{ $value | humanizePercentage }} full"
             description: "Ceph storage consumption over 75%"
             impact: "Plan to expand Ceph cluster"
+
+    - name: p0.ceph-mgr.critical
+      interval: 30s
+      rules:
+        - alert: CephMGRDown
+          expr: absent(ceph_mgr_status{job=~"rook-ceph-mgr|rook-ceph-mgr-active"}) or sum(ceph_mgr_status) == 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: storage
+            pagerduty_severity: warning
+          annotations:
+            summary: "All Ceph MGR daemons are down"
+            description: "Without active MGR: no dashboard, no metrics, no prometheus-exporter, no orchestrator commands"
+            action: "kubectl get pods -n rook-ceph -l app=rook-ceph-mgr ; check Operator-Logs"
+
+        - alert: RGWBucketQuotaWarning
+          expr: |
+            (ceph_rgw_bucket_used_bytes / ceph_rgw_bucket_quota_bytes) > 0.85
+            and ceph_rgw_bucket_quota_bytes > 0
+          for: 30m
+          labels:
+            severity: warning
+            priority: P2
+            component: storage
+          annotations:
+            summary: "RGW bucket {{ $labels.bucket }} >85% of quota"
+            description: "Bucket fills soon — Velero/CNPG/Loki/Tempo writes will fail when 100%"
