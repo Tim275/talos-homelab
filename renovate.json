@@ -88,7 +88,6 @@
     ]
   },
   "ignorePaths": [
-    "tofu/**",
     "**/charts/**",
     "kubernetes/components/**",
     "kubernetes/projects/**",
@@ -98,10 +97,18 @@
   ],
   "packageRules": [
     {
-      "description": "BLOCK: Talos versioning — manual via talosctl upgrade",
+      "description": "BLOCK: Talos OS image — manual upgrade via talosctl upgrade",
       "matchPackageNames": [
         "/siderolabs/talos/",
-        "/siderolabs/installer/"
+        "/siderolabs/installer/",
+        "/siderolabs/imager/"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "BLOCK: Kubelet image — version-coupled to Talos+K8s, must upgrade together via talosctl",
+      "matchPackageNames": [
+        "/siderolabs/kubelet/"
       ],
       "enabled": false
     },
@@ -116,11 +123,23 @@
       "enabled": false
     },
     {
-      "description": "BLOCK: Talos-pinned system tooling",
+      "description": "BLOCK: Talos-pinned system tooling (cri-tools/cni/containerd come with Talos image)",
       "matchPackageNames": [
         "/cri-tools/",
         "/cni-plugins/",
         "/containerd/"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "BLOCK: tfvars version-coupling fields (kubernetes_version / talos_machine_config_version)",
+      "matchFileNames": [
+        "tofu/talos_cluster.auto.tfvars",
+        "tofu/talos_image.auto.tfvars"
+      ],
+      "matchDepNames": [
+        "kubernetes_version",
+        "talos_machine_config_version"
       ],
       "enabled": false
     },
@@ -324,9 +343,11 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Generic renovate comments in tf/yaml/yml/sh files (kubernetes/ only — tofu/ excluded via ignorePaths)",
+      "description": "Generic renovate comments in tf/yaml/yml/sh/tftpl files (kubernetes/ + tofu/)",
       "managerFilePatterns": [
         "/\\.tf$/",
+        "/\\.tftpl$/",
+        "/\\.tfvars$/",
         "/\\.yaml$/",
         "/\\.yml$/",
         "/\\.sh$/"
@@ -337,7 +358,7 @@
     },
     {
       "customType": "regex",
-      "description": "Talos Docker images (k8s manifests only — tofu/ ignored)",
+      "description": "Talos Docker images in k8s manifests (BLOCKED for tofu/ via packageRules — siderolabs/talos)",
       "managerFilePatterns": [
         "/\\.yaml$/"
       ],
@@ -346,6 +367,17 @@
       ],
       "datasourceTemplate": "docker",
       "depNameTemplate": "ghcr.io/siderolabs/talos"
+    },
+    {
+      "customType": "regex",
+      "description": "Container images in tofu/ tftpl files — Cilium values, inline-manifests, etc.",
+      "managerFilePatterns": [
+        "/tofu/.*\\.(yaml|yml|tftpl)$/"
+      ],
+      "matchStrings": [
+        "image:\\s*(?<depName>(?:[\\w.-]+\\/)?[\\w.-]+\\/[\\w.-]+):(?<currentValue>v?[\\w.-]+)"
+      ],
+      "datasourceTemplate": "docker"
     },
     {
       "customType": "regex",
