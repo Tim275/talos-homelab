@@ -60,6 +60,28 @@ spec:
             summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} cannot pull image"
             description: "Container {{ $labels.container }} is in {{ $labels.reason }} state for >5 minutes."
 
+        - alert: KubeletDown
+          expr: up{job="kubelet"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            component: kubernetes
+            priority: P1
+          annotations:
+            summary: "Kubelet on {{ $labels.node }} is down"
+            description: "Kubelet on node {{ $labels.node }} has been unreachable for >2 minutes — pods on this node cannot be scheduled or evicted."
+
+        - alert: ImageRegistryDNSFailure
+          expr: sum by (node) (rate(kubelet_runtime_operations_errors_total{operation_type=~"pull_image|image_status"}[5m])) > 0
+          for: 5m
+          labels:
+            severity: critical
+            component: kubernetes
+            priority: P1
+          annotations:
+            summary: "Node {{ $labels.node }} cannot pull images (likely DNS issue)"
+            description: "Kubelet on {{ $labels.node }} has image-operation errors for >5min — check DNS, registry connectivity."
+
         - alert: NodeMemoryPressureLow
           expr: (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) < 0.20
           for: 10m
