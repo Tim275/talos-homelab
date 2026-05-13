@@ -1,0 +1,70 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: renovate-self-monitoring
+  namespace: renovate-operator
+  labels:
+    app.kubernetes.io/name: renovate-operator
+    app.kubernetes.io/part-of: devops-platform
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: renovate.health
+      interval: 60s
+      rules:
+        - alert: RenovateOperatorDown
+          expr: |
+            kube_deployment_status_replicas_available{namespace="renovate-operator",deployment="renovate-operator-renovate-operator"} < 1
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: renovate
+          annotations:
+            summary: "Renovate Operator down >10min — dependency updates frozen"
+            description: "Operator unreachable. No RenovateJob can be reconciled. Falls langfristig: PAT-Expiry, OOM, RBAC-Issue."
+            action: "kubectl logs -n renovate-operator deploy/renovate-operator-renovate-operator --tail=50"
+
+        - alert: RenovateOrphanPROpenerFailingRepeatedly
+          expr: |
+            sum(kube_cronjob_status_last_successful_time{namespace="renovate-operator",cronjob="renovate-orphan-pr-opener"})
+            ==
+            0
+            OR
+            (time() - sum(kube_cronjob_status_last_successful_time{namespace="renovate-operator",cronjob="renovate-orphan-pr-opener"})) > 3600
+          for: 30m
+          labels:
+            severity: warning
+            priority: P3
+            component: renovate
+          annotations:
+            summary: "orphan-pr-opener kein erfolgreicher Run in >1h"
+            description: "v43-Quirk-Workaround broken. Renovate PRs hängen ggf. als orphan branches ohne PR."
+
+    - name: renovate.runs
+      interval: 5m
+      rules:
+        - alert: RenovateNoSuccessfulRunIn4h
+          expr: |
+            (time() - max by (renovatejob) (kube_job_status_completion_time{namespace="renovate-operator", job_name=~"renovate-(drova|talos-homelab).*"})) > 14400
+          for: 30m
+          labels:
+            severity: warning
+            priority: P2
+            component: renovate
+          annotations:
+            summary: "Renovate hat kein erfolgreichen Run in >4h für RenovateJob {{ $labels.renovatejob }}"
+            description: "PAT-Expiry, GitHub-Rate-Limit, Repo-Unreachable möglich. Dashboard-Issue checken."
+            action: "kubectl get jobs -n renovate-operator | grep renovate ; kubectl logs -n renovate-operator <last-job-pod>"
+
+        - alert: RenovateJobFailureRateHigh
+          expr: |
+            sum by (job_name) (rate(kube_job_status_failed{namespace="renovate-operator"}[1h])) > 0.5
+          for: 15m
+          labels:
+            severity: warning
+            priority: P3
+            component: renovate
+          annotations:
+            summary: "RenovateJob {{ $labels.job_name }} fails >50% der Zeit"
+            description: "Job-Pod stirbt repeatedly. Häufige Ursachen: OOMKilled, Image-Pull, PAT-Auth-403."
