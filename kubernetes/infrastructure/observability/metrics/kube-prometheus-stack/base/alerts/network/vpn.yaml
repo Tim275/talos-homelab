@@ -9,6 +9,8 @@ spec:
       rules:
         - alert: TailscaleConnectorDown
           expr: |
+            count(kube_namespace_status_phase{namespace="tailscale",phase="Active"} == 1)
+            and on()
             absent(kube_pod_status_ready{namespace="tailscale",pod=~"ts-.*-connector-.*",condition="true"} == 1)
           for: 5m
           labels:
@@ -21,7 +23,10 @@ spec:
             action: "kubectl get pods -n tailscale ; kubectl logs <connector-pod> ; check OAuth credentials"
 
         - alert: TailscaleOperatorDown
-          expr: absent(up{namespace="tailscale",job="tailscale-operator"} == 1)
+          expr: |
+            count(kube_namespace_status_phase{namespace="tailscale",phase="Active"} == 1)
+            and on()
+            absent(up{namespace="tailscale",job="tailscale-operator"} == 1)
           for: 10m
           labels:
             severity: warning
