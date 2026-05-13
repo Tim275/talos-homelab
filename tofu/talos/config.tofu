@@ -84,6 +84,7 @@ data "talos_machine_configuration" "this" {
       mac_address  = lower(each.value.mac_address)
       gateway      = var.cluster.gateway
       subnet_mask  = var.cluster.subnet_mask
+      dns          = try(each.value.dns, [])
     })
   ]
 }
