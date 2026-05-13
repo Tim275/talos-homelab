@@ -126,3 +126,26 @@ spec:
             summary: "PVC {{ $labels.persistentvolumeclaim }} will fill in <7 days"
             description: "PVC predicted to be full within a week based on growth trend"
             impact: "Plan to expand PVC or clean up data"
+
+        - alert: CSIVolumeStuckOperation
+          expr: |
+            sum(rate(csi_sidecar_operations_seconds_count{grpc_status_code!="OK",method_name=~".*Volume.*"}[5m])) by (namespace, driver_name) > 0
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: storage
+          annotations:
+            summary: "CSI driver {{ $labels.driver_name }} has failed Volume-ops"
+            description: "CSI ops failing for >10min — likely stuck-omap-lock or PVC orphan"
+
+        - alert: VolumeAttachmentStuck
+          expr: count(kube_volumeattachment_status_attached == 0) > 0
+          for: 15m
+          labels:
+            severity: warning
+            priority: P2
+            component: storage
+          annotations:
+            summary: "VolumeAttachment stuck in detached state"
+            description: "{{ $value }} VolumeAttachments stuck for >15min — likely node-CSI plugin issue"
