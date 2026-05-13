@@ -4,6 +4,38 @@ metadata:
   name: network-cilium
 spec:
   groups:
+    - name: cilium-spire
+      interval: 60s
+      rules:
+        - alert: SPIREAgentDown
+          expr: |
+            count(kube_namespace_status_phase{namespace="cilium-spire",phase="Active"} == 1)
+            and on()
+            sum(kube_daemonset_status_number_unavailable{namespace="cilium-spire",daemonset="spire-agent"}) > 0
+          for: 10m
+          labels:
+            severity: critical
+            priority: P1
+            component: security
+          annotations:
+            summary: "SPIRE-Agents down on {{ $value }} nodes — Cilium mTLS broken"
+            description: "Without SPIRE-Agents, Cilium cannot issue SVIDs — mTLS-required NetworkPolicies are NOT enforced. We discovered 4-day silent breakage on 2026-05-13."
+            action: "kubectl rollout restart -n cilium-spire daemonset/spire-agent ; check k8s_psat token expiry"
+
+        - alert: SPIREServerDown
+          expr: |
+            count(kube_namespace_status_phase{namespace="cilium-spire",phase="Active"} == 1)
+            and on()
+            kube_statefulset_status_replicas_ready{namespace="cilium-spire",statefulset="spire-server"} < 1
+          for: 5m
+          labels:
+            severity: critical
+            priority: P0
+            component: security
+          annotations:
+            summary: "SPIRE-Server down — no new SVIDs can be issued"
+            description: "Cilium mTLS infrastructure unavailable — existing SVIDs still valid until expiry (~1h default)"
+
     - name: cilium
       interval: 1m
       rules:
