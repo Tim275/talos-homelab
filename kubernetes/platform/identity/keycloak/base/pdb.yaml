@@ -1,0 +1,22 @@
+# PodDisruptionBudget für Keycloak StatefulSet (battle-tested 2026-05-14).
+#
+# Keycloak v2alpha1 CR-Spec hat KEIN pdb field — Operator claim'd das macht er
+# auto, tut es aber NICHT. Live-audit zeigte: 0 PDB für keycloak-ns trotz
+# 3 Replicas. → Talos-upgrade kann alle 3 KC-Pods gleichzeitig evicten →
+# Infinispan-Cluster-Bildung beim Restart broken → Login-Session-Fail.
+#
+# minAvailable: 2 → 1 Pod darf gleichzeitig down, 2 müssen Quorum halten.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: keycloak
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/component: oidc-provider
+    app.kubernetes.io/part-of: platform-identity
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: keycloak
