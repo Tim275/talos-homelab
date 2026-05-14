@@ -1,0 +1,85 @@
+# Quartal-DR-Drill Reminder CronJob (battle-tested 2026-05-14).
+#
+# Erinnert Slack alle 90 Tage: "Es ist Zeit für den nächsten DR-Drill".
+# Nach erstmaligem Drill heute (2026-05-14) → nächster: 2026-08-12.
+#
+# Lehre: Backups die nie restored werden sind unbewiesene Backups.
+# Nur ein quartal-wiederholter Drill beweist dass die Pipeline funktioniert.
+#
+# Action wenn Reminder fired:
+#   1. Pick a tier0 backup (z.B. tier0-keycloak)
+#   2. velero restore create --from-backup ... --namespace-mapping=NS:drdrill-NS
+#   3. Verify items restored, RTO messen, in dr-drill-log.md eintragen
+#   4. Cleanup (delete drdrill-NS)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: quartal-dr-drill-reminder
+  namespace: velero
+  labels:
+    app.kubernetes.io/name: dr-drill-reminder
+    app.kubernetes.io/part-of: backup-operations
+spec:
+  # 06:00 UTC am 12. Tag des Monats, alle 3 Monate (Feb/Mai/Aug/Nov)
+  schedule: "0 6 12 2,5,8,11 *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: reminder
+              image: curlimages/curl:8.10.1
+              env:
+                - name: SLACK_WEBHOOK
+                  valueFrom:
+                    secretKeyRef:
+                      name: slack-webhook-url
+                      key: url
+                      optional: true
+              command:
+                - sh
+                - -c
+                - |
+                  TS=$(date -u +"%Y-%m-%d %H:%M UTC")
+                  MSG=$(cat <<EOF
+                  {
+                    "username": "DR-Drill-Reminder",
+                    "icon_emoji": ":calendar:",
+                    "attachments": [{
+                      "color": "warning",
+                      "title": "🏋️ Quartal-DR-Drill fällig",
+                      "text": "Es ist Zeit für den nächsten Disaster-Recovery-Drill.\n\n*Procedure:*\n1. Pick a tier0 Velero-Backup\n2. Restore in drdrill-NS\n3. Time it + verify\n4. Log in kubernetes/scripts/runbooks/dr-drill-log.md",
+                      "fields": [
+                        {"title": "Trigger-Time", "value": "$TS", "short": true},
+                        {"title": "Last Drill", "value": "2026-05-14 (first ever)", "short": true}
+                      ]
+                    }]
+                  }
+                  EOF
+                  )
+                  if [ -n "$SLACK_WEBHOOK" ]; then
+                    curl -sk -X POST "$SLACK_WEBHOOK" -H 'Content-Type: application/json' -d "$MSG"
+                    echo "✓ DR-Drill-Reminder sent to Slack"
+                  else
+                    echo "⚠ SLACK_WEBHOOK not mounted — reminder logged only"
+                    echo "$MSG"
+                  fi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests: { cpu: 10m, memory: 32Mi }
+                limits:   { cpu: 100m, memory: 64Mi }
