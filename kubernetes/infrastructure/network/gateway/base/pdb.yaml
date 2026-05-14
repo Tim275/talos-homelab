@@ -1,0 +1,45 @@
+# PodDisruptionBudgets für Envoy Gateway (battle-tested 2026-05-14).
+#
+# Heute hatte envoy-gateway-envoy-gateway-* 40 Restarts nach Talos-upgrade
+# (Exit Code 0 = "Completed" → ReplicaSet recreate-loop). PDB schützt davor.
+#
+# Envoy-Gateway-Operator vs Envoy-Proxy-Pods:
+#   - envoy-gateway:        Controller (Helm-Chart-Deployment)
+#   - envoy-gateway-envoy-* : Proxy-Pods (Operator-managed, prefixed with gateway-name)
+#
+# minAvailable: 1 → bei single-replica wird kubelet drain-block,
+# bei multi-replica überlebt mindestens 1 Pod.
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: envoy-gateway-controller
+  namespace: gateway
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gateway-helm
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: envoy-gateway-proxy
+  namespace: gateway
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: proxy
+      app.kubernetes.io/managed-by: envoy-gateway
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: envoy-ratelimit
+  namespace: gateway
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: envoy-ratelimit

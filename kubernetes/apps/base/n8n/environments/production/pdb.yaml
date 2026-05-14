@@ -1,0 +1,50 @@
+# PodDisruptionBudgets für n8n-prod (battle-tested 2026-05-14).
+#
+# Heute hatte n8n-main/worker/webhook je 37-41 Restarts nach Talos-upgrade
+# → kein PDB → kubelet evicted alle Replicas gleichzeitig.
+#
+# minAvailable: 1 für jeden component → mindestens 1 Pod überlebt rolling-drain.
+# Bei 1-replica-deployments hat das den Effekt: kubelet darf während drain
+# NICHT evicten bis Pod gesund ist → resilient gegen Talos-upgrade-race.
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: n8n-main
+  labels:
+    app: n8n
+    component: main
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: n8n
+      component: main
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: n8n-worker
+  labels:
+    app: n8n
+    component: worker
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: n8n
+      component: worker
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: n8n-webhook
+  labels:
+    app: n8n
+    component: webhook
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: n8n
+      component: webhook
