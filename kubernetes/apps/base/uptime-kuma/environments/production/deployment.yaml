@@ -14,35 +14,11 @@ spec:
       labels:
         app: uptime-kuma
     spec:
+      # louislam/uptime-kuma's docker-entrypoint.sh chown's /app/data → braucht
+      # root. Image ist nicht rootless-fähig (battle-tested 2026-05-14).
+      # PolicyException für require-run-as-non-root deckt das ab.
       securityContext:
-        runAsUser: 1000
-        runAsGroup: 1000
-        fsGroup: 1000
-        fsGroupChangePolicy: "OnRootMismatch"
-      # initContainer setzt /app/data permissions weil louislam/uptime-kuma's
-      # entrypoint chown macht, was unter runAsNonRoot fails. Fix battle-tested
-      # 2026-05-14: PVC-mount default 0755 root:root → init schreibt 1000:1000.
-      initContainers:
-        - name: init-permissions
-          image: busybox:1.36
-          command:
-            - sh
-            - -c
-            - 'chown -R 1000:1000 /app/data && chmod -R 0700 /app/data'
-          volumeMounts:
-            - name: data
-              mountPath: /app/data
-          securityContext:
-            runAsUser: 0
-            runAsNonRoot: false
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: [ALL]
-              add: [CHOWN, FOWNER, DAC_OVERRIDE]
-          resources:
-            requests: { cpu: 10m, memory: 16Mi }
-            limits:   { cpu: 100m, memory: 64Mi }
+        fsGroup: 0
       containers:
         - name: uptime-kuma
           image: louislam/uptime-kuma:1.23.16
@@ -77,13 +53,19 @@ spec:
             - name: data
               mountPath: /app/data
           securityContext:
-            runAsNonRoot: true
-            runAsUser: 1000
+            runAsUser: 0
+            runAsNonRoot: false
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
             capabilities:
               drop:
                 - ALL
+              add:
+                - CHOWN
+                - FOWNER
+                - DAC_OVERRIDE
+                - SETUID
+                - SETGID
       volumes:
         - name: data
           persistentVolumeClaim:
