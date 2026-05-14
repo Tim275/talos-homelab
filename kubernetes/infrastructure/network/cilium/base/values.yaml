@@ -296,6 +296,13 @@ authentication:
   mutual:
     spire:
       enabled: true
+      # PSAT-Token-TTL (battle-tested 2026-05-14):
+      # Default 600s (10min) → Talos-upgrade-rolling-restart läuft länger als
+      # token-renewal-window → token expires → SPIRE-agent crash → mTLS broken
+      # cluster-weit → drova-services TCP-timeout zu Kafka → User sieht Crashloop.
+      #
+      # 3600s (1h) → übersteht alle realistischen Talos-upgrade-Zyklen.
+      # Cilium-Helm chart key: spire.agent.serviceAccount.tokenExpirationSeconds
       install:
         namespace: cilium-spire
         server:
@@ -307,6 +314,9 @@ authentication:
             runAsUser: 0
         agent:
           skipKubeletVerification: true
+          # Token TTL Bump: 600s → 3600s — Talos-upgrade-resilience
+          serviceAccount:
+            tokenExpirationSeconds: 3600
 
 prometheus:
   metricsService: true

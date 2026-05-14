@@ -1,6 +1,12 @@
 # yamllint disable rule:line-length
 # https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml
 prometheus:
+  # PodDisruptionBudget — Talos-upgrade-resilience (battle-tested 2026-05-14):
+  # Ohne PDB konnte Talos-upgrade alle prometheus-Pods evicten → "Completed"-loop.
+  # minAvailable: 1 → mindestens 1 Replica überlebt rolling-node-drain.
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
   prometheusSpec:
     externalLabels:
       cluster: prod-talos
@@ -222,6 +228,13 @@ kube-state-metrics:
     failureThreshold: 6
 
 alertmanager:
+  # PodDisruptionBudget — gossip-mesh-resilience (battle-tested 2026-05-14):
+  # Heute war alertmanager-0 16h silent-dead nach Talos-upgrade. minAvailable: 2
+  # → bei 3 Replicas darf nur 1 gleichzeitig evicted werden → gossip-mesh
+  # behält Quorum (3/3 → 2/3 OK, 1/3 disruptionsAllowed=0 → next evict blocked).
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
   alertmanagerSpec:
     replicas: 3
     retention: 720h
@@ -264,13 +277,21 @@ alertmanager:
 
       routes:
 
-        # Watchdog routed to 'null' until a real healthchecks.io URL is sealed
-        # in watchdog-webhook-sealed.yaml. The placeholder URL (example.com)
-        # caused 100% webhook delivery failures every 30s, which spammed
-        # AlertmanagerFailedToSendAlerts → re-enable when real URL is set.
+        # InfoInhibitor: silent-drop (es ist nur ein noop-inhibitor)
         - matchers:
-            - alertname=~"Watchdog|InfoInhibitor"
+            - alertname="InfoInhibitor"
           receiver: 'null'
+
+        # Watchdog → DMS-receiver (auch wenn URL aktuell example.com).
+        # AM sendet trotzdem 30s-pings → wenn DMS-URL gesealed wird, ist die
+        # Route bereits korrekt. Webhook failure ist KEIN block (max_alerts=1).
+        # TODO: seal echte healthchecks.io URL in watchdog-webhook-sealed.yaml.
+        - matchers:
+            - alertname="Watchdog"
+          receiver: 'watchdog-heartbeat'
+          group_wait: 0s
+          group_interval: 1m
+          repeat_interval: 1m
 
         # TargetDown noise — too noisy during rolling restarts
         # Route to slack-info (silent channel), longer repeat-interval
