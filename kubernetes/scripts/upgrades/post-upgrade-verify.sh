@@ -91,7 +91,141 @@ PENDING=$(kubectl get pvc -A --no-headers 2>/dev/null | awk '$4=="Pending"' | wc
 [ "$PENDING" -eq 0 ] && ok "no Pending PVCs" || fail "$PENDING PVCs Pending"
 
 echo
-echo "=== 7. Compare to pre-snapshot ==="
+echo "=== 7. SPIRE-Agents — service-account-token health (battle-tested 2026-05-14) ==="
+# Talos-upgrade kann kubelet während PSAT-token-renewal sigterm'n → expired token
+# → SPIRE-agent crashloop → cluster-weit mTLS broken → drova services TCP-timeout
+SPIRE_TOTAL=$(kubectl get pods -n cilium-spire -l app=spire-agent --no-headers 2>/dev/null | wc -l | tr -d ' ')
+SPIRE_OK=$(kubectl get pods -n cilium-spire -l app=spire-agent --no-headers 2>/dev/null \
+  | awk '$3=="Running"' | wc -l | tr -d ' ')
+SPIRE_BAD=$((SPIRE_TOTAL - SPIRE_OK))
+if [ "$SPIRE_BAD" -eq 0 ] && [ "$SPIRE_TOTAL" -gt 0 ]; then
+  ok "all $SPIRE_TOTAL SPIRE-agents Running"
+elif [ "$SPIRE_TOTAL" -eq 0 ]; then
+  fail "0 SPIRE-agents found — DaemonSet down or namespace gone"
+else
+  fail "$SPIRE_BAD of $SPIRE_TOTAL SPIRE-agent(s) NOT Running — Cilium mTLS broken"
+  echo "    FIX: kubectl rollout restart ds/spire-agent -n cilium-spire"
+fi
+
+# Check for ANY 'service account token has expired' in last 10min logs
+TOKEN_ERR=$(kubectl logs -n cilium-spire spire-server-0 -c spire-server --since=10m 2>/dev/null \
+  | grep -c "service account token has expired" | tr -d ' \n')
+TOKEN_ERR=${TOKEN_ERR:-0}
+if [ "$TOKEN_ERR" -eq 0 ] 2>/dev/null; then
+  ok "no PSAT-token-expired errors"
+else
+  warn "$TOKEN_ERR PSAT-token-expired errors in 10min (lingering, may self-heal)"
+fi
+
+echo
+echo "=== 8. Phase=Succeeded pods (silent-death pattern after upgrade-eviction) ==="
+# StatefulSet/Deployment behandelt Exit Code 0 als "successfully terminated" → kein
+# auto-recreate. Heute: AM-0 (17h), Prometheus-0 (28h), envoy-gateway (40 restarts).
+SUCCEEDED=$(kubectl get pods -A --field-selector=status.phase=Succeeded --no-headers 2>/dev/null \
+  | grep -vE "Completed|^kube-system" | wc -l | tr -d ' ')
+# Filter out legit Jobs/CronJobs (have ownerReference Job)
+ZOMBIE=$(kubectl get pods -A --field-selector=status.phase=Succeeded -o json 2>/dev/null \
+  | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+zombies = []
+for p in d.get('items', []):
+    refs = p.get('metadata', {}).get('ownerReferences', [])
+    # Skip if owned by Job (legit) — flag if owned by StatefulSet/ReplicaSet
+    if any(r.get('kind') in ('StatefulSet', 'ReplicaSet') for r in refs):
+        zombies.append(f\"{p['metadata']['namespace']}/{p['metadata']['name']}\")
+for z in zombies[:10]:
+    print(z)
+print(f'TOTAL:{len(zombies)}', file=sys.stderr)
+" 2>&1)
+ZOMBIE_COUNT=$(echo "$ZOMBIE" | grep -oE "TOTAL:[0-9]+" | cut -d: -f2)
+if [ "${ZOMBIE_COUNT:-0}" -eq 0 ]; then
+  ok "no zombie pods (Phase=Succeeded under StatefulSet/RS)"
+else
+  fail "$ZOMBIE_COUNT zombie pods — won't auto-recreate, manual force-delete needed"
+  echo "$ZOMBIE" | grep -v "TOTAL:" | head -5 | sed 's/^/    /'
+  echo "    FIX: kubectl delete pod -n <ns> <pod> --force --grace-period=0"
+fi
+
+echo
+echo "=== 9. PodDisruptionBudgets — unhealthy? ==="
+# Flag NUR wenn currentHealthy < expectedPods. disruptionsAllowed=0 ist by-design
+# bei single-replica services (n8n-postgres-primary etc) und kein Problem.
+PDB_UNHEALTHY=$(kubectl get pdb -A -o json 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+unhealthy = []
+for p in d.get('items', []):
+    cur = p.get('status', {}).get('currentHealthy', 0)
+    exp = p.get('status', {}).get('expectedPods', 0)
+    if exp > 0 and cur < exp:
+        ns = p['metadata']['namespace']
+        nm = p['metadata']['name']
+        unhealthy.append(f'{ns}/{nm} ({cur}/{exp})')
+for u in unhealthy[:5]:
+    print(u)
+print(f'TOTAL:{len(unhealthy)}', file=sys.stderr)
+" 2>&1)
+PDB_COUNT=$(echo "$PDB_UNHEALTHY" | grep -oE "TOTAL:[0-9]+" | cut -d: -f2)
+[ "${PDB_COUNT:-0}" -eq 0 ] && ok "all PDBs at full health" \
+  || fail "$PDB_COUNT PDB(s) unhealthy — pods missing from coverage"
+
+echo
+echo "=== 10. Velero backups (last 24h) ==="
+# Velero Schedules sollten lastBackup < 24h haben
+STALE_VELERO=$(kubectl get schedules -n velero -o json 2>/dev/null | python3 -c "
+import sys, json
+from datetime import datetime, timezone, timedelta
+d = json.load(sys.stdin)
+stale = []
+threshold = datetime.now(timezone.utc) - timedelta(hours=26)
+for s in d.get('items', []):
+    nm = s['metadata']['name']
+    last = s.get('status', {}).get('lastBackup', '')
+    if not last:
+        stale.append(f'{nm}: NEVER')
+        continue
+    try:
+        last_dt = datetime.fromisoformat(last.replace('Z', '+00:00'))
+        if last_dt < threshold:
+            stale.append(f'{nm}: {last}')
+    except: pass
+for s in stale[:5]:
+    print(s)
+print(f'TOTAL:{len(stale)}', file=sys.stderr)
+" 2>&1)
+STALE_COUNT=$(echo "$STALE_VELERO" | grep -oE "TOTAL:[0-9]+" | cut -d: -f2)
+[ "${STALE_COUNT:-0}" -eq 0 ] && ok "all Velero schedules backed up <26h ago" \
+  || fail "$STALE_COUNT Velero schedules stale (>26h)"
+
+echo
+echo "=== 11. CNPG backups — daily completed today? ==="
+# Drova + n8n + keycloak postgres müssen täglich backupen
+for CLUSTER_NS in "drova/drova-postgres" "n8n-prod/n8n-postgres" "keycloak/keycloak-db"; do
+  NS="${CLUSTER_NS%/*}"
+  CL="${CLUSTER_NS#*/}"
+  # Check if CNPG cluster exists
+  kubectl get cluster -n "$NS" "$CL" >/dev/null 2>&1 || continue
+  TODAY=$(date -u +%Y%m%d)
+  COMPLETED=$(kubectl get backup.postgresql.cnpg.io -n "$NS" --no-headers 2>/dev/null \
+    | grep "$TODAY" | grep -c "completed" | tr -d ' \n')
+  COMPLETED=${COMPLETED:-0}
+  if [ "$COMPLETED" -ge 1 ] 2>/dev/null; then
+    ok "$CL: $COMPLETED backup(s) completed today"
+  else
+    LATEST=$(kubectl get backup.postgresql.cnpg.io -n "$NS" --sort-by=.metadata.creationTimestamp --no-headers 2>/dev/null | tail -1)
+    warn "$CL: no completed backup today ($(echo $LATEST | awk '{print $1, $4}'))"
+  fi
+done
+
+echo
+echo "=== 12. Argo Rollouts — any aborted? ==="
+ABORTED=$(kubectl get rollouts -A --no-headers 2>/dev/null | awk '$NF=="Degraded"' | wc -l | tr -d ' ')
+[ "$ABORTED" -eq 0 ] && ok "no Degraded Rollouts" \
+  || fail "$ABORTED Degraded Rollout(s) — AnalysisTemplate may have failed"
+
+echo
+echo "=== 13. Compare to pre-snapshot ==="
 if [ -n "$SNAP" ] && [ -d "$SNAP" ]; then
   EXPECTED=$(cat "$SNAP/argocd-app-count.txt")
   ACTUAL=$(kubectl get applications -n argocd --no-headers | wc -l | tr -d ' ')
