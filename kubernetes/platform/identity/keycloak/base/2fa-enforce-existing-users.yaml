@@ -1,12 +1,23 @@
-# MFA Self-Heal CronJob (hourly).
-# Catches the LDAP-Federation-Reimport bug: when LLDAP user gets recreated, KC
-# may re-import as fresh user and lose TOTP credential → silent MFA-bypass.
-# This CronJob hourly checks all federated users and re-asserts CONFIGURE_TOTP
-# for any user without TOTP credential.
+# MFA Self-Heal CronJob — SUSPENDED 2026-05-14 (counter-productive).
 #
-# Idempotent: skippt User die TOTP schon haben.
-# Wenn alle non-admin-users TOTP haben → CronJob no-op.
-
+# History: built to compensate for LDAP-Federation editMode=READ_ONLY bug where
+# KC re-imports of federated user wiped local TOTP credentials. With editMode=
+# UNSYNCED (current state) KC keeps local credentials across re-imports → this
+# cron has nothing to fix and instead INTRODUCED a new bug:
+#
+#   - User loggs in → if requiredActions=[CONFIGURE_TOTP] → Setup-Wizard zwingt
+#     QR-Scan. If user closes browser before submit, KC keeps requiredAction.
+#     Next cron-run sees: "already has CONFIGURE_TOTP, skip" → loop forever.
+#   - For users WITHOUT any TOTP credentials (e.g. brand new federated user),
+#     cron re-adds CONFIGURE_TOTP → user is forced to setup MFA on every login
+#     even after successful setup if their submit ever fails.
+#
+# Result: 3 internal users (timour, tim275, crasher) had requiredActions=
+# [CONFIGURE_TOTP] permanently set despite never completing setup. Fixed by
+# clearing requiredActions + suspending this cron.
+#
+# Re-enable ONLY if editMode reverted to READ_ONLY (which we won't do anymore).
+# Better long-term: enforce MFA via KC realm-level policy, not via cron.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -16,6 +27,7 @@ metadata:
     app.kubernetes.io/name: keycloak-2fa-enforce
     app.kubernetes.io/part-of: platform-identity
 spec:
+  suspend: true   # 2026-05-14 — siehe Header-Kommentar
   schedule: "15 * * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1

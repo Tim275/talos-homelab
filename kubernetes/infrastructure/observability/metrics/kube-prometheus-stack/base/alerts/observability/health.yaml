@@ -137,3 +137,122 @@ spec:
             summary: "Prometheus has high cardinality metrics"
             description: "Symbol table size: {{ $value | humanize1024 }}B"
             impact: "Prometheus performance may degrade"
+
+    # Pod-Lifecycle-Lücke (battle-tested 2026-05-14):
+    # `up == 0` reicht NICHT — Pods die als Phase=Succeeded enden (exit 0
+    # während Talos-upgrade-rolling-restart) sind weg, aber up-Metric existiert
+    # gar nicht mehr (scrape-target weg). Plus AlertmanagerDown braucht 2/3
+    # majority down (HA) → ein einzelner toter AM bleibt 16h+ unsichtbar.
+    # Diese Gruppe schließt die Lücke via kube-state-metrics statt up{}.
+    - name: p1.pod-lifecycle.critical
+      interval: 60s
+      rules:
+        - alert: AlertmanagerPodMissing
+          expr: |
+            kube_statefulset_status_replicas_ready{
+              namespace="monitoring",
+              statefulset="alertmanager-kube-prometheus-stack-alertmanager"
+            } < kube_statefulset_replicas{
+              namespace="monitoring",
+              statefulset="alertmanager-kube-prometheus-stack-alertmanager"
+            }
+          for: 10m
+          labels:
+            severity: critical
+            priority: P1
+            component: monitoring
+            pagerduty_severity: critical
+          annotations:
+            summary: "Alertmanager replica missing — gossip mesh degraded"
+            description: |
+              StatefulSet `alertmanager-kube-prometheus-stack-alertmanager` has
+              fewer ready pods than desired for >10min. Likely cause: pod ended
+              with Phase=Succeeded (clean exit) during node-eviction or upgrade
+              and StatefulSet did NOT auto-recreate.
+              Fix: `kubectl delete pod -n monitoring <name> --force --grace-period=0`
+            impact: "HA gossip mesh degraded; alerts may be routed to dead pod"
+
+        - alert: PrometheusPodMissing
+          expr: |
+            kube_statefulset_status_replicas_ready{
+              namespace="monitoring",
+              statefulset="prometheus-kube-prometheus-stack-prometheus"
+            } < kube_statefulset_replicas{
+              namespace="monitoring",
+              statefulset="prometheus-kube-prometheus-stack-prometheus"
+            }
+          for: 5m
+          labels:
+            severity: critical
+            priority: P0
+            component: monitoring
+            pagerduty_severity: critical
+          annotations:
+            summary: "Prometheus replica missing — metrics stopped"
+            description: |
+              StatefulSet `prometheus-kube-prometheus-stack-prometheus` has
+              fewer ready pods than desired for >5min. Likely Phase=Succeeded
+              after upgrade-eviction. ALL DOWNSTREAM AnalysisTemplates / SLO
+              alerts blind until restarted.
+            impact: "No metrics, AnalysisTemplate-based Rollouts will fail-abort"
+
+        - alert: SPIREAgentDown
+          expr: |
+            kube_daemonset_status_number_ready{
+              namespace="cilium-spire",
+              daemonset="spire-agent"
+            } < kube_daemonset_status_desired_number_scheduled{
+              namespace="cilium-spire",
+              daemonset="spire-agent"
+            }
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: identity
+            pagerduty_severity: critical
+          annotations:
+            summary: "SPIRE-Agent crash — Cilium mTLS broken"
+            description: |
+              DaemonSet `spire-agent` has fewer ready pods than nodes for >5min.
+              Common cause: service-account-token expired after Talos-upgrade
+              ("token review API: invalid bearer token"). With mTLS-required
+              CNPs in drova ns, intra-cluster traffic will silently DROP.
+              Fix: `kubectl rollout restart ds/spire-agent -n cilium-spire`
+            impact: "drova mTLS connections fail (TCP i/o timeout) → service crashloops"
+
+        - alert: RolloutAborted
+          expr: |
+            rollout_phase{phase="Degraded"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: deployment
+          annotations:
+            summary: "Argo Rollout aborted — {{ $labels.namespace }}/{{ $labels.name }}"
+            description: |
+              Rollout `{{ $labels.name }}` is in Degraded phase for >5min.
+              Common causes: AnalysisTemplate query failure (Prometheus down,
+              network policy block), canary health check fail, image-pull
+              error. Check: kubectl describe rollout / argo rollouts get rollout
+            impact: "New release stuck; users on old version"
+
+        - alert: EnvoyGatewayPodCompletedLoop
+          expr: |
+            increase(kube_pod_container_status_restarts_total{
+              namespace="gateway",
+              container="envoy"
+            }[1h]) > 10
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: ingress
+          annotations:
+            summary: "Envoy-gateway pod restart-loop (>10 in 1h)"
+            description: |
+              Pod restarting >10×/h. If Reason=Completed (exit 0): likely
+              Talos-eviction race. Investigate cause — repeated cold-starts
+              hurt user-facing latency (web app loads slow).
+            impact: "External traffic latency spikes during restart cycles"
