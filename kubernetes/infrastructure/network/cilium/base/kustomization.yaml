@@ -19,3 +19,17 @@ helmCharts:
     namespace: kube-system
     includeCRDs: true
     valuesFile: values.yaml
+
+# Strategic-Merge-Patch: Cilium-Helm hardcoded PSAT-token-TTL=600s im
+# spire-agent DaemonSet. Override auf 3600s (Talos-upgrade-resilience).
+# Battle-tested 2026-05-14: ohne 1h-TTL läuft Token während Upgrade ab →
+# Agent crash → mTLS cluster-weit broken (war 26h+ unbemerkt!).
+patches:
+  - target:
+      kind: DaemonSet
+      name: spire-agent
+      namespace: cilium-spire
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/volumes/0/projected/sources/0/serviceAccountToken/expirationSeconds
+        value: 3600
