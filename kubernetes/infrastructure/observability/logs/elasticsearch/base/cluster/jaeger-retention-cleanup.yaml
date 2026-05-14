@@ -1,0 +1,113 @@
+# Jaeger Index-Cleanup CronJob (battle-tested 2026-05-14).
+#
+# Why this exists:
+#   Jaeger creates daily indices `jaeger-span-YYYY-MM-DD` + `jaeger-service-YYYY-MM-DD`.
+#   These do NOT use ILM rollover (rollover needs write-aliases — Jaeger does not).
+#   Without cleanup: indices grow unbounded → ES disk fills → red cluster.
+#
+# What this does:
+#   Deletes jaeger-span-* and jaeger-service-* indices older than 7 days.
+#   Aligns with `traces-short` ILM policy (7d retention).
+#
+# Why not Jaeger es-rollover sidecar:
+#   Jaeger v2 (operator-managed) does not expose rollover-config in v2alpha1 CRD.
+#   Manual CronJob is simpler + visible in audit.
+#
+# Schedule: 02:00 UTC daily — runs after midnight UTC so today's index stays intact.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: jaeger-retention-cleanup
+  namespace: elastic-system
+  labels:
+    app.kubernetes.io/name: jaeger-retention
+    app.kubernetes.io/part-of: observability
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: jaeger-retention
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: cleanup
+              image: curlimages/curl:8.18.0@sha256:d94d07ba9e7d6de898b6d96c1a072f6f8266c687af78a74f380087a0addf5d17
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              env:
+                - name: ES_URL
+                  value: "https://production-cluster-es-http.elastic-system.svc.cluster.local:9200"
+                - name: ES_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: production-cluster-es-elastic-user
+                      key: elastic
+                - name: RETENTION_DAYS
+                  value: "7"
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  echo "=== Jaeger Index Cleanup ==="
+                  echo "Retention: $RETENTION_DAYS days"
+                  echo ""
+
+                  # Calculate cutoff date (today - RETENTION_DAYS)
+                  # Using busybox-date arithmetic (no GNU date in alpine-curl)
+                  CUTOFF_EPOCH=$(($(date +%s) - RETENTION_DAYS * 86400))
+
+                  # List all jaeger-span-* and jaeger-service-* indices
+                  INDICES=$(curl -sk -u "elastic:${ES_PASSWORD}" \
+                    "${ES_URL}/_cat/indices/jaeger-*?h=index" 2>/dev/null | sort -u)
+
+                  if [ -z "$INDICES" ]; then
+                    echo "✓ No jaeger-* indices found"
+                    exit 0
+                  fi
+
+                  DELETED=0
+                  KEPT=0
+                  for idx in $INDICES; do
+                    # Extract date from index name (jaeger-span-2026-05-07 → 2026-05-07)
+                    DATE=$(echo "$idx" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | head -1)
+                    [ -z "$DATE" ] && { echo "  skip $idx (no date)"; continue; }
+
+                    # Convert date to epoch
+                    IDX_EPOCH=$(date -d "$DATE" +%s 2>/dev/null || \
+                                date -j -f "%Y-%m-%d" "$DATE" +%s 2>/dev/null)
+                    [ -z "$IDX_EPOCH" ] && { echo "  skip $idx (date parse)"; continue; }
+
+                    if [ "$IDX_EPOCH" -lt "$CUTOFF_EPOCH" ]; then
+                      echo "  ✗ DELETE $idx (older than $RETENTION_DAYS days)"
+                      curl -sk -X DELETE -u "elastic:${ES_PASSWORD}" \
+                        "${ES_URL}/$idx" 2>/dev/null || true
+                      DELETED=$((DELETED + 1))
+                    else
+                      echo "  ✓ keep $idx"
+                      KEPT=$((KEPT + 1))
+                    fi
+                  done
+
+                  echo ""
+                  echo "=== Summary ==="
+                  echo "Deleted: $DELETED"
+                  echo "Kept:    $KEPT"
+              resources:
+                requests: { cpu: 10m, memory: 32Mi }
+                limits:   { cpu: 100m, memory: 64Mi }

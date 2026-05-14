@@ -24,11 +24,16 @@ spec:
     fileRealm:
       - secretName: production-cluster-multi-filerealm
 
-  # 3-node cluster for proper replica allocation and green health
-  # Reduced resources per node to fit homelab constraints
+  # 3-node cluster for proper replica allocation, green health, HA.
+  # Quorum=3 prevents split-brain. 2 nodes is INSUFFICIENT (split-brain risk).
+  # Upgrade from count=1 to count=3 (battle-tested 2026-05-14):
+  # - PVCs are reclaimPolicy=Retain → existing master-data-0 PV preserved
+  # - ECK adds master-data-1, master-data-2 sequentially (rolling)
+  # - cluster transitions yellow→green once replicas allocated
+  # - downstream consumers (jaeger, vector, loki) reconnect automatically
   nodeSets:
     - name: master-data
-      count: 1
+      count: 3
       config:
         # Master + Data + Ingest roles
         node.roles: ["master", "data", "ingest"]
