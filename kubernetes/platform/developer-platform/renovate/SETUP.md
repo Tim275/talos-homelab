@@ -131,7 +131,7 @@ Verify:
 ### Renovate findet alle Updates aber PRs werden nicht erstellt
 → Renovate-Config (renovate.json im Target-Repo) hat
    `dependencyDashboardApproval: true` ODER `internalChecksFilter: strict`
-→ Beide entfernen (siehe CLAUDE.md "Renovate Setup-Guide")
+→ Beide entfernen
 
 ## Token-Rotation (alle 90 Tage)
 

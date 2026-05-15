@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Post-Upgrade Verify
 # Run AFTER: talosctl upgrade-k8s | talos OS upgrade
-# Catches all known regression patterns from CLAUDE.md
 #
 # Usage: ./scripts/upgrades/post-upgrade-verify.sh [optional: pre-snapshot-dir]
 

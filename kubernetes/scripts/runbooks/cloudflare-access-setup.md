@@ -138,9 +138,9 @@ curl -sk https://grafana.timourhomelab.org/ -L 2>&1 | grep -iE "cloudflare|acces
 # Expected: CF Access redirect to login.cloudflareaccess.com OR identity-broker
 ```
 
-## ASK CLAUDE
+## FAQ
 
 - "CF Access für neue App?" → Phase C kopieren
 - "User soll auch Grafana erreichen?" → KC-group `grafana-users` adden + CF-Policy include
 - "Wie viele Apps kann ich gaten?" → CF Free-tier 50 users, then $7/user/Mo
-- "Statt CF Access self-hosted?" → siehe CLAUDE.md ZTNA-Kapitel: Pomerium / Authentik
+- "Statt CF Access self-hosted?" → Pomerium / Authentik
