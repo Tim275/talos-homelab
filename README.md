@@ -309,6 +309,11 @@ Databases, messaging, identity:
         <td><a href="https://gitlab.com/">GitLab CE</a></td>
         <td>Self-hosted Git platform with CI/CD — runs as VM on Proxmox (separate from K8s)</td>
     </tr>
+    <tr>
+        <td><img width="32" src="https://avatars.githubusercontent.com/u/38656520?s=200&v=4"></td>
+        <td><a href="https://docs.renovatebot.com/">Renovate</a></td>
+        <td>Self-hosted dependency bot (Mogenius operator) — tier-based stability windows, separate jobs for talos-homelab + drova repos</td>
+    </tr>
 </table>
 
 ## 🔐 Security
