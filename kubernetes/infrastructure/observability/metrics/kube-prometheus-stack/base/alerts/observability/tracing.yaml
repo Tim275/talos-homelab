@@ -1,0 +1,73 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: observability-tracing
+spec:
+  groups:
+    - name: drova.tracing
+      interval: 60s
+      rules:
+        - alert: DrovaServiceNoTraces
+          expr: |
+            absent(http_server_request_duration_seconds_count{service_name="api-gateway"})
+            or absent(http_server_request_duration_seconds_count{service_name="user-service"})
+            or absent(http_server_request_duration_seconds_count{service_name="trip-service"})
+            or absent(http_server_request_duration_seconds_count{service_name="driver-service"})
+            or absent(http_server_request_duration_seconds_count{service_name="chat-service"})
+            or absent(http_server_request_duration_seconds_count{service_name="payment-service"})
+          for: 30m
+          labels:
+            severity: warning
+            priority: P2
+            component: tracing
+            tenant: drova
+          annotations:
+            summary: "Drova service missing OTel telemetry"
+            description: "One or more drova services emit no http_server_request_duration metrics for 30m. Likely OTel-SDK not initialized in service code."
+            action: "Check OTEL_COLLECTOR_ENDPOINT env + SDK init in drova service main.go"
+            dashboard_url: "https://jaeger.drova.timourhomelab.org"
+
+        - alert: DrovaTraceVolumeDropped
+          expr: |
+            (
+              sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))
+                <
+              sum by (service_name) (rate(http_server_request_duration_seconds_count[1h] offset 1h)) * 0.2
+            ) and on (service_name) (
+              sum by (service_name) (rate(http_server_request_duration_seconds_count[1h] offset 1h)) > 0.1
+            )
+          for: 15m
+          labels:
+            severity: warning
+            priority: P3
+            component: tracing
+            tenant: drova
+          annotations:
+            summary: "Drova {{ $labels.service_name }}: trace-volume dropped >80% vs 1h ago"
+            description: "Service emits dramatically fewer spans than usual — possible OTel-exporter issue or service-traffic-drop."
+
+    - name: tracing.pipeline
+      interval: 60s
+      rules:
+        - alert: OtelCollectorExportFailing
+          expr: rate(otelcol_exporter_send_failed_spans_total[5m]) > 0
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: tracing
+          annotations:
+            summary: "OTel-Collector failing to export spans"
+            description: "Spans are being dropped — backend (Jaeger/Tempo) unreachable or rate-limited."
+
+        - alert: OtelCollectorQueueFull
+          expr: |
+            otelcol_exporter_queue_size / otelcol_exporter_queue_capacity > 0.8
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: tracing
+          annotations:
+            summary: "OTel-Collector queue >80% full"
+            description: "Backend slow or down — spans will be dropped soon if queue overflows."
