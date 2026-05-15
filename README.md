@@ -178,6 +178,11 @@ Lifecycle, scaling, and HA management for stateful workloads:
         <td><a href="https://cloudnative-pg.io/">CloudNativePG Operator</a></td>
         <td>Postgres HA with Barman Cloud Plugin backups + PITR</td>
     </tr>
+    <tr>
+        <td><img width="32" src="https://avatars.githubusercontent.com/u/38656520?s=200&v=4"></td>
+        <td><a href="https://github.com/mogenius/homepunk-renovate-operator">Renovate Operator</a></td>
+        <td>Mogenius operator managing scheduled RenovateJob CRs per repo</td>
+    </tr>
 </table>
 
 ## 🛠️ Infrastructure
