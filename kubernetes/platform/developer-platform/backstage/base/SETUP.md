@@ -119,4 +119,4 @@ ArgoCD synct → Backstage Pod Running → https://backstage.timourhomelab.org �
 
 ## Phase 3+ — Plugins, Service-Catalog
 
-Das ist iterativ, sieh CLAUDE.md (kommt noch) für Details.
+Iterativ — TBD.
