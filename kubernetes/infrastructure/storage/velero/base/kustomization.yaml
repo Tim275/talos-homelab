@@ -13,12 +13,6 @@ resources:
   - tier0-databases-6h-schedule.yaml
   - schedules/
 
-patches:
-  - path: patches/upgrade-job-initcontainer-resources.yaml
-    target:
-      kind: Job
-      name: velero-upgrade-crds
-
 helmCharts:
   - name: velero
     repo: https://vmware-tanzu.github.io/helm-charts
@@ -27,6 +21,9 @@ helmCharts:
     namespace: velero
     includeCRDs: true
     valuesInline:
+      # DISABLED 2026-05-15: bitnamilegacy/kubectl:1.36 returns 404 (Bitnami deprecation Oct 2025)
+      # CRDs already installed manually — no upgrade-job needed.
+      upgradeCRDs: false
       image:
         repository: velero/velero
         tag: v1.15.0
@@ -35,13 +32,6 @@ helmCharts:
         useSecret: true
         existingSecret: velero-s3-credentials
         extraSecretRef: velero-restic-credentials
-      upgradeJobResources:
-        requests:
-          cpu: 50m
-          memory: 128Mi
-        limits:
-          cpu: 100m
-          memory: 256Mi
       configuration:
         features: ""  # CSI DISABLED - CSI plugin ignores uploaderType and always creates Kopia repos!
         defaultBackupTTL: 8760h
