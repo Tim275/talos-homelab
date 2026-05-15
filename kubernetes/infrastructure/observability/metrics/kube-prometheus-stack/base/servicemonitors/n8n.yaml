@@ -12,9 +12,16 @@ metadata:
     environment: prod
     team: platform
 spec:
+  # IMPORTANT: n8n exposes /metrics ONLY on the main process (not webhook/worker).
+  # The "n8n" (main) Service has NO `component` label; webhook/worker Services do.
+  # Excluding services with a `component` label avoids scraping webhook/worker pods
+  # which return 404 on /metrics → triggers TargetDown alerts (battle-tested 2026-05-15).
   selector:
     matchLabels:
       app.kubernetes.io/name: n8n
+    matchExpressions:
+      - key: component
+        operator: DoesNotExist
   namespaceSelector:
     matchNames:
       - n8n-prod
