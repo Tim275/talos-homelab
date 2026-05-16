@@ -48,13 +48,15 @@ module "volumes" {
   volumes     = var.kubernetes_volumes
 }
 
-module "gitlab" {
-  source = "./gitlab"
-
-  providers = {
-    proxmox = proxmox
-  }
-
-  gitlab_config = var.gitlab_config
-}
+# GitLab VM disabled 2026-05-16 — VM was manually deleted; preventing accidental
+# re-creation via tofu apply. Re-enable by uncommenting + restoring gitlab.auto.tfvars.
+# module "gitlab" {
+#   source = "./gitlab"
+#
+#   providers = {
+#     proxmox = proxmox
+#   }
+#
+#   gitlab_config = var.gitlab_config
+# }
 
