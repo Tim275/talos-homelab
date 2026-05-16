@@ -57,6 +57,35 @@ spec:
             - headers:
                 - name: CF-Connecting-IP
                   type: Distinct
+  # 2026-05-16 — Resilience gegen 504s (Cilium-WireGuard pod-to-pod blips)
+  healthCheck:
+    active:
+      timeout: 3s
+      interval: 10s
+      unhealthyThreshold: 2
+      healthyThreshold: 1
+      type: HTTP
+      http:
+        path: /healthz
+        expectedStatuses: [200]
+  circuitBreaker:
+    maxConnections: 200
+    maxPendingRequests: 100
+    maxParallelRequests: 200
+    maxParallelRetries: 5
+  tcpKeepalive:
+    idleTime: 30s
+    interval: 5s
+    probes: 3
+  retry:
+    numRetries: 2
+    perRetry:
+      backOff:
+        baseInterval: 100ms
+        maxInterval: 1s
+    retryOn:
+      triggers: [connect-failure, refused-stream, reset-before-request, retriable-status-codes]
+      httpStatusCodes: [502, 503, 504]
 ---
 # Keycloak
 apiVersion: gateway.envoyproxy.io/v1alpha1
@@ -86,6 +115,39 @@ spec:
             - headers:
                 - name: CF-Connecting-IP
                   type: Distinct
+  # 2026-05-16 — Resilience gegen transient 504s (Cilium-WireGuard pod-to-pod blips)
+  # Health-check kicks bad pods aus dem upstream-pool — Envoy routet auf gesunden Pod
+  healthCheck:
+    active:
+      timeout: 3s
+      interval: 10s
+      unhealthyThreshold: 2
+      healthyThreshold: 1
+      type: HTTP
+      http:
+        path: /health/ready
+        expectedStatuses: [200]
+  # Circuit-Breaker: zu viele failing requests → fail-fast statt timeout
+  circuitBreaker:
+    maxConnections: 100
+    maxPendingRequests: 50
+    maxParallelRequests: 100
+    maxParallelRetries: 5
+  # TCP-Keepalive: hält idle connections warm (verhindert reset-by-peer)
+  tcpKeepalive:
+    idleTime: 30s
+    interval: 5s
+    probes: 3
+  # Retry auf 502/503/504 — bei intermittenten pod-to-pod issues
+  retry:
+    numRetries: 2
+    perRetry:
+      backOff:
+        baseInterval: 100ms
+        maxInterval: 1s
+    retryOn:
+      triggers: [connect-failure, refused-stream, reset-before-request, retriable-status-codes]
+      httpStatusCodes: [502, 503, 504]
 ---
 # GitLab
 apiVersion: gateway.envoyproxy.io/v1alpha1

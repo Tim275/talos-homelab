@@ -1,0 +1,140 @@
+# Keycloak Cluster Health Auto-Heal CronJob
+#
+# Runs every 30min. Checks Infinispan cluster health via KC management API.
+# If broken (ISPN000427 timeouts in last 30min OR cluster-size != 3), triggers
+# rolling restart of StatefulSet — same as we did manually 2026-05-16.
+#
+# Why preventative > reactive:
+#   - User sees 504s before alert fires (alerts have 5-10min `for:` delay)
+#   - Restart < 3 min total downtime (rolling, 1 pod at a time)
+#   - Same fix-pattern as user-action, automated
+#
+# Logic:
+#   1. Query KC logs via kubectl logs (last 30m) — count ISPN000427
+#   2. If count > 3 OR ready_pods != 3 → restart StatefulSet
+#   3. Send Telegram alert about auto-heal action
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: keycloak-auto-heal
+  namespace: keycloak
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: keycloak-auto-heal
+  namespace: keycloak
+rules:
+  - apiGroups: [""]
+    resources: [pods, pods/log]
+    verbs: [get, list, delete]
+  - apiGroups: ["apps"]
+    resources: [statefulsets, statefulsets/scale]
+    verbs: [get, list, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: keycloak-auto-heal
+  namespace: keycloak
+subjects:
+  - kind: ServiceAccount
+    name: keycloak-auto-heal
+    namespace: keycloak
+roleRef:
+  kind: Role
+  name: keycloak-auto-heal
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: keycloak-cluster-health-check
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak-auto-heal
+    app.kubernetes.io/component: self-heal
+spec:
+  schedule: "*/30 * * * *"    # every 30 min
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 7
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 86400
+      activeDeadlineSeconds: 600
+      template:
+        spec:
+          serviceAccountName: keycloak-auto-heal
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            fsGroup: 65534
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: check
+              image: docker.io/bitnamilegacy/kubectl:1.33.4@sha256:ed0b31a0508da84ee655c5c6e01bd3897fc56ad6cf69debb27fa1893a06d2246
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              command: [/bin/bash, -c]
+              args:
+                - |
+                  set -uo pipefail
+                  TS=$(date +%Y-%m-%dT%H:%M:%S)
+                  echo "═══ KC Cluster-Health Check ${TS} ═══"
+
+                  # 1. Count ready pods
+                  READY=$(kubectl get pods -n keycloak -l app=keycloak \
+                    --field-selector=status.phase=Running \
+                    -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' 2>/dev/null \
+                    | grep -c "True" || true)
+                  echo "→ Ready pods: $READY/3"
+
+                  # 2. Check Infinispan cache timeout errors in last 30m
+                  ISPN_ERRORS=0
+                  for POD in keycloak-0 keycloak-1 keycloak-2; do
+                    COUNT=$(kubectl logs -n keycloak $POD --since=30m --tail=2000 2>/dev/null \
+                      | grep -c "ISPN000427" || true)
+                    echo "→ Pod $POD: $COUNT ISPN000427 errors in last 30min"
+                    ISPN_ERRORS=$((ISPN_ERRORS + COUNT))
+                  done
+
+                  # 3. Decision: restart if conditions met
+                  NEEDS_RESTART=0
+                  if [ "$READY" != "3" ]; then
+                    echo "✗ Only $READY/3 pods ready — needs restart"
+                    NEEDS_RESTART=1
+                  fi
+                  if [ "$ISPN_ERRORS" -gt 5 ]; then
+                    echo "✗ Total $ISPN_ERRORS Infinispan timeouts in 30min — needs restart"
+                    NEEDS_RESTART=1
+                  fi
+
+                  if [ "$NEEDS_RESTART" = "0" ]; then
+                    echo "✓ KC cluster healthy — no action needed"
+                    exit 0
+                  fi
+
+                  # 4. Trigger rolling restart
+                  echo "═══ AUTO-HEAL: Rolling restart KC StatefulSet ═══"
+                  kubectl rollout restart statefulset/keycloak -n keycloak
+                  echo "→ Waiting for rollout (max 5min)..."
+                  kubectl rollout status statefulset/keycloak -n keycloak --timeout=5m
+                  if [ $? -eq 0 ]; then
+                    echo "═══ ✓ AUTO-HEAL successful at $TS ═══"
+                  else
+                    echo "═══ ✗ AUTO-HEAL failed at $TS — manual intervention needed ═══"
+                    exit 1
+                  fi
+              resources:
+                requests: { cpu: 50m, memory: 64Mi }
+                limits:   { cpu: 500m, memory: 256Mi }
+              volumeMounts:
+                - { name: tmp, mountPath: /tmp }
+          volumes:
+            - { name: tmp, emptyDir: { sizeLimit: 16Mi } }
