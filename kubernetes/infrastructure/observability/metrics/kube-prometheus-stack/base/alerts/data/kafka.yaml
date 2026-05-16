@@ -219,3 +219,35 @@ spec:
             summary: "Kafka {{ $labels.pod }} memory >85% of limit"
             description: "OOM kill risk. JVM heap (-Xmx) + non-heap overhead is too close to pod memory limit. Recommended: limit = -Xmx + 768Mi"
             action: "Check kafkanodepool jvmOptions.-Xmx and resources.limits.memory; raise limit OR lower -Xmx"
+
+        # QUORUM detector: no controller leader = no metadata writes
+        # Added 2026-05-16 after KRaft cold-start incident (Strimzi 0.51 + dual-role)
+        - alert: KafkaQuorumLeaderless
+          expr: |
+            sum by (namespace) (
+              kafka_controller_kafkacontroller_activecontrollercount{pod=~".*kafka.*"}
+            ) == 0
+          for: 2m
+          labels:
+            severity: critical
+            priority: P0
+            component: kafka
+          annotations:
+            summary: "Kafka KRaft quorum has NO active controller in {{ $labels.namespace }}"
+            description: "KRaft controllers cannot elect a leader. ALL metadata operations blocked. Producer/Consumer cannot connect."
+            action: "Check controller pods. Verify Strimzi did not split controllers across crashed/pending pods. Likely cause: too many controllers down simultaneously OR network partition."
+
+        # ISR detector: under-min-isr causes producer-side errors
+        # When ISR < min.insync.replicas, producers with acks=all FAIL.
+        - alert: KafkaUnderMinISR
+          expr: |
+            kafka_cluster_partition_under_min_isr{pod=~".*kafka.*"} > 0
+          for: 3m
+          labels:
+            severity: critical
+            priority: P1
+            component: kafka
+          annotations:
+            summary: "Kafka {{ $value }} partitions under min-ISR in {{ $labels.namespace }}"
+            description: "Partitions have fewer in-sync replicas than min.insync.replicas. Producers with acks=all FAIL with NotEnoughReplicasException."
+            action: "Restart unhealthy brokers; check disk space; investigate replication lag"
