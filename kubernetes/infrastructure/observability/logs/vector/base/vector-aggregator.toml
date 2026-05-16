@@ -291,11 +291,35 @@ rate = 100  # Keep all logs (set lower to sample, e.g. 10 = 10%)
 key_field = ".kubernetes.pod"  # Sample per pod
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# ELASTICSEARCH SINK - DATA STREAMS + ECS
+# OPTION E (DAX-Mittelstand-Pattern, 2026-05-16):
+# Filter ES-sink auf SENSITIVE namespaces only. Reason: Promtail liefert
+# ALL pod-logs zu Loki (für daily-grep). ES bekommt nur Audit/Compliance-NS.
+# Spart ~70% ES-storage + halbiert index-shards.
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[transforms.filter_sensitive_for_es]
+type = "filter"
+inputs = ["sample_logs"]
+condition = '''
+  exists(.kubernetes.pod_namespace) && (
+    .kubernetes.pod_namespace == "drova" ||
+    .kubernetes.pod_namespace == "drova-prod" ||
+    .kubernetes.pod_namespace == "keycloak" ||
+    .kubernetes.pod_namespace == "lldap" ||
+    .kubernetes.pod_namespace == "argocd" ||
+    .kubernetes.pod_namespace == "kyverno" ||
+    .kubernetes.pod_namespace == "security" ||
+    .kubernetes.pod_namespace == "cilium-spire" ||
+    .kubernetes.pod_namespace == "cnpg-system" ||
+    .kubernetes.pod_namespace == "velero"
+  )
+'''
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ELASTICSEARCH SINK - DATA STREAMS + ECS (sensitive NS only)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [sinks.elasticsearch]
 type = "elasticsearch"
-inputs = ["sample_logs"]
+inputs = ["filter_sensitive_for_es"]
 endpoints = ["https://production-cluster-es-http.elastic-system.svc.cluster.local:9200"]
 mode = "data_stream"  # ← DATA STREAMS! (automatic rollover)
 data_stream.type = "logs"
