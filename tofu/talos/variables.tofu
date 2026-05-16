@@ -44,9 +44,10 @@ variable "nodes" {
     vm_id            = number
     cpu              = number
     ram_dedicated    = number
+    dns              = optional(list(string))  # Per-node DNS servers (required for msa2 workers)
     update           = optional(bool, false)
     igpu             = optional(bool, false)
     os_disk_size     = optional(number, 50)   # OS disk size in GB (conservative)
-    ceph_disk_size   = optional(number, 200)  # Ceph OSD disk size in GB (conservative)
+    ceph_disk_size   = optional(number, 0)    # Ceph OSD disk size in GB (0 = no Ceph disk, matches root default)
   }))
 }
