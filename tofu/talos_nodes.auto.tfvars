@@ -99,4 +99,17 @@ talos_nodes = {
     os_disk_size   = 50
     ceph_disk_size = 170
   }
+  "worker-8" = {
+    host_node      = "msa2proxmox"
+    machine_type   = "worker"
+    ip             = "192.168.0.111"
+    mac_address    = "BC:24:11:2E:C8:A8"
+    vm_id          = 1008
+    cpu            = 4
+    ram_dedicated  = 10240
+    datastore_id   = "local-zfs"
+    os_disk_size   = 50
+    ceph_disk_size = 170
+    dns            = ["192.168.0.1", "8.8.8.8"]
+  }
 }
