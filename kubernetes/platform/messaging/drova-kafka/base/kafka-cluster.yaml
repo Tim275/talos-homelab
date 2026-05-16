@@ -1,7 +1,20 @@
+# Drova Kafka — Production-Grade KRaft with Dedicated Controllers + Brokers
+#
+# Architecture: Industry-best-practice split (Strimzi docs recommend this for HA).
+# - 3 dedicated controllers (light pods, hold metadata quorum)
+# - 3 dedicated brokers (heavy pods, handle data + replication)
+# - Dual-role 3pods previously caused KRaft quorum deadlock in Strimzi 0.51 + Kafka 4.1.1
+#
+# Why split?
+#  - Controllers have small, fast-fsync workload (metadata-only)
+#  - Brokers have large, throughput-heavy workload (data replication)
+#  - Failure-domain separation: broker crash doesn't kill quorum
+
+# ─── CONTROLLER NodePool ─────────────────────────────────────────
 apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaNodePool
 metadata:
-  name: dual-role
+  name: controller
   namespace: drova
   labels:
     strimzi.io/cluster: drova-kafka
@@ -10,6 +23,55 @@ spec:
   replicas: 3
   roles:
     - controller
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 2Gi
+        class: rook-ceph-block-kafka
+        deleteClaim: true
+        kraftMetadata: shared
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "100m"
+    limits:
+      memory: "1500Mi"
+      cpu: "1000m"
+  jvmOptions:
+    "-Xms": "512m"
+    "-Xmx": "768m"
+  template:
+    pod:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      # REQUIRED anti-affinity for controllers: lose 1 node = lose 1 voter = still have quorum
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  strimzi.io/cluster: drova-kafka
+                  strimzi.io/controller-role: "true"
+              topologyKey: kubernetes.io/hostname
+---
+# ─── BROKER NodePool ─────────────────────────────────────────────
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaNodePool
+metadata:
+  name: broker
+  namespace: drova
+  labels:
+    strimzi.io/cluster: drova-kafka
+    platform.homelab/tenant: drova
+spec:
+  replicas: 3
+  roles:
     - broker
   storage:
     type: jbod
@@ -22,14 +84,14 @@ spec:
         kraftMetadata: shared
   resources:
     requests:
-      memory: "2560Mi"
-      cpu: "250m"
+      memory: "2Gi"
+      cpu: "200m"
     limits:
       memory: "3Gi"
       cpu: "1500m"
   jvmOptions:
-    "-Xms": "2048m"
-    "-Xmx": "2048m"
+    "-Xms": "1536m"
+    "-Xmx": "1536m"
   template:
     pod:
       securityContext:
@@ -38,6 +100,7 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      # Preferred anti-affinity for brokers (homelab has limited nodes)
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -46,8 +109,10 @@ spec:
                 labelSelector:
                   matchLabels:
                     strimzi.io/cluster: drova-kafka
+                    strimzi.io/broker-role: "true"
                 topologyKey: kubernetes.io/hostname
 ---
+# ─── Kafka cluster ───────────────────────────────────────────────
 apiVersion: kafka.strimzi.io/v1beta2
 kind: Kafka
 metadata:
@@ -61,21 +126,20 @@ metadata:
 spec:
   kafka:
     version: 4.1.1
-    # 4.1-IV1 (not IV0) supports KIP-996 Direct-to-Controller.
-    # Strimzi 0.51 AdminClient requires this. With IV0 we get
-    # "UnsupportedVersionException: Direct-to-controller communication is not supported"
+    # 4.1-IV1 supports KIP-996 Direct-to-Controller (needed by Strimzi 0.51 AdminClient).
     metadataVersion: 4.1-IV1
+    # Lenient probes for KRaft cold-start (large metadata replay possible).
     livenessProbe:
-      initialDelaySeconds: 120
+      initialDelaySeconds: 180
       timeoutSeconds: 30
       periodSeconds: 30
-      failureThreshold: 15
+      failureThreshold: 20
     readinessProbe:
       initialDelaySeconds: 30
       timeoutSeconds: 30
       periodSeconds: 30
-      failureThreshold: 15
-    # JMX Prometheus Exporter (Port 9404) — broker metrics für PodMonitor
+      failureThreshold: 20
+    # JMX Prometheus Exporter — required for KafkaBrokerDown alerts.
     metricsConfig:
       type: jmxPrometheusExporter
       valueFrom:
@@ -98,6 +162,7 @@ spec:
       default.replication.factor: 3
       min.insync.replicas: 2
       auto.create.topics.enable: "false"
+      # KRaft quorum tuning — generous timeouts for slow Ceph RBD storage.
       controller.quorum.election.timeout.ms: 600000
       controller.quorum.fetch.timeout.ms: 120000
       controller.quorum.election.backoff.max.ms: 30000
@@ -107,8 +172,6 @@ spec:
   entityOperator:
     template:
       pod:
-        # Kyverno policy require-run-as-non-root blocks Strimzi default pod spec.
-        # Pin a non-root identity so the entity-operator pod passes the policy.
         securityContext:
           runAsNonRoot: true
           runAsUser: 1001
