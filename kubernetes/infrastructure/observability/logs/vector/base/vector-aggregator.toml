@@ -299,20 +299,10 @@ key_field = ".kubernetes.pod"  # Sample per pod
 [transforms.filter_sensitive_for_es]
 type = "filter"
 inputs = ["sample_logs"]
-condition = '''
-  exists(.kubernetes.pod_namespace) && (
-    .kubernetes.pod_namespace == "drova" ||
-    .kubernetes.pod_namespace == "drova-prod" ||
-    .kubernetes.pod_namespace == "keycloak" ||
-    .kubernetes.pod_namespace == "lldap" ||
-    .kubernetes.pod_namespace == "argocd" ||
-    .kubernetes.pod_namespace == "kyverno" ||
-    .kubernetes.pod_namespace == "security" ||
-    .kubernetes.pod_namespace == "cilium-spire" ||
-    .kubernetes.pod_namespace == "cnpg-system" ||
-    .kubernetes.pod_namespace == "velero"
-  )
-'''
+# Fix 2026-05-17: stricter VRL parser in newer Vector versions rejects
+# `||` line-continuation inside `(...)`. Use `includes()` with array literal
+# (set-membership check). Same semantics, parser-stable.
+condition = 'exists(.kubernetes.pod_namespace) && includes(["drova","drova-prod","keycloak","lldap","argocd","kyverno","security","cilium-spire","cnpg-system","velero"], .kubernetes.pod_namespace)'
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ELASTICSEARCH SINK - DATA STREAMS + ECS (sensitive NS only)
