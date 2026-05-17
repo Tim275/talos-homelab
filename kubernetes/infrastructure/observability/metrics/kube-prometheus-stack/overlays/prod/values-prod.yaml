@@ -282,14 +282,18 @@ alertmanager:
 
       routes:
 
-        # Watchdog + InfoInhibitor: silent-drop.
-        # Watchdog routed to 'null' until UptimeKuma push-URL is sealed.
-        # Re-enable to receiver: 'watchdog-heartbeat' WHEN watchdog-webhook-sealed.yaml
-        # has real URL (placeholder example.com causes 100% webhook fails →
-        # AlertmanagerClusterFailedToSendAlerts every 30s).
-        # TODO: seal echte healthchecks.io URL in watchdog-webhook-sealed.yaml.
+        # Watchdog → healthchecks.io Dead-Mans-Switch (2026-05-17 enabled)
+        # InfoInhibitor stays silent-dropped via 'null'.
+        # Separate routes: Watchdog matched alone (NOT regex with InfoInhibitor)
+        # to keep webhook-pings clean (no garbage InfoInhibitor pings).
         - matchers:
-            - alertname=~"Watchdog|InfoInhibitor"
+            - alertname="Watchdog"
+          receiver: 'watchdog-heartbeat'
+          group_wait: 0s
+          group_interval: 1m
+          repeat_interval: 1m
+        - matchers:
+            - alertname="InfoInhibitor"
           receiver: 'null'
         # TargetDown noise — too noisy during rolling restarts
         # Route to slack-info (silent channel), longer repeat-interval
