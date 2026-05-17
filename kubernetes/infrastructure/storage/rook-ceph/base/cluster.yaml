@@ -69,6 +69,25 @@ spec:
       # BlueStore slow ops threshold for VM environments
       bluestore_slow_ops_warn_threshold: "50"
 
+      # 2026-05-17 — Additional BlueStore tuning für SSD-backed VMs
+      # ROOT-CAUSE-ANALYSE:
+      #   nipogi-host hatte APST aktiv + ZFS-Defaults + HOGE H753 SSD (no-name)
+      #   msa2-host hatte schon richtige settings (atime=off, lz4) → läuft sauber
+      # FIXES (alle live applied + persistent):
+      #   1. Host-level: ZFS atime=off, compression=lz4, xattr=sa, logbias=throughput
+      #   2. Host-level: NVMe APST disabled via GRUB (nvme_core.default_ps_max_latency_us=0)
+      #   3. Host-level: NVMe read_ahead 4096 (war 128) via udev-rule
+      #   4. Host-level: ARC limit 4GB (war 1.5GB nipogi, 9.2GB msa2 — beide schlecht)
+      #   5. Host-level: sysctl swappiness=10, dirty_ratio=10, vfs_cache_pressure=50
+      # IaC-Layer (hier): Ceph-runtime tunes für stable SSD performance
+      bluestore_max_blob_size_ssd: "524288"          # 512K blobs für big-writes
+      bluestore_prefer_deferred_size_ssd: "32768"    # SSD-specific defer-size
+      osd_op_queue: "wpq"                            # weighted priority queue
+      osd_op_queue_cut_off: "high"                   # client-ops über recovery
+      bluestore_csum_type: "none"                    # ⚠ disabled für SSD-perf
+                                                       # OK weil replication=3 + scrubbing
+      bluestore_block_db_size: "1073741824"          # 1GB RocksDB
+
   # IMPORTANT: Clean up previous data if cluster was deleted
   cleanupPolicy:
     confirmation: ""  # Set to "yes-really-destroy-data" for complete cleanup
