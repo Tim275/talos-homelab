@@ -12,17 +12,47 @@ spec:
     - name: kyverno
       interval: 60s
       rules:
-        - alert: KyvernoPolicyAdmissionDenied
+        # Battle-tested 2026-05-18: ALT-Variante nutzte
+        # `kyverno_admission_requests_total{request_allowed="false"}` — diese label
+        # value existiert in der Live-Metric NICHT (kyverno emittiert nur
+        # request_allowed="true"). Alert konnte daher nie feuern.
+        # Heute entdeckt: payment-service Init-Container war 1h+ permanent von
+        # Kyverno blocked, 706 PolicyReports im Cluster, NULL Slack-Benachrichtigung.
+        # FIX: kyverno_policy_results_total{rule_result="fail"} — die ECHTE Metric.
+        - alert: KyvernoPolicyFailures
           expr: |
-            sum(rate(kyverno_admission_requests_total{request_allowed="false"}[5m])) > 1
-          for: 15m
+            sum by (policy_name, resource_namespace, resource_kind) (
+              rate(kyverno_policy_results_total{rule_result="fail"}[5m])
+            ) > 0
+          for: 5m
           labels:
             severity: warning
-            priority: P3
+            priority: P2
             component: kyverno
           annotations:
-            summary: "Kyverno: high admission denial rate"
-            description: "Many resources being rejected by Kyverno policies. Check policy reports."
+            summary: "Kyverno policy {{ $labels.policy_name }} failing in {{ $labels.resource_namespace }}"
+            description: "Resource {{ $labels.resource_kind }} in ns {{ $labels.resource_namespace }} fails policy {{ $labels.policy_name }}. Check `kubectl get policyreport -n {{ $labels.resource_namespace }}`."
+            action: "kubectl get policyreport -n {{ $labels.resource_namespace }} -o yaml | grep -B2 'result: fail'"
+
+        - alert: KyvernoAdmissionDenied
+          # Feuert auf actively-denied admission-requests (enforce-mode policies).
+          # Counterpart zu KyvernoPolicyFailures (covers also audit-mode + background-scan).
+          expr: |
+            sum by (resource_kind, resource_namespace) (
+              rate(kyverno_admission_requests_total{request_allowed=""}[5m])
+            ) > 0
+            or
+            sum by (resource_kind, resource_namespace) (
+              rate(kyverno_admission_requests_total{request_allowed!="true"}[5m])
+            ) > 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: kyverno
+          annotations:
+            summary: "Kyverno actively denied admission of {{ $labels.resource_kind }} in {{ $labels.resource_namespace }}"
+            description: "Enforce-mode policy blocked a {{ $labels.resource_kind }} create/update. Workload is degraded."
 
         - alert: KyvernoControllerDown
           expr: |
