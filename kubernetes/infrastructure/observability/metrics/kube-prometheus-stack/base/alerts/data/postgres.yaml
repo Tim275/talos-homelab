@@ -10,7 +10,10 @@ spec:
       interval: 1m
       rules:
         - alert: CnpgPrimaryDown
-          expr: cnpg_pg_replication_in_recovery{role="primary"} == 1 or absent(cnpg_pg_replication_in_recovery{role="primary"})
+          # absent() removed — it fires with empty labels (no namespace/cluster),
+          # producing "CNPG primary down: /" noise. The == 1 case correctly detects
+          # when the primary unexpectedly enters recovery mode.
+          expr: cnpg_pg_replication_in_recovery{role="primary"} == 1
           for: 2m
           labels:
             severity: critical
@@ -152,7 +155,7 @@ spec:
       rules:
         - alert: CNPGBackupStale
           expr: |
-            (time() - max by (cluster) (cnpg_collector_last_available_backup_timestamp))
+            (time() - max by (namespace, cluster) (cnpg_collector_last_available_backup_timestamp{cluster!=""}))
             > 86400
           for: 30m
           labels:
@@ -160,7 +163,7 @@ spec:
             priority: P1
             component: cnpg
           annotations:
-            summary: "CNPG cluster {{ $labels.cluster }} no successful backup in 24h"
+            summary: "CNPG cluster {{ $labels.namespace }}/{{ $labels.cluster }} no successful backup in 24h"
             description: "Last backup is older than 24h — RPO exceeded, data-loss risk on failure."
             action: "kubectl get backup -n <ns> | grep <cluster> ; check ScheduledBackup CR + barman plugin pod"
 

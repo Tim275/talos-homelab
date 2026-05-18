@@ -10,13 +10,11 @@ spec:
       interval: 60s
       rules:
         - alert: DrovaServiceNoTraces
-          expr: |
-            absent(http_server_request_duration_seconds_count{service_name="api-gateway"})
-            or absent(http_server_request_duration_seconds_count{service_name="user-service"})
-            or absent(http_server_request_duration_seconds_count{service_name="trip-service"})
-            or absent(http_server_request_duration_seconds_count{service_name="driver-service"})
-            or absent(http_server_request_duration_seconds_count{service_name="chat-service"})
-            or absent(http_server_request_duration_seconds_count{service_name="payment-service"})
+          # Only api-gateway is HTTP — it emits http_server_request_duration.
+          # The 5 gRPC services (user/trip/driver/chat/payment) need rpc_server_duration
+          # which requires otelgrpc.NewServerHandler() (Task #134, not yet implemented).
+          # Re-add those services once Task #134 is done.
+          expr: absent(http_server_request_duration_seconds_count{service_name="api-gateway"})
           for: 30m
           labels:
             severity: warning
@@ -24,9 +22,9 @@ spec:
             component: tracing
             tenant: drova
           annotations:
-            summary: "Drova service missing OTel telemetry"
-            description: "One or more drova services emit no http_server_request_duration metrics for 30m. Likely OTel-SDK not initialized in service code."
-            action: "Check OTEL_COLLECTOR_ENDPOINT env + SDK init in drova service main.go"
+            summary: "Drova api-gateway missing OTel HTTP metrics"
+            description: "api-gateway emits no http_server_request_duration metrics for 30m. Check OTEL_COLLECTOR_ENDPOINT env + SDK init."
+            action: "Check OTEL_COLLECTOR_ENDPOINT env + SDK init in api-gateway main.go"
             dashboard_url: "https://jaeger.drova.timourhomelab.org"
 
         - alert: DrovaTraceVolumeDropped

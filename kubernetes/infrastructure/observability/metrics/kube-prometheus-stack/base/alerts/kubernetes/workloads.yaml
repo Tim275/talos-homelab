@@ -43,7 +43,10 @@ spec:
             description: "Container OOM-killed in last 15min."
 
         - alert: PodNotReady
-          expr: kube_pod_status_phase{phase!~"Running|Succeeded"} == 1
+          # Exclude Failed: Job/CronJob pods go to Failed on completion (covered by
+          # KubeJobFailed). Deployment pods in Failed get replaced and restart
+          # (covered by PodCrashLooping). Only Pending/Unknown need 15min alerting.
+          expr: kube_pod_status_phase{phase!~"Running|Succeeded|Failed"} == 1
           for: 15m
           labels:
             severity: warning
@@ -55,18 +58,9 @@ spec:
             description: "Pod in phase {{ $labels.phase }} for 15+ minutes"
             impact: "Service degradation"
 
-        - alert: PodOOMKilled
-          expr: kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
-          for: 1m
-          labels:
-            severity: warning
-            priority: P1
-            component: application
-            pagerduty_severity: warning
-          annotations:
-            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} was OOMKilled"
-            description: "Container {{ $labels.container }} killed due to out of memory"
-            impact: "Insufficient memory limits"
+        # PodOOMKilled removed — ContainerOOMKilled (above) already covers OOM kills
+        # via increase(...[15m]) which is time-bounded. The last_terminated_reason
+        # gauge stays at 1 forever after an OOMKill → causes permanent false fires.
 
     - name: p3.performance.info
       interval: 300s
