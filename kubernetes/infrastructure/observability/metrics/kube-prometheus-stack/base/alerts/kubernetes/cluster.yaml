@@ -388,7 +388,12 @@ spec:
       interval: 30s
       rules:
         - alert: CoreDNSDown
-          expr: absent(up{job="kube-dns"} == 1) or sum(up{job="kube-dns"} == 1) < 1
+          # Job-label is `monitoring/coredns` (from ServiceMonitor), NOT `kube-dns`.
+          # Old expr matched no targets → absent() always 1 → alert IMMER firing.
+          # Use kube-state-metrics deployment-level metric — stable + accurate.
+          expr: |
+            kube_deployment_status_replicas_ready{namespace="kube-system",deployment="coredns"} < 1
+            or absent(kube_deployment_status_replicas_ready{namespace="kube-system",deployment="coredns"})
           for: 2m
           labels:
             severity: critical

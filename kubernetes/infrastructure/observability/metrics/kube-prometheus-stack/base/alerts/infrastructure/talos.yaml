@@ -59,11 +59,18 @@ spec:
             description: "Hypervisor resource contention. Proxmox host overcommitted."
 
         - alert: TalosFilesystemReadOnly
-          expr: node_filesystem_readonly{fstype!~"tmpfs|squashfs|nfs"} == 1
-          for: 1m
+          # Talos uses rootfs overlay for system mounts (/etc/extensions.yaml,
+          # /usr/lib/firmware, /boot/*) which are READ-ONLY BY DESIGN.
+          # Filter them out — only real ext4/xfs data-disks should trigger this.
+          expr: |
+            node_filesystem_readonly{
+              fstype!~"tmpfs|squashfs|nfs|rootfs|overlay|cgroup|cgroup2|proc|sysfs|devtmpfs|configfs|debugfs|tracefs|pstore|securityfs|bpf|fusectl|hugetlbfs|mqueue|autofs|ramfs",
+              mountpoint!~"/etc/.*|/usr/lib/.*|/boot.*|/system.*|/run/.*"
+            } == 1
+          for: 5m
           labels:
             severity: critical
             component: hypervisor
           annotations:
             summary: "Talos filesystem read-only on {{ $labels.instance }}:{{ $labels.mountpoint }}"
-            description: "Likely disk failure or corruption. Node degraded."
+            description: "Real data-disk went read-only. Likely disk failure or corruption."

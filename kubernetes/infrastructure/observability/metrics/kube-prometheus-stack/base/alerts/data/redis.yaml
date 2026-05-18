@@ -20,7 +20,12 @@ spec:
             description: "Redis instance unreachable for >5min."
 
         - alert: RedisOutOfMemory
-          expr: (redis_memory_used_bytes / redis_memory_max_bytes) > 0.95
+          # Guard: maxmemory=0 means unlimited (no cap set). Without the guard
+          # the division yields +Inf → alert fires permanently. See feedback memory.
+          expr: |
+            redis_memory_max_bytes > 0
+            and
+            (redis_memory_used_bytes / redis_memory_max_bytes) > 0.95
           for: 5m
           labels:
             severity: critical
