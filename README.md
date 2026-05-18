@@ -27,6 +27,41 @@ everything under `kubernetes/`. The full bootstrap order:
 2. `kubectl apply -k kubernetes/bootstrap/` → installs Argo CD + Sealed Secrets + ApplicationSets.
 3. Argo CD takes over and syncs the rest of the repo automatically.
 
+## 🔄 Bootstrap Sync-Wave Architecture
+
+To prevent race conditions during cold-start (CRDs-before-CRs, Storage-before-PVCs,
+Auth-before-Apps, Backends-before-Routes), every Application carries an
+`argocd.argoproj.io/sync-wave` annotation. ArgoCD waits for each wave to be **Healthy**
+before starting the next.
+
+| Wave | Layer | Apps |
+|---|---|---|
+| **-20** | Network foundation (Tofu) | Cilium CNI |
+| **-15** | DNS (Talos) | CoreDNS config |
+| **-10** | Crypto / Secrets | Sealed-Secrets, cert-manager-CRDs |
+| **-5** | Operators (network/TLS) | Cilium-Operator, ClusterIssuer |
+| **0** | Storage | Rook-Ceph Operator + CephCluster |
+| **5** | Observability CRDs | kube-prometheus-stack (ServiceMonitor/PrometheusRule CRDs) |
+| **10** | Data-plane Operators | CNPG, Strimzi, Keycloak-Op, ECK, Argo-Rollouts |
+| **15** | Data Clusters | Postgres, Kafka, Elasticsearch |
+| **20** | Identity | Keycloak, LLDAP, ArgoCD-self-managed |
+| **25** | Business Apps | n8n, Drova, Cloudbeaver |
+| **30** | Public Exposure | Envoy Gateway, HTTPRoutes |
+| **35** | Monitoring Config | Grafana Dashboards, Alert Rules, Synthetic Checks |
+
+Custom Health-Checks live in `argocd-cm.data.resource.customizations` for
+Strimzi-Kafka, CNPG-Cluster, KeycloakRealmImport, CephCluster, and Elasticsearch —
+so downstream waves know exactly when an upstream CR is *actually* healthy
+(not just `Created`).
+
+**Why this matters:** without sync-waves only ~40/65 apps reach Healthy in the
+first 3 minutes; the remaining ~25 crash-loop until ArgoCD's selfHeal kicks in
+(~15 min red dashboard). With waves enforced, the target is **65/65 Healthy in
+&lt;5 min, zero crash-loops**.
+
+Full implementation plan + audit-procedure + per-CR Lua health-checks live in
+[`notes/CLAUDE-BOOTSTRAP-CASCADE.md`](notes/CLAUDE-BOOTSTRAP-CASCADE.md).
+
 ## 🗃️ Folder Structure
 
 ```
