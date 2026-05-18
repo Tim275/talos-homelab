@@ -40,16 +40,9 @@ spec:
             summary: "{{ $value }} worker nodes NotReady"
             description: "{{ $value }} worker nodes have been NotReady for >2 minutes."
 
-        - alert: AnyNodeNotReady
-          expr: max_over_time(kube_node_status_condition{condition="Ready",status="true"}[5m]) == 0
-          for: 2m
-          labels:
-            severity: critical
-            component: kubernetes
-            priority: P1
-          annotations:
-            summary: "Node {{ $labels.node }} NotReady"
-            description: "Node {{ $labels.node }} has been NotReady for >2 minutes."
+        # AnyNodeNotReady removed 2026-05-18 — was duplicate of upstream
+        # KubeNodeNotReady from kube-prometheus-stack (same condition, weaker
+        # tuning). Single source of truth = KubeNodeNotReady.
 
         - alert: ImagePullBackoff
           expr: kube_pod_container_status_waiting_reason{reason=~"ImagePullBackOff|ErrImagePull"} == 1
@@ -62,16 +55,8 @@ spec:
             summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} cannot pull image"
             description: "Container {{ $labels.container }} is in {{ $labels.reason }} state for >5 minutes."
 
-        - alert: KubeletDown
-          expr: up{job="kubelet"} == 0
-          for: 2m
-          labels:
-            severity: critical
-            component: kubernetes
-            priority: P1
-          annotations:
-            summary: "Kubelet on {{ $labels.node }} is down"
-            description: "Kubelet on node {{ $labels.node }} has been unreachable for >2 minutes — pods on this node cannot be scheduled or evicted."
+        # KubeletDown removed 2026-05-18 — was duplicate of upstream KubeletDown
+        # from kube-prometheus-stack/kubernetesControlPlane group. Single source.
 
         - alert: ImageRegistryDNSFailure
           expr: sum by (node) (rate(kubelet_runtime_operations_errors_total{operation_type=~"pull_image|image_status"}[5m])) > 0
@@ -207,18 +192,8 @@ spec:
     - name: p1.nodes.warning
       interval: 60s
       rules:
-        - alert: NodeNotReady
-          expr: kube_node_status_condition{condition="Ready",status="true"} == 0
-          for: 2m
-          labels:
-            severity: warning
-            priority: P1
-            component: infrastructure
-            pagerduty_severity: warning
-          annotations:
-            summary: "Node {{ $labels.node }} is NotReady"
-            description: "Node {{ $labels.node }} has been NotReady for 5+ minutes"
-            impact: "Reduced capacity, pods may be evicted"
+        # NodeNotReady removed 2026-05-18 — third duplicate (alongside the now-removed
+        # AnyNodeNotReady). Upstream KubeNodeNotReady covers this condition.
 
         - alert: NodeMemoryPressure
           expr: kube_node_status_condition{condition="MemoryPressure",status="true"} == 1

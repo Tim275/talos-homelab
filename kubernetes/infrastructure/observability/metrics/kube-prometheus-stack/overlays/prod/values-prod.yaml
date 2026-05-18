@@ -162,6 +162,12 @@ grafana:
 
 defaultRules:
   create: true
+  # Disable specific upstream alerts that have known math bugs (their PromQL gives
+  # nonsense values like "300%" or "+Inf%"). We replace them with corrected rules
+  # in base/alerts/observability/alertmanager-fixed.yaml.
+  disabled:
+    AlertmanagerFailedToSendAlerts: true
+    AlertmanagerClusterFailedToSendAlerts: true
   rules:
     alertmanager: true
     configReloaders: true
@@ -427,6 +433,20 @@ alertmanager:
           - alertname="KubeAPIServerDown"
         target_matchers:
           - alertname=~"KubeController.*|KubeScheduler.*|ArgoCD.*"
+
+      # Upstream KubeNodeNotReady → suppress all pod/container alerts on that node
+      - source_matchers:
+          - alertname="KubeNodeNotReady"
+        target_matchers:
+          - alertname=~"KubePod.*|KubeContainer.*|PodNotReady|PodOOMKilled|DrovaPodNotReady|ContainerWaiting"
+        equal: ['node']
+
+      # KubeletDown → suppress all pod-level alerts (kubelet can't report pod-status)
+      - source_matchers:
+          - alertname="KubeletDown"
+        target_matchers:
+          - alertname=~"KubePod.*|KubeContainer.*|PodNotReady|PodOOMKilled|DrovaPodNotReady|ContainerWaiting|KubeDaemonSet.*"
+        equal: ['node']
 
     receivers:
 
