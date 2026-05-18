@@ -10,14 +10,29 @@ spec:
       interval: 1m
       rules:
         - alert: EnvoyGatewayNoEndpoints
-          expr: envoy_cluster_membership_healthy == 0
-          for: 5m
+          # Old expr matched ALL clusters incl. internal Envoy (xds, admin, prometheus_stats)
+          # which transiently flip to 0 during config-reloads. Plus fired per-pod-per-cluster
+          # → 36× noise. Filter to user-facing clusters + guard with membership_total > 0.
+          expr: |
+            sum by (envoy_cluster_name, namespace) (
+              envoy_cluster_membership_healthy{
+                envoy_cluster_name!~"xds_cluster|prometheus_stats|admin|.*_local.*"
+              }
+            ) == 0
+            and
+            sum by (envoy_cluster_name, namespace) (
+              envoy_cluster_membership_total{
+                envoy_cluster_name!~"xds_cluster|prometheus_stats|admin|.*_local.*"
+              }
+            ) > 0
+          for: 10m
+          keep_firing_for: 5m
           labels:
-            severity: critical
+            severity: warning
             component: network
           annotations:
             summary: "Envoy Gateway: no healthy endpoints for {{ $labels.envoy_cluster_name }}"
-            description: "All upstream endpoints unhealthy. Traffic dropped."
+            description: "User-facing upstream cluster has 0 healthy endpoints for >10min. Traffic dropped."
 
         - alert: EnvoyGatewayHigh5xxRate
           expr: rate(envoy_http_downstream_rq_5xx[5m]) > 0.1

@@ -52,14 +52,18 @@ spec:
             description: "More than 1 Cilium agent unreachable. Pod-to-pod networking degraded."
 
         - alert: CiliumOperatorDown
-          expr: up{job="cilium-operator"} == 0
+          # Single-master cluster causes operator-restart-storms (lease-loss every
+          # etcd glitch — see CLAUDE.md I.3). Use min-replicas pattern AND
+          # keep_firing_for to dampen flap. Single restart != down.
+          expr: sum(up{job="cilium-operator"}) < 1
           for: 10m
+          keep_firing_for: 5m
           labels:
             severity: critical
             component: network
           annotations:
-            summary: "Cilium operator down"
-            description: "Cilium operator unreachable >10min. New IPs/policies cannot be programmed."
+            summary: "Cilium operator down (ALL replicas unreachable)"
+            description: "All Cilium operator replicas unreachable >10min. New IPs/policies cannot be programmed."
 
         - alert: SpireServerDown
           expr: up{job=~"spire-server.*"} == 0
@@ -124,18 +128,10 @@ spec:
             description: "Cilium CNI agent unreachable for 3+ minutes"
             impact: "Networking disruption on node, pods cannot communicate"
 
-        - alert: CiliumOperatorDownWarning
-          expr: up{job="cilium-operator"} == 0
-          for: 3m
-          labels:
-            severity: warning
-            priority: P1
-            component: networking
-            pagerduty_severity: warning
-          annotations:
-            summary: "Cilium Operator is down"
-            description: "Cilium Operator unreachable for 3+ minutes"
-            impact: "Network policy enforcement degraded"
+        # CiliumOperatorDownWarning removed 2026-05-18 — was duplicate of
+        # CiliumOperatorDown (same expr, just for: 3m). Caused constant flapping on
+        # single-master operator-restart-storm. The critical version above with
+        # for: 10m + keep_firing_for: 5m + min-replicas is the single source of truth.
 
 
     - name: p2.network.info
