@@ -244,23 +244,13 @@ spec:
           exporters:
             - otlp/gateway
 
-        # Logs pipeline DISABLED 2026-05-16 — Option E migration (DAX-pattern)
-        # Reason: triple-ingest war zu teuer. Promtail handled ALL pod-logs → Loki,
-        # Vector handled SENSITIVE namespaces → Loki + Elasticsearch.
-        # OTel-Collector concentrates on Traces+Metrics (sein primary purpose).
-        # See notes/CLAUDE-GUIDES.md → PILLAR 3 P3-Pre-Theory for full reasoning.
-        #
-        # logs:
-        #   receivers:
-        #     - otlp
-        #   processors:
-        #     - memory_limiter
-        #     - k8sattributes
-        #     - resource
-        #     - batch
-        #   exporters:
-        #     - otlphttp/loki
-        #     - elasticsearch
+        # Structured application logs via OTLP SDK (Drova services, etc.)
+        # NOTE: Pod stdout/stderr still handled by Vector → Loki (Option E pattern).
+        # This pipeline handles SDK-emitted logs only (different signal source).
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, resource, batch]
+          exporters: [otlphttp/loki, elasticsearch]
 
         # Metrics pipeline Prometheus
         metrics:
