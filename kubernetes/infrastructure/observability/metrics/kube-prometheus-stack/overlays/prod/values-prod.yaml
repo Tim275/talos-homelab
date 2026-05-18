@@ -441,61 +441,47 @@ alertmanager:
           - alertname=~"KubePod.*|KubeContainer.*|PodNotReady|PodOOMKilled|DrovaPodNotReady|ContainerWaiting"
         equal: ['node']
 
-      # KubeletDown → suppress all pod-level alerts (kubelet can't report pod-status)
       - source_matchers:
           - alertname="KubeletDown"
         target_matchers:
           - alertname=~"KubePod.*|KubeContainer.*|PodNotReady|PodOOMKilled|DrovaPodNotReady|ContainerWaiting|KubeDaemonSet.*"
         equal: ['node']
 
-      # ──────────────────────────────────────────────────────────────────────────
-      # SPECIFIC CASCADING INHIBITIONS (added 2026-05-18 — enterprise-pattern)
-      # When PRIMARY/CAUSE alerts fire, suppress secondary/effect alerts.
-      # ──────────────────────────────────────────────────────────────────────────
-
-      # CNPG Primary down → replication-lag alerts make no sense (no primary to sync TO)
       - source_matchers:
           - alertname="CnpgPrimaryDown"
         target_matchers:
           - alertname=~"CnpgReplicationLagHigh|DrovaPostgresReplicationLag|PostgreSQLReplicationLag"
 
-      # Ceph cluster-level error → individual OSD-down/slow alerts are symptoms
       - source_matchers:
           - alertname=~"CephHealthError|CephClusterError"
         target_matchers:
           - alertname=~"CephOSDDown|CephOSDSlowOps|CephOSDNearfull|CephPGNotActive"
 
-      # Velero server down → no-recent-backup alerts are downstream-effects
       - source_matchers:
           - alertname=~"VeleroDown|VeleroBackupNotRunning"
         target_matchers:
           - alertname=~"VeleroNoRecentBackup|VeleroNoRecentBackupExtended|VeleroBackupPartialFailure|VeleroBackupFailure"
 
-      # OTel-Collector queue full → export-failures are cause-not-symptom
       - source_matchers:
           - alertname="OtelCollectorQueueFull"
         target_matchers:
           - alertname=~"OtelCollectorExportFailing|TempoIngesterDown"
 
-      # ArgoCD-Controller down → all app-sync-failed alerts are cascade
       - source_matchers:
           - alertname=~"ArgoCDControllerDown|ArgoCDRepoServerDown"
         target_matchers:
           - alertname=~"ArgoCDApplicationSyncFailed|ArgoCDApplicationOutOfSync"
 
-      # Kafka broker-down → consumer-lag etc. are cascade
       - source_matchers:
           - alertname=~"KafkaBrokerDown|KafkaQuorumLeaderless"
         target_matchers:
           - alertname=~"KafkaConsumerLagHigh|KafkaControllerEventSlow|KafkaTopicUnderReplicated"
 
-      # CoreDNS down → DNS-resolution-failures cascade
       - source_matchers:
           - alertname=~"CoreDNSDown|KubeDNSDown"
         target_matchers:
           - alertname=~"CoreDNSErrorsHigh|DNSLatencyHigh|FQDNResolutionFailing"
 
-      # Elasticsearch cluster red → yellow/individual-shard alerts cascade
       - source_matchers:
           - alertname="ElasticsearchClusterRed"
         target_matchers:
