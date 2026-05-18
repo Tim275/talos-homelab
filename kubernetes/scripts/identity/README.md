@@ -64,11 +64,11 @@ kubectl create secret generic keycloak-smtp \
   --from-literal=replyTo="noreply@timourhomelab.org" \
   --dry-run=client -o yaml | \
 kubeseal --cert "$CERT" --format yaml --scope strict \
-  > kubernetes/platform/identity/keycloak/base/smtp-sealed-secret.yaml
+  > kubernetes/80-identity/keycloak/base/smtp-sealed-secret.yaml
 ```
 
 ### 4. In Kustomization eintragen
-`kubernetes/platform/identity/keycloak/base/kustomization.yaml`:
+`kubernetes/80-identity/keycloak/base/kustomization.yaml`:
 ```yaml
 resources:
   # ... existing ...
@@ -77,7 +77,7 @@ resources:
 
 ### 5. Commit + push
 ```bash
-git add kubernetes/platform/identity/keycloak/base/
+git add kubernetes/80-identity/keycloak/base/
 git commit -m "kc smtp resend"
 git push
 ```

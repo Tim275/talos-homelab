@@ -1,0 +1,159 @@
+apiVersion: elasticsearch.k8s.elastic.co/v1
+kind: Elasticsearch
+metadata:
+  name: production-cluster
+  namespace: elastic-system
+spec:
+  # UPGRADED: 8.16.1 8.17.0 (December 2025 - latest stable 8.17.x)
+  # ECK Operator 3.2.0 compatible
+  version: 8.17.0
+
+  # S3 Snapshot Repository Credentials (Ceph RGW)
+  # These credentials are injected into Elasticsearch keystore
+  # Created by: kubernetes/50-observability-stack/elasticsearch/base/snapshots/create-s3-credentials-job.yaml
+  secureSettings:
+    - secretName: elasticsearch-s3-credentials
+
+  # Least-privilege users via fileRealm (replaces shared 'elastic' superuser).
+  # Each consumer (jaeger, etc.) gets its own user + role limited to its indices.
+  # Why: avoid drift on superuser secret rotation, audit-trail per service,
+  # blast-radius reduction if one consumer is compromised.
+  auth:
+    roles:
+      - secretName: production-cluster-roles
+    fileRealm:
+      - secretName: production-cluster-multi-filerealm
+
+  # 3-node cluster for proper replica allocation, green health, HA.
+  # Quorum=3 prevents split-brain. 2 nodes is INSUFFICIENT (split-brain risk).
+  # Upgrade from count=1 to count=3 (battle-tested 2026-05-14):
+  # - PVCs are reclaimPolicy=Retain → existing master-data-0 PV preserved
+  # - ECK adds master-data-1, master-data-2 sequentially (rolling)
+  # - cluster transitions yellow→green once replicas allocated
+  # - downstream consumers (jaeger, vector, loki) reconnect automatically
+  nodeSets:
+    - name: master-data
+      count: 3
+      config:
+        # Master + Data + Ingest roles
+        node.roles: ["master", "data", "ingest"]
+        # CRITICAL FIX: Allow ALL indices for logging pipeline
+        action.auto_create_index: "true"
+        # Note: cluster.initial_master_nodes and xpack.security.enabled
+        # are managed by ECK Operator automatically
+
+        # 2025 CEPH STORAGE TUNING
+        # Based on: Elastic Docs, Opster Analysis, Pulse Support, GitHub Issues
+        # Problem: Ceph block storage on Proxmox VMs has 50-70s I/O latency spikes
+        # Solution: Enterprise-grade timeout configuration for distributed storage
+
+        # Reference: https://pulse.support/kb/elasticsearch-cluster-publish-timeout
+        cluster.publish.timeout: "180s"       # Default: 30s - cluster state writes take 69s!
+        cluster.publish.info_timeout: "60s"   # Default: 10s - balanced (not too high to mask issues)
+
+        # Reference: https://www.elastic.co/guide/en/elasticsearch/reference/current/modules-discovery-settings.html
+        discovery.request_peers_timeout: "120s"     # Default: 3s - health checks take 56-69s!
+        discovery.probe.connect_timeout: "60s"      # Default: 30s
+        discovery.probe.handshake_timeout: "60s"    # Default: 30s
+
+        # Reference: https://www.elastic.co/guide/en/elasticsearch/reference/current/cluster-fault-detection.html
+        cluster.fault_detection.leader_check.timeout: "60s"    # Default: 10s
+        cluster.fault_detection.leader_check.interval: "5s"    # Default: 1s - balanced
+        cluster.fault_detection.leader_check.retry_count: "5"  # Default: 3
+        cluster.fault_detection.follower_check.timeout: "60s"  # Default: 10s
+        cluster.fault_detection.follower_check.interval: "5s"  # Default: 1s
+        cluster.fault_detection.follower_check.retry_count: "5" # Default: 3
+
+        transport.ping_schedule: "10s"          # Reduce heartbeat frequency
+        transport.connect_timeout: "60s"        # Default: 30s (renamed from transport.tcp.connect_timeout in 8.17)
+
+        monitor.fs.health.slow_path_logging_threshold: "60s"  # Default: 5s
+        monitor.fs.health.refresh_interval: "120s"            # Default: 60s
+
+        indices.memory.index_buffer_size: "15%"   # Default: 10% - better for bulk indexing
+        thread_pool.write.queue_size: "1000"      # Default: 200 - prevent rejections
+      podTemplate:
+        metadata:
+          labels:
+            app.kubernetes.io/component: elasticsearch
+        spec:
+          # ENTERPRISE: Critical priority to survive node pressure
+          priorityClassName: system-cluster-critical
+          # CEPH STORAGE OPTIMIZATION: Set proper ownership for ES data directory
+          # Elasticsearch runs as UID 1000, GID 1000 - fsGroup ensures volume ownership
+          # OnRootMismatch: Only change ownership if root dir doesn't match fsGroup (faster on Ceph)
+          securityContext:
+            fsGroup: 1000
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            fsGroupChangePolicy: OnRootMismatch
+          # Install S3 repository plugin for Rook Ceph snapshots
+          initContainers:
+            - name: install-plugins
+              command:
+                - sh
+                - -c
+                - |
+                  bin/elasticsearch-plugin install --batch repository-s3
+          # HOMELAB SPECS: 3-node cluster on large nodes (worker-1/2/3)
+          # Memory: 3GB per node, Heap: 1.5GB (50%), CPU: 500m-1500m
+          # Total: 9GB RAM for ES cluster
+          containers:
+            - name: elasticsearch
+              # Single-node homelab sizing (Kafka pattern: heap+overhead < limit)
+              # Heap = 2g, JVM non-heap ~500m, page cache ~500m → request 3Gi
+              # limit 4Gi gives 1Gi headroom for GC bursts + page cache
+              resources:
+                requests:
+                  memory: 3Gi
+                  cpu: 500m
+                limits:
+                  memory: 4Gi
+                  cpu: "2"
+              env:
+                - name: ES_JAVA_OPTS
+                  value: "-Xms2g -Xmx2g"
+          # Affinity - schedule on large memory nodes (worker-1, worker-2 have 28GB)
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: kubernetes.io/hostname
+                        operator: In
+                        values:
+                          - worker-1
+                          - worker-2
+                          - worker-3
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      elasticsearch.k8s.elastic.co/cluster-name: production-cluster
+                  topologyKey: kubernetes.io/hostname
+      # Storage mit Rook-Ceph
+      volumeClaimTemplates:
+        - metadata:
+            name: elasticsearch-data
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            # ENTERPRISE: Use Retain StorageClass to prevent data loss on PVC deletion
+            # This prevents accidental data loss during recovery operations
+            storageClassName: rook-ceph-block-enterprise-retain
+            resources:
+              requests:
+                storage: 50Gi
+  # HTTP service configuration
+  http:
+    service:
+      spec:
+        type: ClusterIP
+        ports:
+          - name: https
+            port: 9200
+            targetPort: 9200
+    tls:
+      selfSignedCertificate:
+        disabled: false
