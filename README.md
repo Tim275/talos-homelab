@@ -62,40 +62,45 @@ first 3 minutes; the remaining ~25 crash-loop until ArgoCD's selfHeal kicks in
 Full implementation plan + audit-procedure + per-CR Lua health-checks live in
 [`notes/CLAUDE-BOOTSTRAP-CASCADE.md`](notes/CLAUDE-BOOTSTRAP-CASCADE.md).
 
-## 🗃️ Folder Structure
+## 🗃️ Folder Structure (Wave-based, since 2026-05-18)
+
+Each top-level folder under `kubernetes/` is **prefixed with its Sync-Wave number**, so
+`ls kubernetes/` reveals the bootstrap order at a glance and the folder cannot lie about
+when a component deploys.
 
 ```
 .
 ├── 📂 kubernetes                  # All cluster state (managed by Argo CD)
 │   │
-│   ├── bootstrap                 # App-of-Apps root
-│   ├── clusters                  # Cluster registrations
-│   ├── projects                  # Argo CD AppProjects
-│   ├── applicationsets           # ApplicationSet-based deployment
-│   │   ├── tenants               #   per-tenant AppSets
-│   │   ├── infrastructure        #   controllers, network, storage, observability
-│   │   ├── platform              #   data, identity
-│   │   ├── security              #   foundation, compliance
-│   │   └── edge                  #   staging cluster
+│   │ — meta —
+│   ├── bootstrap                 # App-of-Apps root (kustomization aggregates clusters/projects/applicationsets)
+│   ├── clusters                  # ApplicationSet cluster selectors
+│   ├── projects                  # Argo CD AppProjects (RBAC boundaries)
+│   ├── applicationsets           # ApplicationSet generators (one per stack)
+│   │   ├── infrastructure/       #   controllers, network, storage, observability stacks
+│   │   ├── platform/             #   data, identity stacks
+│   │   ├── security/             #   foundation + governance
+│   │   ├── tenants/              #   drova-tenant, n8n-tenant
+│   │   └── edge/                 #   staging cluster overlay
 │   ├── components                # Reusable Kustomize components
-│   ├── security                  # Network-policies, RBAC, Kyverno, compliance
-│   ├── infrastructure            # Cluster-shared services
-│   │   ├── controllers           #   Argo CD, cert-manager, sealed-secrets, operators
-│   │   ├── network               #   Cilium, Envoy Gateway, Cloudflare Tunnel, CoreDNS
-│   │   ├── storage               #   Rook-Ceph, Velero
-│   │   ├── observability         #   Prometheus, Loki, Tempo, Jaeger, Grafana, ES, Vector
-│   │   └── vpn                   #   Tailscale, NetBird
-│   ├── platform                  # Platform services
-│   │   ├── identity              #   Keycloak, LLDAP
-│   │   ├── data                  #   CNPG Postgres, Redis, CloudBeaver
-│   │   ├── messaging             #   Strimzi Kafka
-│   │   └── governance/tenants    #   per-tenant RBAC
-│   └── apps                      # User-facing applications
-│       ├── base                  #   shared manifests
-│       └── overlays              #   environment patches
+│   ├── scripts                   # Operational runbooks + identity helpers
+│   │
+│   │ — wave-ordered content —
+│   ├── 10-foundation/            # Wave 10: sealed-secrets, cert-manager, kyverno, rbac, security-foundation
+│   ├── 20-network/               # Wave 20: cilium, coredns, istio, netbird, tailscale (CNI + DNS + L7)
+│   ├── 30-storage/               # Wave 30: rook-ceph, csi-drivers, velero, radosgateway, longhorn, minio
+│   ├── 40-observability-crds/    # Wave 40: kube-prometheus-stack (only CRDs — ServiceMonitor/PrometheusRule)
+│   ├── 50-observability-stack/   # Wave 50: prometheus, loki, vector, elasticsearch, tempo, jaeger, otel, kibana
+│   ├── 60-operators/             # Wave 60: CNPG, Strimzi, Keycloak-Op, ECK, argo-rollouts (CRD owners)
+│   ├── 70-data/                  # Wave 70: drova-postgres, keycloak-db, n8n-postgres, redis, drova-kafka
+│   ├── 80-identity/              # Wave 80: lldap, keycloak, infisical (auth-providers)
+│   ├── 85-gitops/                # Wave 85: argocd-self, gitlab, backstage, renovate
+│   ├── 90-tenants/               # Wave 90: n8n, drova, cloudbeaver, audiobookshelf, uptime-kuma
+│   ├── 95-exposure/              # Wave 95: envoy-gateway, cloudflared, redis-gateway, httproutes
+│   └── 99-monitoring-config/     # Wave 99: dashboards, alert-rules, recording-rules (last — depends on data flowing)
 │
 ├── 🧱 tofu                        # OpenTofu (Terraform fork)
-│   ├── bootstrap                 #   Sealed-secrets cert + key
+│   ├── bootstrap                 #   Sealed-secrets cert + key (rebuild-safe)
 │   ├── talos                     #   Talos machine-configs
 │   └── gitlab                    #   GitLab VM
 │
@@ -103,6 +108,10 @@ Full implementation plan + audit-procedure + per-CR Lua health-checks live in
     ├── identity                  #   onboard-user, kubeconfig-oidc
     └── upgrades                  #   pre-upgrade, post-upgrade-verify
 ```
+
+**Rule:** the wave number in the folder name **MUST** match the `argocd.argoproj.io/sync-wave`
+annotation in the ApplicationSet template. Drift = lying folder. A simple CI check
+(see `notes/CLAUDE-BOOTSTRAP-CASCADE.md`) enforces this.
 
 ## 📦 Applications
 
