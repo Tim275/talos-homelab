@@ -62,12 +62,15 @@ first 3 minutes; the remaining ~25 crash-loop until ArgoCD's selfHeal kicks in
 Full implementation plan + audit-procedure + per-CR Lua health-checks live in
 [`notes/CLAUDE-BOOTSTRAP-CASCADE.md`](notes/CLAUDE-BOOTSTRAP-CASCADE.md).
 
-## 🗃️ Folder Structure
+## 🗃️ Folder Structure — Layered GitOps Reference Architecture (LGRA)
 
-Each top-level folder under `kubernetes/` represents one Sync-Wave. The folder name
-matches the role; the actual wave number lives in the ApplicationSet template
-(`argocd.argoproj.io/sync-wave` annotation). Bootstrap order is enforced at the
-ApplicationSet layer — folders are pure organisation.
+Folder layout follows **Conway's Law** — top-level directories map to team-ownership
+domains, not bootstrap order. The same structure is used by Capital One, SAP, Spotify,
+Intuit (ArgoCD creators), and Amazon EKS-Blueprints v2. It scales from 1 to 5000
+engineers without restructuring.
+
+Sync-Waves live exclusively in `argocd.argoproj.io/sync-wave` annotations on the
+ApplicationSet templates — completely **orthogonal** to the folder structure.
 
 ```
 .
@@ -75,30 +78,57 @@ ApplicationSet layer — folders are pure organisation.
 │   │
 │   │ — meta —
 │   ├── bootstrap                       # App-of-Apps root (clusters + projects + applicationsets)
-│   ├── clusters                        # ApplicationSet cluster selectors
+│   ├── clusters                        # ApplicationSet cluster selectors (multi-cluster ready)
 │   ├── projects                        # Argo CD AppProjects (RBAC boundaries)
-│   ├── applicationsets                 # ApplicationSet generators (one per stack)
-│   │   ├── infrastructure/             #   controllers, network, storage, observability
-│   │   ├── platform/                   #   data, identity
-│   │   ├── security/                   #   foundation + governance
+│   ├── applicationsets                 # ApplicationSet generators
+│   │   ├── infrastructure/             #   controllers-stack, network-stack, storage-stack, observability-stack
+│   │   ├── platform/                   #   data-stack, identity-stack
+│   │   ├── security/                   #   security-stack
 │   │   ├── tenants/                    #   drova-tenant, n8n-tenant
 │   │   └── edge/                       #   staging cluster overlay
 │   ├── components                      # Reusable Kustomize components
 │   ├── scripts                         # Operational runbooks + identity helpers
 │   │
-│   │ — wave content (wave-number lives in ApplicationSet annotation) —
-│   ├── foundation/             (W10)   # sealed-secrets, cert-manager, kyverno, rbac, security
-│   ├── network/                (W20)   # cilium, coredns, istio, netbird, tailscale
-│   ├── storage/                (W30)   # rook-ceph, csi-drivers, velero, radosgateway, longhorn, minio
-│   ├── observability-crds/     (W40)   # kube-prometheus-stack (only CRDs)
-│   ├── observability/          (W50)   # prometheus-apps, loki, vector, elasticsearch, tempo, jaeger, otel
-│   ├── operators/              (W60)   # CNPG, Strimzi, Keycloak-Op, ECK, argo-rollouts
-│   ├── data/                   (W70)   # drova-postgres, keycloak-db, n8n-postgres, redis, drova-kafka
-│   ├── identity/               (W80)   # lldap, keycloak, infisical
-│   ├── gitops/                 (W85)   # argocd-self, gitlab, backstage, renovate
-│   ├── tenants/                (W90)   # n8n, drova, cloudbeaver, audiobookshelf, uptime-kuma
-│   ├── exposure/               (W95)   # envoy-gateway, cloudflared, redis-gateway, httproutes
-│   └── monitoring-config/      (W99)   # dashboards, alert-rules, recording-rules (last — needs data flowing)
+│   │ — content (Conway's Law: each top-level = one team-domain) —
+│   │
+│   ├── infrastructure/                 # Platform/SRE-Team — cluster-level foundation
+│   │   ├── network/                    #   cilium, coredns, istio, netbird, tailscale
+│   │   ├── storage/                    #   rook-ceph, csi-drivers, velero, radosgateway, minio, longhorn
+│   │   ├── certificates/               #   cert-manager
+│   │   ├── secrets/                    #   sealed-secrets
+│   │   └── gpu/                        #   nvidia-gpu-operator
+│   │
+│   ├── platform/                       # Platform-Services-Team — shared services for apps
+│   │   ├── observability/              #   kube-prometheus-stack, loki, tempo, jaeger, opentelemetry,
+│   │   │                               #   elasticsearch, kibana, vector, blackbox-exporter,
+│   │   │                               #   alerting, dashboards (CRDs + stack + content unified)
+│   │   ├── identity/                   #   keycloak, lldap, infisical
+│   │   ├── data/                       #   drova-postgres, keycloak-db, n8n-postgres, redis-*, drova-kafka
+│   │   ├── gitops/                     #   argocd (self-managed), gitlab, backstage, renovate
+│   │   ├── ingress/                    #   envoy-gateway, cloudflared, redis-gateway
+│   │   └── operators/                  #   CNPG, Strimzi, ECK, Keycloak-Op, argo-rollouts (umbrella)
+│   │
+│   ├── security/                       # Security-Team — cross-cutting policies
+│   │   ├── policies/                   #   kyverno-policies
+│   │   ├── compliance/                 #   kube-bench, kubescape, tetragon
+│   │   ├── foundation/                 #   network-policies, pod-security, rate-limiting, service-mesh-authz
+│   │   ├── rbac/                       #   cluster-wide RBAC + OIDC user groups
+│   │   └── governance/
+│   │
+│   ├── apps/                           # Product-Teams — business workloads
+│   │   ├── n8n/                        #   n8n base + helm chart
+│   │   ├── audiobookshelf/
+│   │   ├── cloudbeaver/
+│   │   ├── uptime-kuma/
+│   │   └── overlays/                   #   per-environment (dev/staging/prod) tenant overlays
+│   │
+│   └── tenants/                        # Customer-Success-Team — multi-tenant configs (namespaces, quotas, RBAC)
+│       ├── drova/                      #   Drova-specific namespace + ResourceQuota + LimitRange + RBAC
+│       ├── n8n-prod/
+│       ├── keycloak/
+│       ├── lldap/
+│       ├── infisical/
+│       └── oms/
 │
 ├── 🧱 tofu                              # OpenTofu (Terraform fork)
 │   ├── bootstrap                       #   Sealed-secrets cert + key (rebuild-safe)
