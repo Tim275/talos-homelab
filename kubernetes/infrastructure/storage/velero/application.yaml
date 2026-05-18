@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: velero
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    infrastructure.domain: storage
+spec:
+  project: infrastructure
+  source:
+    repoURL: https://github.com/Tim275/talos-homelab
+    targetRevision: HEAD
+    path: kubernetes/infrastructure/storage/velero/overlays/prod
+  destination:
+    server: https://kubernetes.default.svc
+  ignoreDifferences:
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+      jqPathExpressions:
+        - '.spec.conversion.webhook.clientConfig.caBundle'
+        - '.metadata.annotations'
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - RespectIgnoreDifferences=true
+      - ServerSideApply=true
