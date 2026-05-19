@@ -1,13 +1,13 @@
-# Platform Identity Stack — DB + Identity apps (keycloak-db vor keycloak, wave 30 < 50)
+# Apps Stack — stateless tools + media apps (prod cluster)
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: platform-identity-stack
+  name: apps-stack
   namespace: argocd
   labels:
     app.kubernetes.io/managed-by: argocd
-    platform.domain: identity
+    platform.domain: apps
     team: timour
 spec:
   goTemplate: true
@@ -22,34 +22,27 @@ spec:
                   environment: prod
           - list:
               elements:
-                - { component: keycloak-db, appName: keycloak-db, repoURL: https://github.com/Tim275/talos-homelab, path: kubernetes/platform/identity/keycloak/db/overlays/prod, namespace: keycloak, wave: "30" }
-                - { component: lldap,       appName: lldap,       repoURL: https://github.com/Tim275/talos-homelab,     path: kubernetes/platform/identity/lldap/overlays/prod,    namespace: lldap,    wave: "50" }
-                - { component: keycloak,    appName: keycloak,    repoURL: https://github.com/Tim275/talos-homelab.git, path: kubernetes/platform/identity/keycloak/overlays/prod, namespace: keycloak, wave: "50" }
+                - { component: audiobookshelf, appName: audiobookshelf, path: kubernetes/apps/audiobookshelf/overlays/prod, namespace: audiobookshelf-prod, wave: "60" }
+                - { component: cloudbeaver,    appName: cloudbeaver,    path: kubernetes/apps/cloudbeaver/overlays/prod,    namespace: cloudbeaver,         wave: "60" }
   template:
     metadata:
       name: '{{.appName}}'
       labels:
         app.kubernetes.io/managed-by: argocd
-        platform.domain: identity
+        platform.domain: apps
         platform.component: '{{.component}}'
         team: timour
       annotations:
         argocd.argoproj.io/sync-wave: '{{.wave}}'
     spec:
-      project: platform
+      project: apps
       source:
-        repoURL: '{{.repoURL}}'
+        repoURL: https://github.com/Tim275/talos-homelab
         targetRevision: HEAD
         path: '{{.path}}'
       destination:
         server: '{{.server}}'
         namespace: '{{.namespace}}'
-      ignoreDifferences:
-        - group: bitnami.com
-          kind: SealedSecret
-          jsonPointers:
-            - /metadata/annotations
-            - /metadata/labels
       syncPolicy:
         automated: { prune: true, selfHeal: true }
         syncOptions:

@@ -45,7 +45,7 @@ talos_nodes = {
     ram_dedicated  = 20480
     datastore_id   = "local-zfs"
     os_disk_size   = 50
-    ceph_disk_size = 170
+    ceph_disk_size = 250
     dns            = ["192.168.0.1", "8.8.8.8"]
   }
   "worker-4" = {
@@ -58,7 +58,7 @@ talos_nodes = {
     ram_dedicated  = 20480
     datastore_id   = "local-zfs"
     os_disk_size   = 50
-    ceph_disk_size = 170
+    ceph_disk_size = 250
     dns            = ["192.168.0.1", "8.8.8.8"]
   }
   "worker-5" = {
@@ -71,7 +71,7 @@ talos_nodes = {
     ram_dedicated  = 20480
     datastore_id   = "local-zfs"
     os_disk_size   = 50
-    ceph_disk_size = 170
+    ceph_disk_size = 250
     dns            = ["192.168.0.1", "8.8.8.8"]
   }
   "worker-6" = {
@@ -84,7 +84,7 @@ talos_nodes = {
     ram_dedicated  = 20480
     datastore_id   = "local-zfs"
     os_disk_size   = 50
-    ceph_disk_size = 170
+    ceph_disk_size = 250
     dns            = ["192.168.0.1", "8.8.8.8"]
   }
   "worker-7" = {
@@ -109,7 +109,7 @@ talos_nodes = {
     ram_dedicated  = 10240
     datastore_id   = "local-zfs"
     os_disk_size   = 50
-    ceph_disk_size = 170
+    ceph_disk_size = 250
     dns            = ["192.168.0.1", "8.8.8.8"]
   }
 }

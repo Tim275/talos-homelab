@@ -25,26 +25,26 @@ spec:
                   environment: prod
           - list:
               elements:
-                # METRICS
-                - { component: prometheus,             appName: kube-prometheus-stack-in-cluster, path: kubernetes/platform/observability/kube-prometheus-stack/overlays/prod, namespace: monitoring,   wave: "40" }
-                - { component: metrics-server,         appName: metrics-server,                   path: kubernetes/platform/observability/metrics-server/overlays/prod,         namespace: kube-system,  wave: "50" }
-                - { component: blackbox-exporter,      appName: blackbox-exporter,                path: kubernetes/platform/observability/blackbox-exporter/overlays/prod,      namespace: monitoring,   wave: "50" }
-                - { component: pve-exporter,           appName: pve-exporter,                     path: kubernetes/platform/observability/pve-exporter/overlays/prod,           namespace: monitoring,   wave: "50" }
-                # LOGS
-                - { component: elasticsearch,          appName: elasticsearch,                    path: kubernetes/platform/observability/elasticsearch/overlays/prod,             namespace: elastic-system, wave: "50" }
-                - { component: loki,                   appName: loki,                             path: kubernetes/platform/observability/loki/overlays/prod,                     namespace: monitoring,   wave: "50" }
-                - { component: vector,                 appName: vector,                           path: kubernetes/platform/observability/vector/overlays/prod,                   namespace: monitoring,   wave: "50" }
-                - { component: kibana,                 appName: kibana,                           path: kubernetes/platform/observability/kibana/overlays/prod,                   namespace: elastic-system, wave: "50" }
-                # TRACES
-                - { component: tempo,                  appName: tempo,                            path: kubernetes/platform/observability/tempo/overlays/prod,                  namespace: monitoring,   wave: "50" }
-                - { component: jaeger,                 appName: jaeger,                           path: kubernetes/platform/observability/jaeger/overlays/prod,                 namespace: jaeger,       wave: "50" }
-                - { component: opentelemetry,          appName: opentelemetry,                    path: kubernetes/platform/observability/opentelemetry/overlays/prod,          namespace: opentelemetry, wave: "6" }
-                # DASHBOARDS / UI
-                - { component: grafana,                appName: grafana,                          path: kubernetes/platform/observability/dashboards/grafana/overlays/prod,            namespace: grafana,      wave: "99" }
-                - { component: dashboards,             appName: dashboards,                       path: kubernetes/platform/observability/dashboards/configs/overlays/prod,            namespace: grafana,      wave: "9" }
-                - { component: hubble,                 appName: hubble,                           path: kubernetes/platform/observability/dashboards/hubble/overlays/prod,             namespace: kube-system,  wave: "9" }
-                # ALERTING
-                - { component: infrastructure-alerts,  appName: infrastructure-alerts,            path: kubernetes/platform/observability/alerting/alerts/overlays/prod,               namespace: monitoring,   wave: "9" }
+                # METRICS — Backends @ tier 40, post-deploy exporters/server @ tier 0/70
+                - { component: prometheus,             appName: kube-prometheus-stack-in-cluster, path: kubernetes/infrastructure/observability/kube-prometheus-stack/overlays/prod, namespace: monitoring,   wave: "40" }
+                - { component: metrics-server,         appName: metrics-server,                   path: kubernetes/infrastructure/observability/metrics-server/overlays/prod,         namespace: kube-system,  wave: "0" }
+                - { component: blackbox-exporter,      appName: blackbox-exporter,                path: kubernetes/infrastructure/observability/blackbox-exporter/overlays/prod,      namespace: monitoring,   wave: "70" }
+                - { component: pve-exporter,           appName: pve-exporter,                     path: kubernetes/infrastructure/observability/pve-exporter/overlays/prod,           namespace: monitoring,   wave: "70" }
+                # LOGS — Backends @ 40, shippers @ 70 (after apps exist)
+                - { component: elasticsearch,          appName: elasticsearch,                    path: kubernetes/infrastructure/observability/elasticsearch/overlays/prod,             namespace: elastic-system, wave: "40" }
+                - { component: loki,                   appName: loki,                             path: kubernetes/infrastructure/observability/loki/overlays/prod,                     namespace: monitoring,   wave: "40" }
+                - { component: vector,                 appName: vector,                           path: kubernetes/infrastructure/observability/vector/overlays/prod,                   namespace: monitoring,   wave: "70" }
+                - { component: kibana,                 appName: kibana,                           path: kubernetes/infrastructure/observability/kibana/overlays/prod,                   namespace: elastic-system, wave: "40" }
+                # TRACES — Backends @ 40, collector @ 70 (scrapes from apps)
+                - { component: tempo,                  appName: tempo,                            path: kubernetes/infrastructure/observability/tempo/overlays/prod,                  namespace: monitoring,   wave: "40" }
+                - { component: jaeger,                 appName: jaeger,                           path: kubernetes/infrastructure/observability/jaeger/overlays/prod,                 namespace: jaeger,       wave: "40" }
+                - { component: opentelemetry,          appName: opentelemetry,                    path: kubernetes/infrastructure/observability/opentelemetry/overlays/prod,          namespace: opentelemetry, wave: "70" }
+                # DASHBOARDS / UI — Grafana backend @ 40, dashboards-CRs @ 70 (after Grafana)
+                - { component: grafana,                appName: grafana,                          path: kubernetes/infrastructure/observability/dashboards/grafana/overlays/prod,            namespace: grafana,      wave: "40" }
+                - { component: dashboards,             appName: dashboards,                       path: kubernetes/infrastructure/observability/dashboards/configs/overlays/prod,            namespace: grafana,      wave: "70" }
+                - { component: hubble,                 appName: hubble,                           path: kubernetes/infrastructure/observability/dashboards/hubble/overlays/prod,             namespace: kube-system,  wave: "70" }
+                # ALERTING — PrometheusRules @ 70 (Prom CRDs available since wave 40)
+                - { component: infrastructure-alerts,  appName: infrastructure-alerts,            path: kubernetes/infrastructure/observability/alerting/alerts/overlays/prod,               namespace: monitoring,   wave: "70" }
   template:
     metadata:
       name: '{{.appName}}'
@@ -83,6 +83,7 @@ spec:
           - PruneLast=true
           - RespectIgnoreDifferences=true
           - ServerSideApply=true
+          - ApplyOutOfSyncOnly=true
         retry:
           limit: 5
           backoff: { duration: 5s, factor: 2, maxDuration: 3m }
