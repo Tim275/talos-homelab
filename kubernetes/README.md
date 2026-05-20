@@ -13,47 +13,47 @@ kubernetes/
 │   ├── clusters.yaml           # App -> clusters/
 │   └── applicationsets.yaml    # App -> applicationsets/
 │
-├── applicationsets/            # 12 AppSets, generate all child Apps
-│   ├── infrastructure/         # controllers, network, storage, observability
-│   ├── platform/               # identity, gitops
-│   ├── apps/                   # apps-stack (audiobookshelf, cloudbeaver, uptime-kuma)
-│   ├── security/               # security-stack
-│   ├── tenants/                # tenants-config, drova-tenant, n8n-tenant
-│   └── edge/                   # staging (Pi cluster, environment=staging)
+├── applicationsets/
+│   ├── infrastructure/
+│   ├── platform/
+│   ├── apps/
+│   ├── security/
+│   ├── tenants/
+│   └── edge/
 │
-├── infrastructure/             # cluster backbone (everything depends on it)
-│   ├── argocd/                 # self-management
-│   ├── network/                # cilium, coredns
-│   ├── storage/                # rook-ceph, radosgateway, csi-drivers, velero, proxmox-csi
-│   ├── certificates/           # cert-manager
-│   ├── secrets/                # sealed-secrets
-│   ├── operators/              # CNPG, Strimzi, ECK, Keycloak, argo-rollouts
-│   ├── ingress/                # gateway (envoy), cloudflared, redis-gateway
-│   └── observability/          # prometheus, loki, tempo, jaeger, ES, grafana, OTel, vector, exporters
+├── infrastructure/
+│   ├── argocd/
+│   ├── network/
+│   ├── storage/
+│   ├── certificates/
+│   ├── secrets/
+│   ├── operators/
+│   ├── ingress/
+│   └── observability/
 │
-├── platform/                   # developer-platform services
-│   ├── identity/               # keycloak (+db), lldap
-│   └── gitops/                 # renovate, backstage
+├── platform/
+│   ├── identity/
+│   └── gitops/
 │
-├── apps/                       # self-deployed apps (own this repo)
-│   ├── n8n/                    # base for tenants/n8n-prod/app
+├── apps/
+│   ├── n8n/
 │   ├── cloudbeaver/
 │   ├── audiobookshelf/
 │   └── uptime-kuma/
 │
-├── tenants/                    # workloads with own data-services + namespace config
-│   ├── drova/                  # postgres, kafka, redis, app(ext-repo) + ns/quota/rbac
-│   ├── n8n-prod/               # postgres, redis, app + ns/quota/rbac
-│   ├── keycloak/               # ns quota+limitrange (app in platform/identity)
-│   ├── lldap/                  # ns quota+limitrange
-│   ├── oms/                    # PARKED (SA-token interim, OIDC planned)
-│   └── infisical/              # PARKED
+├── tenants/
+│   ├── drova/
+│   ├── n8n-prod/
+│   ├── keycloak/
+│   ├── lldap/
+│   ├── oms/
+│   └── infisical/
 │
-├── security/                   # foundation, compliance, policies/kyverno, rbac, governance
-├── projects/                   # AppProject CRs
-├── clusters/                   # cluster-secret CRs
-├── components/                 # reusable kustomize patches (arm64-arch, short-retention, single-replica)
-└── scripts/                    # runbooks, upgrades, monitoring helpers
+├── security/
+├── projects/
+├── clusters/
+├── components/
+└── scripts/
 ```
 
 ## Sync-Wave Cascade (11 Tiers)
