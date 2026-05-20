@@ -36,18 +36,18 @@ variable "cluster" {
 variable "nodes" {
   description = "Configuration for cluster nodes"
   type = map(object({
-    host_node        = string
-    machine_type     = string
-    datastore_id     = optional(string, "local-zfs")
-    ip               = string
-    mac_address      = string
-    vm_id            = number
-    cpu              = number
-    ram_dedicated    = number
-    dns              = optional(list(string))  # Per-node DNS servers (required for msa2 workers)
-    update           = optional(bool, false)
-    igpu             = optional(bool, false)
-    os_disk_size     = optional(number, 50)   # OS disk size in GB (conservative)
-    ceph_disk_size   = optional(number, 0)    # Ceph OSD disk size in GB (0 = no Ceph disk, matches root default)
+    host_node      = string
+    machine_type   = string
+    datastore_id   = optional(string, "local-zfs")
+    ip             = string
+    mac_address    = string
+    vm_id          = number
+    cpu            = number
+    ram_dedicated  = number
+    dns            = optional(list(string)) # Per-node DNS servers (required for msa2 workers)
+    update         = optional(bool, false)
+    igpu           = optional(bool, false)
+    os_disk_size   = optional(number, 50) # OS disk size in GB (conservative)
+    ceph_disk_size = optional(number, 0)  # Ceph OSD disk size in GB (0 = no Ceph disk, matches root default)
   }))
 }

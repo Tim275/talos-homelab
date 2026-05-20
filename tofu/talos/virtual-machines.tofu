@@ -42,7 +42,7 @@ resource "proxmox_virtual_environment_vm" "this" {
     file_format  = "raw"
     # OLD: size = 20  # Original size
     # OLD: size = 30  # First increase (commented commit)
-    size    = each.value.os_disk_size  # Conservative: 50GB for all nodes
+    size    = each.value.os_disk_size # Conservative: 50GB for all nodes
     file_id = proxmox_virtual_environment_download_file.this["${each.value.host_node}_${each.value.update == true ? local.update_image_id : local.image_id}"].id
   }
 

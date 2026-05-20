@@ -45,7 +45,7 @@ module "volumes" {
 
   proxmox_api       = var.proxmox
   proxmox_api_token = var.proxmox_api_token
-  volumes     = var.kubernetes_volumes
+  volumes           = var.kubernetes_volumes
 }
 
 # GitLab VM disabled 2026-05-16 — VM was manually deleted; preventing accidental
