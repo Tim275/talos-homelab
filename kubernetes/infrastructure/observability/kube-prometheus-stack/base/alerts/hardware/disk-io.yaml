@@ -1,0 +1,69 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hardware-disk-io
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: disk-io
+      interval: 1m
+      rules:
+        - alert: HostDiskIOSaturation
+          expr: |
+            rate(node_disk_io_time_seconds_total{device!~"dm-.*|loop.*|zd.*"}[5m]) > 0.95
+          for: 15m
+          labels:
+            severity: warning
+            component: hardware
+          annotations:
+            summary: "{{ $labels.instance }} disk {{ $labels.device }} >95% busy"
+            description: "Disk saturated (near 100% utilization). I/O-bound - likely the SSD bottleneck under Ceph/CNPG load."
+
+        - alert: HostDiskReadLatencyHigh
+          expr: |
+            rate(node_disk_read_time_seconds_total{device!~"dm-.*|loop.*|zd.*"}[5m])
+            / clamp_min(rate(node_disk_reads_completed_total{device!~"dm-.*|loop.*|zd.*"}[5m]), 1) > 0.05
+          for: 15m
+          labels:
+            severity: warning
+            component: hardware
+          annotations:
+            summary: "{{ $labels.instance }} disk {{ $labels.device }} read latency {{ $value | humanizeDuration }}"
+            description: "Average read latency >50ms. Indicates a struggling disk (e.g. cheap consumer SSD under sustained load)."
+
+        - alert: HostDiskWriteLatencyHigh
+          expr: |
+            rate(node_disk_write_time_seconds_total{device!~"dm-.*|loop.*|zd.*"}[5m])
+            / clamp_min(rate(node_disk_writes_completed_total{device!~"dm-.*|loop.*|zd.*"}[5m]), 1) > 0.05
+          for: 15m
+          labels:
+            severity: warning
+            component: hardware
+          annotations:
+            summary: "{{ $labels.instance }} disk {{ $labels.device }} write latency {{ $value | humanizeDuration }}"
+            description: "Average write latency >50ms. Ceph WAL/journal writes will stall - root cause of slow-ops."
+
+        - alert: HostRootFilesystemAlmostFull
+          expr: |
+            node_filesystem_avail_bytes{mountpoint="/",fstype!="rootfs"}
+            / node_filesystem_size_bytes{mountpoint="/",fstype!="rootfs"} < 0.10
+          for: 15m
+          labels:
+            severity: warning
+            component: hardware
+          annotations:
+            summary: "{{ $labels.instance }} root filesystem {{ $value | humanizePercentage }} free"
+            description: "Proxmox host root nearly full. Risk of failed writes, stuck services."
+
+        - alert: HostRootFilesystemCritical
+          expr: |
+            node_filesystem_avail_bytes{mountpoint="/",fstype!="rootfs"}
+            / node_filesystem_size_bytes{mountpoint="/",fstype!="rootfs"} < 0.05
+          for: 5m
+          labels:
+            severity: critical
+            component: hardware
+          annotations:
+            summary: "{{ $labels.instance }} root filesystem critically full ({{ $value | humanizePercentage }})"
+            description: "Host out of disk space imminent. Proxmox + VMs at risk of write failures."

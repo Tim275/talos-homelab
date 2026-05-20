@@ -1,0 +1,67 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hardware-host-network
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: host-network
+      interval: 1m
+      rules:
+        - alert: HostNetworkReceiveDrops
+          expr: |
+            rate(node_network_receive_drop_total{device!~"lo|veth.*|cni.*|tap.*|fwbr.*|fwln.*|fwpr.*|cilium.*|lxc.*"}[5m]) > 1
+          for: 10m
+          labels:
+            severity: warning
+            component: hardware
+          annotations:
+            summary: "{{ $labels.instance }} NIC {{ $labels.device }} dropping RX packets ({{ $value | humanize }}/s)"
+            description: "Receive drops indicate NIC saturation, buffer overrun, or driver issue."
+
+        - alert: HostNetworkTransmitDrops
+          expr: |
+            rate(node_network_transmit_drop_total{device!~"lo|veth.*|cni.*|tap.*|fwbr.*|fwln.*|fwpr.*|cilium.*|lxc.*"}[5m]) > 1
+          for: 10m
+          labels:
+            severity: warning
+            component: hardware
+          annotations:
+            summary: "{{ $labels.instance }} NIC {{ $labels.device }} dropping TX packets ({{ $value | humanize }}/s)"
+            description: "Transmit drops indicate NIC congestion or downstream backpressure."
+
+        - alert: HostNetworkErrors
+          expr: |
+            rate(node_network_receive_errs_total{device!~"lo|veth.*|cni.*|tap.*|fwbr.*|fwln.*|fwpr.*|cilium.*|lxc.*"}[5m]) > 0
+            or
+            rate(node_network_transmit_errs_total{device!~"lo|veth.*|cni.*|tap.*|fwbr.*|fwln.*|fwpr.*|cilium.*|lxc.*"}[5m]) > 0
+          for: 5m
+          labels:
+            severity: critical
+            component: hardware
+          annotations:
+            summary: "{{ $labels.instance }} NIC {{ $labels.device }} reporting errors"
+            description: "Hardware/link errors on physical NIC. Check cable, port, driver. Ceph replication runs over this link."
+
+        - alert: HostNetworkInterfaceDown
+          expr: |
+            node_network_up{device!~"lo|veth.*|cni.*|tap.*|fwbr.*|fwln.*|fwpr.*|cilium.*|lxc.*"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            component: hardware
+          annotations:
+            summary: "{{ $labels.instance }} NIC {{ $labels.device }} is DOWN"
+            description: "Physical interface down. If this is the Ceph/cluster link, OSDs on this host become unreachable."
+
+        - alert: HostNetworkSaturation
+          expr: |
+            rate(node_network_receive_bytes_total{device!~"lo|veth.*|cni.*|tap.*|fwbr.*|fwln.*|fwpr.*|cilium.*|lxc.*"}[5m]) * 8 > 0.9 * 2.5e9
+          for: 15m
+          labels:
+            severity: warning
+            component: hardware
+          annotations:
+            summary: "{{ $labels.instance }} NIC {{ $labels.device }} >90% of 2.5G link"
+            description: "Network link near saturation. Ceph rebalance or backup traffic may be throttled."

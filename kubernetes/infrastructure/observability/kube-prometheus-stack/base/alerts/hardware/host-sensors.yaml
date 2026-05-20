@@ -1,0 +1,78 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hardware-host-sensors
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: host-sensors
+      interval: 1m
+      rules:
+        - alert: HostCPUTemperatureHigh
+          expr: |
+            node_hwmon_temp_celsius > 85
+          for: 10m
+          labels:
+            severity: warning
+            component: hardware
+          annotations:
+            summary: "CPU/sensor {{ $labels.chip }} on {{ $labels.instance }} at {{ $value }}°C"
+            description: "Sustained high temperature. Mini-PC will thermal-throttle the CPU."
+            action: "Check airflow / dust / fan. Sustained >90°C risks shutdown."
+
+        - alert: HostCPUTemperatureCritical
+          expr: |
+            node_hwmon_temp_celsius > 95
+          for: 2m
+          labels:
+            severity: critical
+            component: hardware
+          annotations:
+            summary: "CPU/sensor {{ $labels.chip }} on {{ $labels.instance }} at {{ $value }}°C - critical"
+            description: "Thermal shutdown imminent. Host may power off to protect hardware."
+
+        - alert: HostLoadHigh
+          expr: |
+            node_load5 / count without (cpu, mode) (node_cpu_seconds_total{mode="idle"}) > 2
+          for: 15m
+          labels:
+            severity: warning
+            component: hardware
+          annotations:
+            summary: "{{ $labels.instance }} load5 is {{ $value | humanize }}× core count"
+            description: "Host CPU oversubscribed. VMs may be CPU-starved."
+
+        - alert: HostMemoryPressure
+          expr: |
+            node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.10
+          for: 10m
+          labels:
+            severity: warning
+            component: hardware
+          annotations:
+            summary: "{{ $labels.instance }} has {{ $value | humanizePercentage }} RAM available"
+            description: "Host memory nearly exhausted. Risk of OOM-killer / VM balloon pressure."
+            impact: "nipogi runs RAM-overcommitted (84G allocated / 77G physical) - watch closely."
+
+        - alert: HostMemoryCritical
+          expr: |
+            node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.05
+          for: 5m
+          labels:
+            severity: critical
+            component: hardware
+          annotations:
+            summary: "{{ $labels.instance }} critically low RAM ({{ $value | humanizePercentage }})"
+            description: "OOM-killer likely active. VMs at risk of being killed."
+
+        - alert: HostSwapUsageHigh
+          expr: |
+            (node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes) / clamp_min(node_memory_SwapTotal_bytes, 1) > 0.5
+          for: 15m
+          labels:
+            severity: warning
+            component: hardware
+          annotations:
+            summary: "{{ $labels.instance }} swap >50% used"
+            description: "Host swapping heavily → severe performance degradation for VMs/Ceph."
