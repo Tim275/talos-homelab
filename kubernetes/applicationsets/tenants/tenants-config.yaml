@@ -1,13 +1,11 @@
-# Apps Stack — stateless tools + media apps (prod cluster)
----
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: apps-stack
+  name: tenants-config
   namespace: argocd
   labels:
     app.kubernetes.io/managed-by: argocd
-    platform.domain: apps
+    platform.homelab/layer: tenant-config
     team: timour
 spec:
   goTemplate: true
@@ -22,25 +20,26 @@ spec:
                   environment: prod
           - list:
               elements:
-                - { component: audiobookshelf, appName: audiobookshelf, path: kubernetes/apps/audiobookshelf/overlays/prod,        namespace: audiobookshelf-prod, wave: "60" }
-                - { component: cloudbeaver,    appName: cloudbeaver,    path: kubernetes/apps/cloudbeaver/overlays/prod,           namespace: cloudbeaver,         wave: "60" }
-                - { component: uptime-kuma,    appName: uptime-kuma,    path: kubernetes/apps/uptime-kuma/environments/production, namespace: uptime-kuma,         wave: "60" }
+                - { component: drova,    appName: drova-config,    namespace: drova,    wave: "10" }
+                - { component: n8n-prod, appName: n8n-prod-config, namespace: n8n-prod, wave: "10" }
+                - { component: keycloak, appName: keycloak-config, namespace: keycloak, wave: "10" }
+                - { component: lldap,    appName: lldap-config,    namespace: lldap,    wave: "10" }
   template:
     metadata:
       name: '{{.appName}}'
       labels:
         app.kubernetes.io/managed-by: argocd
-        platform.domain: apps
-        platform.component: '{{.component}}'
+        platform.homelab/layer: tenant-config
+        platform.homelab/tenant: '{{.component}}'
         team: timour
       annotations:
         argocd.argoproj.io/sync-wave: '{{.wave}}'
     spec:
-      project: apps
+      project: platform
       source:
         repoURL: https://github.com/Tim275/talos-homelab
         targetRevision: HEAD
-        path: '{{.path}}'
+        path: 'kubernetes/tenants/{{.component}}'
       destination:
         server: '{{.server}}'
         namespace: '{{.namespace}}'
