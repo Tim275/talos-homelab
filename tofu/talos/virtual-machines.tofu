@@ -51,7 +51,7 @@ resource "proxmox_virtual_environment_vm" "this" {
   dynamic "disk" {
     for_each = each.value.ceph_disk_size > 0 ? [1] : []
     content {
-      datastore_id = each.value.datastore_id
+      datastore_id = coalesce(each.value.ceph_disk_datastore, each.value.datastore_id)
       interface    = "scsi1"
       iothread     = true
       cache        = "none"
