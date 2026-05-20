@@ -10,14 +10,6 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
 [![ArgoCD](https://img.shields.io/badge/GitOps-ArgoCD-00D4AA?style=for-the-badge&logo=argo&logoColor=white)](https://argo-cd.readthedocs.io/)
 [![Renovate](https://img.shields.io/badge/Deps-Renovate-1F8FFF?style=for-the-badge&logo=renovatebot&logoColor=white)](https://docs.renovatebot.com/)
 
-## 📖 Overview
-
-This repository hosts the IaC (Infrastructure as Code) configuration for a production-grade Kubernetes homelab.
-
-The cluster runs **Talos Linux** on **Proxmox VE** hypervisor nodes, with VMs bootstrapped using **OpenTofu**.
-**Argo CD** manages everything declaratively from this repo using the App-of-Apps pattern, layered into:
-`security → infrastructure → platform → apps`.
-
 ## 📦 Applications
 
 End-user applications deployed via Argo CD across dev / staging / production overlays:
