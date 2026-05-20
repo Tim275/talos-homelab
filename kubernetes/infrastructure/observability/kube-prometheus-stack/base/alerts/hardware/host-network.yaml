@@ -44,16 +44,28 @@ spec:
             summary: "{{ $labels.instance }} NIC {{ $labels.device }} reporting errors"
             description: "Hardware/link errors on physical NIC. Check cable, port, driver. Ceph replication runs over this link."
 
-        - alert: HostNetworkInterfaceDown
+        - alert: HostBridgeDown
           expr: |
-            node_network_up{device!~"lo|veth.*|cni.*|tap.*|fwbr.*|fwln.*|fwpr.*|cilium.*|lxc.*"} == 0
+            node_network_up{device=~"vmbr.*"} == 0
           for: 2m
           labels:
             severity: critical
             component: hardware
           annotations:
-            summary: "{{ $labels.instance }} NIC {{ $labels.device }} is DOWN"
-            description: "Physical interface down. If this is the Ceph/cluster link, OSDs on this host become unreachable."
+            summary: "{{ $labels.instance }} bridge {{ $labels.device }} is DOWN"
+            description: "Proxmox bridge down. All VM and host traffic on this bridge is cut. Cluster/Ceph link affected."
+
+        - alert: HostActiveLinkLost
+          expr: |
+            node_network_up{device!~"lo|veth.*|cni.*|tap.*|fwbr.*|fwln.*|fwpr.*|cilium.*|lxc.*|vmbr.*"} == 0
+            and on (instance, device) (node_network_receive_bytes_total offset 1h > 0)
+          for: 5m
+          labels:
+            severity: warning
+            component: hardware
+          annotations:
+            summary: "{{ $labels.instance }} NIC {{ $labels.device }} lost link (was active)"
+            description: "A physical NIC that carried traffic in the last hour is now down. Unused/unplugged ports are not alerted."
 
         - alert: HostNetworkSaturation
           expr: |
