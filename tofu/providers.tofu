@@ -33,8 +33,7 @@ provider "proxmox" {
 }
 
 provider "kubernetes" {
-  # Use existing kubeconfig file to avoid circular dependency during import
-  config_path = "${path.module}/output/kube-config.yaml"
+  config_path = fileexists("${path.module}/output/kube-config.yaml") ? "${path.module}/output/kube-config.yaml" : null
 }
 
 provider "restapi" {
