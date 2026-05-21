@@ -2,20 +2,16 @@
 
 machine:
   install:
-    # System extensions
     extensions:
-      # Longhorn distributed storage requirements
       - image: ghcr.io/siderolabs/iscsi-tools:20240808-talos-v1.7.0
       - image: ghcr.io/siderolabs/util-linux-tools:2.40.1-talos-v1.7.0
   features:
-    # Enable enhanced dashboard with detailed service monitoring
     stableHostname: true
     apidCheckExtKeyUsage: true
     diskQuotaSupport: true
     kubePrism:
       enabled: true
       port: 7445
-    # Host DNS - CoreDNS forwards to Talos host DNS cache
     # Requires loopback interface fix below for Cilium compatibility
     # Ref: https://github.com/siderolabs/talos/issues/10002
     hostDNS:
@@ -25,16 +21,14 @@ machine:
       localEnabled: true
   kernel:
     modules:
-      # Required for Longhorn distributed storage
       - name: iscsi_tcp
       - name: nvme_tcp
       - name: nvme_rdma
-      - name: nbd        # Network Block Device - CRITICAL for Longhorn
-      - name: configfs   # Configuration filesystem - CRITICAL for Longhorn
+      - name: nbd
+      - name: configfs
   kubelet:
-    image: ghcr.io/siderolabs/kubelet:v1.36.1
+    image: ghcr.io/siderolabs/kubelet:${kubernetes_version}
     extraMounts:
-      # Required for Longhorn distributed storage
       - destination: /var/lib/longhorn
         type: bind
         source: /var/lib/longhorn
@@ -43,17 +37,13 @@ machine:
           - rshared
           - rw
     extraArgs:
-      # Minimal stable configuration
       eviction-hard: "nodefs.available<5%,imagefs.available<5%,memory.available<100Mi"
       eviction-soft: "nodefs.available<10%,imagefs.available<10%,memory.available<200Mi"
       eviction-soft-grace-period: "nodefs.available=30s,imagefs.available=30s,memory.available=30s"
-      # Very aggressive image GC for 20GB disks
       image-gc-high-threshold: "70"
       image-gc-low-threshold: "50"
-      # Minimal logging to save disk space
       container-log-max-files: "2"
       container-log-max-size: "5Mi"
-      # Reserve less resources for system
       system-reserved: "cpu=100m,memory=200Mi"
       kube-reserved: "cpu=100m,memory=200Mi"
     extraConfig:
@@ -78,38 +68,31 @@ machine:
     # via `talosctl patch machineconfig --patch @oidc-host-patch.yaml` gesetzt,
     # NICHT hier ins template — ClusterIP ist instabil bei envoy-recreate.
   logging:
-    # Basic logging for stability
     destinations:
       - endpoint: tcp://127.0.0.1:5555
         format: json_lines
   time:
-    # NTP servers for accurate timestamps
     servers:
       - time.cloudflare.com
       - pool.ntp.org
   sysctls:
-    # CRITICAL: Fix inotify limits (main cause of storage issues!)
     fs.inotify.max_user_watches: 1048576
     fs.inotify.max_user_instances: 8192
-    # CRITICAL: Elasticsearch requires higher vm.max_map_count
     vm.max_map_count: 262144
-    # Optimized for small VMs with limited RAM
     vm.swappiness: 1
     vm.overcommit_memory: 1
     vm.panic_on_oom: 0
-    # Reduce memory usage
-    vm.nr_hugepages: 0  # No hugepages for small VMs
-    # Network optimizations for homelab
+    vm.nr_hugepages: 64
     net.core.default_qdisc: fq
-    net.core.rmem_max: 16777216  # Reduced from 64MB
-    net.core.wmem_max: 16777216  # Reduced from 64MB
+    net.core.rmem_max: 16777216
+    net.core.wmem_max: 16777216
     net.ipv4.tcp_congestion_control: bbr
     net.ipv4.tcp_fastopen: 3
-    net.ipv4.tcp_rmem: 4096 87380 16777216  # Reduced
-    net.ipv4.tcp_wmem: 4096 65536 16777216  # Reduced
-    # File system optimizations
+    net.ipv4.tcp_mtu_probing: 1
+    net.ipv4.tcp_window_scaling: 1
+    net.ipv4.tcp_rmem: 4096 87380 16777216
+    net.ipv4.tcp_wmem: 4096 65536 16777216
     fs.file-max: 2097152
-    # Container security hardening (KSPP-aligned)
     kernel.kptr_restrict: 2
     kernel.yama.ptrace_scope: 1
     kernel.dmesg_restrict: 1
@@ -117,3 +100,13 @@ machine:
     fs.protected_symlinks: 1
     fs.protected_fifos: 1
     fs.protected_regular: 2
+
+cluster:
+  apiServer:
+    image: registry.k8s.io/kube-apiserver:${kubernetes_version}
+  controllerManager:
+    image: registry.k8s.io/kube-controller-manager:${kubernetes_version}
+  proxy:
+    image: registry.k8s.io/kube-proxy:${kubernetes_version}
+  scheduler:
+    image: registry.k8s.io/kube-scheduler:${kubernetes_version}

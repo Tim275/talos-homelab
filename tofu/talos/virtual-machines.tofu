@@ -31,7 +31,6 @@ resource "proxmox_virtual_environment_vm" "this" {
     mac_address = each.value.mac_address
   }
 
-  # Talos OS Disk - Per-node sizing
   disk {
     datastore_id = each.value.datastore_id
     interface    = "scsi0"
@@ -40,14 +39,10 @@ resource "proxmox_virtual_environment_vm" "this" {
     discard      = "on"
     ssd          = true
     file_format  = "raw"
-    # OLD: size = 20  # Original size
-    # OLD: size = 30  # First increase (commented commit)
-    size    = each.value.os_disk_size # Conservative: 50GB for all nodes
+    size    = each.value.os_disk_size
     file_id = proxmox_virtual_environment_download_file.this["${each.value.host_node}_${each.value.update == true ? local.update_image_id : local.image_id}"].id
   }
 
-  # Ceph Storage Disk (raw, unformatted) - Per-node sizing
-  # IMPORTANT: Only create if ceph_disk_size > 0 (control planes don't need Ceph disk)
   dynamic "disk" {
     for_each = each.value.ceph_disk_size > 0 ? [1] : []
     content {

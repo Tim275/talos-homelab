@@ -44,11 +44,11 @@ variable "nodes" {
     vm_id               = number
     cpu                 = number
     ram_dedicated       = number
-    dns                 = optional(list(string), ["192.168.0.1", "8.8.8.8"]) # Default DNS for all nodes (static IP = no DHCP DNS); override per-node if needed
+    dns                 = optional(list(string), [])
     update              = optional(bool, false)
     igpu                = optional(bool, false)
-    os_disk_size        = optional(number, 50) # OS disk size in GB (conservative)
-    ceph_disk_size      = optional(number, 0)  # Ceph OSD disk size in GB (0 = no Ceph disk, matches root default)
-    ceph_disk_datastore = optional(string)     # Datastore for Ceph disk (fallback: datastore_id)
+    os_disk_size        = optional(number, 50)
+    ceph_disk_size      = optional(number, 0)
+    ceph_disk_datastore = optional(string)
   }))
 }

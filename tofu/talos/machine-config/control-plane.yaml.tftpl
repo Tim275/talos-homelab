@@ -1,5 +1,3 @@
-# Control plane specific settings only - common config comes from common.yaml.tftpl
-
 machine:
   network:
     interfaces:
@@ -17,69 +15,34 @@ machine:
 %{ endif }
 
 cluster:
-  allowSchedulingOnControlPlanes: false  # Block all pods except DaemonSets
+  allowSchedulingOnControlPlanes: false
   controllerManager:
     extraArgs:
       bind-address: 0.0.0.0
     resources:
       requests:
-        cpu: 50m       # Actual: 31m * 1.5 (keep default, enough for 3 masters)
-        memory: 256Mi  # Actual: 149Mi * 1.5
+        cpu: 50m
+        memory: 256Mi
       limits:
-        cpu: 500m      # 31m * 16 (generous burst headroom)
-        memory: 1Gi    # 149Mi * 7 (memory spike protection)
+        cpu: 500m
+        memory: 1Gi
   scheduler:
     extraArgs:
       bind-address: 0.0.0.0
     resources:
       requests:
-        cpu: 10m       # Actual: 3m * 3 (keep default, very light)
-        memory: 64Mi   # Actual: 44Mi * 1.5 (keep default)
+        cpu: 10m
+        memory: 64Mi
       limits:
-        cpu: 200m      # 3m * 66 (very generous for rare bursts)
-        memory: 512Mi  # 44Mi * 12 (spike protection)
+        cpu: 200m
+        memory: 512Mi
   apiServer:
     extraArgs:
-      # API server stability fixes only
       max-requests-inflight: "400"
       max-mutating-requests-inflight: "200"
-      # Audit log rotation (Talos default path: /var/log/audit/kube-apiserver-audit.log)
       audit-log-maxsize: "100"
       audit-log-maxbackup: "10"
       audit-log-maxage: "30"
-
-      # ═══════════════════════════════════════════════════════════════════
-      # ║  OIDC-INTEGRATION mit KEYCLOAK (Phase 8 — kubectl-OIDC-Login)   ║
-      # ║                                                                 ║
-      # ║  Battle-tested 2026-05-09: war zuvor NUR via `talosctl patch`   ║
-      # ║  live → IaC-Drift → bei tofu-apply weg.                         ║
-      # ║  → Jetzt permanent in IaC für Cluster-Recreate-Resilience.      ║
-      # ║                                                                 ║
-      # ║  CHICKEN-AND-EGG bei FRESH-BOOTSTRAP — KEIN echtes Problem:     ║
-      # ║                                                                 ║
-      # ║   t=0  tofu apply → Talos boots                                 ║
-      # ║        kube-apiserver startet, versucht OIDC-discovery zu KC    ║
-      # ║        DNS schlägt fehl (CoreDNS noch nicht up)                 ║
-      # ║        → kube-apiserver loggt WARNING, läuft trotzdem weiter    ║
-      # ║        → admin-cert-auth (X.509) funktioniert sofort            ║
-      # ║                                                                 ║
-      # ║   t=5  ArgoCD bootstrap → CoreDNS + KC deployed                 ║
-      # ║                                                                 ║
-      # ║   t=10 First kubectl-OIDC-Login Versuch                         ║
-      # ║        kube-apiserver fetcht JWKS lazy from KC                  ║
-      # ║        → OIDC funktioniert ab hier                              ║
-      # ║                                                                 ║
-      # ║  K8s-Spec: OIDC-discovery ist non-blocking on boot. Kein Risk.  ║
-      # ║                                                                 ║
-      # ║  Bei Cluster-Crash (KC dauerhaft down):                         ║
-      # ║   → break-glass-kubeconfig (X.509 admin-cert, in 1Password)     ║
-      # ║   → bypass OIDC komplett                                        ║
-      # ║                                                                 ║
-      # ║  Bei Issuer-URL-Change (Migration KC → Okta):                   ║
-      # ║   → diese 6 Werte ändern → tofu apply → kube-apiserver-restart  ║
-      # ║                                                                 ║
-      # ║  Distribution-portable Werte (auch für vanilla/k3s/RKE2 gleich) ║
-      # ═══════════════════════════════════════════════════════════════════
       oidc-issuer-url: https://iam.timourhomelab.org/realms/kubernetes
       oidc-client-id: kubernetes
       oidc-username-claim: preferred_username
@@ -92,30 +55,25 @@ cluster:
       omitStages:
         - "RequestReceived"
       rules:
-        # CRITICAL: pod exec/attach/portforward
         - level: RequestResponse
           resources:
             - group: ""
               resources: ["pods/exec", "pods/attach", "pods/portforward"]
           verbs: ["create"]
-        # CRITICAL: secret/configmap changes
         - level: RequestResponse
           resources:
             - group: ""
               resources: ["secrets", "configmaps"]
           verbs: ["create", "update", "patch", "delete"]
-        # HIGH: unauthenticated requests
         - level: Metadata
           omitStages:
             - "RequestReceived"
           userGroups: ["system:unauthenticated"]
-        # MEDIUM: RBAC changes
         - level: RequestResponse
           resources:
             - group: "rbac.authorization.k8s.io"
               resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
           verbs: ["create", "update", "patch", "delete"]
-        # MEDIUM: workload changes
         - level: Request
           resources:
             - group: ""
@@ -123,34 +81,28 @@ cluster:
             - group: "apps"
               resources: ["deployments", "statefulsets", "daemonsets"]
           verbs: ["create", "update", "patch", "delete"]
-        # LOW: everything else
         - level: Metadata
           omitStages:
             - "RequestReceived"
     resources:
       requests:
-        cpu: 600m      # Actual: 403m * 1.5 (single node, 3 masters = ~200m/node)
-        memory: 3Gi    # Actual: 2094Mi * 1.5 = 3141Mi (was UNDER-provisioned!)
+        cpu: 600m
+        memory: 3Gi
       limits:
-        cpu: 2000m     # 403m * 5 (request burst protection)
-        memory: 8Gi    # 2094Mi * 4 (memory spike protection)
+        cpu: 2000m
+        memory: 8Gi
   etcd:
     extraArgs:
       listen-metrics-urls: http://0.0.0.0:2381
-      # Conservative etcd stability
       heartbeat-interval: "500"
       election-timeout: "2500"
-      # Auto-compaction prevents DB-bloat
       auto-compaction-mode: periodic
       auto-compaction-retention: "8h"
-      # Allow etcd-DB to grow up to 8GB (default 2GB)
       quota-backend-bytes: "8589934592"
   network:
     cni:
       name: none
   proxy:
-    # Disable kube-proxy - Cilium kubeProxyReplacement handles service routing
-    # This is the recommended approach for Talos + Cilium performance
     disabled: true
   discovery:
     enabled: true
