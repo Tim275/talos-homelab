@@ -76,12 +76,54 @@ Tier-Config (namespace+quota+rbac) at wave 10 runs BEFORE data-workloads at wave
 
 ## Bootstrap
 
-Prerequisite (via Tofu): Talos + Cilium + CoreDNS + sealed-secrets-cert + proxmox-csi.
-
+### Step 1 — Tofu (VMs + Talos + Cilium inline)
 ```bash
-export KUBECONFIG=~/.kube/talos-homelab
-kubectl apply -k bootstrap/
-kubectl get applications -n argocd -w   # ~5min until all green
+cd tofu/
+tofu apply
+cp tofu/output/kube-config.yaml ~/.kube/homelab-admin.yaml
+cp tofu/output/talosconfig ~/.kube/talos-config
+export KUBECONFIG=~/.kube/homelab-admin.yaml
+kubectl get nodes   # alle Ready abwarten
+```
+
+### Step 2 — Sealed-Secrets cert (vor ArgoCD!)
+```bash
+cd tofu/bootstrap/sealed-secrets/
+tofu init && tofu apply
+cd -
+```
+
+### Step 3 — Manual Core (aus kubernetes/ directory)
+```bash
+# 1. Cilium (CNI — verify/update nach Tofu inline)
+kubectl kustomize --enable-helm infrastructure/network/cilium/overlays/prod | \
+  kubectl apply --server-side --force-conflicts -f -
+
+# 2. Sealed-Secrets controller
+kubectl kustomize --enable-helm infrastructure/secrets/sealed-secrets/overlays/prod | \
+  kubectl apply --server-side --force-conflicts -f -
+
+# 3. Rook-Ceph (zweimal wegen CRD-Bootstrap)
+kubectl kustomize --enable-helm infrastructure/storage/rook-ceph/overlays/prod | \
+  kubectl apply --server-side --force-conflicts -f -
+kubectl wait --for=condition=Established crd/cephclusters.ceph.rook.io --timeout=60s
+kubectl kustomize --enable-helm infrastructure/storage/rook-ceph/overlays/prod | \
+  kubectl apply --server-side --force-conflicts -f -
+
+# 4. Operators: CNPG, ECK, Strimzi, Redis, Grafana, OTel, Renovate (zweimal wegen CRDs)
+kubectl kustomize --enable-helm infrastructure/operators/operators/overlays/prod | \
+  kubectl apply --server-side --force-conflicts -f -
+kubectl wait --for=condition=Established crd/podmonitors.monitoring.coreos.com --timeout=60s
+kubectl kustomize --enable-helm infrastructure/operators/operators/overlays/prod | \
+  kubectl apply --server-side --force-conflicts -f -
+```
+
+### Step 4 — ArgoCD Bootstrap-Cascade
+```bash
+kubectl kustomize --enable-helm bootstrap/ | \
+  kubectl apply --server-side --force-conflicts -f -
+
+kubectl get applications -n argocd -w   # ~10-15min bis alles Synced/Healthy
 ```
 
 ## ArgoCD Access
