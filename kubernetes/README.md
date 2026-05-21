@@ -1,6 +1,6 @@
 # Kubernetes Homelab (GitOps)
 
-ArgoCD App-of-Apps + ApplicationSets. One `kubectl apply -k bootstrap/` brings up the whole cluster via an 11-tier sync-wave cascade.
+ArgoCD App-of-Apps + ApplicationSets. One `kubectl apply -k bootstrap/` brings up the whole cluster.
 
 ## Structure
 
@@ -56,75 +56,32 @@ kubernetes/
 └── scripts/
 ```
 
-## Sync-Wave Cascade (11 Tiers)
-
-| Wave | Tier | Apps |
-|---|---|---|
-| -100 | Foundation | sealed-secrets, projects, clusters |
-| -50 | Operator CRDs | cert-manager, argo-rollouts, operators, rook-ceph-operator |
-| 0 | Network Core | cilium, coredns, metrics-server |
-| 10 | Security + Tenant-Config | PSA, RBAC, NetworkPolicies, Kyverno, tenant namespace+quota+rbac |
-| 20 | Storage Cluster | CephCluster, RGW, csi-snapshot |
-| 30 | Data Layer | CNPG (drova/n8n/keycloak), Kafka, Redis, velero |
-| 40 | Observability | prometheus, ES, loki, tempo, jaeger, kibana, grafana |
-| 50 | Identity | lldap, keycloak |
-| 60 | Apps | drova, n8n, cloudbeaver, audiobookshelf, uptime-kuma |
-| 70 | Exposure + Post-deploy | gateway, cloudflared, OTel, vector, dashboards, alerts, hubble, exporters |
-| 90 | Self-Update | argocd-self-management |
-
-Tier-Config (namespace+quota+rbac) at wave 10 runs BEFORE data-workloads at wave 30 (data-AppSets use CreateNamespace=false, so namespaces must pre-exist).
-
 ## Bootstrap
 
-### Step 1 — Tofu (VMs + Talos + Cilium inline)
-```bash
-cd tofu/
-tofu apply
-cp tofu/output/kube-config.yaml ~/.kube/homelab-admin.yaml
-cp tofu/output/talosconfig ~/.kube/talos-config
-export KUBECONFIG=~/.kube/homelab-admin.yaml
-kubectl get nodes   # alle Ready abwarten
+GitOps — ArgoCD syncs the whole cluster from Git. The manual part is just enough to get
+ArgoCD running; ArgoCD then deploys every stack (network, storage, controllers, observability,
+apps) via ApplicationSets — server-side apply + retry, ordered by sync-waves.
+
+```sh
+# 1. Infra: VMs + Talos + Cilium (inline CNI) + sealed-secrets key + Proxmox CSI + PVs
+cd tofu && tofu apply && cd ..
+
+# 2. Push — ArgoCD syncs from GitHub, so your commits must be on the remote
+git push
+
+# 3. Install ArgoCD (the only manual kubectl step). Run twice: 1st pass installs the CRDs,
+#    2nd the App-of-Apps that reference them.
+export KUBECONFIG=tofu/output/kube-config.yaml
+kustomize build --enable-helm kubernetes/bootstrap | kubectl apply --server-side -f -
+kustomize build --enable-helm kubernetes/bootstrap | kubectl apply --server-side -f -
+
+# 4. Watch ArgoCD bring up everything
+kubectl get applications -n argocd -w
 ```
 
-### Step 2 — Sealed-Secrets cert (vor ArgoCD!)
-```bash
-cd tofu/bootstrap/sealed-secrets/
-tofu init && tofu apply
-cd -
-```
-
-### Step 3 — Manual Core (aus kubernetes/ directory)
-```bash
-# 1. Cilium (CNI — verify/update nach Tofu inline)
-kubectl kustomize --enable-helm infrastructure/network/cilium/overlays/prod | \
-  kubectl apply --server-side --force-conflicts -f -
-
-# 2. Sealed-Secrets controller
-kubectl kustomize --enable-helm infrastructure/secrets/sealed-secrets/overlays/prod | \
-  kubectl apply --server-side --force-conflicts -f -
-
-# 3. Rook-Ceph (zweimal wegen CRD-Bootstrap)
-kubectl kustomize --enable-helm infrastructure/storage/rook-ceph/overlays/prod | \
-  kubectl apply --server-side --force-conflicts -f -
-kubectl wait --for=condition=Established crd/cephclusters.ceph.rook.io --timeout=60s
-kubectl kustomize --enable-helm infrastructure/storage/rook-ceph/overlays/prod | \
-  kubectl apply --server-side --force-conflicts -f -
-
-# 4. Operators: CNPG, ECK, Strimzi, Redis, Grafana, OTel, Renovate (zweimal wegen CRDs)
-kubectl kustomize --enable-helm infrastructure/operators/operators/overlays/prod | \
-  kubectl apply --server-side --force-conflicts -f -
-kubectl wait --for=condition=Established crd/podmonitors.monitoring.coreos.com --timeout=60s
-kubectl kustomize --enable-helm infrastructure/operators/operators/overlays/prod | \
-  kubectl apply --server-side --force-conflicts -f -
-```
-
-### Step 4 — ArgoCD Bootstrap-Cascade
-```bash
-kubectl kustomize --enable-helm bootstrap/ | \
-  kubectl apply --server-side --force-conflicts -f -
-
-kubectl get applications -n argocd -w   # ~10-15min bis alles Synced/Healthy
-```
+Fresh cluster + single ArgoCD-driven apply = no `--force-conflicts` needed; `--server-side`
+alone handles the large CRDs. ArgoCD then reconciles cilium (full config), sealed-secrets,
+cert-manager, the operators, storage and all apps in wave order, retrying until CRDs settle.
 
 ## ArgoCD Access
 
