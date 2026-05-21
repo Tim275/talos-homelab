@@ -44,7 +44,7 @@ variable "nodes" {
     vm_id               = number
     cpu                 = number
     ram_dedicated       = number
-    dns                 = optional(list(string)) # Per-node DNS servers (required for msa2 workers)
+    dns                 = optional(list(string), ["192.168.0.1", "8.8.8.8"]) # Default DNS for all nodes (static IP = no DHCP DNS); override per-node if needed
     update              = optional(bool, false)
     igpu                = optional(bool, false)
     os_disk_size        = optional(number, 50) # OS disk size in GB (conservative)

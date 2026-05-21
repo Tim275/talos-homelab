@@ -48,7 +48,6 @@ talos_nodes = {
     datastore_id   = "local-zfs"
     os_disk_size   = 50
     ceph_disk_size = 250
-    dns            = ["192.168.0.1", "8.8.8.8"]
   }
   "worker-4" = {
     host_node      = "msa2proxmox"
@@ -61,7 +60,6 @@ talos_nodes = {
     datastore_id   = "local-zfs"
     os_disk_size   = 50
     ceph_disk_size = 250
-    dns            = ["192.168.0.1", "8.8.8.8"]
   }
   "worker-5" = {
     host_node      = "msa2proxmox"
@@ -74,7 +72,6 @@ talos_nodes = {
     datastore_id   = "local-zfs"
     os_disk_size   = 50
     ceph_disk_size = 250
-    dns            = ["192.168.0.1", "8.8.8.8"]
   }
   "worker-6" = {
     host_node      = "msa2proxmox"
@@ -87,7 +84,6 @@ talos_nodes = {
     datastore_id   = "local-zfs"
     os_disk_size   = 50
     ceph_disk_size = 250
-    dns            = ["192.168.0.1", "8.8.8.8"]
   }
   "worker-7" = {
     host_node           = "nipogi"
@@ -113,6 +109,5 @@ talos_nodes = {
     datastore_id   = "local-zfs"
     os_disk_size   = 50
     ceph_disk_size = 250
-    dns            = ["192.168.0.1", "8.8.8.8"]
   }
 }
