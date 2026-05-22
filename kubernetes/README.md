@@ -33,11 +33,13 @@ Apply twice — first pass installs the CRDs, second the CRs that reference them
 ## Components individually (optional — ArgoCD does this otherwise)
 
 ```sh
-kustomize build --enable-helm kubernetes/infrastructure/network/cilium/overlays/prod         | kubectl apply -f -
 kustomize build --enable-helm kubernetes/infrastructure/secrets/sealed-secrets/overlays/prod | kubectl apply -f -
+kustomize build --enable-helm kubernetes/infrastructure/network/cilium/overlays/prod         | kubectl apply -f -
 kustomize build --enable-helm kubernetes/infrastructure/storage/rook-ceph/overlays/prod      | kubectl apply --server-side -f -
 kustomize build --enable-helm kubernetes/infrastructure/argocd/overlays/prod                 | kubectl apply --server-side -f -
 ```
+
+sealed-secrets first — it ships the `sealedsecrets.bitnami.com` CRD that cilium (hubble-oidc) and rook-ceph reference. Wrong order → `NotFound` on the SealedSecret (ArgoCD retries past this, a manual apply does not).
 
 ## ArgoCD login
 
