@@ -1,8 +1,8 @@
-# Reconciles the kubernetes-realm lldap-federation bindCredential from the
-# keycloak-lldap-admin secret. The ${LLDAP_BIND_PASSWORD} placeholder in
-# realm-import.yaml is NOT substituted by the operator's KeycloakRealmImport,
-# so after a fresh import the federation binds with a bad password and every
-# login fails with "LDAP error code 49 - Invalid Credentials". Hourly + idempotent.
+# Reconciles secrets the operator's KeycloakRealmImport leaves as unsubstituted
+# ${...} placeholders in the kubernetes realm:
+#   - lldap-federation bindCredential  (else login → "LDAP error code 49")
+#   - argocd / grafana / kubernetes OIDC client secrets  (else SSO token exchange fails)
+# Hourly + idempotent. Self-heals after any fresh realm import / cluster rebuild.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -40,16 +40,29 @@ spec:
                   $KC config credentials --config "$CONF" \
                     --server http://keycloak-service:8080 \
                     --realm master --user "$KC_ADMIN_USER" --password "$KC_ADMIN_PASS"
-                  ID=$($KC get components --config "$CONF" -r kubernetes \
-                    -q type=org.keycloak.storage.UserStorageProvider \
+
+                  FID=$($KC get components --config "$CONF" -r kubernetes \
+                    -q type=org.keycloak.storage.UserStorageProvider --fields id \
                     | grep -m1 '"id"' | sed 's/[^:]*: *"//; s/".*//')
-                  if [ -z "$ID" ]; then
-                    echo "ERROR: no lldap-federation component in kubernetes realm"
-                    exit 1
+                  if [ -n "$FID" ]; then
+                    $KC update "components/$FID" --config "$CONF" -r kubernetes \
+                      -s "config.bindCredential=[\"$LLDAP_BIND_PASSWORD\"]"
+                    echo "OK: lldap-federation bindCredential ($FID)"
                   fi
-                  $KC update "components/$ID" --config "$CONF" -r kubernetes \
-                    -s "config.bindCredential=[\"$LLDAP_BIND_PASSWORD\"]"
-                  echo "OK: lldap-federation bindCredential reconciled ($ID)"
+
+                  set_secret() {
+                    CID="$1"; SEC="$2"
+                    ID=$($KC get clients --config "$CONF" -r kubernetes \
+                      -q clientId="$CID" --fields id \
+                      | grep -m1 '"id"' | sed 's/[^:]*: *"//; s/".*//')
+                    if [ -n "$ID" ] && [ -n "$SEC" ]; then
+                      $KC update "clients/$ID" --config "$CONF" -r kubernetes -s "secret=$SEC"
+                      echo "OK: client secret $CID ($ID)"
+                    fi
+                  }
+                  set_secret argocd "$ARGOCD_CLIENT_SECRET"
+                  set_secret grafana "$GRAFANA_CLIENT_SECRET"
+                  set_secret kubernetes "$KUBECTL_CLIENT_SECRET"
               env:
                 - name: KC_ADMIN_USER
                   valueFrom:
@@ -66,6 +79,21 @@ spec:
                     secretKeyRef:
                       name: keycloak-lldap-admin
                       key: password
+                - name: ARGOCD_CLIENT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: argocd-oidc-client-secret
+                      key: clientSecret
+                - name: GRAFANA_CLIENT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: keycloak-grafana-client-secret
+                      key: clientSecret
+                - name: KUBECTL_CLIENT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: keycloak-kubectl-client-secret
+                      key: clientSecret
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: false
