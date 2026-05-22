@@ -12,11 +12,11 @@ machine:
     kubePrism:
       enabled: true
       port: 7445
-    # Requires loopback interface fix below for Cilium compatibility
-    # Ref: https://github.com/siderolabs/talos/issues/10002
+    # hostDNS disabled: the 169.254.116.108 hop is unreliable in this Proxmox setup.
+    # With it off, the node resolv.conf points at the gateway (192.168.0.1) directly,
+    # so even default CoreDNS resolves external — no chicken-egg at bootstrap.
     hostDNS:
-      enabled: true
-      forwardKubeDNSToHost: true
+      enabled: false
     imageCache:
       localEnabled: true
   kernel:
@@ -59,16 +59,10 @@ machine:
     topology.kubernetes.io/zone: ${node_name}
   network:
     hostname: ${hostname}
-    # upstream DNS = gateway only. DHCP otherwise hands out 8.8.8.8, which times out from pods in this Proxmox setup → hostDNS (169.254.116.108) unreliable → external resolution breaks when CoreDNS reverts to default.
+    # upstream DNS = gateway directly. DHCP hands out 8.8.8.8 which times out from
+    # pods in this Proxmox setup; the gateway (192.168.0.1) resolves reliably.
     nameservers:
       - 192.168.0.1
-    # Fix for Cilium + Host DNS: Add link-local address to loopback with global scope
-    # Without this, Cilium can't route to 169.254.116.108 (Host DNS)
-    # Ref: https://github.com/cilium/cilium/issues/35153
-    interfaces:
-      - interface: lo
-        addresses:
-          - 169.254.116.108/32
     # NOTE: extraHostEntries (iam.timourhomelab.org → envoy ClusterIP) wird MANUELL
     # via `talosctl patch machineconfig --patch @oidc-host-patch.yaml` gesetzt,
     # NICHT hier ins template — ClusterIP ist instabil bei envoy-recreate.
