@@ -33,6 +33,12 @@ spec:
 
   cephConfig:
     global:
+      # New pools start with 16 PGs so Rook can set pg_num_min=8 on the realm pool
+      # (.rgw.root). With the default pg_num=1, RGW zone reconcile fails with
+      # "pg_num_min 8 > pg_num 1" and the whole object store never comes up.
+      osd_pool_default_pg_num: "16"
+      osd_pool_default_pgp_num: "16"
+
       # CRITICAL: Explicit memory target (SUSE recommends minimum 4GB)
       osd_memory_target: "4294967296"     # 4GB in bytes - never go below this!
       osd_memory_target_autotune: "true"  # Auto-adjust based on available memory
@@ -185,6 +191,9 @@ spec:
     # Global BlueStore tuning for VM environments
     config:
       osdsPerDevice: "1"
+      # Encryption at rest: OSDs are LUKS-encrypted, keys in k8s secrets (no KMS).
+      # Applies to OSDs at provision time → takes effect on a fresh cluster/rebuild.
+      encryptedDevice: "true"
       osd_memory_target: "4294967296"
       bluestore_cache_size: "2147483648"
       bluestore_min_alloc_size_hdd: "65536"
@@ -211,11 +220,6 @@ spec:
         devices:
           - name: "/dev/sdb"  # 50GB dedicated storage disk (scsi1)
       - name: "worker-5"  # msa2proxmox - 20GB RAM, compute workloads
-        config:
-          storeType: bluestore
-        devices:
-          - name: "/dev/sdb"  # 50GB dedicated storage disk (scsi1)
-      - name: "worker-6"  # msa2proxmox - 20GB RAM, compute workloads
         config:
           storeType: bluestore
         devices:
