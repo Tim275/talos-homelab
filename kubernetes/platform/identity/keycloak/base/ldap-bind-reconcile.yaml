@@ -1,0 +1,80 @@
+# Reconciles the kubernetes-realm lldap-federation bindCredential from the
+# keycloak-lldap-admin secret. The ${LLDAP_BIND_PASSWORD} placeholder in
+# realm-import.yaml is NOT substituted by the operator's KeycloakRealmImport,
+# so after a fresh import the federation binds with a bad password and every
+# login fails with "LDAP error code 49 - Invalid Credentials". Hourly + idempotent.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: keycloak-ldap-bind-reconcile
+  namespace: keycloak
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  schedule: "0 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 600
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: reconcile
+              image: quay.io/keycloak/keycloak:25.0.6@sha256:82c5b7a110456dbd42b86ea572e728878549954cc8bd03cd65410d75328095d2
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -e
+                  KC=/opt/keycloak/bin/kcadm.sh
+                  CONF=/tmp/kcadm.config
+                  $KC config credentials --config "$CONF" \
+                    --server http://keycloak-service:8080 \
+                    --realm master --user "$KC_ADMIN_USER" --password "$KC_ADMIN_PASS"
+                  ID=$($KC get components --config "$CONF" -r kubernetes \
+                    -q type=org.keycloak.storage.UserStorageProvider \
+                    | grep -m1 '"id"' | sed 's/[^:]*: *"//; s/".*//')
+                  if [ -z "$ID" ]; then
+                    echo "ERROR: no lldap-federation component in kubernetes realm"
+                    exit 1
+                  fi
+                  $KC update "components/$ID" --config "$CONF" -r kubernetes \
+                    -s "config.bindCredential=[\"$LLDAP_BIND_PASSWORD\"]"
+                  echo "OK: lldap-federation bindCredential reconciled ($ID)"
+              env:
+                - name: KC_ADMIN_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: keycloak-initial-admin
+                      key: username
+                - name: KC_ADMIN_PASS
+                  valueFrom:
+                    secretKeyRef:
+                      name: keycloak-initial-admin
+                      key: password
+                - name: LLDAP_BIND_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: keycloak-lldap-admin
+                      key: password
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: false
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
