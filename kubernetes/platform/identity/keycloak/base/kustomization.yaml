@@ -23,11 +23,12 @@ resources:
   - keycloak-cr.yaml
   - pdb.yaml                              # PodDisruptionBudget (Operator macht keine auto)
 
-  # Realm-as-Code (Phase D — replaces all setup-jobs below)
-  - realm-import.yaml
-
-  # Self-heal lldap-federation bindCredential (operator import leaves ${LLDAP_BIND_PASSWORD} unsubstituted → LDAP code 49)
-  - ldap-bind-reconcile.yaml
+  # Realm-as-Code via keycloak-config-cli — substitutes $(VAR) secrets from env
+  # natively, so client secrets + LDAP bind are correct on every run. Replaces the
+  # operator KeycloakRealmImport + the bind-reconcile CronJob. Adding a service = one
+  # client block in realm-kubernetes.yaml (mounted via configMapGenerator below).
+  - keycloak-config-cli.yaml
+  - hubble-client-sealed-secret.yaml       # hubble OIDC client secret (Envoy SecurityPolicy)
 
   # Phase D iter-2: Enforce CONFIGURE_TOTP für existing LDAP-federated users
   # (defaultAction=true im realm-import wirkt nur für NEW users).
@@ -57,6 +58,13 @@ resources:
   #   - service.yaml               → keycloak-cr.yaml (Operator-managed)
   #   - certificate.yaml           → not needed (HTTPRoute handles TLS)
   #   - enterprise-config.yaml     → ConfigMap that nothing references
+
+configMapGenerator:
+  - name: keycloak-realm-config
+    files:
+      - realm-kubernetes.yaml
+    options:
+      disableNameSuffixHash: true
 
 labels:
   - pairs:
