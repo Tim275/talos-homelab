@@ -9,6 +9,8 @@ resource "proxmox_virtual_environment_vm" "this" {
   on_boot     = true
   vm_id       = each.value.vm_id
 
+  stop_on_destroy = true
+
   machine       = "q35"
   scsi_hardware = "virtio-scsi-single"
   bios          = "seabios"
