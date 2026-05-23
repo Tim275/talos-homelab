@@ -5,8 +5,18 @@ commonAnnotations:
 
 namespace: gateway
 
+# Envoy Gateway via official Helm chart (was: raw install.yaml).
+# Config + the certgen ServerSideApply-fix live in values.yaml.
+helmCharts:
+  - name: gateway-helm
+    repo: oci://docker.io/envoyproxy
+    version: v1.6.0
+    releaseName: eg
+    namespace: gateway
+    includeCRDs: true
+    valuesFile: values.yaml
+
 resources:
-  - https://github.com/envoyproxy/gateway/releases/download/v1.6.0/install.yaml
   - sealed-cloudflare-api-token.yaml
   - cloudflare-issuer.yaml
   - certificate-timourhomelab.yaml
@@ -43,40 +53,6 @@ labels:
 #       - op: remove
 #         path: /metadata/annotations/controller-gen.kubebuilder.io~1version
 
-patches:
-  # CRITICAL: Fix certgen job - disable topology injector webhook patching
-  # The topology-injector MutatingWebhookConfiguration doesn't exist during first install
-  - target:
-      kind: Job
-      name: eg-gateway-helm-certgen
-    patch: |-
-      - op: add
-        path: /spec/template/spec/containers/0/args
-        value:
-          - --disable-topology-injector
-
-  # Enable Backend API for production-grade TLS
-  - target:
-      kind: ConfigMap
-      name: envoy-gateway-config
-      namespace: envoy-gateway-system
-    patch: |-
-      - op: add
-        path: /data/envoy-gateway.yaml
-        value: |
-          apiVersion: gateway.envoyproxy.io/v1alpha1
-          kind: EnvoyGateway
-          gateway:
-            controllerName: gateway.envoyproxy.io/gatewayclass-controller
-          logging:
-            level:
-              default: info
-          extensionApis:
-            enableBackend: true
-          provider:
-            type: Kubernetes
-          rateLimit:
-            backend:
-              type: Redis
-              redis:
-                url: redis://redis-gateway.gateway.svc.cluster.local:6379
+# NOTE: the former certgen-topology + envoy-gateway-config kustomize patches
+# are gone — both are now expressed natively in values.yaml
+# (topologyInjector.enabled, config.envoyGateway, certgen.job.annotations).
