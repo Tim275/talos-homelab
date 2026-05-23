@@ -5,9 +5,14 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
+  # CephClusterDown (==3) removed — ceph_health_status is only 0/1/2, so it never fired.
+  # CephHealthError(==2) is the real cluster-error page. Dropped HEALTH_WARN (too noisy —
+  # benign warns), the OSDDown/SlowOps/Capacity Info+Warning duplicates, and PG-recovery/
+  # slow-ops internals → Grafana "Ceph - Cluster" / "Ceph - OSD" dashboards.
   groups:
-    - name: rook-ceph
-      interval: 1m
+    # ── PAGE ──
+    - name: ceph-page
+      interval: 30s
       rules:
         - alert: CephHealthError
           expr: ceph_health_status == 2
@@ -17,28 +22,32 @@ spec:
             component: storage
           annotations:
             summary: "Ceph cluster HEALTH_ERR"
-            description: "Rook-Ceph reports HEALTH_ERR. Data integrity at risk."
-            runbook_url: "docs/runbooks/ceph-health-error.md"
+            description: "Rook-Ceph reports HEALTH_ERR — data integrity at risk."
 
+        - alert: CephQuorumLost
+          expr: (ceph_osd_up + ceph_osd_in) / (ceph_osd_up + ceph_osd_down) < 0.5
+          for: 1m
+          labels:
+            severity: critical
+            component: storage
+          annotations:
+            summary: "Ceph lost quorum — majority of OSDs down"
+            description: "More than 50% of OSDs down — DATA LOSS RISK, storage unavailable."
+
+    # ── TICKET ──
+    - name: ceph-ticket
+      interval: 60s
+      rules:
         - alert: CephOSDDown
           expr: ceph_osd_up == 0
           for: 10m
           labels:
-            severity: critical
+            severity: warning
             component: storage
+            priority: P2
           annotations:
             summary: "Ceph OSD {{ $labels.ceph_daemon }} down"
-            description: "OSD has been down for >10min. Replication degraded."
-
-        - alert: CephPgInactive
-          expr: ceph_pg_total - ceph_pg_active > 0
-          for: 15m
-          labels:
-            severity: critical
-            component: storage
-          annotations:
-            summary: "Ceph PGs inactive"
-            description: "{{ $value }} placement groups not active. Data unavailable."
+            description: "OSD down >10min — replication degraded (replica=2, msa2 still holds copies)."
 
         - alert: CephOSDNearFull
           expr: ceph_osd_stat_bytes_used / ceph_osd_stat_bytes > 0.75
@@ -46,136 +55,21 @@ spec:
           labels:
             severity: warning
             component: storage
+            priority: P2
           annotations:
             summary: "Ceph OSD {{ $labels.ceph_daemon }} >75% full"
-            description: "OSD usage at {{ $value | humanizePercentage }}. Add capacity soon."
-
-        - alert: CephPgRecoveryStuck
-          expr: ceph_pg_total - ceph_pg_clean > 0
-          for: 30m
-          labels:
-            severity: warning
-            component: storage
-          annotations:
-            summary: "Ceph PG recovery stalled"
-            description: "{{ $value }} PGs not clean for >30min."
-
-    - name: p0.storage.critical
-      interval: 30s
-      rules:
-        - alert: CephClusterDown
-          expr: ceph_health_status == 3
-          for: 2m
-          labels:
-            severity: critical
-            priority: P0
-            component: storage
-            pagerduty_severity: critical
-          annotations:
-            summary: "Ceph cluster is in HEALTH_ERR state"
-            description: "Ceph cluster health CRITICAL - all storage at risk"
-            impact: "CRITICAL - All storage operations may fail"
-
-        - alert: CephQuorumLost
-          expr: (ceph_osd_up + ceph_osd_in) / (ceph_osd_up + ceph_osd_down) < 0.5
-          for: 1m
-          labels:
-            severity: critical
-            priority: P0
-            component: storage
-            pagerduty_severity: critical
-          annotations:
-            summary: "Ceph has lost quorum - majority of OSDs down"
-            description: "More than 50% of Ceph OSDs down - DATA LOSS RISK"
-            impact: "CRITICAL - Data unavailable"
-
-    - name: p1.storage.warning
-      interval: 60s
-      rules:
-        - alert: CephWarning
-          expr: ceph_health_status == 1
-          for: 10m
-          labels:
-            severity: warning
-            priority: P1
-            component: storage
-            pagerduty_severity: warning
-          annotations:
-            summary: "Ceph cluster is in HEALTH_WARN state"
-            description: "Ceph cluster has warnings - investigate"
-            impact: "Degraded storage performance"
-
-        - alert: CephOSDDownWarning
-          expr: ceph_osd_up == 0
-          for: 5m
-          labels:
-            severity: warning
-            priority: P1
-            component: storage
-            pagerduty_severity: warning
-          annotations:
-            summary: "Ceph OSD {{ $labels.ceph_daemon }} is down"
-            description: "OSD {{ $labels.ceph_daemon }} has been down for 5+ minutes"
-            impact: "Reduced storage redundancy"
+            description: "OSD at {{ $value | humanizePercentage }} — add capacity before it blocks writes."
 
         - alert: RookCephOperatorDown
           expr: up{job="rook-ceph-operator"} == 0
           for: 5m
           labels:
             severity: warning
-            priority: P1
             component: storage
-            pagerduty_severity: warning
-          annotations:
-            summary: "Rook Ceph Operator is down"
-            description: "Rook Ceph Operator unreachable for 5+ minutes"
-            impact: "Ceph management operations blocked"
-
-    - name: p2.storage.info
-      interval: 120s
-      rules:
-        - alert: CephSlowOps
-          expr: ceph_healthcheck_slow_ops > 10
-          for: 15m
-          labels:
-            severity: info
             priority: P2
-            component: storage
           annotations:
-            summary: "Ceph has {{ $value }} slow operations"
-            description: "Ceph cluster experiencing slow operations"
-            impact: "Storage performance degraded"
-
-    - name: p3.capacity.ceph
-      interval: 300s
-      rules:
-        - alert: CephCapacityWarning
-          expr: ceph_cluster_total_used_bytes / ceph_cluster_total_bytes > 0.75
-          for: 1h
-          labels:
-            severity: info
-            priority: P3
-            component: capacity
-          annotations:
-            summary: "Ceph cluster is {{ $value | humanizePercentage }} full"
-            description: "Ceph storage consumption over 75%"
-            impact: "Plan to expand Ceph cluster"
-
-    - name: p0.ceph-mgr.critical
-      interval: 30s
-      rules:
-        - alert: CephMGRDown
-          expr: absent(ceph_mgr_status{job=~"rook-ceph-mgr|rook-ceph-mgr-active"}) or sum(ceph_mgr_status) == 0
-          for: 5m
-          labels:
-            severity: critical
-            priority: P1
-            component: storage
-            pagerduty_severity: warning
-          annotations:
-            summary: "All Ceph MGR daemons are down"
-            description: "Without active MGR: no dashboard, no metrics, no prometheus-exporter, no orchestrator commands"
-            action: "kubectl get pods -n rook-ceph -l app=rook-ceph-mgr ; check Operator-Logs"
+            summary: "Rook-Ceph operator down"
+            description: "Operator unreachable >5min — Ceph reconcile/management operations blocked."
 
         - alert: RGWBucketQuotaWarning
           expr: |
@@ -184,8 +78,8 @@ spec:
           for: 30m
           labels:
             severity: warning
-            priority: P2
             component: storage
+            priority: P2
           annotations:
             summary: "RGW bucket {{ $labels.bucket }} >85% of quota"
-            description: "Bucket fills soon — Velero/CNPG/Loki/Tempo writes will fail when 100%"
+            description: "Bucket fills soon — Velero/CNPG/Loki/Tempo writes will fail at 100%."

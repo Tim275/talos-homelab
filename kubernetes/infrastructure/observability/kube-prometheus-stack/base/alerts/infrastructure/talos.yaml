@@ -5,56 +5,14 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
+  # CPU-steal + kernel-message-rate → Grafana "Talos / Node" dashboard. Kept: data-disk
+  # went read-only (corruption/disk-fail), NTP clock-skew (breaks SA-token auth → SPIRE),
+  # unplanned recent reboot.
   groups:
     - name: talos-os
       interval: 1m
       rules:
-        # TalosKubeletDown removed 2026-05-18 — duplicate of upstream KubeletDown
-        # from kube-prometheus-stack (same expression). Single source of truth.
-
-        - alert: TalosNodeRebootedRecently
-          expr: (time() - node_boot_time_seconds) < 600
-          for: 1m
-          labels:
-            severity: warning
-            component: hypervisor
-          annotations:
-            summary: "Talos node {{ $labels.instance }} rebooted recently"
-            description: "Node uptime <10min. Investigate if planned."
-
-        - alert: TalosKernelMessages
-          expr: increase(node_systemd_unit_state{name="kernel"}[5m]) > 5
-          for: 5m
-          labels:
-            severity: warning
-            component: hypervisor
-          annotations:
-            summary: "Talos kernel events on {{ $labels.instance }}"
-
-        - alert: TalosNodeClockSkew
-          expr: abs(node_timex_offset_seconds) > 0.5
-          for: 10m
-          labels:
-            severity: warning
-            component: hypervisor
-          annotations:
-            summary: "Talos node {{ $labels.instance }} clock skew {{ $value }}s"
-            description: "NTP sync issue. Auth tokens may fail."
-
-        - alert: TalosCPUSteal
-          expr: avg by (instance) (rate(node_cpu_seconds_total{mode="steal"}[5m])) > 0.05
-          for: 15m
-          labels:
-            severity: warning
-            component: hypervisor
-          annotations:
-            summary: "Talos node {{ $labels.instance }} CPU steal >5%"
-            description: "Hypervisor resource contention. Proxmox host overcommitted."
-
         - alert: TalosFilesystemReadOnly
-          # Talos uses rootfs overlay for system mounts (/etc/extensions.yaml,
-          # /usr/lib/firmware, /boot/*) which are READ-ONLY BY DESIGN.
-          # Filter them out — only real ext4/xfs data-disks should trigger this.
           expr: |
             node_filesystem_readonly{
               fstype!~"tmpfs|squashfs|nfs|rootfs|overlay|cgroup|cgroup2|proc|sysfs|devtmpfs|configfs|debugfs|tracefs|pstore|securityfs|bpf|fusectl|hugetlbfs|mqueue|autofs|ramfs",
@@ -62,8 +20,31 @@ spec:
             } == 1
           for: 5m
           labels:
-            severity: critical
+            severity: warning
             component: hypervisor
+            priority: P2
           annotations:
             summary: "Talos filesystem read-only on {{ $labels.instance }}:{{ $labels.mountpoint }}"
-            description: "Real data-disk went read-only. Likely disk failure or corruption."
+            description: "Real data-disk went read-only — likely disk failure or corruption."
+
+        - alert: TalosNodeClockSkew
+          expr: abs(node_timex_offset_seconds) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            component: hypervisor
+            priority: P2
+          annotations:
+            summary: "Talos node {{ $labels.instance }} clock skew {{ $value }}s"
+            description: "NTP sync issue — service-account / SVID tokens may fail (breaks SPIRE mTLS, webhook auth)."
+
+        - alert: TalosNodeRebootedRecently
+          expr: (time() - node_boot_time_seconds) < 600
+          for: 1m
+          labels:
+            severity: warning
+            component: hypervisor
+            priority: P2
+          annotations:
+            summary: "Talos node {{ $labels.instance }} rebooted recently"
+            description: "Node uptime <10min — investigate if unplanned."

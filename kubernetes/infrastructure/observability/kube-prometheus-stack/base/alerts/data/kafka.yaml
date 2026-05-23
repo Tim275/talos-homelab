@@ -5,251 +5,44 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
+  # Symptom-level only. JVM/GC/heap/old-gen/controller-churn/event-loop/lag-internals
+  # are cause-detectors → Grafana "Strimzi Kafka" dashboard (Google-SRE: page on symptom,
+  # not cause). Drova-kafka duplicates folded into the generic rules. Kafka is not in the
+  # active-apps set → ticket-tier (no 3am page for the demo message bus).
   groups:
     - name: kafka
       interval: 1m
       rules:
-        - alert: KafkaBrokerDown
-          expr: kafka_server_replicamanager_underreplicatedpartitions > 0 or kafka_controller_kafkacontroller_offlinepartitionscount > 0
-          for: 5m
+        - alert: KafkaQuorumLeaderless
+          expr: |
+            sum by (namespace) (kafka_controller_kafkacontroller_activecontrollercount{pod=~".*kafka.*"}) == 0
+          for: 2m
           labels:
-            severity: critical
+            severity: warning
             component: data
+            priority: P2
           annotations:
-            summary: "Kafka broker issue: {{ $labels.namespace }}"
-            description: "Underreplicated or offline partitions detected."
+            summary: "Kafka KRaft quorum has NO active controller in {{ $labels.namespace }}"
+            description: "KRaft cannot elect a leader — all metadata ops blocked, producers/consumers cannot connect."
+
+        - alert: KafkaUnderMinISR
+          expr: kafka_cluster_partition_under_min_isr{pod=~".*kafka.*"} > 0
+          for: 3m
+          labels:
+            severity: warning
+            component: data
+            priority: P2
+          annotations:
+            summary: "Kafka {{ $value }} partitions under min-ISR in {{ $labels.namespace }}"
+            description: "Producers with acks=all FAIL (NotEnoughReplicasException). Restart unhealthy brokers; check disk."
 
         - alert: KafkaConsumerLagCritical
           expr: kafka_consumergroup_lag_sum > 50000
           for: 10m
           labels:
-            severity: critical
+            severity: warning
             component: data
+            priority: P2
           annotations:
             summary: "Kafka consumer lag >50k: {{ $labels.consumergroup }}"
-            description: "Consumer group {{ $labels.consumergroup }} lagging by {{ $value }} events on {{ $labels.topic }}."
-
-        - alert: KafkaConsumerLagWarning
-          expr: kafka_consumergroup_lag_sum > 10000
-          for: 15m
-          labels:
-            severity: warning
-            component: data
-          annotations:
-            summary: "Kafka consumer lag >10k: {{ $labels.consumergroup }}"
-            description: "Sustained lag {{ $value }} events on {{ $labels.topic }}."
-
-        - alert: KafkaProducerErrorRate
-          expr: rate(kafka_producer_errors_total[5m]) > 0.01
-          for: 10m
-          labels:
-            severity: warning
-            component: data
-          annotations:
-            summary: "Kafka producer errors: {{ $labels.namespace }}"
-            description: "Producer error rate {{ $value }}/sec."
-
-    # ─────────────────────────────────────────────────────────────────────
-    # KAFKA — broker-level (drova-kafka cluster)
-    # ─────────────────────────────────────────────────────────────────────
-    - name: drova.kafka
-      interval: 60s
-      rules:
-        - alert: DrovaKafkaBrokerDown
-          expr: count(up{namespace="drova",pod=~"drova-kafka-.*"}==1) < 3
-          for: 2m
-          labels:
-            severity: critical
-            priority: P1
-            component: drova-kafka
-            tenant: drova
-          annotations:
-            summary: "Drova Kafka: {{ $value }}/3 brokers up"
-            description: "Less than 3 Kafka brokers reachable — replication factor at risk"
-
-        - alert: DrovaKafkaUnderReplicatedPartitions
-          expr: kafka_server_replicamanager_under_replicated_partitions{namespace="drova"} > 0
-          for: 5m
-          labels:
-            severity: warning
-            priority: P2
-            component: drova-kafka
-            tenant: drova
-          annotations:
-            summary: "Drova Kafka: {{ $value }} under-replicated partitions"
-            description: "Some partitions have fewer in-sync replicas than configured RF"
-
-        - alert: DrovaKafkaOfflinePartitions
-          expr: kafka_controller_kafkacontroller_offline_partitions_count{namespace="drova"} > 0
-          for: 1m
-          labels:
-            severity: critical
-            priority: P1
-            component: drova-kafka
-            tenant: drova
-          annotations:
-            summary: "Drova Kafka: {{ $value }} offline partitions"
-            description: "Partitions completely unavailable — message production blocked"
-
-        - alert: DrovaKafkaConsumerLagHigh
-          expr: kafka_consumer_fetch_manager_records_lag_max{namespace="drova"} > 1000
-          for: 5m
-          labels:
-            severity: warning
-            priority: P2
-            component: drova-kafka
-            tenant: drova
-          annotations:
-            summary: "Drova Kafka consumer lag >1000 on {{ $labels.topic }}"
-            description: "{{ $labels.client_id }} is {{ $value }} messages behind"
-
-        - alert: DrovaKafkaConsumerLagCritical
-          expr: kafka_consumer_fetch_manager_records_lag_max{namespace="drova"} > 10000
-          for: 2m
-          labels:
-            severity: critical
-            priority: P1
-            component: drova-kafka
-            tenant: drova
-          annotations:
-            summary: "Drova Kafka consumer lag >10000 on {{ $labels.topic }}"
-            description: "{{ $labels.client_id }} severely behind ({{ $value }} msgs)"
-
-    # ─────────────────────────────────────────────────────────────────────
-    # Kafka broker health (added 2026-05-05 after KRaft GC-pause incident)
-    # These would have caught the GC stop-the-world / NotLeader storm BEFORE
-    # consumers logged "Not Leader For Partition" / "Not Coordinator For Group".
-    # ─────────────────────────────────────────────────────────────────────
-    - name: kafka.broker.health
-      interval: 30s
-      rules:
-
-        # ROOT-CAUSE detector: JVM spending too much CPU on GC
-        # Healthy: <2% / Warning: >5% / Critical: >15%
-        - alert: KafkaJVMHighGCTime
-          expr: |
-            sum by (pod, namespace) (
-              rate(jvm_gc_collection_seconds_sum{pod=~".*kafka.*"}[5m])
-            ) > 0.05
-          for: 5m
-          labels:
-            severity: warning
-            priority: P1
-            component: kafka
-          annotations:
-            summary: "Kafka {{ $labels.pod }} JVM spending >5% time in GC"
-            description: "{{ $value | humanizePercentage }} of CPU spent in garbage collection — heap pressure, raise -Xmx or memory limits"
-            action: "kubectl get kafkanodepool -n {{ $labels.namespace }} -o yaml; check jvmOptions.-Xmx vs memory request"
-
-        # SYMPTOM detector: controller event-loop stalled = cluster-wide chaos
-        # Healthy: p99 <100ms / Warning: >500ms / Critical: >2000ms
-        - alert: KafkaControllerEventSlow
-          expr: |
-            kafka_controller_controllereventmanager_eventqueueprocessingtimems{quantile="0.99"} > 500
-          for: 3m
-          labels:
-            severity: critical
-            priority: P0
-            component: kafka
-          annotations:
-            summary: "Kafka controller event-loop slow on {{ $labels.pod }} (p99 {{ $value }}ms)"
-            description: "Controller event processing exceeded 500ms p99 — partitions cannot be reassigned, leadership churn imminent"
-            impact: "Producers/Consumers see Not Leader For Partition errors"
-
-        # CAUSE detector: Old-Gen heap filling up = next GC will be expensive
-        - alert: KafkaJVMOldGenPressure
-          expr: |
-            (
-              jvm_memory_pool_collection_used_bytes{pool="G1 Old Gen", pod=~".*kafka.*"}
-              /
-              jvm_memory_bytes_max{area="heap", pod=~".*kafka.*"}
-            ) > 0.7
-          for: 10m
-          labels:
-            severity: warning
-            priority: P2
-            component: kafka
-          annotations:
-            summary: "Kafka {{ $labels.pod }} G1 Old Gen >70% of heap"
-            description: "Surviving objects fill old-gen — increase -Xmx or investigate retention/cache settings"
-
-        # ARCHITECTURAL detector: leadership churning more than expected
-        # Healthy cluster: 0-1 election per day. >0.001/s = >86/day = unhealthy
-        - alert: KafkaControllerChurning
-          expr: |
-            sum(rate(kafka_controller_kafkacontroller_newactivecontrollerscount[1h])) > 0.001
-          for: 30m
-          labels:
-            severity: warning
-            priority: P1
-            component: kafka
-          annotations:
-            summary: "Kafka controller leadership churning ({{ $value }} elections/sec)"
-            description: "Active controller changing rapidly — usually GC-pauses or network instability"
-
-        # SYMPTOM detector: client-visible errors
-        - alert: KafkaRequestErrorsHigh
-          expr: |
-            sum by (error) (
-              rate(kafka_network_requestmetrics_errors_total{
-                error=~"NOT_LEADER.*|COORDINATOR_NOT_AVAILABLE|NOT_COORDINATOR|FENCED_LEADER_EPOCH"
-              }[5m])
-            ) > 0.5
-          for: 3m
-          labels:
-            severity: warning
-            priority: P1
-            component: kafka
-          annotations:
-            summary: "Kafka {{ $labels.error }} errors >0.5/s"
-            description: "Clients seeing leadership/coordinator errors — broker stability issue (check JVM GC / controller events)"
-
-        # CAPACITY detector: pod approaching its memory limit (predictive of OOM kill)
-        - alert: KafkaPodMemoryNearLimit
-          expr: |
-            (
-              container_memory_working_set_bytes{namespace=~".*", pod=~".*kafka.*", container="kafka"}
-              /
-              kube_pod_container_resource_limits{namespace=~".*", pod=~".*kafka.*", container="kafka", resource="memory"}
-            ) > 0.85
-          for: 10m
-          labels:
-            severity: warning
-            priority: P1
-            component: kafka
-          annotations:
-            summary: "Kafka {{ $labels.pod }} memory >85% of limit"
-            description: "OOM kill risk. JVM heap (-Xmx) + non-heap overhead is too close to pod memory limit. Recommended: limit = -Xmx + 768Mi"
-            action: "Check kafkanodepool jvmOptions.-Xmx and resources.limits.memory; raise limit OR lower -Xmx"
-
-        # QUORUM detector: no controller leader = no metadata writes
-        # Added 2026-05-16 after KRaft cold-start incident (Strimzi 0.51 + dual-role)
-        - alert: KafkaQuorumLeaderless
-          expr: |
-            sum by (namespace) (
-              kafka_controller_kafkacontroller_activecontrollercount{pod=~".*kafka.*"}
-            ) == 0
-          for: 2m
-          labels:
-            severity: critical
-            priority: P0
-            component: kafka
-          annotations:
-            summary: "Kafka KRaft quorum has NO active controller in {{ $labels.namespace }}"
-            description: "KRaft controllers cannot elect a leader. ALL metadata operations blocked. Producer/Consumer cannot connect."
-            action: "Check controller pods. Verify Strimzi did not split controllers across crashed/pending pods. Likely cause: too many controllers down simultaneously OR network partition."
-
-        # ISR detector: under-min-isr causes producer-side errors
-        # When ISR < min.insync.replicas, producers with acks=all FAIL.
-        - alert: KafkaUnderMinISR
-          expr: |
-            kafka_cluster_partition_under_min_isr{pod=~".*kafka.*"} > 0
-          for: 3m
-          labels:
-            severity: critical
-            priority: P1
-            component: kafka
-          annotations:
-            summary: "Kafka {{ $value }} partitions under min-ISR in {{ $labels.namespace }}"
-            description: "Partitions have fewer in-sync replicas than min.insync.replicas. Producers with acks=all FAIL with NotEnoughReplicasException."
-            action: "Restart unhealthy brokers; check disk space; investigate replication lag"
+            description: "Consumer group {{ $labels.consumergroup }} lagging {{ $value }} events — stuck or under-provisioned."

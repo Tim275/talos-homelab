@@ -5,9 +5,12 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
+  # KeycloakDown is the page (SSO down = login broken cluster-wide). Dropped the duplicate
+  # Info up==0 alert. Login-failure-spike kept as a security ticket.
   groups:
-    - name: keycloak
-      interval: 1m
+    # ── PAGE ──
+    - name: keycloak-page
+      interval: 60s
       rules:
         - alert: KeycloakDown
           expr: kube_deployment_status_replicas_available{namespace="keycloak",deployment="keycloak"} == 0
@@ -17,31 +20,19 @@ spec:
             component: apps
           annotations:
             summary: "Keycloak down — auth provider unavailable"
-            description: "All Keycloak replicas not ready. OIDC login broken cluster-wide."
+            description: "All Keycloak replicas not ready — OIDC login broken cluster-wide (ArgoCD, Grafana, n8n, etc.)."
 
-        - alert: KeycloakUnreachable
-          expr: up{job="keycloak"} == 0
-          for: 10m
-          labels:
-            severity: info
-            priority: P2
-            component: security
-          annotations:
-            summary: "Keycloak is down"
-            description: "Keycloak OIDC provider not responding"
-            impact: "SSO authentication unavailable"
-
-    - name: keycloak-auth
+    # ── TICKET ──
+    - name: keycloak-ticket
       interval: 60s
       rules:
         - alert: KeycloakLoginFailureSpike
-          expr: |
-            sum by (realm) (rate(keycloak_failed_login_attempts[5m])) > 0.5
+          expr: sum by (realm) (rate(keycloak_failed_login_attempts[5m])) > 0.5
           for: 5m
           labels:
             severity: warning
-            priority: P2
             component: keycloak
+            priority: P2
           annotations:
             summary: "Keycloak realm {{ $labels.realm }} elevated failed-login rate"
-            description: "{{ $value }} failed logins/sec — possible credential-stuffing or brute-force"
+            description: "{{ $value }} failed logins/sec — possible credential-stuffing or brute-force."

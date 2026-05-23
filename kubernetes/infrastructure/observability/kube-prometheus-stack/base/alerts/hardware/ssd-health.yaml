@@ -5,90 +5,69 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
+  # SSD-death pages on "failing NOW" (media errors / NVMe critical-warning bitfield).
+  # Wear% + spare% + temp are gradual → ticket / Grafana "smartctl" dashboard. The
+  # proactive SSD monitoring (smartctl_exporter :9633) the homelab set up in 2026-05.
   groups:
-    - name: ssd-health
+    # ── PAGE — disk is failing now ──
+    - name: ssd-page
       interval: 5m
       rules:
-        - alert: SSDWearLevelHigh
-          expr: |
-            smartctl_device_percentage_used > 80
-          for: 1h
-          labels:
-            severity: warning
-            component: storage
-          annotations:
-            summary: "SSD {{ $labels.device }} on {{ $labels.instance }} at {{ $value }}% wear"
-            description: "SSD approaching its rated TBW limit. Plan replacement before it hits 100%."
-            action: "Check SMART: smartctl -A /dev/{{ $labels.device }} on the Proxmox host. Order replacement SSD."
-
-        - alert: SSDWearLevelCritical
-          expr: |
-            smartctl_device_percentage_used > 95
-          for: 30m
-          labels:
-            severity: critical
-            component: storage
-          annotations:
-            summary: "SSD {{ $labels.device }} on {{ $labels.instance }} at {{ $value }}% wear - near end-of-life"
-            description: "SSD past 95% of rated TBW. Failure risk rising sharply. Replace NOW."
-            impact: "If this hosts Ceph OSDs, replace before failure to avoid rebalance storm."
-
-        - alert: SSDAvailableSpareLow
-          expr: |
-            smartctl_device_available_spare < 10
-          for: 30m
-          labels:
-            severity: critical
-            component: storage
-          annotations:
-            summary: "SSD {{ $labels.device }} spare blocks nearly exhausted ({{ $value }}%)"
-            description: "NVMe available-spare below 10%. Controller will soon enter read-only mode. Imminent failure."
-            action: "Immediate replacement. Migrate Ceph OSD off this disk first if possible (ceph osd out)."
-
-        - alert: SSDMediaErrors
-          expr: |
-            increase(smartctl_device_media_errors[1h]) > 0
-          for: 5m
-          labels:
-            severity: critical
-            component: storage
-          annotations:
-            summary: "SSD {{ $labels.device }} reporting media errors ({{ $value }} new in 1h)"
-            description: "Uncorrectable NAND errors detected. The drive is failing. Back up + replace."
-            impact: "Data on this disk is at risk. Ceph replicas on the other node protect cluster data."
-
         - alert: SSDCriticalWarning
-          expr: |
-            smartctl_device_critical_warning > 0
+          expr: smartctl_device_critical_warning > 0
           for: 5m
           labels:
             severity: critical
             component: storage
           annotations:
             summary: "SSD {{ $labels.device }} CRITICAL WARNING flag set (value {{ $value }})"
-            description: "NVMe critical-warning bitfield is non-zero (spare/temp/reliability/read-only/volatile-memory). Inspect immediately."
+            description: "NVMe critical-warning bitfield non-zero (spare/temp/reliability/read-only). Replace soon."
             action: "nvme smart-log /dev/{{ $labels.device }} on the host to decode the warning bits."
 
-        - alert: SSDTemperatureHigh
-          expr: |
-            smartctl_device_temperature{temperature_type="current"} > 75
-          for: 15m
+        - alert: SSDMediaErrors
+          expr: increase(smartctl_device_media_errors[1h]) > 0
+          for: 5m
+          labels:
+            severity: critical
+            component: storage
+          annotations:
+            summary: "SSD {{ $labels.device }} media errors ({{ $value }} new in 1h)"
+            description: "Uncorrectable NAND errors — the drive is failing. Back up + replace (Ceph replicas on the other node protect cluster data)."
+
+    # ── TICKET — wearing out / blind spot ──
+    - name: ssd-ticket
+      interval: 5m
+      rules:
+        - alert: SSDAvailableSpareLow
+          expr: smartctl_device_available_spare < 10
+          for: 30m
           labels:
             severity: warning
             component: storage
+            priority: P2
           annotations:
-            summary: "SSD {{ $labels.device }} at {{ $value }}°C on {{ $labels.instance }}"
-            description: "SSD overheating → thermal throttling (write speeds drop). Common in fanless Mini-PCs under sustained Ceph writes."
-            action: "Check airflow / add M.2 heatsink. Sustained >85°C risks data integrity."
+            summary: "SSD {{ $labels.device }} spare blocks low ({{ $value }}%)"
+            description: "NVMe available-spare <10% — controller will soon enter read-only mode. Migrate Ceph OSD off (ceph osd out) + replace."
+
+        - alert: SSDWearLevelCritical
+          expr: smartctl_device_percentage_used > 95
+          for: 30m
+          labels:
+            severity: warning
+            component: storage
+            priority: P2
+          annotations:
+            summary: "SSD {{ $labels.device }} at {{ $value }}% wear — near end-of-life"
+            description: "Past 95% of rated TBW. Order replacement; failure risk rising."
 
         - alert: SSDSmartExporterDown
-          expr: |
-            up{job="proxmox-smart"} == 0
+          expr: up{job="proxmox-smart"} == 0
           for: 15m
           labels:
             severity: warning
             component: storage
+            priority: P2
           annotations:
             summary: "smartctl_exporter on {{ $labels.instance }} is down"
-            description: "No SMART data from this Proxmox host - SSD health is unmonitored (blind spot)."
+            description: "No SMART data from this Proxmox host — SSD health is unmonitored (blind spot)."
             action: "systemctl status smartctl_exporter on the host. Restart if needed."

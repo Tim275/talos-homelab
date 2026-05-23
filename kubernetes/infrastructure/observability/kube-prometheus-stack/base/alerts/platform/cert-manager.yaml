@@ -5,8 +5,12 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
+  # CertExpiringIn7Days = the page (service breaks on expiry). 30d = ticket. Dropped the
+  # duplicate <14d Info alert (wrong metric prefix cert_manager_ vs certmanager_) and the
+  # webhook-down (CertManagerDown covers "renewals blocked").
   groups:
-    - name: cert-manager
+    # ── PAGE ──
+    - name: cert-manager-page
       interval: 5m
       rules:
         - alert: CertExpiringIn7Days
@@ -17,47 +21,30 @@ spec:
             component: platform
           annotations:
             summary: "TLS cert expires in <7d: {{ $labels.name }}"
-            description: "Certificate {{ $labels.name }} in {{ $labels.namespace }} expires in {{ $value | humanizeDuration }}."
+            description: "Certificate {{ $labels.name }} in {{ $labels.namespace }} expires in {{ $value | humanizeDuration }} — service will break."
 
+    # ── TICKET ──
+    - name: cert-manager-ticket
+      interval: 5m
+      rules:
         - alert: CertExpiringIn30Days
           expr: certmanager_certificate_expiration_timestamp_seconds - time() < 30 * 24 * 3600
           for: 12h
           labels:
             severity: warning
             component: platform
+            priority: P2
           annotations:
             summary: "TLS cert expires in <30d: {{ $labels.name }}"
-
-        - alert: CertManagerWebhookDown
-          expr: up{job="cert-manager-webhook"} == 0
-          for: 10m
-          labels:
-            severity: critical
-            component: platform
-          annotations:
-            summary: "cert-manager webhook down — renewals blocked"
+            description: "Renewal should happen automatically — verify cert-manager is healthy."
 
         - alert: CertManagerDown
           expr: up{job="cert-manager"} == 0
           for: 5m
           labels:
             severity: warning
-            priority: P1
-            component: operator
-            pagerduty_severity: warning
-          annotations:
-            summary: "Cert-Manager is down"
-            description: "Cert-Manager controller unreachable for 5+ minutes"
-            impact: "Certificate renewals blocked, new certificates cannot be issued"
-
-        - alert: CertificateExpiringSoon
-          expr: (cert_manager_certificate_expiration_timestamp_seconds - time()) / 86400 < 14
-          for: 1h
-          labels:
-            severity: info
+            component: platform
             priority: P2
-            component: security
           annotations:
-            summary: "Certificate {{ $labels.name }} expires in {{ $value }} days"
-            description: "Certificate in {{ $labels.namespace }} expires soon"
-            impact: "TLS certificate renewal needed"
+            summary: "cert-manager controller down"
+            description: "Unreachable >5min — certificate renewals + new issuance blocked."

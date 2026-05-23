@@ -5,73 +5,12 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
+  # Disk-full has one page (PVCCriticallyFull <10%); the <20% Warning + 4h/7d predictive
+  # variants → Grafana "Persistent Volumes" dashboard. PVCPending deduped to the 30min
+  # rule. VolumeAttachment/Volume-stuck internals → dashboard.
   groups:
-    - name: csi-pvc-health
-      interval: 1m
-      rules:
-        - alert: PVCPendingTooLong
-          expr: |
-            (kube_persistentvolumeclaim_status_phase{phase="Pending"} == 1)
-            and on (namespace, persistentvolumeclaim)
-              kube_pod_spec_volumes_persistentvolumeclaims_info
-          for: 5m
-          labels:
-            severity: warning
-            component: storage
-          annotations:
-            summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} pending >5min"
-            description: "Likely a stuck CSI provisioning operation. Check `kubectl describe pvc` for `already exists` errors."
-            action: "kubectl exec -n rook-ceph deploy/rook-ceph-tools -- rados -p replicapool-enterprise rmomapkey csi.volumes.default csi.volume.<PVC-UID>"
-
-        - alert: PVCPendingCritical
-          expr: |
-            (kube_persistentvolumeclaim_status_phase{phase="Pending"} == 1)
-            and on (namespace, persistentvolumeclaim)
-              kube_pod_spec_volumes_persistentvolumeclaims_info
-          for: 30m
-          labels:
-            severity: critical
-            component: storage
-          annotations:
-            summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} pending >30min"
-            description: "Workload {{ $labels.persistentvolumeclaim }} blocked from starting. Investigate stuck CSI lock or unhealthy Ceph."
-            impact: "Pods waiting for this PVC cannot start"
-
-        - alert: CSIProvisionerDown
-          expr: |
-            kube_deployment_status_replicas_available{deployment=~".*csi.ceph.com-ctrlplugin"} < 1
-          for: 5m
-          labels:
-            severity: critical
-            component: storage
-          annotations:
-            summary: "Ceph CSI provisioner {{ $labels.deployment }} has 0 available replicas"
-            description: "PVC creation/deletion blocked cluster-wide while CSI provisioner is down."
-
-        - alert: ReleasedPVsAccumulating
-          expr: |
-            count(kube_persistentvolume_status_phase{phase="Released"}) > 3
-          for: 30m
-          labels:
-            severity: warning
-            component: storage
-          annotations:
-            summary: "{{ $value }} Released PVs — CSI cleanup not keeping up"
-            description: "Released PVs accumulate when CSI deletion gets stuck on operation locks. Hourly cleanup CronJob should handle it; if not, manual intervention needed."
-            action: "kubectl get pv | awk '$5==\"Released\"' && check rook-ceph-tools omap keys"
-
-        - alert: CephOSDFlapping
-          expr: |
-            changes(ceph_osd_up[10m]) > 2
-          for: 5m
-          labels:
-            severity: warning
-            component: storage
-          annotations:
-            summary: "Ceph OSD {{ $labels.ceph_daemon }} flapping (>2 state changes in 10min)"
-            description: "OSD bouncing up/down — investigate disk health, network, or memory pressure."
-
-    - name: p0.storage.pvc
+    # ── PAGE ──
+    - name: csi-page
       interval: 30s
       rules:
         - alert: PVCCriticallyFull
@@ -80,78 +19,59 @@ spec:
           for: 5m
           labels:
             severity: critical
-            priority: P0
             component: storage
-            pagerduty_severity: critical
           annotations:
-            summary: "PVC {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full"
-            description: "PVC {{ $labels.persistentvolumeclaim }} in namespace {{ $labels.namespace }} has less than 10% free space. IMMEDIATE action required."
-            impact: "HIGH - Application may fail, potential data loss"
+            summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} <10% free ({{ $value | humanizePercentage }})"
+            description: "Disk nearly full — app may fail / data loss. Expand the PVC now."
 
-        - alert: PVCPredictedFull
-          expr: |
-            predict_linear(kubelet_volume_stats_available_bytes{job="kubelet"}[1h], 4 * 3600) < 0
-          for: 10m
-          labels:
-            severity: critical
-            priority: P0
-            component: storage
-            pagerduty_severity: critical
-          annotations:
-            summary: "PVC {{ $labels.persistentvolumeclaim }} will be full in <4 hours"
-            description: "PVC {{ $labels.persistentvolumeclaim }} predicted to be full within 4 hours"
-            impact: "HIGH - Proactive alert to prevent PVC full"
-
-    - name: p1.storage.pvc
+    # ── TICKET ──
+    - name: csi-ticket
       interval: 60s
       rules:
-        - alert: PVCWarningFull
-          expr: (kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes) < 0.20
-          for: 10m
-          labels:
-            severity: warning
-            priority: P1
-            component: storage
-            pagerduty_severity: warning
-          annotations:
-            summary: "PVC {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full"
-            description: "PVC {{ $labels.persistentvolumeclaim }} in {{ $labels.namespace }} has less than 20% free"
-            impact: "Will hit critical threshold soon"
-
-    - name: p3.capacity.pvc
-      interval: 300s
-      rules:
-        - alert: PVCWillFillIn7Days
-          expr: predict_linear(kubelet_volume_stats_available_bytes[6h], 7 * 24 * 3600) < 0
-          for: 1h
-          labels:
-            severity: info
-            priority: P3
-            component: capacity
-          annotations:
-            summary: "PVC {{ $labels.persistentvolumeclaim }} will fill in <7 days"
-            description: "PVC predicted to be full within a week based on growth trend"
-            impact: "Plan to expand PVC or clean up data"
-
-        - alert: CSIVolumeStuckOperation
+        - alert: PVCPendingCritical
           expr: |
-            sum(rate(csi_sidecar_operations_seconds_count{grpc_status_code!="OK",method_name=~".*Volume.*"}[5m])) by (namespace, driver_name) > 0
-          for: 10m
+            (kube_persistentvolumeclaim_status_phase{phase="Pending"} == 1)
+            and on (namespace, persistentvolumeclaim)
+              kube_pod_spec_volumes_persistentvolumeclaims_info
+          for: 30m
           labels:
             severity: warning
-            priority: P2
             component: storage
+            priority: P2
           annotations:
-            summary: "CSI driver {{ $labels.driver_name }} has failed Volume-ops"
-            description: "CSI ops failing for >10min — likely stuck-omap-lock or PVC orphan"
+            summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} pending >30min"
+            description: "Workload blocked. Likely stuck CSI omap-lock — see PVC-recovery runbook."
+            action: "kubectl exec -n rook-ceph deploy/rook-ceph-tools -- rados -p replicapool-enterprise rmomapkey csi.volumes.default csi.volume.<PVC-UID>"
 
-        - alert: VolumeAttachmentStuck
-          expr: count(kube_volumeattachment_status_attached == 0) > 0
-          for: 15m
+        - alert: CSIProvisionerDown
+          expr: kube_deployment_status_replicas_available{deployment=~".*csi.ceph.com-ctrlplugin"} < 1
+          for: 5m
           labels:
             severity: warning
-            priority: P2
             component: storage
+            priority: P2
           annotations:
-            summary: "VolumeAttachment stuck in detached state"
-            description: "{{ $value }} VolumeAttachments stuck for >15min — likely node-CSI plugin issue"
+            summary: "Ceph CSI provisioner {{ $labels.deployment }} has 0 replicas"
+            description: "PVC creation/deletion blocked cluster-wide while provisioner is down."
+
+        - alert: ReleasedPVsAccumulating
+          expr: count(kube_persistentvolume_status_phase{phase="Released"}) > 3
+          for: 30m
+          labels:
+            severity: warning
+            component: storage
+            priority: P2
+          annotations:
+            summary: "{{ $value }} Released PVs — CSI cleanup not keeping up"
+            description: "Released PVs accumulate when CSI deletion sticks on omap-locks. Hourly cleanup CronJob should handle it."
+
+        - alert: CephOSDFlapping
+          expr: changes(ceph_osd_up[10m]) > 2
+          for: 5m
+          labels:
+            severity: warning
+            component: storage
+            priority: P2
+          annotations:
+            summary: "Ceph OSD {{ $labels.ceph_daemon }} flapping (>2 state changes in 10min)"
+            description: "OSD bouncing up/down — investigate disk health, network, or memory pressure."

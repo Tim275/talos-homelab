@@ -5,8 +5,13 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
+  # Dedup'd 2026-05-23: dropped 4× apiserver-down / 3× etcd-quorum / 3× nodes-down
+  # duplicates + all latency/capacity/version alerts (→ Grafana "Kubernetes / Compute
+  # Resources" + "API server" dashboards). Upstream kube-prometheus-stack already ships
+  # KubeNodeNotReady, KubeletDown, KubeCPUOvercommit etc. — single source of truth.
   groups:
-    - name: kubernetes-cluster
+    # ── PAGE — cluster-fatal, wake-at-3am ──────────────────────────────────
+    - name: kubernetes-page
       interval: 30s
       rules:
         - alert: ClusterAPIServerDown
@@ -18,7 +23,6 @@ spec:
           annotations:
             summary: "Kubernetes API server is down"
             description: "API server unreachable for >2 minutes. All cluster operations halted."
-            runbook_url: "docs/runbooks/cluster-apiserver-down.md"
 
         - alert: EtcdQuorumLoss
           expr: sum(up{job=~"kube-etcd|etcd"}) < ((count(up{job=~"kube-etcd|etcd"}) / 2) + 1)
@@ -30,20 +34,33 @@ spec:
             summary: "etcd quorum lost"
             description: "etcd has lost quorum — cluster state at risk of corruption."
 
-        - alert: WorkerNodesDown
-          expr: count(kube_node_status_condition{condition="Ready", status="false"} == 1) >= 1
+        - alert: ControlPlaneNodeDown
+          expr: kube_node_status_condition{condition="Ready",status="true",node="ctrl-0"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            component: control-plane
+          annotations:
+            summary: "Control plane node {{ $labels.node }} is down"
+            description: "Single control-plane node (ctrl-0 = SPOF) offline — complete cluster outage."
+
+        - alert: CoreDNSDown
+          expr: |
+            kube_deployment_status_replicas_ready{namespace="kube-system",deployment="coredns"} < 1
+            or absent(kube_deployment_status_replicas_ready{namespace="kube-system",deployment="coredns"})
           for: 2m
           labels:
             severity: critical
-            component: kubernetes
+            component: dns
           annotations:
-            summary: "{{ $value }} worker nodes NotReady"
-            description: "{{ $value }} worker nodes have been NotReady for >2 minutes."
+            summary: "CoreDNS has no healthy replicas"
+            description: "CoreDNS down >2min — cluster DNS resolution broken, expect cascade failures."
+            action: "kubectl get pods -n kube-system -l k8s-app=kube-dns + restart"
 
-        # AnyNodeNotReady removed 2026-05-18 — was duplicate of upstream
-        # KubeNodeNotReady from kube-prometheus-stack (same condition, weaker
-        # tuning). Single source of truth = KubeNodeNotReady.
-
+    # ── TICKET — degradation, look soon (digest channel) ───────────────────
+    - name: kubernetes-ticket
+      interval: 60s
+      rules:
         - alert: ImagePullBackoff
           expr: kube_pod_container_status_waiting_reason{reason=~"ImagePullBackOff|ErrImagePull"} == 1
           for: 5m
@@ -53,378 +70,43 @@ spec:
             priority: P2
           annotations:
             summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} cannot pull image"
-            description: "Container {{ $labels.container }} is in {{ $labels.reason }} state for >5 minutes."
-
-        # KubeletDown removed 2026-05-18 — was duplicate of upstream KubeletDown
-        # from kube-prometheus-stack/kubernetesControlPlane group. Single source.
-
-        - alert: ImageRegistryDNSFailure
-          expr: sum by (node) (rate(kubelet_runtime_operations_errors_total{operation_type=~"pull_image|image_status"}[5m])) > 0
-          for: 5m
-          labels:
-            severity: critical
-            component: kubernetes
-            priority: P1
-          annotations:
-            summary: "Node {{ $labels.node }} cannot pull images (likely DNS issue)"
-            description: "Kubelet on {{ $labels.node }} has image-operation errors for >5min — check DNS, registry connectivity."
-
-        - alert: NodeMemoryPressureLow
-          expr: (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) < 0.20
-          for: 10m
-          labels:
-            severity: warning
-            component: kubernetes
-          annotations:
-            summary: "Node {{ $labels.instance }} low on memory"
-            description: "Available memory <20% on node {{ $labels.instance }}."
-
-        - alert: NodeDiskUsageHigh
-          expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|nfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|nfs|overlay"}) > 0.75
-          for: 10m
-          labels:
-            severity: warning
-            component: kubernetes
-          annotations:
-            summary: "Disk >75% full on {{ $labels.instance }}:{{ $labels.mountpoint }}"
-            description: "Disk usage at {{ $value | humanizePercentage }}."
-
-    - name: p0.controlplane.critical
-      interval: 15s
-      rules:
-        - alert: KubernetesAPIServerDown
-          expr: up{job="apiserver"} == 0
-          for: 1m
-          labels:
-            severity: critical
-            priority: P0
-            component: control-plane
-            pagerduty_severity: critical
-          annotations:
-            summary: "Kubernetes API Server is DOWN"
-            description: "API Server not responding - COMPLETE CLUSTER OUTAGE"
-            impact: "CRITICAL - Complete management plane outage"
-
-        - alert: EtcdClusterUnhealthy
-          expr: (count(up{job="etcd"} == 1) / count(up{job="etcd"})) < 0.5
-          for: 1m
-          labels:
-            severity: critical
-            priority: P0
-            component: control-plane
-            pagerduty_severity: critical
-          annotations:
-            summary: "etcd cluster has lost quorum"
-            description: "More than 50% of etcd members down - cluster cannot persist state"
-            impact: "CRITICAL - Cluster effectively read-only"
-
-    - name: p0.nodes.critical
-      interval: 30s
-      rules:
-        - alert: MajorityOfNodesDown
-          expr: (count(kube_node_status_condition{condition="Ready",status="true"}) / count(kube_node_info)) < 0.5
-          for: 2m
-          labels:
-            severity: critical
-            priority: P0
-            component: infrastructure
-            pagerduty_severity: critical
-          annotations:
-            summary: "More than 50% of nodes are down"
-            description: "Cluster lost majority compute capacity - many workloads failing"
-            impact: "CRITICAL - Massive capacity loss"
-
-        - alert: ControlPlaneNodeDown
-          expr: kube_node_status_condition{condition="Ready",status="true",node="ctrl-0"} == 0
-          for: 1m
-          labels:
-            severity: critical
-            priority: P0
-            component: control-plane
-            pagerduty_severity: critical
-          annotations:
-            summary: "Control plane node {{ $labels.node }} is down"
-            description: "Control plane node offline - complete outage"
-            impact: "CRITICAL - Control plane offline"
-
-    - name: p1.talos.controlplane
-      interval: 60s
-      rules:
-        - alert: TalosApiserverDown
-          expr: up{job="apiserver"} == 0
-          for: 2m
-          labels:
-            severity: warning
-            priority: P1
-            component: control-plane
-            pagerduty_severity: warning
-          annotations:
-            summary: "Talos Kubernetes API Server is down"
-            description: "Talos control plane API server unreachable for 2+ minutes"
-            impact: "Cluster management unavailable"
-
-        - alert: TalosSchedulerDown
-          expr: up{job="kube-scheduler"} == 0
-          for: 2m
-          labels:
-            severity: warning
-            priority: P1
-            component: control-plane
-            pagerduty_severity: warning
-          annotations:
-            summary: "Talos Scheduler is down"
-            description: "Kubernetes Scheduler unreachable for 2+ minutes"
-            impact: "New pods cannot be scheduled"
-
-        - alert: TalosControllerManagerDown
-          expr: up{job="kube-controller-manager"} == 0
-          for: 2m
-          labels:
-            severity: warning
-            priority: P1
-            component: control-plane
-            pagerduty_severity: warning
-          annotations:
-            summary: "Talos Controller Manager is down"
-            description: "Kubernetes Controller Manager unreachable for 2+ minutes"
-            impact: "Resource controllers not running"
-
-    - name: p1.nodes.warning
-      interval: 60s
-      rules:
-        # NodeNotReady removed 2026-05-18 — third duplicate (alongside the now-removed
-        # AnyNodeNotReady). Upstream KubeNodeNotReady covers this condition.
+            description: "Container {{ $labels.container }} in {{ $labels.reason }} state for >5 minutes."
 
         - alert: NodeMemoryPressure
           expr: kube_node_status_condition{condition="MemoryPressure",status="true"} == 1
           for: 5m
           labels:
             severity: warning
-            priority: P1
-            component: infrastructure
-            pagerduty_severity: warning
+            component: kubernetes
+            priority: P2
           annotations:
             summary: "Node {{ $labels.node }} has memory pressure"
-            description: "Node {{ $labels.node }} is under memory pressure"
-            impact: "Pods may be evicted"
+            description: "Node {{ $labels.node }} under memory pressure — pods may be evicted."
 
         - alert: NodeDiskPressure
           expr: kube_node_status_condition{condition="DiskPressure",status="true"} == 1
           for: 5m
           labels:
             severity: warning
-            priority: P1
-            component: infrastructure
-            pagerduty_severity: warning
+            component: kubernetes
+            priority: P2
           annotations:
             summary: "Node {{ $labels.node }} has disk pressure"
-            description: "Node {{ $labels.node }} is under disk pressure"
-            impact: "Pods may be evicted"
+            description: "Node {{ $labels.node }} under disk pressure — pods may be evicted."
 
-        - alert: NodeHighCPU
-          expr: (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) by (instance)) > 0.80
-          for: 10m
-          labels:
-            severity: warning
-            priority: P1
-            component: infrastructure
-            pagerduty_severity: warning
-          annotations:
-            summary: "Node {{ $labels.instance }} has high CPU usage"
-            description: "Node CPU usage is {{ $value | humanizePercentage }} for 10+ minutes"
-            impact: "Performance degradation"
-
-        - alert: NodeHighMemory
-          expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 0.85
-          for: 10m
-          labels:
-            severity: warning
-            priority: P1
-            component: infrastructure
-            pagerduty_severity: warning
-          annotations:
-            summary: "Node {{ $labels.instance }} has high memory usage"
-            description: "Node memory usage is {{ $value | humanizePercentage }} for 10+ minutes"
-            impact: "Risk of OOM kills"
-
-    - name: p1.controlplane.warning
-      interval: 60s
-      rules:
-        - alert: KubeAPIServerHighLatency
-          expr: histogram_quantile(0.99, sum(rate(apiserver_request_duration_seconds_bucket{verb!="WATCH"}[5m])) by (verb, le)) > 1
-          for: 10m
-          labels:
-            severity: warning
-            priority: P1
-            component: control-plane
-            pagerduty_severity: warning
-          annotations:
-            summary: "Kubernetes API Server has high latency"
-            description: "99th percentile API latency is {{ $value }}s for {{ $labels.verb }} requests"
-            impact: "Slow cluster operations"
-
-        - alert: EtcdHighLatency
-          expr: histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m])) > 0.5
-          for: 10m
-          labels:
-            severity: warning
-            priority: P1
-            component: control-plane
-            pagerduty_severity: warning
-          annotations:
-            summary: "etcd has high disk latency"
-            description: "99th percentile etcd fsync is {{ $value }}s"
-            impact: "Slow state persistence"
-
-        - alert: EtcdNoLeader
-          expr: etcd_server_has_leader == 0
-          for: 1m
-          labels:
-            severity: warning
-            priority: P1
-            component: control-plane
-            pagerduty_severity: warning
-          annotations:
-            summary: "etcd cluster has no leader"
-            description: "etcd is performing leader election"
-            impact: "Temporary unavailability"
-
-    - name: p3.capacity.info
-      interval: 300s
-      rules:
-        - alert: NodeCPUCapacityWarning
-          expr: sum(rate(node_cpu_seconds_total{mode!="idle"}[5m])) / count(node_cpu_seconds_total{mode="idle"}) > 0.70
-          for: 2h
-          labels:
-            severity: info
-            priority: P3
-            component: capacity
-          annotations:
-            summary: "Cluster CPU usage is {{ $value | humanizePercentage }}"
-            description: "Sustained high CPU usage across cluster"
-            impact: "Consider adding nodes"
-
-        - alert: NodeMemoryCapacityWarning
-          expr: (1 - sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes)) > 0.70
-          for: 2h
-          labels:
-            severity: info
-            priority: P3
-            component: capacity
-          annotations:
-            summary: "Cluster memory usage is {{ $value | humanizePercentage }}"
-            description: "Sustained high memory usage across cluster"
-            impact: "Consider adding nodes"
-
-    - name: p3.maintenance.info
-      interval: 300s
-      rules:
-        - alert: KubernetesVersionOld
-          expr: (kubernetes_build_info{gitVersion=~"v1\\.(2[0-9]|3[0-2])\\.*"}) * 0 + 1
-          for: 24h
-          labels:
-            severity: info
-            priority: P3
-            component: maintenance
-          annotations:
-            summary: "Kubernetes version {{ $labels.gitVersion }} is old"
-            description: "Running Kubernetes version older than 1.33"
-            impact: "Consider upgrading to latest stable"
-
-        - alert: NodeKernelVersionMismatch
-          expr: count(count by (release) (node_uname_info)) > 1
-          for: 6h
-          labels:
-            severity: info
-            priority: P3
-            component: maintenance
-          annotations:
-            summary: "Nodes running different kernel versions"
-            description: "Cluster has mixed kernel versions"
-            impact: "Consider standardizing node images"
-
-    # APISERVER — Serving cert expiry (Client-Cert ist drin, Server-Cert nicht)
-    - name: apiserver-cert
-      interval: 5m
-      rules:
-        - alert: APIServerServingCertExpiringSoon
-          expr: |
-            (apiserver_certificate_expiration_seconds - time()) / 86400 < 30
-          for: 1h
-          labels:
-            severity: warning
-            priority: P2
-            component: control-plane
-          annotations:
-            summary: "kube-apiserver serving cert expires in <30 days ({{ $value }})"
-            description: "Talos rotates automatically, but verify before relying on it."
-
-    - name: p0.dns.critical
-      interval: 30s
-      rules:
-        - alert: CoreDNSDown
-          # Job-label is `monitoring/coredns` (from ServiceMonitor), NOT `kube-dns`.
-          # Old expr matched no targets → absent() always 1 → alert IMMER firing.
-          # Use kube-state-metrics deployment-level metric — stable + accurate.
-          expr: |
-            kube_deployment_status_replicas_ready{namespace="kube-system",deployment="coredns"} < 1
-            or absent(kube_deployment_status_replicas_ready{namespace="kube-system",deployment="coredns"})
-          for: 2m
-          labels:
-            severity: critical
-            priority: P0
-            component: dns
-          annotations:
-            summary: "CoreDNS has no healthy replicas"
-            description: "CoreDNS down >2min — cluster DNS resolution broken, expect cascade failures"
-            action: "kubectl get pods -n kube-system -l k8s-app=kube-dns + restart"
-
-        - alert: CoreDNSErrorsHigh
-          expr: |
-            sum(rate(coredns_dns_responses_total{rcode=~"SERVFAIL|FORMERR|REFUSED"}[5m]))
-            / sum(rate(coredns_dns_responses_total[5m])) > 0.05
-          for: 5m
-          labels:
-            severity: critical
-            priority: P1
-            component: dns
-          annotations:
-            summary: "CoreDNS error rate >5%"
-            description: "DNS resolution failures spike — check upstream resolvers + CoreDNS-Corefile"
-
-    - name: p0.apiserver.critical
-      interval: 30s
-      rules:
         - alert: APIServerErrorRateHigh
           expr: |
             sum(rate(apiserver_request_total{code=~"5.."}[5m]))
             / sum(rate(apiserver_request_total[5m])) > 0.05
           for: 5m
           labels:
-            severity: critical
-            priority: P1
+            severity: warning
             component: control-plane
+            priority: P2
           annotations:
             summary: "kube-apiserver 5xx-rate >5%"
-            description: "Many requests returning 5xx errors — check etcd, controller-manager, webhook-availability"
+            description: "Many requests returning 5xx — check etcd, controller-manager, webhook-availability."
 
-        - alert: APIServerLatencyHigh
-          expr: |
-            histogram_quantile(0.99,
-              sum by (le, verb) (rate(apiserver_request_duration_seconds_bucket{verb=~"GET|LIST|POST|PUT|PATCH|DELETE"}[5m]))
-            ) > 5
-          for: 10m
-          labels:
-            severity: warning
-            priority: P2
-            component: control-plane
-          annotations:
-            summary: "kube-apiserver p99 latency >5s for {{ $labels.verb }}"
-            description: "API server slow — typically etcd-related; check ZFS-IOPS + etcd-compaction"
-
-    - name: p0.webhooks.critical
-      interval: 60s
-      rules:
         - alert: WebhookFailing
           expr: |
             sum by (name) (rate(apiserver_admission_webhook_rejection_count[5m])) > 0
@@ -432,41 +114,13 @@ spec:
             sum by (name) (rate(apiserver_admission_webhook_admission_duration_seconds_count[5m])) < 0.01
           for: 5m
           labels:
-            severity: critical
-            priority: P1
+            severity: warning
             component: webhooks
+            priority: P2
           annotations:
             summary: "Admission webhook {{ $labels.name }} failing"
-            description: "Webhook rejecting requests AND not responding — investigate cert-manager-webhook, cnpg-webhook, kyverno"
+            description: "Webhook rejecting requests AND not responding — investigate cert-manager-webhook, cnpg-webhook, kyverno."
             action: "kubectl delete secret <webhook-cert> -n <ns>; kubectl rollout restart deploy/<webhook>"
-
-    - name: p1.workload.warning
-      interval: 60s
-      rules:
-        - alert: HPAAtMaxReplicas
-          expr: |
-            kube_horizontalpodautoscaler_status_current_replicas
-            >= kube_horizontalpodautoscaler_spec_max_replicas
-          for: 15m
-          labels:
-            severity: warning
-            priority: P2
-            component: autoscaling
-          annotations:
-            summary: "HPA {{ $labels.namespace }}/{{ $labels.horizontalpodautoscaler }} at maxReplicas"
-            description: "Auto-scaling exhausted for >15min — increase maxReplicas or investigate load"
-
-        - alert: PDBViolation
-          expr: |
-            (kube_poddisruptionbudget_status_desired_healthy - kube_poddisruptionbudget_status_current_healthy) > 0
-          for: 5m
-          labels:
-            severity: warning
-            priority: P2
-            component: scheduling
-          annotations:
-            summary: "PDB {{ $labels.namespace }}/{{ $labels.poddisruptionbudget }} violated"
-            description: "Cannot drain nodes — fewer healthy pods than PDB requires"
 
         - alert: CronJobFailureRateHigh
           expr: |
@@ -476,8 +130,8 @@ spec:
           for: 2h
           labels:
             severity: warning
-            priority: P2
             component: jobs
+            priority: P2
           annotations:
             summary: "CronJob {{ $labels.namespace }}/{{ $labels.cronjob }} failure-rate high"
-            description: ">50% of last-hour jobs failed for >2h — check job logs"
+            description: ">50% of last-hour jobs failed for >2h — check job logs."

@@ -5,9 +5,13 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
+  # ProxmoxClusterQuorumLost removed — msa2 + nipogi are 2 standalone hosts, not a PVE
+  # cluster (quorum N/A). High-load / disk-temp / near-full(85%) / pve-storage → Grafana
+  # "Proxmox" dashboard. ProxmoxNodeOffline stays disabled (pve-exporter has no API token).
   groups:
-    - name: proxmox-host
-      interval: 1m
+    # ── PAGE ──
+    - name: proxmox-page
+      interval: 60s
       rules:
         - alert: ProxmoxHostDown
           expr: up{job="proxmox-host-node"} == 0
@@ -17,58 +21,7 @@ spec:
             component: hypervisor
           annotations:
             summary: "Proxmox host {{ $labels.instance }} unreachable"
-            description: "node-exporter on Proxmox host has been down >5min. Hardware visibility lost."
-
-        - alert: ProxmoxRootDiskFull
-          expr: (1 - node_filesystem_avail_bytes{job="proxmox-host-node",mountpoint="/"} / node_filesystem_size_bytes{job="proxmox-host-node",mountpoint="/"}) > 0.85
-          for: 30m
-          labels:
-            severity: critical
-            component: hypervisor
-          annotations:
-            summary: "Proxmox host {{ $labels.instance }} root disk >85% full"
-            description: "Root filesystem at {{ $value | humanizePercentage }}. PVE config write failures imminent."
-
-        - alert: ProxmoxHostMemoryPressure
-          expr: (node_memory_MemAvailable_bytes{job="proxmox-host-node"} / node_memory_MemTotal_bytes{job="proxmox-host-node"}) < 0.10
-          for: 15m
-          labels:
-            severity: critical
-            component: hypervisor
-          annotations:
-            summary: "Proxmox host {{ $labels.instance }} memory <10% available"
-            description: "VM scheduling/migration may fail. Available memory {{ $value | humanizePercentage }}."
-
-        - alert: ProxmoxHighLoad
-          expr: node_load5{job="proxmox-host-node"} / count by (instance) (node_cpu_seconds_total{job="proxmox-host-node",mode="idle"}) > 2
-          for: 30m
-          labels:
-            severity: warning
-            component: hypervisor
-          annotations:
-            summary: "Proxmox host {{ $labels.instance }} high load ({{ $value }})"
-
-    - name: proxmox-zfs
-      interval: 5m
-      rules:
-        - alert: ProxmoxZfsPoolDegraded
-          expr: node_zfs_zpool_state{job="proxmox-host-node",state!="online"} > 0
-          for: 10m
-          labels:
-            severity: critical
-            component: hypervisor
-          annotations:
-            summary: "ZFS pool {{ $labels.zpool }} degraded on {{ $labels.instance }}"
-            description: "Pool state: {{ $labels.state }}. Data integrity at risk."
-
-        - alert: ProxmoxZfsPoolNearFull
-          expr: (node_zfs_zpool_alloc{job="proxmox-host-node"} / node_zfs_zpool_size{job="proxmox-host-node"}) > 0.85
-          for: 1h
-          labels:
-            severity: warning
-            component: hypervisor
-          annotations:
-            summary: "ZFS pool {{ $labels.zpool }} >85% full on {{ $labels.instance }}"
+            description: "node-exporter on Proxmox host down >5min — host (and its VMs) likely offline."
 
         - alert: ProxmoxZfsPoolCritical
           expr: (node_zfs_zpool_alloc{job="proxmox-host-node"} / node_zfs_zpool_size{job="proxmox-host-node"}) > 0.95
@@ -76,15 +29,10 @@ spec:
           labels:
             severity: critical
             component: hypervisor
-            priority: P0
           annotations:
             summary: "ZFS pool {{ $labels.zpool }} >95% full on {{ $labels.instance }}"
-            description: "Pool {{ $labels.zpool }} approaching full — VM-disks will fail writes!"
-            action: "Free space immediately or expand pool"
+            description: "Pool nearly full — VM-disks will fail writes. Free space or expand immediately."
 
-    - name: proxmox-smart
-      interval: 5m
-      rules:
         - alert: ProxmoxDiskSmartFailure
           expr: smartmon_device_smart_healthy{job="proxmox-host-node"} == 0
           for: 5m
@@ -93,60 +41,52 @@ spec:
             component: hypervisor
           annotations:
             summary: "SMART health failure: {{ $labels.disk }} on {{ $labels.instance }}"
-            description: "Disk reporting SMART failure. Replace disk soon."
+            description: "Disk reporting SMART failure — replace soon (data-loss risk)."
 
-        - alert: ProxmoxDiskTemperatureHigh
-          expr: smartmon_temperature_celsius_value{job="proxmox-host-node"} > 60
+    # ── TICKET ──
+    - name: proxmox-ticket
+      interval: 60s
+      rules:
+        - alert: ProxmoxRootDiskFull
+          expr: (1 - node_filesystem_avail_bytes{job="proxmox-host-node",mountpoint="/"} / node_filesystem_size_bytes{job="proxmox-host-node",mountpoint="/"}) > 0.85
           for: 30m
           labels:
             severity: warning
             component: hypervisor
+            priority: P2
           annotations:
-            summary: "Disk {{ $labels.disk }} hot ({{ $value }}°C) on {{ $labels.instance }}"
+            summary: "Proxmox host {{ $labels.instance }} root disk >85% full"
+            description: "Root at {{ $value | humanizePercentage }} — PVE config write failures loom."
 
-    - name: proxmox-api
-      interval: 1m
-      rules:
+        - alert: ProxmoxHostMemoryPressure
+          expr: (node_memory_MemAvailable_bytes{job="proxmox-host-node"} / node_memory_MemTotal_bytes{job="proxmox-host-node"}) < 0.10
+          for: 15m
+          labels:
+            severity: warning
+            component: hypervisor
+            priority: P2
+          annotations:
+            summary: "Proxmox host {{ $labels.instance }} memory <10% available"
+            description: "VM scheduling/migration may fail (nipogi RAM is tight). Available {{ $value | humanizePercentage }}."
+
+        - alert: ProxmoxZfsPoolDegraded
+          expr: node_zfs_zpool_state{job="proxmox-host-node",state!="online"} > 0
+          for: 10m
+          labels:
+            severity: warning
+            component: hypervisor
+            priority: P2
+          annotations:
+            summary: "ZFS pool {{ $labels.zpool }} degraded on {{ $labels.instance }}"
+            description: "Pool state {{ $labels.state }} — single-disk pools have no redundancy, check the disk."
+
         - alert: ProxmoxApiExporterDown
           expr: up{job="proxmox-pve"} == 0
           for: 10m
           labels:
             severity: warning
             component: hypervisor
+            priority: P2
           annotations:
-            summary: "Proxmox PVE Exporter down"
-            description: "Cannot scrape Proxmox API. VM/cluster state unknown."
-
-        - alert: ProxmoxClusterQuorumLost
-          expr: pve_cluster_quorate == 0
-          for: 5m
-          labels:
-            severity: critical
-            component: hypervisor
-          annotations:
-            summary: "Proxmox cluster lost quorum"
-            description: "PVE cluster split-brain or node failures."
-
-        # ProxmoxNodeOffline disabled 2026-05-18 — pve-exporter secret has no credentials
-        # configured (Proxmox API token not set up). pve_up returns 0 for all nodes
-        # → permanent false alarm. Re-enable after configuring pve-exporter secret.
-        # - alert: ProxmoxNodeOffline
-        #   expr: pve_up{id=~"node/.*"} == 0
-        #   for: 10m
-        #   keep_firing_for: 5m
-        #   labels:
-        #     severity: critical
-        #     component: hypervisor
-        #   annotations:
-        #     summary: "Proxmox node {{ $labels.id }} offline (instance={{ $labels.instance }})"
-        #     description: "PVE node API unreachable for >10min."
-
-        - alert: ProxmoxStoragePoolFull
-          expr: (pve_storage_used_bytes / pve_storage_size_bytes) > 0.85
-          for: 30m
-          labels:
-            severity: warning
-            component: hypervisor
-          annotations:
-            summary: "Proxmox storage {{ $labels.storage }} >85% used"
-            description: "{{ $value | humanizePercentage }} on {{ $labels.node }}."
+            summary: "Proxmox PVE exporter down"
+            description: "Cannot scrape Proxmox API — VM/cluster state not visible in Grafana."

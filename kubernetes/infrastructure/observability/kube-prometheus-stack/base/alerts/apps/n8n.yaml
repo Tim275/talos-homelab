@@ -5,6 +5,8 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
+  # n8n is a workload → ticket-tier (degrades automation, not infra-fatal). Workflow
+  # failure-rate (Info) → Grafana / the n8n UI.
   groups:
     - name: n8n
       interval: 1m
@@ -13,11 +15,12 @@ spec:
           expr: kube_deployment_status_replicas_available{namespace="n8n-prod",deployment="n8n-main"} == 0
           for: 2m
           labels:
-            severity: critical
+            severity: warning
             component: apps
+            priority: P2
           annotations:
             summary: "n8n main pod down"
-            description: "n8n main has 0 ready replicas >2min. Workflow execution halted."
+            description: "n8n-main 0 ready replicas >2min — workflow execution halted."
 
         - alert: N8NWorkerDown
           expr: kube_deployment_status_replicas_available{namespace="n8n-prod",deployment="n8n-worker"} == 0
@@ -25,18 +28,7 @@ spec:
           labels:
             severity: warning
             component: apps
+            priority: P2
           annotations:
             summary: "n8n worker down"
-            description: "n8n worker pool empty. Async workflows queued."
-
-        - alert: N8NWorkflowsFailing
-          expr: rate(n8n_workflow_executions_failed_total[15m]) > 0.1
-          for: 20m
-          labels:
-            severity: info
-            priority: P2
-            component: automation
-          annotations:
-            summary: "N8N workflow execution failure rate is high"
-            description: "N8N workflows failing at {{ $value }} per minute"
-            impact: "Automation workflows not completing"
+            description: "n8n worker pool empty — async workflows queue up (Redis-backed)."

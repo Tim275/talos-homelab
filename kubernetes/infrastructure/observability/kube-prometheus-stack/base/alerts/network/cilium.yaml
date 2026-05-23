@@ -5,41 +5,13 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
+  # CiliumAgentsCrashing(>1) is the page; single-agent + Info duplicates → dashboard.
+  # Kept one SPIRE alert (agent — the 2026-05-13 silent-mTLS-breakage), dropped the duplicate
+  # server/encryption-missing variants. Hubble relay (visibility only) → dashboard.
   groups:
-    - name: cilium-spire
+    # ── PAGE ──
+    - name: cilium-page
       interval: 60s
-      rules:
-        - alert: SPIREAgentDown
-          expr: |
-            count(kube_namespace_status_phase{namespace="cilium-spire",phase="Active"} == 1)
-            and on()
-            sum(kube_daemonset_status_number_unavailable{namespace="cilium-spire",daemonset="spire-agent"}) > 0
-          for: 10m
-          labels:
-            severity: critical
-            priority: P1
-            component: security
-          annotations:
-            summary: "SPIRE-Agents down on {{ $value }} nodes — Cilium mTLS broken"
-            description: "Without SPIRE-Agents, Cilium cannot issue SVIDs — mTLS-required NetworkPolicies are NOT enforced. We discovered 4-day silent breakage on 2026-05-13."
-            action: "kubectl rollout restart -n cilium-spire daemonset/spire-agent ; check k8s_psat token expiry"
-
-        - alert: SPIREServerDown
-          expr: |
-            count(kube_namespace_status_phase{namespace="cilium-spire",phase="Active"} == 1)
-            and on()
-            kube_statefulset_status_replicas_ready{namespace="cilium-spire",statefulset="spire-server"} < 1
-          for: 5m
-          labels:
-            severity: critical
-            priority: P0
-            component: security
-          annotations:
-            summary: "SPIRE-Server down — no new SVIDs can be issued"
-            description: "Cilium mTLS infrastructure unavailable — existing SVIDs still valid until expiry (~1h default)"
-
-    - name: cilium
-      interval: 1m
       rules:
         - alert: CiliumAgentsCrashing
           expr: count(up{job="cilium-agent"} == 0) > 1
@@ -49,118 +21,57 @@ spec:
             component: network
           annotations:
             summary: "Multiple Cilium agents down ({{ $value }})"
-            description: "More than 1 Cilium agent unreachable. Pod-to-pod networking degraded."
+            description: "More than 1 Cilium agent unreachable — pod-to-pod networking degraded cluster-wide."
 
+    # ── TICKET ──
+    - name: cilium-ticket
+      interval: 60s
+      rules:
         - alert: CiliumOperatorDown
-          # Single-master cluster causes operator-restart-storms (lease-loss every
-          # etcd glitch — see CLAUDE.md I.3). Use min-replicas pattern AND
-          # keep_firing_for to dampen flap. Single restart != down.
           expr: sum(up{job="cilium-operator"}) < 1
           for: 10m
           keep_firing_for: 5m
           labels:
-            severity: critical
-            component: network
-          annotations:
-            summary: "Cilium operator down (ALL replicas unreachable)"
-            description: "All Cilium operator replicas unreachable >10min. New IPs/policies cannot be programmed."
-
-        - alert: SpireServerDown
-          expr: up{job=~"spire-server.*"} == 0
-          for: 5m
-          labels:
-            severity: critical
-            component: network
-          annotations:
-            summary: "SPIRE server down — mTLS broken"
-            description: "Workload Identity issuer unreachable. New mTLS connections will fail."
-
-        - alert: HubbleRelayDown
-          expr: up{job="hubble-relay"} == 0
-          for: 15m
-          labels:
             severity: warning
             component: network
+            priority: P2
           annotations:
-            summary: "Hubble Relay down — flow visibility lost"
-            description: "Cilium flow visibility unavailable. Network not affected."
+            summary: "Cilium operator down (all replicas)"
+            description: "New IPs/policies cannot be programmed. (Dampened — single-master restart-storms are benign.)"
+
+        - alert: SPIREAgentDown
+          expr: |
+            count(kube_namespace_status_phase{namespace="cilium-spire",phase="Active"} == 1)
+            and on()
+            sum(kube_daemonset_status_number_unavailable{namespace="cilium-spire",daemonset="spire-agent"}) > 0
+          for: 10m
+          labels:
+            severity: warning
+            component: security
+            priority: P2
+          annotations:
+            summary: "SPIRE-Agents down — Cilium mTLS not enforced"
+            description: "Without SPIRE, mTLS-required NetworkPolicies silently stop enforcing (4-day breakage on 2026-05-13)."
+            action: "kubectl rollout restart -n cilium-spire daemonset/spire-agent"
 
         - alert: CiliumEncryptionDisabled
-          expr: |
-            count(cilium_feature_adv_connect_and_lb_transparent_encryption == 0)
-            >
-            0
+          expr: count(cilium_feature_adv_connect_and_lb_transparent_encryption == 0) > 0
           for: 5m
           labels:
-            severity: critical
+            severity: warning
             component: network
+            priority: P2
           annotations:
             summary: "Cilium WireGuard encryption disabled on {{ $value }} agents"
-            description: "Pod traffic NOT encrypted. WireGuard transparent encryption is off — investigate immediately."
+            description: "Pod traffic not encrypted — investigate WireGuard transparent encryption."
 
-        - alert: CiliumAgentEncryptionMissing
-          expr: |
-            count(up{job=~".*cilium.*agent.*"} == 1)
-            -
-            count(cilium_feature_adv_connect_and_lb_transparent_encryption == 1)
-            > 0
-          for: 5m
-          labels:
-            severity: critical
-            component: network
-          annotations:
-            summary: "Cilium agents without active encryption"
-            description: "{{ $value }} cilium-agent pods are up but not reporting encryption — pod traffic on those nodes may be unencrypted."
-
-    - name: p1.networking.warning
-      interval: 60s
-      rules:
-        - alert: CiliumAgentDown
-          expr: up{job="cilium-agent"} == 0
-          for: 3m
-          labels:
-            severity: warning
-            priority: P1
-            component: networking
-            pagerduty_severity: warning
-          annotations:
-            summary: "Cilium agent down on node {{ $labels.instance }}"
-            description: "Cilium CNI agent unreachable for 3+ minutes"
-            impact: "Networking disruption on node, pods cannot communicate"
-
-        # CiliumOperatorDownWarning removed 2026-05-18 — was duplicate of
-        # CiliumOperatorDown (same expr, just for: 3m). Caused constant flapping on
-        # single-master operator-restart-storm. The critical version above with
-        # for: 10m + keep_firing_for: 5m + min-replicas is the single source of truth.
-
-
-    - name: p2.network.info
-      interval: 120s
-      rules:
-        - alert: CiliumAgentDownInfo
-          expr: up{job="cilium-agent"} == 0
-          for: 10m
-          labels:
-            severity: info
-            priority: P2
-            component: network
-          annotations:
-            summary: "Cilium agent down on node {{ $labels.instance }}"
-            description: "Cilium CNI agent not responding for 10+ minutes"
-            impact: "Network policy enforcement degraded on this node"
-
-
-    - name: hubble
-      interval: 60s
-      rules:
         - alert: HubbleHighPolicyDrops
-          expr: |
-            sum(rate(hubble_drop_total{reason="POLICY_DENIED"}[5m])) > 10
+          expr: sum(rate(hubble_drop_total{reason="POLICY_DENIED"}[5m])) > 10
           for: 10m
           labels:
             severity: warning
+            component: network
             priority: P2
-            component: cilium
           annotations:
-            summary: "Cilium: high NetworkPolicy denial rate ({{ $value | humanize }}/s)"
-            description: "Many flows being dropped by NetworkPolicies. Either misconfigured policy or attempted lateral movement."
+            summary: "High NetworkPolicy denial rate ({{ $value | humanize }}/s)"
+            description: "Many flows dropped by NetworkPolicies — misconfigured policy or attempted lateral movement."

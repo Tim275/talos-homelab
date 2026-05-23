@@ -5,6 +5,9 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
+  # Single-node ES is permanently YELLOW (replicas unassigned) → ClusterYellow removed
+  # (would alert forever). UnassignedPrimaryShards == ClusterRed (dup) removed.
+  # Heap/GC-internals → Grafana "Elasticsearch" dashboard.
   groups:
     - name: elasticsearch
       interval: 1m
@@ -13,34 +16,13 @@ spec:
           expr: elasticsearch_cluster_health_status{color="red"} == 1
           for: 5m
           labels:
-            severity: critical
+            severity: warning
             component: data
+            priority: P2
           annotations:
             summary: "Elasticsearch cluster RED"
-            description: "Primary shards unassigned. Data unavailable."
+            description: "Primary shards unassigned — log/SIEM data unavailable. Check disk + node health."
 
-        - alert: ElasticsearchClusterYellow
-          expr: elasticsearch_cluster_health_status{color="yellow"} == 1
-          for: 30m
-          labels:
-            severity: warning
-            component: data
-          annotations:
-            summary: "Elasticsearch cluster YELLOW"
-            description: "Replica shards unassigned for >30min."
-
-        - alert: ElasticsearchHeapHigh
-          expr: (elasticsearch_jvm_memory_used_bytes{area="heap"} / elasticsearch_jvm_memory_max_bytes{area="heap"}) > 0.85
-          for: 15m
-          labels:
-            severity: warning
-            priority: P2
-            component: data
-          annotations:
-            summary: "Elasticsearch JVM heap >85%"
-            description: "{{ $labels.instance }} heap at {{ $value | humanizePercentage }}."
-
-        # Disk-Filling-Up — predictive (avoid hitting flood watermark 95%)
         - alert: ElasticsearchDiskFillingUp
           expr: |
             (elasticsearch_filesystem_data_size_bytes - elasticsearch_filesystem_data_free_bytes)
@@ -48,46 +30,20 @@ spec:
           for: 10m
           labels:
             severity: warning
-            priority: P1
             component: data
+            priority: P2
           annotations:
             summary: "Elasticsearch disk >85% on {{ $labels.instance }}"
             description: "{{ $value | humanizePercentage }} used. ES blocks writes at 95% (flood watermark)."
 
-        # Unassigned shards (excluding expected single-node replica unassigned)
-        - alert: ElasticsearchUnassignedPrimaryShards
-          expr: elasticsearch_cluster_health_unassigned_primary_shards > 0
-          for: 10m
-          labels:
-            severity: critical
-            priority: P0
-            component: data
-          annotations:
-            summary: "Elasticsearch has {{ $value }} UNASSIGNED PRIMARY shards"
-            description: "Primary data unavailable. Check disk + node health."
-
-        # SLM Snapshots stale (snapshot policy not running daily)
         - alert: ElasticsearchSnapshotStale
           expr: |
             (time() - elasticsearch_slm_stats_last_success_timestamp_seconds) > 86400 * 2
           for: 1h
           labels:
             severity: warning
-            priority: P1
             component: data
+            priority: P2
           annotations:
             summary: "Elasticsearch last successful snapshot >48h old"
-            description: "SLM policy not running. Check repository + cluster health."
-
-        # GC time high (catches heap pressure before OOM)
-        - alert: ElasticsearchHighGCTime
-          expr: |
-            sum by (instance) (rate(elasticsearch_jvm_gc_collection_seconds_sum[5m])) > 0.05
-          for: 10m
-          labels:
-            severity: warning
-            priority: P2
-            component: data
-          annotations:
-            summary: "Elasticsearch JVM spending >5% time in GC ({{ $labels.instance }})"
-            description: "Sustained GC pressure → query latency. Bump heap or scale out."
+            description: "SLM policy not running — check repository + cluster health."

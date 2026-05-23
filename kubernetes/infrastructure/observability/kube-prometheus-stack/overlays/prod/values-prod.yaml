@@ -358,13 +358,10 @@ alertmanager:
           repeat_interval: 2h
           continue: false
 
-        # Minor issues, informational
+        # Minor issues, informational → suppressed (Dashboard, no notification)
         - matchers:
             - severity="info"
-          receiver: 'slack-info'
-          group_wait: 1m
-          group_interval: 10m
-          repeat_interval: 12h
+          receiver: 'null'
           continue: false
 
         - matchers:
@@ -504,6 +501,10 @@ alertmanager:
             send_resolved: false
             max_alerts: 1
 
+      # ── PAGE tier (critical) → Slack #alerts + Telegram (phone) ──
+      # The ONLY receiver that buzzes the phone. Keep it that way: a phone alert
+      # must always mean "act now". To split into a dedicated Slack channel later,
+      # change channel to '#alerts-critical' (create it in Slack first).
       - name: 'slack-critical'
         slack_configs:
           - channel: '#alerts'
@@ -533,6 +534,9 @@ alertmanager:
             send_resolved: true
             message: '{{ template "telegram.body" . }}'
 
+      # ── TICKET tier (warning) → Slack #alerts ONLY, no Telegram ──
+      # Tickets must NOT buzz the phone. This is the page/ticket split: phone =
+      # the 25 criticals, Slack = the full digest of everything (warnings included).
       - name: 'slack-default'
         slack_configs:
           - channel: '#alerts'
@@ -541,12 +545,6 @@ alertmanager:
             text: '{{ template "slack.body" . }}'
             color: '{{ template "slack.color" . }}'
             actions: *critical-actions
-        telegram_configs:
-          - bot_token_file: /etc/alertmanager/secrets/telegram-bot-token/token
-            chat_id: 8449184586
-            parse_mode: ""
-            send_resolved: true
-            message: '{{ template "telegram.body" . }}'
 
       - name: 'slack-info'
         slack_configs:
@@ -562,12 +560,34 @@ alertmanager:
               - type: button
                 text: 'Silence 2h :no_bell:'
                 url: '{{ template "slack.silenceURL" . }}'
-        telegram_configs:
-          - bot_token_file: /etc/alertmanager/secrets/telegram-bot-token/token
-            chat_id: 8449184586
-            parse_mode: ""
-            send_resolved: false
-            message: '{{ template "telegram.body" . }}'
+
+      # ─────────────────────────────────────────────────────────────────────
+      # EMAIL receiver — OPTIONAL template (commented). How to receive alerts by
+      # mail + how to onboard a teammate. Uncomment, add the smtp_* global below +
+      # a sealed smtp password, then add an email route.
+      # ─────────────────────────────────────────────────────────────────────
+      # 1) Add to `global:` (top of this config) — smarthost + sealed app-password:
+      #      smtp_smarthost: 'smtp.gmail.com:587'
+      #      smtp_from: 'homelab-alerts@yourdomain.org'
+      #      smtp_auth_username: 'homelab-alerts@yourdomain.org'
+      #      smtp_auth_password_file: /etc/alertmanager/secrets/smtp-password/password
+      #
+      # 2) The receiver. BEST PRACTICE: send to a DISTRIBUTION LIST (oncall@company),
+      #    not individuals — onboarding a new teammate = add them to that list in your
+      #    mail provider, with ZERO change here. If you must list people inline, use a
+      #    comma-separated `to:`.
+      # - name: 'email-oncall'
+      #   email_configs:
+      #     - to: 'oncall@yourdomain.org'          # ← distribution list (preferred)
+      #       # to: 'alice@x.org, bob@x.org'       # ← or explicit, comma-separated
+      #       send_resolved: true
+      #       headers:
+      #         subject: '[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}'
+      #
+      # 3) Route critical → email too (add under route.routes, next to slack-critical):
+      #      - matchers: [ severity="critical" ]
+      #        receiver: 'email-oncall'
+      #        continue: true   # ← keep going to Slack/Telegram as well
 
   templateFiles:
     homelab.tmpl: |-
