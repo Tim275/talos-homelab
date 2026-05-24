@@ -1,0 +1,90 @@
+stages:
+  - validate
+  - plan
+  - apply
+
+variables:
+  TF_ROOT: ${CI_PROJECT_DIR}/tofu
+  TF_VERSION: "1.12.0"
+  TFLINT_VERSION: "0.62.1"
+  ARM_USE_OIDC: "true"
+
+default:
+  image: ubuntu:24.04
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq curl unzip openssh-client >/dev/null
+    - curl -sL "https://github.com/opentofu/opentofu/releases/download/v${TF_VERSION}/tofu_${TF_VERSION}_linux_amd64.tar.gz" | tar xz -C /usr/local/bin tofu
+    - tofu version
+    - cd "$TF_ROOT"
+
+.write_local_secrets: &write_local_secrets
+  - mkdir -p ~/.ssh && cp "$PROXMOX_SSH_KEY" ~/.ssh/id_rsa_proxmox && chmod 600 ~/.ssh/id_rsa_proxmox
+  - mkdir -p bootstrap/sealed-secrets/certificate
+  - cp "$SEALED_SECRETS_CRT" bootstrap/sealed-secrets/certificate/sealed-secrets.crt
+  - cp "$SEALED_SECRETS_KEY" bootstrap/sealed-secrets/certificate/sealed-secrets.key
+  - |
+    cat > ci.auto.tfvars <<EOF
+    proxmox = {
+      name         = "homelab"
+      cluster_name = "homelab"
+      endpoint     = "${PROXMOX_ENDPOINT}"
+      insecure     = true
+      username     = "root"
+    }
+    proxmox_api_token = "${PROXMOX_API_TOKEN}"
+    sealed_secrets_config = {
+      certificate_path     = "bootstrap/sealed-secrets/certificate/sealed-secrets.crt"
+      certificate_key_path = "bootstrap/sealed-secrets/certificate/sealed-secrets.key"
+    }
+    EOF
+
+validate:
+  stage: validate
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq curl unzip >/dev/null
+    - curl -sL "https://github.com/opentofu/opentofu/releases/download/v${TF_VERSION}/tofu_${TF_VERSION}_linux_amd64.tar.gz" | tar xz -C /usr/local/bin tofu
+    - curl -sL "https://github.com/terraform-linters/tflint/releases/download/v${TFLINT_VERSION}/tflint_linux_amd64.zip" -o /tmp/tflint.zip && unzip -o /tmp/tflint.zip tflint -d /usr/local/bin
+    - cd "$TF_ROOT"
+  script:
+    - tofu fmt -check -recursive -diff
+    - tofu init -backend=false -input=false
+    - tofu validate
+    - tflint --init && tflint --recursive --minimum-failure-severity=error
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+plan:
+  stage: plan
+  id_tokens:
+    ARM_OIDC_TOKEN:
+      aud: api://AzureADTokenExchange
+  script:
+    - *write_local_secrets
+    - tofu init -input=false
+    - tofu plan -input=false -out=tfplan
+    - tofu show -no-color tfplan > plan.txt
+  artifacts:
+    paths:
+      - tofu/tfplan
+      - tofu/plan.txt
+    expire_in: 7 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+apply:
+  stage: apply
+  id_tokens:
+    ARM_OIDC_TOKEN:
+      aud: api://AzureADTokenExchange
+  script:
+    - *write_local_secrets
+    - tofu init -input=false
+    - tofu apply -input=false tfplan
+  environment:
+    name: production
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+  allow_failure: false
