@@ -37,6 +37,18 @@ jobs:
           sudo mv /tmp/tofu /usr/local/bin/
           tofu version
 
+      - name: Install tflint
+        run: |
+          VERSION="0.62.1"
+          curl -sL "https://github.com/terraform-linters/tflint/releases/download/v${VERSION}/tflint_linux_amd64.zip" -o /tmp/tflint.zip
+          unzip -o /tmp/tflint.zip tflint -d /tmp
+          sudo mv /tmp/tflint /usr/local/bin/
+          tflint --version
+
+      - name: tofu fmt -check
+        working-directory: tofu
+        run: tofu fmt -check -recursive -diff
+
       - name: Stage CI-only placeholders for gitignored secrets
         working-directory: tofu
         run: |
@@ -63,6 +75,12 @@ jobs:
       - name: tofu init (Azure backend, OIDC)
         working-directory: tofu
         run: tofu init -input=false
+
+      - name: tflint (gated — before plan)
+        working-directory: tofu
+        run: |
+          tflint --init
+          tflint --recursive --minimum-failure-severity=error
 
       - name: tofu plan (no refresh — config vs state only)
         id: plan
