@@ -13,7 +13,13 @@ spec:
       interval: 60s
       rules:
         - alert: KeycloakDown
-          expr: kube_deployment_status_replicas_available{namespace="keycloak",deployment="keycloak"} == 0
+          # Keycloak runs as a StatefulSet (Keycloak Operator), NOT a Deployment.
+          # The old kube_deployment_status_replicas_available{deployment="keycloak"} series
+          # never existed -> alert was structurally dead (missed a 23x OOMKill crashloop, 2026-05-24).
+          # `or absent(...)` also catches the case where the SS metric disappears entirely.
+          expr: |
+            (kube_statefulset_status_replicas_ready{namespace="keycloak",statefulset="keycloak"} == 0)
+            or absent(kube_statefulset_status_replicas_ready{namespace="keycloak",statefulset="keycloak"})
           for: 3m
           labels:
             severity: critical
