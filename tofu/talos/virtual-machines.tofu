@@ -88,7 +88,7 @@ resource "proxmox_virtual_environment_vm" "this" {
 
   lifecycle {
     create_before_destroy = false
-    ignore_changes        = [disk[0].file_id]
+    ignore_changes        = [disk]
     prevent_destroy       = true
   }
 
