@@ -62,8 +62,8 @@
           "conditions": [
             {
               "id": "condition1",
-              "leftValue": "={{ ($json.labels || []).map(l => l.name).join(',') }}",
-              "rightValue": "manual-review-required",
+              "leftValue": "={{ $json.head.ref }}",
+              "rightValue": "renovate",
               "operator": { "type": "string", "operation": "contains" }
             }
           ],
@@ -285,8 +285,37 @@
     },
     {
       "parameters": {
+        "method": "PUT",
+        "url": "=https://api.github.com/repos/Tim275/talos-homelab/pulls/{{ $('Only New PRs').item.json.pr_number }}/merge",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Accept", "value": "application/vnd.github+json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"commit_title\": \"{{ $('Only New PRs').item.json.pr_title }}\",\n  \"merge_method\": \"squash\"\n}",
+        "options": {}
+      },
+      "id": "mergePR",
+      "name": "Merge PR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2592, 192],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "homelab-github-cred",
+          "name": "Github Token n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
         "chatId": "8449184586",
-        "text": "=Renovate PR approved (auto-merge via Renovate + CI)\n\nComponent: {{ $('AI PR Analyzer').item.json.output.component }}\nUpdate: {{ $('AI PR Analyzer').item.json.output.from_version }} -> {{ $('AI PR Analyzer').item.json.output.to_version }}\nType: {{ $('AI PR Analyzer').item.json.output.update_type }}\nRisk: {{ $('AI PR Analyzer').item.json.output.risk_level }}\n\n{{ $('AI PR Analyzer').item.json.output.reasoning }}\n\nView PR: {{ $('Only New PRs').item.json.pr_url }}",
+        "text": "=Auto-merged Renovate PR\n\nComponent: {{ $('AI PR Analyzer').item.json.output.component }}\nUpdate: {{ $('AI PR Analyzer').item.json.output.from_version }} -> {{ $('AI PR Analyzer').item.json.output.to_version }}\nType: {{ $('AI PR Analyzer').item.json.output.update_type }}\nRisk: {{ $('AI PR Analyzer').item.json.output.risk_level }}\n\n{{ $('AI PR Analyzer').item.json.output.reasoning }}\n\nView PR: {{ $('Only New PRs').item.json.pr_url }}",
         "additionalFields": {}
       },
       "id": "notifyApproved",
@@ -394,10 +423,13 @@
     },
     "Decision Router": {
       "main": [
-        [{ "node": "Notify Approved", "type": "main", "index": 0 }],
+        [{ "node": "Merge PR", "type": "main", "index": 0 }],
         [{ "node": "Notify Needs Review", "type": "main", "index": 0 }],
         [{ "node": "Notify Rejected", "type": "main", "index": 0 }]
       ]
+    },
+    "Merge PR": {
+      "main": [[{ "node": "Notify Approved", "type": "main", "index": 0 }]]
     },
     "Loop Over Items": {
       "main": [[], [{ "node": "Store PR Data", "type": "main", "index": 0 }]]
