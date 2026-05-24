@@ -49,6 +49,21 @@ spec:
             summary: "Ceph OSD {{ $labels.ceph_daemon }} down"
             description: "OSD down >10min — replication degraded (replica=2, msa2 still holds copies)."
 
+        - alert: CephPGsNotActive
+          # Targeted replacement for the dropped (noisy) blanket HEALTH_WARN: fires ONLY when
+          # PGs are genuinely not active (stuck peering / inactive = data unavailable), which
+          # benign warns (scrub, nearfull) never cause. A 12h stuck-peering deadlock from a
+          # broken cross-node WireGuard link (encrypt-node, 2026-05-24) went completely unalerted.
+          expr: (ceph_pg_total - ceph_pg_active) > 0
+          for: 15m
+          labels:
+            severity: warning
+            component: storage
+            priority: P2
+          annotations:
+            summary: "Ceph {{ $value }} PGs not active for 15m — data availability degraded"
+            description: "PGs stuck inactive/peering — clients on them block (slow-ops cascade → RGW/CNPG timeouts). Check 'ceph pg dump_stuck inactive' + cross-node OSD heartbeats / Cilium NodeEncryption."
+
         - alert: CephOSDNearFull
           expr: ceph_osd_stat_bytes_used / ceph_osd_stat_bytes > 0.75
           for: 30m
