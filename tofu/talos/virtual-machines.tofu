@@ -89,6 +89,7 @@ resource "proxmox_virtual_environment_vm" "this" {
   lifecycle {
     create_before_destroy = false
     ignore_changes        = [disk[0].file_id]
+    prevent_destroy       = true
   }
 
   # Force serial creation to prevent SSH overload

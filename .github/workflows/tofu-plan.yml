@@ -1,0 +1,122 @@
+name: tofu-plan
+
+on:
+  pull_request:
+    paths:
+      - "tofu/**"
+      - ".github/workflows/tofu-plan.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+concurrency:
+  group: tofu-plan-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ARM_USE_OIDC: "true"
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install OpenTofu
+        run: |
+          VERSION="1.12.0"
+          curl -sL "https://github.com/opentofu/opentofu/releases/download/v${VERSION}/tofu_${VERSION}_linux_amd64.tar.gz" -o /tmp/tofu.tar.gz
+          tar xzf /tmp/tofu.tar.gz -C /tmp tofu
+          sudo mv /tmp/tofu /usr/local/bin/
+          tofu version
+
+      - name: Stage CI-only placeholders for gitignored secrets
+        working-directory: tofu
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keygen -t ed25519 -f ~/.ssh/id_rsa_proxmox -N "" -q
+          mkdir -p bootstrap/sealed-secrets/certificate
+          echo "placeholder" > bootstrap/sealed-secrets/certificate/sealed-secrets.crt
+          echo "placeholder" > bootstrap/sealed-secrets/certificate/sealed-secrets.key
+          cat > ci.auto.tfvars <<'EOF'
+          proxmox = {
+            name         = "ci"
+            cluster_name = "ci"
+            endpoint     = "https://127.0.0.1:8006"
+            insecure     = true
+            username     = "root"
+          }
+          proxmox_api_token = "ci@pve!ci=00000000-0000-0000-0000-000000000000"
+          sealed_secrets_config = {
+            certificate_path     = "bootstrap/sealed-secrets/certificate/sealed-secrets.crt"
+            certificate_key_path = "bootstrap/sealed-secrets/certificate/sealed-secrets.key"
+          }
+          EOF
+
+      - name: tofu init (Azure backend, OIDC)
+        working-directory: tofu
+        run: tofu init -input=false
+
+      - name: tofu plan (no refresh — config vs state only)
+        id: plan
+        working-directory: tofu
+        run: |
+          set +e
+          tofu plan -refresh=false -lock=false -input=false -no-color -out=tfplan 2>&1 | tee plan.txt
+          echo "exit=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Detect destructive changes
+        id: destructive
+        if: always()
+        working-directory: tofu
+        run: |
+          if grep -qE '(must be replaced|will be destroyed|forces replacement|cannot be destroyed)' plan.txt; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Comment plan on PR
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body = '';
+            try { body = fs.readFileSync('tofu/plan.txt', 'utf8'); } catch (e) { body = '(no plan output)'; }
+            const MAX = 60000;
+            if (body.length > MAX) body = body.slice(0, MAX) + '\n... (truncated)';
+            const destructive = '${{ steps.destructive.outputs.found }}' === 'true';
+            const header = destructive
+              ? '### ⚠️ tofu plan — DESTRUCTIVE CHANGES DETECTED\nDieser Plan würde Ressourcen zerstören/ersetzen. Review erforderlich.'
+              : '### ✅ tofu plan — no destructive changes';
+            const note = '\n> `-refresh=false`: vergleicht Config gegen letzten State (kein Proxmox-Zugriff). Drift wird NICHT erkannt — voller Plan braucht self-hosted Runner / Tailscale.';
+            const comment = `${header}\n${note}\n\n<details><summary>Plan output</summary>\n\n\`\`\`\n${body}\n\`\`\`\n\n</details>`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.user.type === 'Bot' && c.body.includes('tofu plan'));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body: comment });
+            } else {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body: comment });
+            }
+
+      - name: Fail if plan errored or destroys resources
+        if: always()
+        run: |
+          if [ "${{ steps.plan.outputs.exit }}" != "0" ]; then
+            echo "::error::tofu plan failed (siehe Plan-Output / PR-Kommentar)"
+            exit 1
+          fi
+          if [ "${{ steps.destructive.outputs.found }}" == "true" ]; then
+            echo "::error::Plan enthält destruktive Änderungen (replace/destroy) — manueller Review nötig"
+            exit 1
+          fi
