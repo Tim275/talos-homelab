@@ -41,8 +41,8 @@ resource "proxmox_virtual_environment_vm" "this" {
     discard      = "on"
     ssd          = true
     file_format  = "raw"
-    size    = each.value.os_disk_size
-    file_id = proxmox_virtual_environment_download_file.this["${each.value.host_node}_${each.value.update == true ? local.update_image_id : local.image_id}"].id
+    size         = each.value.os_disk_size
+    file_id      = proxmox_virtual_environment_download_file.this["${each.value.host_node}_${each.value.update == true ? local.update_image_id : local.image_id}"].id
   }
 
   dynamic "disk" {
@@ -88,7 +88,8 @@ resource "proxmox_virtual_environment_vm" "this" {
 
   lifecycle {
     create_before_destroy = false
-    ignore_changes        = [disk[0].file_id]
+    ignore_changes        = [disk]
+    prevent_destroy       = true
   }
 
   # Force serial creation to prevent SSH overload
