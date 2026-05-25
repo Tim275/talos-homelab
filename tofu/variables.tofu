@@ -1,3 +1,9 @@
+variable "skip_cluster_health" {
+  description = "Skip the live talos_cluster_health check — set true in CI where the cluster API is unreachable"
+  type        = bool
+  default     = false
+}
+
 variable "proxmox" {
   description = "Proxmox provider configuration"
   type = object({

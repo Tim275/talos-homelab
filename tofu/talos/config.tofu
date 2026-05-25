@@ -110,6 +110,7 @@ resource "talos_machine_bootstrap" "this" {
 }
 
 data "talos_cluster_health" "this" {
+  count = var.skip_cluster_health ? 0 : 1
   depends_on = [
     talos_machine_configuration_apply.this,
     talos_machine_bootstrap.this
