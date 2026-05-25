@@ -61,6 +61,41 @@ spec:
     - name: kubernetes-ticket
       interval: 60s
       rules:
+        - alert: CoreDNSForwardUnhealthy
+          expr: rate(coredns_forward_healthcheck_broken_total[5m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+            component: dns
+            priority: P2
+          annotations:
+            summary: "CoreDNS upstream-forward unhealthy"
+            description: "CoreDNS erreicht seine Upstream-DNS (forward zum Gateway) nicht → EXTERNE Auflösung bricht (interne svc-DNS evtl. noch ok). Das SERVFAIL-extern-Szenario nach Netz/upgrade-k8s-Changes."
+            action: "kubectl logs -n kube-system -l k8s-app=kube-dns ; Node resolv.conf/Gateway prüfen"
+
+        - alert: CoreDNSHighSERVFAIL
+          expr: |
+            sum(rate(coredns_dns_responses_total{rcode="SERVFAIL"}[5m]))
+            / clamp_min(sum(rate(coredns_dns_responses_total[5m])), 1) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+            component: dns
+            priority: P2
+          annotations:
+            summary: "CoreDNS SERVFAIL-Rate hoch ({{ $value | humanizePercentage }})"
+            description: ">5% der DNS-Antworten sind SERVFAIL — Auflösung schlägt fehl (Upstream tot, Policy-Drop Pod→CoreDNS, oder Misconfig)."
+
+        - alert: CoreDNSPanics
+          expr: increase(coredns_panics_total[10m]) > 0
+          labels:
+            severity: warning
+            component: dns
+            priority: P2
+          annotations:
+            summary: "CoreDNS plugin panic ({{ $value }})"
+            description: "CoreDNS-Plugin gepanict — DNS instabil. kubectl logs -n kube-system -l k8s-app=kube-dns"
+
         - alert: ImagePullBackoff
           expr: kube_pod_container_status_waiting_reason{reason=~"ImagePullBackOff|ErrImagePull"} == 1
           for: 5m
