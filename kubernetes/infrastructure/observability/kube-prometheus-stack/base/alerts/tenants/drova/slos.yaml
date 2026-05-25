@@ -1,0 +1,348 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: slo-drova
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    # ─────────────────────────────────────────────────────────────────────
+    # Drova SLO — per-service availability via Multi-Window Multi-Burn-Rate
+    # Source: Google SRE Workbook §5 (Alerting on SLOs)
+    # Target: 99.5% over 30d (Error budget: 3.6h/Monat)
+    #
+    # Service coverage (post PR #191 with otelgrpc StatsHandler):
+    #   HTTP servers:  api-gateway, chat-service, user-service
+    #   gRPC servers:  trip-service, driver-service, user-service
+    #   NOT covered:   payment-service (HTTP only Stripe-webhook, no /api)
+    #                  frontend (nginx static-files, RUM needed for SLO)
+    #
+    # Label-fix 2026-05-17: rpc_grpc_status_code="0" → rpc_response_status_code="OK"
+    # (newer OTel SemConv uses string "OK" not numeric "0").
+    #
+    # `or vector(1)` defaults availability to 1.0 when no traffic — avoids
+    # 0/0=NaN false-positives at idle.
+    # ─────────────────────────────────────────────────────────────────────
+    - name: drova.slo.recording.http
+      interval: 60s
+      rules:
+        # chat-service — HTTP availability
+        - record: slo:drova_chat_service_availability:ratio_rate5m
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_count{service_name="chat-service",http_response_status_code!~"5.."}[5m]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="chat-service"}[5m]))
+            ) or vector(1)
+        - record: slo:drova_chat_service_availability:ratio_rate30m
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_count{service_name="chat-service",http_response_status_code!~"5.."}[30m]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="chat-service"}[30m]))
+            ) or vector(1)
+        - record: slo:drova_chat_service_availability:ratio_rate1h
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_count{service_name="chat-service",http_response_status_code!~"5.."}[1h]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="chat-service"}[1h]))
+            ) or vector(1)
+        - record: slo:drova_chat_service_availability:ratio_rate6h
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_count{service_name="chat-service",http_response_status_code!~"5.."}[6h]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="chat-service"}[6h]))
+            ) or vector(1)
+
+        # api-gateway — HTTP availability (customer-facing!)
+        - record: slo:drova_api_gateway_availability:ratio_rate5m
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_response_status_code!~"5.."}[5m]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[5m]))
+            ) or vector(1)
+        - record: slo:drova_api_gateway_availability:ratio_rate30m
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_response_status_code!~"5.."}[30m]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[30m]))
+            ) or vector(1)
+        - record: slo:drova_api_gateway_availability:ratio_rate1h
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_response_status_code!~"5.."}[1h]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[1h]))
+            ) or vector(1)
+        - record: slo:drova_api_gateway_availability:ratio_rate6h
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_response_status_code!~"5.."}[6h]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[6h]))
+            ) or vector(1)
+
+        # user-service — HTTP availability
+        - record: slo:drova_user_service_availability:ratio_rate5m
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_count{service_name="user-service",http_response_status_code!~"5.."}[5m]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="user-service"}[5m]))
+            ) or vector(1)
+        - record: slo:drova_user_service_availability:ratio_rate30m
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_count{service_name="user-service",http_response_status_code!~"5.."}[30m]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="user-service"}[30m]))
+            ) or vector(1)
+        - record: slo:drova_user_service_availability:ratio_rate1h
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_count{service_name="user-service",http_response_status_code!~"5.."}[1h]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="user-service"}[1h]))
+            ) or vector(1)
+        - record: slo:drova_user_service_availability:ratio_rate6h
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_count{service_name="user-service",http_response_status_code!~"5.."}[6h]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="user-service"}[6h]))
+            ) or vector(1)
+
+    - name: drova.slo.recording.grpc
+      interval: 60s
+      rules:
+        # trip-service — gRPC availability (status_code 0 = OK)
+        - record: slo:drova_trip_service_availability:ratio_rate5m
+          expr: |
+            (
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="trip-service",rpc_response_status_code="OK"}[5m]))
+              /
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="trip-service"}[5m]))
+            ) or vector(1)
+        - record: slo:drova_trip_service_availability:ratio_rate30m
+          expr: |
+            (
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="trip-service",rpc_response_status_code="OK"}[30m]))
+              /
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="trip-service"}[30m]))
+            ) or vector(1)
+        - record: slo:drova_trip_service_availability:ratio_rate1h
+          expr: |
+            (
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="trip-service",rpc_response_status_code="OK"}[1h]))
+              /
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="trip-service"}[1h]))
+            ) or vector(1)
+        - record: slo:drova_trip_service_availability:ratio_rate6h
+          expr: |
+            (
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="trip-service",rpc_response_status_code="OK"}[6h]))
+              /
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="trip-service"}[6h]))
+            ) or vector(1)
+
+        # driver-service — gRPC availability
+        - record: slo:drova_driver_service_availability:ratio_rate5m
+          expr: |
+            (
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="driver-service",rpc_response_status_code="OK"}[5m]))
+              /
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="driver-service"}[5m]))
+            ) or vector(1)
+        - record: slo:drova_driver_service_availability:ratio_rate30m
+          expr: |
+            (
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="driver-service",rpc_response_status_code="OK"}[30m]))
+              /
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="driver-service"}[30m]))
+            ) or vector(1)
+        - record: slo:drova_driver_service_availability:ratio_rate1h
+          expr: |
+            (
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="driver-service",rpc_response_status_code="OK"}[1h]))
+              /
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="driver-service"}[1h]))
+            ) or vector(1)
+        - record: slo:drova_driver_service_availability:ratio_rate6h
+          expr: |
+            (
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="driver-service",rpc_response_status_code="OK"}[6h]))
+              /
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="driver-service"}[6h]))
+            ) or vector(1)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Burn-rate alerts — Multi-Window Multi-Burn-Rate
+    # Fast burn (14.4×): 5m AND 1h windows both above threshold → P1
+    # Slow burn (6×):    30m AND 6h windows both above threshold → P1
+    # ─────────────────────────────────────────────────────────────────────
+    - name: drova.slo.alerts
+      interval: 1m
+      rules:
+        # chat-service
+        - alert: DrovaChatServiceBurnRateFast
+          expr: |
+            (1 - slo:drova_chat_service_availability:ratio_rate5m) > (14.4 * (1 - 0.995))
+            and
+            (1 - slo:drova_chat_service_availability:ratio_rate1h) > (14.4 * (1 - 0.995))
+          for: 2m
+          labels:
+            severity: warning
+            priority: P2
+            tenant: drova
+            slo: chat-service-availability
+          annotations:
+            summary: "Drova chat-service: SLO fast burn (14.4× — 2d to budget exhaustion)"
+            description: "Error rate exceeds 7.2% (14.4 × 0.5%) on both 5m AND 1h windows."
+            dashboard_url: "/d/drova-slo"
+        - alert: DrovaChatServiceBurnRateSlow
+          expr: |
+            (1 - slo:drova_chat_service_availability:ratio_rate30m) > (6 * (1 - 0.995))
+            and
+            (1 - slo:drova_chat_service_availability:ratio_rate6h) > (6 * (1 - 0.995))
+          for: 15m
+          labels:
+            severity: warning
+            priority: P2
+            tenant: drova
+            slo: chat-service-availability
+          annotations:
+            summary: "Drova chat-service: SLO slow burn (6× — 5d to budget exhaustion)"
+            description: "Sustained error rate >3% on both 30m AND 6h windows."
+            dashboard_url: "/d/drova-slo"
+
+        # api-gateway (HTTP, customer-facing)
+        - alert: DrovaApiGatewayBurnRateFast
+          expr: |
+            (1 - slo:drova_api_gateway_availability:ratio_rate5m) > (14.4 * (1 - 0.995))
+            and
+            (1 - slo:drova_api_gateway_availability:ratio_rate1h) > (14.4 * (1 - 0.995))
+          for: 2m
+          labels:
+            severity: warning
+            priority: P2
+            tenant: drova
+            slo: api-gateway-availability
+          annotations:
+            summary: "Drova api-gateway: SLO fast burn (14.4× — 2d to budget exhaustion)"
+            description: "Customer-facing HTTP errors exceed 7.2% (14.4 × 0.5%) on both 5m AND 1h windows."
+            dashboard_url: "/d/drova-slo"
+        - alert: DrovaApiGatewayBurnRateSlow
+          expr: |
+            (1 - slo:drova_api_gateway_availability:ratio_rate30m) > (6 * (1 - 0.995))
+            and
+            (1 - slo:drova_api_gateway_availability:ratio_rate6h) > (6 * (1 - 0.995))
+          for: 15m
+          labels:
+            severity: warning
+            priority: P2
+            tenant: drova
+            slo: api-gateway-availability
+          annotations:
+            summary: "Drova api-gateway: SLO slow burn (6× — 5d to budget exhaustion)"
+            description: "Sustained customer-facing error rate >3% on both 30m AND 6h windows."
+            dashboard_url: "/d/drova-slo"
+
+        # user-service
+        - alert: DrovaUserServiceBurnRateFast
+          expr: |
+            (1 - slo:drova_user_service_availability:ratio_rate5m) > (14.4 * (1 - 0.995))
+            and
+            (1 - slo:drova_user_service_availability:ratio_rate1h) > (14.4 * (1 - 0.995))
+          for: 2m
+          labels:
+            severity: warning
+            priority: P2
+            tenant: drova
+            slo: user-service-availability
+          annotations:
+            summary: "Drova user-service: SLO fast burn (14.4× — 2d to budget exhaustion)"
+            description: "Error rate exceeds 7.2% (14.4 × 0.5%) on both 5m AND 1h windows."
+            dashboard_url: "/d/drova-slo"
+        - alert: DrovaUserServiceBurnRateSlow
+          expr: |
+            (1 - slo:drova_user_service_availability:ratio_rate30m) > (6 * (1 - 0.995))
+            and
+            (1 - slo:drova_user_service_availability:ratio_rate6h) > (6 * (1 - 0.995))
+          for: 15m
+          labels:
+            severity: warning
+            priority: P2
+            tenant: drova
+            slo: user-service-availability
+          annotations:
+            summary: "Drova user-service: SLO slow burn (6× — 5d to budget exhaustion)"
+            description: "Sustained error rate >3% on both 30m AND 6h windows."
+            dashboard_url: "/d/drova-slo"
+
+        # trip-service (gRPC)
+        - alert: DrovaTripServiceBurnRateFast
+          expr: |
+            (1 - slo:drova_trip_service_availability:ratio_rate5m) > (14.4 * (1 - 0.995))
+            and
+            (1 - slo:drova_trip_service_availability:ratio_rate1h) > (14.4 * (1 - 0.995))
+          for: 2m
+          labels:
+            severity: warning
+            priority: P2
+            tenant: drova
+            slo: trip-service-availability
+          annotations:
+            summary: "Drova trip-service: SLO fast burn (14.4× — 2d to budget exhaustion)"
+            description: "gRPC non-OK rate exceeds 7.2% on both 5m AND 1h windows."
+            dashboard_url: "/d/drova-slo"
+        - alert: DrovaTripServiceBurnRateSlow
+          expr: |
+            (1 - slo:drova_trip_service_availability:ratio_rate30m) > (6 * (1 - 0.995))
+            and
+            (1 - slo:drova_trip_service_availability:ratio_rate6h) > (6 * (1 - 0.995))
+          for: 15m
+          labels:
+            severity: warning
+            priority: P2
+            tenant: drova
+            slo: trip-service-availability
+          annotations:
+            summary: "Drova trip-service: SLO slow burn (6× — 5d to budget exhaustion)"
+            description: "Sustained gRPC error rate >3% on both 30m AND 6h windows."
+            dashboard_url: "/d/drova-slo"
+
+        # driver-service (gRPC)
+        - alert: DrovaDriverServiceBurnRateFast
+          expr: |
+            (1 - slo:drova_driver_service_availability:ratio_rate5m) > (14.4 * (1 - 0.995))
+            and
+            (1 - slo:drova_driver_service_availability:ratio_rate1h) > (14.4 * (1 - 0.995))
+          for: 2m
+          labels:
+            severity: warning
+            priority: P2
+            tenant: drova
+            slo: driver-service-availability
+          annotations:
+            summary: "Drova driver-service: SLO fast burn (14.4× — 2d to budget exhaustion)"
+            description: "gRPC non-OK rate exceeds 7.2% on both 5m AND 1h windows."
+            dashboard_url: "/d/drova-slo"
+        - alert: DrovaDriverServiceBurnRateSlow
+          expr: |
+            (1 - slo:drova_driver_service_availability:ratio_rate30m) > (6 * (1 - 0.995))
+            and
+            (1 - slo:drova_driver_service_availability:ratio_rate6h) > (6 * (1 - 0.995))
+          for: 15m
+          labels:
+            severity: warning
+            priority: P2
+            tenant: drova
+            slo: driver-service-availability
+          annotations:
+            summary: "Drova driver-service: SLO slow burn (6× — 5d to budget exhaustion)"
+            description: "Sustained gRPC error rate >3% on both 30m AND 6h windows."
+            dashboard_url: "/d/drova-slo"

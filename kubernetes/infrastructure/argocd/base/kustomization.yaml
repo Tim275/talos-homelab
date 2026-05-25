@@ -1,0 +1,40 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "3"
+
+# Manually render ServiceMonitors since Argo CD chart checks if they exist
+# Argo CD thinks the cluster doesn't have this capability
+# Could possibly alter the plugin
+# > helm template argo/argo-cd --api-versions monitoring.coreos.com/v1 -f values.yaml
+
+namespace: argocd
+
+resources:
+  - namespace.yaml                          # argocd ns (sync-wave -1) — self-contained für manual bootstrap
+  - httproute.yaml                          # Gateway API HTTPRoute for argo.timourhomelab.org
+  - argocd-slack-webhook-sealed.yaml        #  Slack webhook for ArgoCD Notifications
+  - oidc-secret.yaml                        # Keycloak OIDC client secret
+  # - state-backup-cronjob.yaml             # DR: disabled until rook-ceph block-storage ready
+  # - monitoring-ns.yaml      # Removed - managed by namespace-monitoring ApplicationSet
+  # - repo-cache-pvc.yaml     # Disabled - using emptyDir for bootstrap
+  # - argocd-servicemonitor.yaml # Moved to monitoring layer when VictoriaMetrics is installed
+  # - argocd-server-metrics-vmservicescrape.yaml # Moved to monitoring layer when VictoriaMetrics is installed
+  # - dashboard.yaml          # Removed - broken CRD validation, using centralized Grafana dashboards
+  # - redis-exporter.yaml     # Removed - using sidecar pattern in Helm values
+  # - argocd-dashboard.yaml   # DISABLED - moved from helmCharts (was causing YAML parsing error)
+
+# DISABLED: Patches not needed when using Application instead of direct HelmChart
+# patches:
+  # Fix service selectors for Helm-generated services
+  # - path: argocd-service-selector-fix.yaml
+
+# HELM CHART for manual bootstrap (kubectl kustomize --enable-helm)
+# Comment this out if deploying via ArgoCD Application instead
+helmCharts:
+  - name: argo-cd
+    repo: https://argoproj.github.io/argo-helm
+    version: 8.6.4
+    releaseName: "argocd"
+    namespace: argocd
+    valuesFile: values.yaml

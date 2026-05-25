@@ -1,0 +1,47 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hardware-host-sensors
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # CPU-temp >85 (warn-tier) + load + memory-pressure(<10%, dup of proxmox.yaml) → Grafana
+  # "Node Exporter / Nodes" dashboard. Kept the early-warning tickets: thermal-shutdown
+  # imminent (>95), host OOM (<5%), heavy swap (nipogi runs RAM-overcommitted).
+  groups:
+    - name: host-sensors
+      interval: 1m
+      rules:
+        - alert: HostCPUTemperatureCritical
+          expr: node_hwmon_temp_celsius > 95
+          for: 2m
+          labels:
+            severity: warning
+            component: hardware
+            priority: P2
+          annotations:
+            summary: "CPU/sensor {{ $labels.chip }} on {{ $labels.instance }} at {{ $value }}°C"
+            description: "Thermal shutdown imminent — host may power off. Check airflow / dust / fan."
+
+        - alert: HostMemoryCritical
+          expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.05
+          for: 5m
+          labels:
+            severity: warning
+            component: hardware
+            priority: P2
+          annotations:
+            summary: "{{ $labels.instance }} critically low RAM ({{ $value | humanizePercentage }})"
+            description: "OOM-killer likely active — VMs at risk of being killed (nipogi runs 84G allocated / 77G physical)."
+
+        - alert: HostSwapUsageHigh
+          expr: |
+            (node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes) / clamp_min(node_memory_SwapTotal_bytes, 1) > 0.5
+          for: 15m
+          labels:
+            severity: warning
+            component: hardware
+            priority: P2
+          annotations:
+            summary: "{{ $labels.instance }} swap >50% used"
+            description: "Host swapping heavily → severe performance degradation for VMs/Ceph."

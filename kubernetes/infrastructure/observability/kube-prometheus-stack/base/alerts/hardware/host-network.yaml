@@ -1,0 +1,54 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hardware-host-network
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # RX/TX drops + link saturation → Grafana "Node Exporter / Network" dashboard.
+  # Kept: bridge-down (node isolated = page), physical NIC errors, active-link lost.
+  groups:
+    # ── PAGE ──
+    - name: host-network-page
+      interval: 60s
+      rules:
+        - alert: HostBridgeDown
+          expr: node_network_up{device=~"vmbr.*"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            component: hardware
+          annotations:
+            summary: "{{ $labels.instance }} bridge {{ $labels.device }} is DOWN"
+            description: "Proxmox bridge down — all VM/host traffic on this bridge is cut (Ceph/cluster link affected)."
+
+    # ── TICKET ──
+    - name: host-network-ticket
+      interval: 60s
+      rules:
+        - alert: HostNetworkErrors
+          expr: |
+            rate(node_network_receive_errs_total{device!~"lo|veth.*|cni.*|tap.*|fwbr.*|fwln.*|fwpr.*|cilium.*|lxc.*"}[5m]) > 0
+            or
+            rate(node_network_transmit_errs_total{device!~"lo|veth.*|cni.*|tap.*|fwbr.*|fwln.*|fwpr.*|cilium.*|lxc.*"}[5m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+            component: hardware
+            priority: P2
+          annotations:
+            summary: "{{ $labels.instance }} NIC {{ $labels.device }} reporting errors"
+            description: "Hardware/link errors on physical NIC — check cable, port, driver. Ceph replication runs over this link."
+
+        - alert: HostActiveLinkLost
+          expr: |
+            node_network_up{device!~"lo|veth.*|cni.*|tap.*|fwbr.*|fwln.*|fwpr.*|cilium.*|lxc.*|vmbr.*"} == 0
+            and on (instance, device) (node_network_receive_bytes_total offset 1h > 0)
+          for: 5m
+          labels:
+            severity: warning
+            component: hardware
+            priority: P2
+          annotations:
+            summary: "{{ $labels.instance }} NIC {{ $labels.device }} lost link (was active)"
+            description: "A physical NIC that carried traffic in the last hour is now down."

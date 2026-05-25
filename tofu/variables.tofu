@@ -53,19 +53,20 @@ variable "talos_cluster_config" {
 variable "talos_nodes" {
   description = "Configuration for cluster nodes"
   type = map(object({
-    host_node        = string
-    machine_type     = string
-    datastore_id     = optional(string, "local-zfs")
-    ip               = string
-    mac_address      = string
-    vm_id            = number
-    cpu              = number
-    ram_dedicated    = number
-    dns              = optional(list(string))
-    update           = optional(bool, false)
-    igpu             = optional(bool, false)
-    os_disk_size     = optional(number, 50)   # OS disk size in GB
-    ceph_disk_size   = optional(number, 0)    # Ceph OSD disk size in GB (0 = no Ceph disk)
+    host_node           = string
+    machine_type        = string
+    datastore_id        = optional(string, "local-zfs")
+    ip                  = string
+    mac_address         = string
+    vm_id               = number
+    cpu                 = number
+    ram_dedicated       = number
+    dns                 = optional(list(string), ["192.168.0.1", "8.8.8.8"])
+    update              = optional(bool, false)
+    igpu                = optional(bool, false)
+    os_disk_size        = optional(number, 50) # OS disk size in GB
+    ceph_disk_size      = optional(number, 0)  # Ceph OSD disk size in GB (0 = no Ceph disk)
+    ceph_disk_datastore = optional(string)     # Datastore for Ceph disk (fallback: datastore_id)
   }))
 
   validation {

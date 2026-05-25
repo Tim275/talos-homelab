@@ -23,10 +23,9 @@ spec:
           - list:
               elements:
                 - { component: cilium,        appName: cilium,        path: kubernetes/infrastructure/network/cilium/overlays/prod,        namespace: kube-system,  wave: "0" }
-                - { component: coredns,       appName: coredns,       path: kubernetes/infrastructure/network/coredns/base,                namespace: kube-system,  wave: "0" }
-                - { component: gateway,       appName: gateway,       path: kubernetes/infrastructure/network/gateway/overlays/prod,       namespace: gateway,      wave: "2" }
-                - { component: cloudflared,   appName: cloudflared,   path: kubernetes/infrastructure/network/cloudflared/overlays/prod,   namespace: cloudflared,  wave: "3" }
-                - { component: redis-gateway, appName: redis-gateway, path: kubernetes/infrastructure/network/redis-gateway,               namespace: gateway,      wave: "3" }
+                - { component: gateway,       appName: gateway,       path: kubernetes/infrastructure/ingress/gateway/overlays/prod,       namespace: gateway,      wave: "70" }
+                - { component: cloudflared,   appName: cloudflared,   path: kubernetes/infrastructure/ingress/cloudflared/overlays/prod,   namespace: cloudflared,  wave: "70" }
+                - { component: redis-gateway, appName: redis-gateway, path: kubernetes/infrastructure/ingress/redis-gateway,               namespace: gateway,      wave: "70" }
   template:
     metadata:
       name: '{{.appName}}'
@@ -52,6 +51,21 @@ spec:
           jsonPointers:
             - /metadata/annotations
             - /metadata/labels
+        # Cilium operator generates + auto-rotates these TLS secrets.
+        # Helm-template provides them via 'lookup' but live values diverge after
+        # rotation → ArgoCD shows permanent OutOfSync. Ignore /data drift.
+        - kind: Secret
+          name: cilium-ca
+          jsonPointers:
+            - /data
+        - kind: Secret
+          name: hubble-relay-client-certs
+          jsonPointers:
+            - /data
+        - kind: Secret
+          name: hubble-server-certs
+          jsonPointers:
+            - /data
       syncPolicy:
         automated: { prune: true, selfHeal: true }
         syncOptions:
@@ -60,6 +74,7 @@ spec:
           - PruneLast=true
           - RespectIgnoreDifferences=true
           - ServerSideApply=true
+          - ApplyOutOfSyncOnly=true
         retry:
           limit: 5
           backoff: { duration: 5s, factor: 2, maxDuration: 3m }

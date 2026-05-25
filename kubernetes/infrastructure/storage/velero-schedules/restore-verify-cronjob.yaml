@@ -55,6 +55,7 @@ spec:
     spec:
       backoffLimit: 0           # 1 failure = job FAILED (CronJob retries via schedule)
       ttlSecondsAfterFinished: 86400
+      activeDeadlineSeconds: 7200   # 2h max — 2026-05-16: had stuck-12h job
       template:
         metadata:
           labels:
@@ -152,9 +153,11 @@ spec:
                     echo "═══ ✗ DR-Verify FAILED ($ERROR_REASON) for backup $LATEST ═══"
                     exit 1
                   fi
+              # Bumped 2026-05-16 — was 500m + had stuck-12h job. Velero-restore
+              # orchestrates PVC-snapshot-restores → needs more CPU+RAM headroom.
               resources:
-                requests: { cpu: 50m,  memory: 128Mi }
-                limits:   { cpu: 500m, memory: 256Mi }
+                requests: { cpu: 100m, memory: 256Mi }
+                limits:   { cpu: 1500m, memory: 512Mi }
           volumes:
             - name: tmp
               emptyDir: {}

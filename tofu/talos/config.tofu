@@ -40,8 +40,6 @@ resource "terraform_data" "cilium_bootstrap_inline_manifests" {
       })
     },
     {
-      # CRITICAL: CoreDNS ConfigMap override to use public DNS (8.8.8.8, 1.1.1.1)
-      # instead of Talos link-local DNS (169.254.116.108) which breaks in Proxmox VMs
       name     = "coredns-config"
       contents = file("${path.module}/inline-manifests/coredns-config.yaml")
     }
@@ -49,29 +47,28 @@ resource "terraform_data" "cilium_bootstrap_inline_manifests" {
 }
 
 data "talos_machine_configuration" "this" {
-  for_each     = var.nodes
-  cluster_name = var.cluster.name
+  for_each         = var.nodes
+  cluster_name     = var.cluster.name
   cluster_endpoint = "https://${local.kubernetes_endpoint}:6443"
-  talos_version = var.cluster.talos_machine_config_version
-  machine_type    = each.value.machine_type
-  machine_secrets = talos_machine_secrets.this.machine_secrets
+  talos_version    = var.cluster.talos_machine_config_version != null ? var.cluster.talos_machine_config_version : var.image.version
+  machine_type     = each.value.machine_type
+  machine_secrets  = talos_machine_secrets.this.machine_secrets
   config_patches = [
-    # Common configuration for ALL nodes
     templatefile("${path.module}/machine-config/common.yaml.tftpl", {
-      hostname     = each.key
-      cluster_name = var.cluster.proxmox_cluster
-      node_name    = each.value.host_node
+      hostname           = each.key
+      cluster_name       = var.cluster.proxmox_cluster
+      node_name          = each.value.host_node
+      kubernetes_version = var.cluster.kubernetes_version
     }),
-    # Node-type specific configuration
     each.value.machine_type == "controlplane" ?
     templatefile("${path.module}/machine-config/control-plane.yaml.tftpl", {
-      hostname       = each.key
-      cluster_name   = var.cluster.proxmox_cluster  
-      node_name      = each.value.host_node
-      ip             = each.value.ip
-      mac_address    = lower(each.value.mac_address)
-      gateway        = var.cluster.gateway
-      subnet_mask    = var.cluster.subnet_mask
+      hostname         = each.key
+      cluster_name     = var.cluster.proxmox_cluster
+      node_name        = each.value.host_node
+      ip               = each.value.ip
+      mac_address      = lower(each.value.mac_address)
+      gateway          = var.cluster.gateway
+      subnet_mask      = var.cluster.subnet_mask
       vip              = var.cluster.vip
       extra_manifests  = jsonencode(local.extra_manifests)
       inline_manifests = jsonencode(terraform_data.cilium_bootstrap_inline_manifests.output)
@@ -84,6 +81,7 @@ data "talos_machine_configuration" "this" {
       mac_address  = lower(each.value.mac_address)
       gateway      = var.cluster.gateway
       subnet_mask  = var.cluster.subnet_mask
+      dns          = each.value.dns != null ? each.value.dns : []
     })
   ]
 }
@@ -94,15 +92,19 @@ resource "talos_machine_configuration_apply" "this" {
   node                        = each.value.ip
   client_configuration        = talos_machine_secrets.this.client_configuration
   machine_configuration_input = data.talos_machine_configuration.this[each.key].machine_configuration
-  
-  
+  apply_mode                  = "auto"
+
+  timeouts = {
+    create = "5m"
+  }
+
   lifecycle {
     replace_triggered_by = [proxmox_virtual_environment_vm.this[each.key]]
   }
 }
 
 resource "talos_machine_bootstrap" "this" {
-  depends_on = [talos_machine_configuration_apply.this]
+  depends_on           = [talos_machine_configuration_apply.this]
   node                 = local.first_control_plane_node_ip
   client_configuration = talos_machine_secrets.this.client_configuration
 }
@@ -118,7 +120,7 @@ data "talos_cluster_health" "this" {
   worker_nodes           = [for k, v in var.nodes : v.ip if v.machine_type == "worker"]
   endpoints              = data.talos_client_configuration.this.endpoints
   timeouts = {
-    read = "10m"
+    read = "20m"
   }
 }
 

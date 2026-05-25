@@ -1,0 +1,678 @@
+# yamllint disable rule:line-length
+# https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml
+prometheus:
+  # PodDisruptionBudget — Talos-upgrade-resilience (battle-tested 2026-05-14):
+  # Ohne PDB konnte Talos-upgrade alle prometheus-Pods evicten → "Completed"-loop.
+  # minAvailable: 1 → mindestens 1 Replica überlebt rolling-node-drain.
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  prometheusSpec:
+    # HA: 2 replicas — Grafana deduplicates via prometheus_replica external label.
+    # Pod-Restart oder Eviction = NO scrape gap.
+    replicas: 2
+
+    externalLabels:
+      cluster: prod-talos
+      environment: prod
+      region: homelab-de
+      # grafana_url: used by Alertmanager template "alert.dashboard_url" to compose
+      # full grafana-URL from path-only annotations. Multi-cluster pattern:
+      # staging-overlay would override to "https://grafana-staging.timourhomelab.org".
+      grafana_url: "https://grafana.timourhomelab.org"
+
+    retention: 15d
+    retentionSize: "45GB"
+
+    # Resource limits — prevents Prometheus from being OOMKilled or starving the node.
+    # 2026-05-16: bumped 2Gi → 4Gi after 54 restarts/41h. Compaction was hitting
+    # 94% memory pressure, livenessProbe timeouts, kubelet kill loop.
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+
+    # Probe overrides MUST live under `containers` (strategic-merged by prometheus-operator).
+    # prometheusSpec.livenessProbe/startupProbe are SILENTLY IGNORED — verified 2026-05-23:
+    # live pods ran the 3s/5s/6 default (~30s tolerance), so a slow Ceph compaction (>30s)
+    # tripped liveness → crashloop → alert for:-timers reset → no alerts delivered.
+    # These actually apply (verify: kubectl get pod ... livenessProbe.timeoutSeconds == 10).
+    containers:
+      - name: prometheus
+        startupProbe:
+          timeoutSeconds: 10
+          periodSeconds: 30
+          failureThreshold: 300        # ~2.5h WAL-replay tolerance on slow Ceph
+        livenessProbe:
+          timeoutSeconds: 10
+          periodSeconds: 30
+          failureThreshold: 6          # ~3min — survives slow compactions (was 30s default)
+        readinessProbe:
+          timeoutSeconds: 10
+          periodSeconds: 15
+          failureThreshold: 6
+
+    # Prometheus 3.x: remote-write-receiver via enableFeatures is deprecated
+    # Must use additionalArgs with --web.enable-remote-write-receiver
+    additionalArgs:
+      - name: web.enable-remote-write-receiver
+        value: ""
+      # Exemplars Storage — Three-Pillar-Correlation
+      # (click histogram bucket → trace_id → opens Tempo trace)
+      - name: enable-feature
+        value: exemplar-storage
+
+    # Out-of-order ingestion (10m window) — accepts samples up to 10min stale.
+    # NOT a CLI flag — configured via prometheus-operator's tsdb field.
+    tsdb:
+      outOfOrderTimeWindow: 10m
+
+    podMonitorNamespaceSelector: {}
+    podMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    # nodeSelector:
+    #   topology.kubernetes.io/zone: abel
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: rook-ceph-block-enterprise  # Use your correct storage class
+          # volumeName: pv-prometheus  # Let Kubernetes auto-provision
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 50G
+          # selector:  # Remove specific PV selector, let Kubernetes handle it
+          #   matchLabels:
+          #     app: prometheus
+
+# https://github.com/siderolabs/talos/discussions/7214
+kubeControllerManager:
+  enabled: true
+  serviceMonitor:
+    relabelings:
+      - sourceLabels: [ __meta_kubernetes_pod_node_name ]
+        separator: ;
+        regex: ^(.*)$
+        targetLabel: nodename
+        replacement: $1
+        action: replace
+    metricRelabelings:
+      - action: labeldrop
+        regex: pod
+
+kubeEtcd:
+  enabled: true
+  service:
+    selector:
+      # etcd doesn't run as a container,
+      # but most probably runs on the same nodes that host a controller
+      k8s-app: kube-controller-manager
+  serviceMonitor:
+    relabelings:
+      - sourceLabels: [ __meta_kubernetes_pod_node_name ]
+        separator: ;
+        regex: ^(.*)$
+        targetLabel: nodename
+        replacement: $1
+        action: replace
+    metricRelabelings:
+      - action: labeldrop
+        regex: pod
+
+kubeProxy:
+  # Cilium replaces Kube Proxy
+  enabled: false
+
+kubeScheduler:
+  enabled: true
+  serviceMonitor:
+    relabelings:
+      - sourceLabels: [ __meta_kubernetes_pod_node_name ]
+        separator: ;
+        regex: ^(.*)$
+        targetLabel: nodename
+        replacement: $1
+        action: replace
+    metricRelabelings:
+      - action: labeldrop
+        regex: pod
+
+nodeExporter:
+  enabled: true
+
+grafana:
+  enabled: false
+  forceDeployDatasources: false
+  forceDeployDashboards: false
+  defaultDashboardsEnabled: false
+  defaultDashboardsTimezone: Europe/Berlin  # Fixed timezone for Germany
+  operator:
+    dashboardsConfigMapRefEnabled: true
+    matchLabels:
+      app: grafana
+    folder: Kubernetes
+
+defaultRules:
+  create: true
+  # Disable specific upstream alerts that have known math bugs (their PromQL gives
+  # nonsense values like "300%" or "+Inf%"). We replace them with corrected rules
+  # in base/alerts/observability/alertmanager-fixed.yaml.
+  disabled:
+    AlertmanagerFailedToSendAlerts: true
+    AlertmanagerClusterFailedToSendAlerts: true
+  rules:
+    alertmanager: true
+    configReloaders: true
+    general: true
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    kubeStateMetrics: true
+    kubePrometheusGeneral: true
+    kubePrometheusNodeRecording: true
+    nodeExporterAlerting: true
+    nodeExporterRecording: true
+    prometheus: true
+    prometheusOperator: true
+
+    etcd: false
+    k8s: false
+    kubeApiserverAvailability: false
+    kubeApiserverBurnrate: false
+    kubeApiserverHistogram: false
+    kubeApiserverSlos: false
+    kubeControllerManager: false
+    kubelet: false
+    kubeProxy: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    network: false
+    node: false
+    windows: false
+
+prometheusOperator:
+  admissionWebhooks:
+    enabled: false  # Disable admission webhooks completely
+    patch:
+      enabled: false
+    certManager:
+      enabled: false
+  # Disable TLS completely to avoid cert mount issues
+  tls:
+    enabled: false
+  # Homelab Stability: Resource limits for Prometheus Operator
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m     # 10x burst for CRD operations
+      memory: 1Gi    # 4x headroom for operator
+
+# Homelab Stability: Resource limits for Kube State Metrics
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 50m       # Actual: ~7m CPU
+      memory: 64Mi   # Actual: ~27Mi memory
+    limits:
+      cpu: 500m      # 10x burst for metrics collection
+      memory: 512Mi  # ~20x headroom for cluster growth
+
+  # KSM tolerates slow API-server (talos single-node control-plane occasionally
+  # returns 503 → KSM /livez returns 503 → kubelet kills → restart loop).
+  # failureThreshold: 10 gives 100s tolerance for transient API-server slowness.
+  livenessProbe:
+    initialDelaySeconds: 60
+    periodSeconds: 10
+    timeoutSeconds: 10
+    failureThreshold: 10
+  readinessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 10
+    failureThreshold: 6
+
+alertmanager:
+  # PodDisruptionBudget — gossip-mesh-resilience (battle-tested 2026-05-14):
+  # Heute war alertmanager-0 16h silent-dead nach Talos-upgrade. minAvailable: 2
+  # → bei 3 Replicas darf nur 1 gleichzeitig evicted werden → gossip-mesh
+  # behält Quorum (3/3 → 2/3 OK, 1/3 disruptionsAllowed=0 → next evict blocked).
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+  alertmanagerSpec:
+    replicas: 3
+    retention: 720h
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: rook-ceph-block-enterprise
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+    secrets:
+      - slack-webhook-url
+      - watchdog-webhook-url
+      - telegram-bot-token
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+  config:
+    global:
+      resolve_timeout: 5m
+      slack_api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
+
+    templates:
+      - '/etc/alertmanager/config/*.tmpl'
+
+    # ROUTING TREE - Priority-based with severity fallback
+
+    route:
+      receiver: 'slack-default'
+      group_by: ['alertname', 'namespace', 'severity']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+
+      routes:
+
+        # Watchdog → healthchecks.io Dead-Mans-Switch (2026-05-17 enabled)
+        # InfoInhibitor stays silent-dropped via 'null'.
+        # Separate routes: Watchdog matched alone (NOT regex with InfoInhibitor)
+        # to keep webhook-pings clean (no garbage InfoInhibitor pings).
+        - matchers:
+            - alertname="Watchdog"
+          receiver: 'watchdog-heartbeat'
+          group_wait: 0s
+          group_interval: 1m
+          repeat_interval: 1m
+        - matchers:
+            - alertname="InfoInhibitor"
+          receiver: 'null'
+        # TargetDown noise — too noisy during rolling restarts
+        # Route to slack-info (silent channel), longer repeat-interval
+        - matchers:
+            - alertname=~"TargetDown|KubeDeploymentReplicasMismatch|KubeJobFailed"
+          receiver: 'slack-default'
+          group_wait: 5m
+          group_interval: 30m
+          repeat_interval: 12h
+          continue: false
+
+        - matchers:
+            - severity="critical"
+            - priority=~"p0|P0"
+          receiver: 'slack-critical'
+          group_wait: 10s
+          group_interval: 1m
+          repeat_interval: 30m
+          continue: false
+
+        # Major degradation, users actively impacted
+        - matchers:
+            - severity="critical"
+          receiver: 'slack-critical'
+          group_wait: 10s
+          group_interval: 2m
+          repeat_interval: 1h
+          continue: false
+
+        - matchers:
+            - priority=~"p1|P1"
+          receiver: 'slack-critical'
+          group_wait: 15s
+          group_interval: 3m
+          repeat_interval: 1h
+          continue: false
+
+        # Partial issues, workaround available
+        - matchers:
+            - severity="warning"
+          receiver: 'slack-default'
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 2h
+          continue: false
+
+        - matchers:
+            - priority=~"p2|P2"
+          receiver: 'slack-default'
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 2h
+          continue: false
+
+        # Minor issues, informational → suppressed (Dashboard, no notification)
+        - matchers:
+            - severity="info"
+          receiver: 'null'
+          continue: false
+
+        - matchers:
+            - priority=~"p3|P3|p4|P4"
+          receiver: 'slack-info'
+          group_wait: 1m
+          group_interval: 10m
+          repeat_interval: 12h
+          continue: false
+
+    # INHIBITION RULES - Suppress lower priority when higher is firing
+    # Based on: https://www.neteye-blog.com/2025/06/alertmanager-alert-filtering-rules/
+
+    inhibit_rules:
+      # Critical suppresses Warning for same alert
+      - source_matchers:
+          - severity="critical"
+        target_matchers:
+          - severity="warning"
+        equal: ['alertname', 'namespace']
+
+      # Critical suppresses Info
+      - source_matchers:
+          - severity="critical"
+        target_matchers:
+          - severity="info"
+        equal: ['alertname', 'namespace']
+
+      # Warning suppresses Info
+      - source_matchers:
+          - severity="warning"
+        target_matchers:
+          - severity="info"
+        equal: ['alertname', 'namespace']
+
+      # P0 suppresses P1/P2/P3/P4
+      - source_matchers:
+          - priority=~"p0|P0"
+        target_matchers:
+          - priority=~"p1|P1|p2|P2|p3|P3|p4|P4"
+        equal: ['job', 'namespace']
+
+      # P1 suppresses P2/P3/P4
+      - source_matchers:
+          - priority=~"p1|P1"
+        target_matchers:
+          - priority=~"p2|P2|p3|P3|p4|P4"
+        equal: ['job', 'namespace']
+
+      # Node down suppresses all pod alerts on that node
+      - source_matchers:
+          - alertname="NodeDown"
+        target_matchers:
+          - alertname=~"Pod.*|Container.*|Kube.*"
+        equal: ['node']
+
+      # Cluster down suppresses node alerts
+      - source_matchers:
+          - alertname=~".*ClusterDown|.*ClusterUnhealthy"
+        target_matchers:
+          - alertname=~".*NodeDown|.*OSDDown"
+        equal: ['cluster']
+
+      # API Server down suppresses controller alerts
+      - source_matchers:
+          - alertname="KubeAPIServerDown"
+        target_matchers:
+          - alertname=~"KubeController.*|KubeScheduler.*|ArgoCD.*"
+
+      # Upstream KubeNodeNotReady → suppress all pod/container alerts on that node
+      - source_matchers:
+          - alertname="KubeNodeNotReady"
+        target_matchers:
+          - alertname=~"KubePod.*|KubeContainer.*|PodNotReady|PodOOMKilled|DrovaPodNotReady|ContainerWaiting"
+        equal: ['node']
+
+      - source_matchers:
+          - alertname="KubeletDown"
+        target_matchers:
+          - alertname=~"KubePod.*|KubeContainer.*|PodNotReady|PodOOMKilled|DrovaPodNotReady|ContainerWaiting|KubeDaemonSet.*"
+        equal: ['node']
+
+      - source_matchers:
+          - alertname="CnpgPrimaryDown"
+        target_matchers:
+          - alertname=~"CnpgReplicationLagHigh|DrovaPostgresReplicationLag|PostgreSQLReplicationLag"
+
+      - source_matchers:
+          - alertname=~"CephHealthError|CephClusterError"
+        target_matchers:
+          - alertname=~"CephOSDDown|CephOSDSlowOps|CephOSDNearfull|CephPGNotActive"
+
+      - source_matchers:
+          - alertname=~"VeleroDown|VeleroBackupNotRunning"
+        target_matchers:
+          - alertname=~"VeleroNoRecentBackup|VeleroNoRecentBackupExtended|VeleroBackupPartialFailure|VeleroBackupFailure"
+
+      - source_matchers:
+          - alertname="OtelCollectorQueueFull"
+        target_matchers:
+          - alertname=~"OtelCollectorExportFailing|TempoIngesterDown"
+
+      - source_matchers:
+          - alertname=~"ArgoCDControllerDown|ArgoCDRepoServerDown"
+        target_matchers:
+          - alertname=~"ArgoCDApplicationSyncFailed|ArgoCDApplicationOutOfSync"
+
+      - source_matchers:
+          - alertname=~"KafkaBrokerDown|KafkaQuorumLeaderless"
+        target_matchers:
+          - alertname=~"KafkaConsumerLagHigh|KafkaControllerEventSlow|KafkaTopicUnderReplicated"
+
+      - source_matchers:
+          - alertname=~"CoreDNSDown|KubeDNSDown"
+        target_matchers:
+          - alertname=~"CoreDNSErrorsHigh|DNSLatencyHigh|FQDNResolutionFailing"
+
+      - source_matchers:
+          - alertname="ElasticsearchClusterRed"
+        target_matchers:
+          - alertname=~"ElasticsearchClusterYellow|ElasticsearchIndexUnassigned"
+
+    receivers:
+
+      - name: 'null'
+
+      # Dead-man's-switch external receiver. The webhook URL must be a
+      # healthchecks.io ping URL (or equivalent silent-alarm service). It must
+      # be sealed because the URL itself is the secret. To set up:
+      #   1. Create a check at https://healthchecks.io/ with period=1m, grace=2m
+      #   2. Copy the ping URL (looks like https://hc-ping.com/<uuid>)
+      #   3. Update the watchdog-webhook-sealed.yaml in this overlay
+      #   4. Configure healthchecks.io to email/SMS you when silent for >2m
+      - name: 'watchdog-heartbeat'
+        webhook_configs:
+          - url_file: /etc/alertmanager/secrets/watchdog-webhook-url/url
+            send_resolved: false
+            max_alerts: 1
+
+      # ── PAGE tier (critical) → Slack #alerts + Telegram (phone) ──
+      # The ONLY receiver that buzzes the phone. Page + ticket SHARE #alerts on purpose
+      # (one channel is fine) — Telegram is what separates "act now" from "look later".
+      # To split Slack later: change channel to '#alerts-critical' (create it in Slack first).
+      - name: 'slack-critical'
+        slack_configs:
+          - channel: '#alerts'   # shared with warnings; Telegram (this receiver only) is the page separator
+            send_resolved: true
+            title: '{{ template "slack.title" . }}'
+            text: '{{ template "slack.body" . }}'
+            color: '{{ template "slack.color" . }}'
+            actions: &critical-actions
+              - type: button
+                text: 'Runbook :book:'
+                url: '{{ if (index .Alerts 0).Annotations.runbook_url }}{{ (index .Alerts 0).Annotations.runbook_url }}{{ else }}https://github.com/Tim275/talos-homelab/tree/main/docs/runbooks{{ end }}'
+              - type: button
+                text: 'Dashboard :bar_chart:'
+                # Multi-cluster: composes URL from external_labels.grafana_url + annotation path.
+                # Path-only annotations like "/d/drova-slo" get prefixed automatically.
+                url: '{{ if (index .Alerts 0).Annotations.dashboard_url }}{{ template "alert.dashboard_url" . }}{{ else }}{{ if .CommonLabels.grafana_url }}{{ .CommonLabels.grafana_url }}{{ else }}https://grafana.timourhomelab.org{{ end }}{{ end }}'
+              - type: button
+                text: 'Query :mag:'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: 'Silence 2h :no_bell:'
+                url: '{{ template "slack.silenceURL" . }}'
+        telegram_configs:
+          - bot_token_file: /etc/alertmanager/secrets/telegram-bot-token/token
+            chat_id: 8449184586
+            parse_mode: ""
+            send_resolved: true
+            message: '{{ template "telegram.body" . }}'
+
+      # ── TICKET tier (warning) → Slack #alerts ONLY, no Telegram ──
+      # Tickets must NOT buzz the phone. This is the page/ticket split: phone =
+      # the 25 criticals, Slack = the full digest of everything (warnings included).
+      - name: 'slack-default'
+        slack_configs:
+          - channel: '#alerts'
+            send_resolved: true
+            title: '{{ template "slack.title" . }}'
+            text: '{{ template "slack.body" . }}'
+            color: '{{ template "slack.color" . }}'
+            actions: *critical-actions
+
+      - name: 'slack-info'
+        slack_configs:
+          - channel: '#alerts'
+            send_resolved: false
+            title: '{{ template "slack.title" . }}'
+            text: '{{ template "slack.body" . }}'
+            color: '{{ template "slack.color" . }}'
+            actions:
+              - type: button
+                text: 'Query :mag:'
+                url: '{{ (index .Alerts 0).GeneratorURL }}'
+              - type: button
+                text: 'Silence 2h :no_bell:'
+                url: '{{ template "slack.silenceURL" . }}'
+
+      # ─────────────────────────────────────────────────────────────────────
+      # EMAIL receiver — OPTIONAL template (commented). How to receive alerts by
+      # mail + how to onboard a teammate. Uncomment, add the smtp_* global below +
+      # a sealed smtp password, then add an email route.
+      # ─────────────────────────────────────────────────────────────────────
+      # 1) Add to `global:` (top of this config) — smarthost + sealed app-password:
+      #      smtp_smarthost: 'smtp.gmail.com:587'
+      #      smtp_from: 'homelab-alerts@yourdomain.org'
+      #      smtp_auth_username: 'homelab-alerts@yourdomain.org'
+      #      smtp_auth_password_file: /etc/alertmanager/secrets/smtp-password/password
+      #
+      # 2) The receiver. BEST PRACTICE: send to a DISTRIBUTION LIST (oncall@company),
+      #    not individuals — onboarding a new teammate = add them to that list in your
+      #    mail provider, with ZERO change here. If you must list people inline, use a
+      #    comma-separated `to:`.
+      # - name: 'email-oncall'
+      #   email_configs:
+      #     - to: 'oncall@yourdomain.org'          # ← distribution list (preferred)
+      #       # to: 'alice@x.org, bob@x.org'       # ← or explicit, comma-separated
+      #       send_resolved: true
+      #       headers:
+      #         subject: '[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}'
+      #
+      # 3) Route critical → email too (add under route.routes, next to slack-critical):
+      #      - matchers: [ severity="critical" ]
+      #        receiver: 'email-oncall'
+      #        continue: true   # ← keep going to Slack/Telegram as well
+
+  templateFiles:
+    homelab.tmpl: |-
+      {{ define "slack.icon" -}}
+      {{ if eq .Status "resolved" }}:white_check_mark:
+      {{- else if eq .CommonLabels.severity "critical" }}:rotating_light:
+      {{- else if eq .CommonLabels.severity "warning" }}:warning:
+      {{- else }}:information_source:
+      {{- end -}}
+      {{ end }}
+
+      {{ define "slack.title" -}}
+      [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ template "slack.icon" . }} {{ .CommonLabels.alertname }}
+      {{- end }}
+
+      {{ define "slack.color" -}}
+      {{ if eq .Status "resolved" }}good
+      {{- else if eq .CommonLabels.severity "critical" }}danger
+      {{- else if eq .CommonLabels.severity "warning" }}warning
+      {{- else }}#439FE0
+      {{- end -}}
+      {{ end }}
+
+      {{ define "resource.slack" -}}
+      {{ if .Labels.deployment }}*Resource:* `deployment/{{ .Labels.deployment }}`
+      {{- else if .Labels.statefulset }}*Resource:* `statefulset/{{ .Labels.statefulset }}`
+      {{- else if .Labels.daemonset }}*Resource:* `daemonset/{{ .Labels.daemonset }}`
+      {{- else if .Labels.persistentvolumeclaim }}*Resource:* `pvc/{{ .Labels.persistentvolumeclaim }}`
+      {{- else if and .Labels.pod (ne .Labels.job "kube-state-metrics") (ne .Labels.service "kube-state-metrics") }}*Resource:* `pod/{{ .Labels.pod }}`
+      {{- else if .Labels.instance }}*Resource:* `instance/{{ .Labels.instance }}`
+      {{- else if .Labels.node }}*Resource:* `node/{{ .Labels.node }}`
+      {{- end -}}
+      {{ end }}
+
+      {{ define "resource.telegram" -}}
+      {{ if .Labels.deployment }}<b>Resource:</b> <code>deployment/{{ .Labels.deployment }}</code>
+      {{- else if .Labels.statefulset }}<b>Resource:</b> <code>statefulset/{{ .Labels.statefulset }}</code>
+      {{- else if .Labels.daemonset }}<b>Resource:</b> <code>daemonset/{{ .Labels.daemonset }}</code>
+      {{- else if .Labels.persistentvolumeclaim }}<b>Resource:</b> <code>pvc/{{ .Labels.persistentvolumeclaim }}</code>
+      {{- else if and .Labels.pod (ne .Labels.job "kube-state-metrics") (ne .Labels.service "kube-state-metrics") }}<b>Resource:</b> <code>pod/{{ .Labels.pod }}</code>
+      {{- else if .Labels.instance }}<b>Resource:</b> <code>instance/{{ .Labels.instance }}</code>
+      {{- else if .Labels.node }}<b>Resource:</b> <code>node/{{ .Labels.node }}</code>
+      {{- end -}}
+      {{ end }}
+
+      {{ define "slack.body" -}}
+      {{ range .Alerts -}}
+      *Severity:* `{{ .Labels.severity | toUpper }}`{{ if .Labels.priority }}  ·  *Priority:* `{{ .Labels.priority | toUpper }}`{{ end }}{{ if .Labels.component }}  ·  *Component:* `{{ .Labels.component }}`{{ end }}
+      {{ if .Labels.namespace }}*Namespace:* `{{ .Labels.namespace }}`  {{ end }}{{ template "resource.slack" . }}
+
+      *Summary:* {{ .Annotations.summary }}
+      {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}
+      {{ end }}{{ if .Annotations.impact }}*Impact:* {{ .Annotations.impact }}
+      {{ end }}{{ if .Annotations.action }}*Action:* {{ .Annotations.action }}
+      {{ end }}
+      {{ end -}}
+      {{ end }}
+
+      {{ define "telegram.body" -}}
+      {{ if eq .Status "firing" }}🔥 [FIRING:{{ .Alerts.Firing | len }}]{{ else }}✅ [RESOLVED]{{ end }} {{ .CommonLabels.alertname }}
+
+      {{ range $i, $a := .Alerts -}}
+      {{- if lt $i 5 -}}
+      ━━━━━━━━━━━━━━━━━━━━
+      Severity: {{ .Labels.severity | toUpper }}{{ if .Labels.priority }} · Priority: {{ .Labels.priority | toUpper }}{{ end }}
+      {{ if .Labels.namespace }}Namespace: {{ .Labels.namespace }}
+      {{ end }}{{ template "resource.telegram" . }}
+      Summary: {{ .Annotations.summary }}
+      {{ if .Annotations.dashboard_url }}{{ .Annotations.dashboard_url }}{{ else }}https://grafana.timourhomelab.org{{ end }}
+      {{ end -}}
+      {{ end -}}
+      {{ if gt (len .Alerts) 5 }}…and more alerts in this group (see Slack){{ end }}
+      {{ end }}
+
+      {{ define "slack.silenceURL" -}}
+      {{ .ExternalURL }}/#/silences/new?filter=%7B
+      {{- range $k, $v := .CommonLabels -}}
+      {{- if ne $k "alertname" -}}
+      {{ $k }}%3D%22{{ $v }}%22%2C
+      {{- end -}}
+      {{- end -}}
+      alertname%3D%22{{ .CommonLabels.alertname }}%22%7D
+      {{- end }}
+
+      {{ define "alert.dashboard_url" -}}
+      {{- $grafana := "https://grafana.timourhomelab.org" -}}
+      {{- if .CommonLabels.grafana_url -}}{{- $grafana = .CommonLabels.grafana_url -}}{{- end -}}
+      {{ $grafana }}{{ (index .Alerts 0).Annotations.dashboard_url }}
+      {{- end }}

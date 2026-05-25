@@ -1,0 +1,139 @@
+# keycloak-config-cli — realm-as-code with native ${VAR} substitution from env/secrets.
+# Replaces the operator KeycloakRealmImport (which leaves ${...} placeholders literal).
+# All IMPORT_MANAGED_* = no-delete → only creates/updates, never deletes (safe).
+#
+# Runs as an ArgoCD PostSync hook (not a CronJob): the realm is imported on every
+# successful sync — i.e. immediately on a fresh bootstrap AND whenever realm config
+# changes in git. Replaces the old hourly CronJob (which left the realm missing for
+# up to an hour after a rebuild). config-cli waits for Keycloak internally
+# (KEYCLOAK_AVAILABILITYCHECK), so it self-orders after the Keycloak instance is up.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-config-cli
+  namespace: keycloak
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: config-cli
+          image: docker.io/adorsys/keycloak-config-cli:6.5.1-25
+          env:
+            - name: KEYCLOAK_URL
+              value: http://keycloak-service:8080
+            - name: KEYCLOAK_USER
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-initial-admin
+                  key: username
+            - name: KEYCLOAK_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-initial-admin
+                  key: password
+            - name: KEYCLOAK_AVAILABILITYCHECK_ENABLED
+              value: "true"
+            - name: KEYCLOAK_AVAILABILITYCHECK_TIMEOUT
+              value: "120s"
+            - name: IMPORT_FILES_LOCATIONS
+              value: /config/realm-kubernetes.yaml
+            - name: IMPORT_VAR_SUBSTITUTION_ENABLED
+              value: "true"
+            - name: IMPORT_MANAGED_CLIENT
+              value: "no-delete"
+            - name: IMPORT_MANAGED_CLIENT_SCOPE
+              value: "no-delete"
+            - name: IMPORT_MANAGED_GROUP
+              value: "no-delete"
+            - name: IMPORT_MANAGED_ROLE
+              value: "no-delete"
+            - name: IMPORT_MANAGED_REQUIRED_ACTION
+              value: "no-delete"
+            - name: IMPORT_MANAGED_IDENTITY_PROVIDER
+              value: "no-delete"
+            - name: IMPORT_MANAGED_COMPONENT
+              value: "no-delete"
+            - name: IMPORT_MANAGED_SUB_COMPONENT
+              value: "no-delete"
+            - name: IMPORT_MANAGED_AUTHENTICATION_FLOW
+              value: "no-delete"
+            - name: LLDAP_BIND_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-lldap-admin
+                  key: password
+            - name: ARGOCD_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: argocd-oidc-client-secret
+                  key: clientSecret
+            - name: GRAFANA_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-grafana-client-secret
+                  key: clientSecret
+            - name: KUBECTL_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-kubectl-client-secret
+                  key: clientSecret
+            - name: HUBBLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-hubble-client-secret
+                  key: clientSecret
+            - name: SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-smtp
+                  key: user
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-smtp
+                  key: password
+            - name: SMTP_FROM
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-smtp
+                  key: from
+            - name: SMTP_REPLY_TO
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-smtp
+                  key: replyTo
+          volumeMounts:
+            - name: realm
+              mountPath: /config
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+      volumes:
+        - name: realm
+          configMap:
+            name: keycloak-realm-config
+        - name: tmp
+          emptyDir: {}

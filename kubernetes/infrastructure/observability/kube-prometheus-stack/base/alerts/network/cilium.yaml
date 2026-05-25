@@ -1,0 +1,77 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: network-cilium
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # CiliumAgentsCrashing(>1) is the page; single-agent + Info duplicates → dashboard.
+  # Kept one SPIRE alert (agent — the 2026-05-13 silent-mTLS-breakage), dropped the duplicate
+  # server/encryption-missing variants. Hubble relay (visibility only) → dashboard.
+  groups:
+    # ── PAGE ──
+    - name: cilium-page
+      interval: 60s
+      rules:
+        - alert: CiliumAgentsCrashing
+          expr: count(up{job="cilium-agent"} == 0) > 1
+          for: 5m
+          labels:
+            severity: critical
+            component: network
+          annotations:
+            summary: "Multiple Cilium agents down ({{ $value }})"
+            description: "More than 1 Cilium agent unreachable — pod-to-pod networking degraded cluster-wide."
+
+    # ── TICKET ──
+    - name: cilium-ticket
+      interval: 60s
+      rules:
+        - alert: CiliumOperatorDown
+          expr: sum(up{job="cilium-operator"}) < 1
+          for: 10m
+          keep_firing_for: 5m
+          labels:
+            severity: warning
+            component: network
+            priority: P2
+          annotations:
+            summary: "Cilium operator down (all replicas)"
+            description: "New IPs/policies cannot be programmed. (Dampened — single-master restart-storms are benign.)"
+
+        - alert: SPIREAgentDown
+          expr: |
+            count(kube_namespace_status_phase{namespace="cilium-spire",phase="Active"} == 1)
+            and on()
+            sum(kube_daemonset_status_number_unavailable{namespace="cilium-spire",daemonset="spire-agent"}) > 0
+          for: 10m
+          labels:
+            severity: warning
+            component: security
+            priority: P2
+          annotations:
+            summary: "SPIRE-Agents down — Cilium mTLS not enforced"
+            description: "Without SPIRE, mTLS-required NetworkPolicies silently stop enforcing (4-day breakage on 2026-05-13)."
+            action: "kubectl rollout restart -n cilium-spire daemonset/spire-agent"
+
+        - alert: CiliumEncryptionDisabled
+          expr: count(cilium_feature_adv_connect_and_lb_transparent_encryption == 0) > 0
+          for: 5m
+          labels:
+            severity: warning
+            component: network
+            priority: P2
+          annotations:
+            summary: "Cilium WireGuard encryption disabled on {{ $value }} agents"
+            description: "Pod traffic not encrypted — investigate WireGuard transparent encryption."
+
+        - alert: HubbleHighPolicyDrops
+          expr: sum(rate(hubble_drop_total{reason="POLICY_DENIED"}[5m])) > 10
+          for: 10m
+          labels:
+            severity: warning
+            component: network
+            priority: P2
+          annotations:
+            summary: "High NetworkPolicy denial rate ({{ $value | humanize }}/s)"
+            description: "Many flows dropped by NetworkPolicies — misconfigured policy or attempted lateral movement."

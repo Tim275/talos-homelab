@@ -1,0 +1,392 @@
+# Vector Aggregator Configuration - Central log processor (replaces Fluentd)
+# Runs as Deployment with 2 replicas
+
+data_dir = "/vector-data-dir"
+
+[api]
+enabled = true
+address = "0.0.0.0:8686"
+
+# Receive from Vector Agents
+[sources.vector_agents]
+type = "vector"
+address = "0.0.0.0:6000"
+version = "2"
+
+# Proxmox syslog input
+[sources.proxmox_syslog]
+type = "syslog"
+address = "0.0.0.0:5140"
+mode = "udp"
+
+# Direct Talos etcd logs from control plane - DISABLED (talosctl not available in container)
+# [sources.talos_etcd_logs]
+# type = "exec"
+# mode = "scheduled"
+# command = ["talosctl", "-n", "192.168.68.101", "logs", "etcd", "--tail"]
+# scheduled.exec_interval_secs = 30
+
+# Direct Talos kubelet logs from workers (sample from worker-1) - DISABLED (talosctl not available in container)
+# [sources.talos_kubelet_logs]
+# type = "exec"
+# mode = "scheduled"
+# command = ["talosctl", "-n", "192.168.68.103", "logs", "kubelet", "--tail"]
+# scheduled.exec_interval_secs = 30
+
+# Process Proxmox logs and add metadata
+[transforms.process_proxmox_logs]
+type = "remap"
+inputs = ["proxmox_syslog"]
+source = '''
+.source = "proxmox"
+.cluster = "talos-homelab"
+.datacenter = "homelab"
+.node_type = "hypervisor"
+
+# ═══════════════════════════════════════════════════════════════
+# ELASTIC BEST PRACTICE: Namespace differentiation by hostname
+# ═══════════════════════════════════════════════════════════════
+# Extract hostname from syslog metadata to differentiate hosts
+.proxmox_hostname = if exists(.hostname) {
+  downcase(string!(.hostname))
+} else if contains(string!(.message), "nipogi") {
+  "nipogi"
+} else if contains(string!(.message), "minisforum") {
+  "minisforum"
+} else {
+  "unknown"
+}
+
+# Set namespace for data stream routing (Elastic Standard)
+.namespace_suffix = .proxmox_hostname
+'''
+
+# Process Talos system logs from direct talosctl access - DISABLED (talosctl not available in container)
+# [transforms.process_talos_system_logs]
+# type = "remap"
+# inputs = ["talos_etcd_logs", "talos_kubelet_logs"]
+# source = '''
+# .source = "talos-direct"
+# .cluster = "talos-homelab"
+# .environment = "production"
+#
+# # ═══════════════════════════════════════════════════════════════
+# # ELASTIC BEST PRACTICE: Node role separation (control-plane vs workers)
+# # ═══════════════════════════════════════════════════════════════
+# # Detect node role based on IP address
+# if exists(.node_ip) {
+#   .node_ip = .node_ip
+# } else {
+#   .node_ip = "192.168.68.101"  # Default to control plane
+# }
+#
+# # Determine node role from IP (control-plane: .101, workers: .103-.108)
+# .node_role = if .node_ip == "192.168.68.101" {
+#   "control-plane"
+# } else if match(string!(.node_ip), r'^192\.168\.68\.10[3-8]$') {
+#   "worker"
+# } else {
+#   "unknown"
+# }
+#
+# # Detect log type and assign service name
+# if contains(string!(.message), "etcd") || exists(.component) && .component == "etcd" {
+#   .service_name = "etcd"
+# } else if contains(string!(.message), "kubelet") {
+#   .service_name = "kubelet"
+# } else {
+#   .service_name = "talos-system"
+# }
+#
+# # Set namespace for data stream routing (node role differentiation)
+# .namespace_suffix = .node_role
+# '''
+
+# Parse and enrich all logs - SERVICE-BASED
+[transforms.enrich_logs]
+type = "remap"
+inputs = ["vector_agents", "process_proxmox_logs"]
+source = '''
+# Set default namespace_suffix if not already set
+if !exists(.namespace_suffix) {
+  .namespace_suffix = "default"
+}
+
+# ═══════════════════════════════════════════════════════════════
+# FIX: Remove nested Kubernetes labels that break Elasticsearch
+# ═══════════════════════════════════════════════════════════════
+# Labels like app.kubernetes.io/name cause ES parsing errors
+del(.kubernetes.pod_labels)
+del(.kubernetes.namespace_labels)
+del(.kubernetes.node_labels)
+del(.kubernetes.pod_annotations)
+
+# Add timestamp if missing
+if !exists(.timestamp) {
+  .timestamp = now()
+}
+
+# Standardize log level
+if exists(.level) {
+  .level = downcase(to_string(.level) ?? "info")
+} else if contains(to_string(.message) ?? "", "ERROR") || contains(to_string(.message) ?? "", "error") {
+  .level = "error"
+} else if contains(to_string(.message) ?? "", "WARN") || contains(to_string(.message) ?? "", "warn") {
+  .level = "warn"
+} else {
+  .level = "info"
+}
+
+# ═══════════════════════════════════════════════════════════════
+# TIER-0: Service-Based Index Routing
+# ═══════════════════════════════════════════════════════════════
+.namespace = to_string(.kubernetes.namespace) ?? "unknown"
+
+# ═══════════════════════════════════════════════════════════════
+# OMS (Order Management System) - 7 Service-Specific Indices
+# ═══════════════════════════════════════════════════════════════
+# Backend: gateway, orders, payments, stock, kitchen
+# Frontend: customer-app, kitchen-display
+
+# Extract pod name for OMS service detection
+pod_name = to_string(.kubernetes.pod_name) ?? ""
+
+# Service-based routing (use service_name for routing, not service which is ECS nested object)
+.service_name = if .namespace == "oms" {
+  # OMS Service Detection based on pod name prefix
+  if starts_with(pod_name, "gateway") {
+    "oms-gateway"
+  } else if starts_with(pod_name, "orders") {
+    "oms-orders"
+  } else if starts_with(pod_name, "payments") {
+    "oms-payments"
+  } else if starts_with(pod_name, "stock") {
+    "oms-stock"
+  } else if starts_with(pod_name, "kitchen-display") {
+    "oms-kitchen-display"
+  } else if starts_with(pod_name, "kitchen") {
+    "oms-kitchen"
+  } else if starts_with(pod_name, "customer-app") {
+    "oms-customer-app"
+  } else {
+    # Fallback for other OMS pods (mongodb, rabbitmq, etc.)
+    "oms-infra"
+  }
+} else if .namespace == "kube-system" {
+  "kube-system"
+} else if .namespace == "rook-ceph" {
+  "rook-ceph"
+} else if .namespace == "argocd" {
+  "argocd"
+} else if .namespace == "cert-manager" {
+  "cert-manager"
+} else if .namespace == "istio-system" {
+  "istio"
+} else if .namespace == "monitoring" {
+  "monitoring"
+} else if .namespace == "n8n-prod" {
+  "n8n-prod"
+} else if .namespace == "n8n-dev" {
+  "n8n-dev"
+} else if .namespace == "kafka" {
+  "kafka"
+} else if .namespace == "elastic-system" {
+  "elastic-system"
+} else if .namespace == "cnpg-system" {
+  "cloudnative-pg"
+} else if exists(.source) && .source == "kubernetes-audit" {
+  "kube-audit"
+} else {
+  # Fallback: use namespace as service_name
+  .namespace
+}
+
+# ═══════════════════════════════════════════════════════════════
+# Map Severity (critical/warn/info/debug)
+# ═══════════════════════════════════════════════════════════════
+.severity = if .level == "error" || .level == "fatal" || .level == "critical" {
+  "critical"
+} else if .level == "warn" || .level == "warning" {
+  "warn"
+} else if .level == "debug" || .level == "trace" {
+  "debug"
+} else {
+  "info"
+}
+
+# ═══════════════════════════════════════════════════════════════
+# ENTERPRISE: ECS-Compliant Field Mappings
+# ═══════════════════════════════════════════════════════════════
+
+# ECS version
+."ecs.version" = "8.17"
+
+# Rename @timestamp for ECS compliance
+."@timestamp" = .timestamp
+
+# ECS log.level (normalized)
+."log.level" = .level
+
+# ECS service.name (primary identifier)
+."service.name" = .service_name
+
+# ECS service.environment
+."service.environment" = "production"
+
+# Add cluster metadata (custom fields)
+.cluster = "talos-homelab"
+.datacenter = "homelab"
+.environment = "production"
+
+# ═══════════════════════════════════════════════════════════════
+# ENTERPRISE: OpenTelemetry Tracing Support
+# ═══════════════════════════════════════════════════════════════
+
+# Extract trace.id from headers/metadata (if exists)
+if exists(.trace_id) {
+  ."trace.id" = string!(.trace_id)
+} else if exists(.traceId) {
+  ."trace.id" = string!(.traceId)
+} else if exists(.headers."X-Trace-Id") {
+  ."trace.id" = string!(.headers."X-Trace-Id")
+}
+
+# Extract transaction.id (if exists)
+if exists(.transaction_id) {
+  ."transaction.id" = string!(.transaction_id)
+} else if exists(.transactionId) {
+  ."transaction.id" = string!(.transactionId)
+}
+
+# Extract span.id (if exists)
+if exists(.span_id) {
+  ."span.id" = string!(.span_id)
+} else if exists(.spanId) {
+  ."span.id" = string!(.spanId)
+}
+
+# ═══════════════════════════════════════════════════════════════
+# ENTERPRISE: Structured Logging Support
+# ═══════════════════════════════════════════════════════════════
+
+# If log is JSON, preserve structured fields
+if exists(.workflow_id) {
+  ."workflow.id" = string!(.workflow_id)
+}
+
+if exists(.user_id) {
+  ."user.id" = string!(.user_id)
+}
+
+if exists(.error) {
+  ."error.message" = string!(.error)
+}
+'''
+
+# Sample logs to reduce volume (optional)
+[transforms.sample_logs]
+type = "sample"
+inputs = ["enrich_logs"]
+rate = 100  # Keep all logs (set lower to sample, e.g. 10 = 10%)
+key_field = ".kubernetes.pod"  # Sample per pod
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# OPTION E (DAX-Mittelstand-Pattern, 2026-05-16):
+# Filter ES-sink auf SENSITIVE namespaces only. Reason: Promtail liefert
+# ALL pod-logs zu Loki (für daily-grep). ES bekommt nur Audit/Compliance-NS.
+# Spart ~70% ES-storage + halbiert index-shards.
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[transforms.filter_sensitive_for_es]
+type = "filter"
+inputs = ["sample_logs"]
+# Fix 2026-05-17: stricter VRL parser in newer Vector versions rejects
+# `||` line-continuation inside `(...)`. Use `includes()` with array literal
+# (set-membership check). Same semantics, parser-stable.
+condition = 'exists(.kubernetes.pod_namespace) && includes(["drova","drova-prod","keycloak","lldap","argocd","kyverno","security","cilium-spire","cnpg-system","velero"], .kubernetes.pod_namespace)'
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ELASTICSEARCH SINK - DATA STREAMS + ECS (sensitive NS only)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[sinks.elasticsearch]
+type = "elasticsearch"
+inputs = ["filter_sensitive_for_es"]
+endpoints = ["https://production-cluster-es-http.elastic-system.svc.cluster.local:9200"]
+mode = "data_stream"  # ← DATA STREAMS! (automatic rollover)
+data_stream.type = "logs"
+data_stream.dataset = "{{ service_name }}.{{ severity }}"  # Uses .service_name for routing
+data_stream.namespace = "{{ namespace_suffix }}"  # ← ELASTIC BEST PRACTICE: Dynamic namespace!
+api_version = "v8"
+
+# Authentication
+[sinks.elasticsearch.auth]
+strategy = "basic"
+user = "elastic"
+password = "${ELASTICSEARCH_PASSWORD}"  # Set via secret
+
+# TLS configuration
+[sinks.elasticsearch.tls]
+verify_certificate = false  # For self-signed certs
+verify_hostname = false
+
+# Buffer configuration
+[sinks.elasticsearch.buffer]
+type = "disk"
+max_size = 268435488  # 256MB buffer
+when_full = "drop_newest"
+
+[sinks.elasticsearch.batch]
+max_bytes = 10485760  # 10MB batches
+timeout_secs = 10
+
+[sinks.elasticsearch.request]
+timeout_secs = 60
+retry_attempts = 3
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# LOKI SINK - Grafana log storage
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[sinks.loki]
+type = "loki"
+inputs = ["sample_logs"]
+endpoint = "http://loki-gateway.monitoring.svc.cluster.local:80"
+tenant_id = "talos-homelab"
+
+[sinks.loki.labels]
+cluster = "talos-homelab"
+namespace = "{{ namespace }}"
+pod = "{{ kubernetes.pod_name }}"
+container = "{{ kubernetes.container_name }}"
+service = "{{ service_name }}"
+level = "{{ level }}"
+
+[sinks.loki.encoding]
+codec = "json"
+
+[sinks.loki.batch]
+max_bytes = 1048576
+timeout_secs = 10
+
+[sinks.loki.request]
+timeout_secs = 60
+retry_attempts = 3
+
+# Console output for debugging (optional)
+[sinks.console]
+type = "console"
+inputs = ["sample_logs"]
+encoding.codec = "json"
+target = "stdout"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# PROMETHEUS EXPORTER - Vector Internal Metrics
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Internal metrics source (Vector's own telemetry)
+[sources.internal_metrics]
+type = "internal_metrics"
+
+# Expose internal metrics via Prometheus exporter
+[sinks.prometheus_exporter]
+type = "prometheus_exporter"
+inputs = ["internal_metrics"]
+address = "0.0.0.0:9090"
+default_namespace = "vector"

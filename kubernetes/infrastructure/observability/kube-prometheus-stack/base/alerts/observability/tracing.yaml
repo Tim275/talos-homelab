@@ -1,0 +1,23 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: observability-tracing
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # Drova trace-presence/volume → Grafana "Drova Tracing" + Jaeger. Queue-full folded into
+  # export-failing (the queue fills because export fails). Kept the OTel pipeline symptom.
+  groups:
+    - name: tracing.pipeline
+      interval: 60s
+      rules:
+        - alert: OtelCollectorExportFailing
+          expr: rate(otelcol_exporter_send_failed_spans_total[5m]) > 0
+          for: 10m
+          labels:
+            severity: warning
+            component: tracing
+            priority: P2
+          annotations:
+            summary: "OTel-Collector failing to export spans"
+            description: "Spans dropped — backend (Jaeger/Tempo) unreachable or rate-limited. All tracing affected."
