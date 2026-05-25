@@ -88,3 +88,26 @@ spec:
             summary: "Cilium: {{ $value }} node(s) unreachable in datapath (>15m)"
             description: "Node-to-node Cilium health-probe failing though agents are UP — datapath/WireGuard/identity broken (not a process crash). This is the gap that hid the 2026-05-24/25 cross-host outages behind PrometheusTargetDown-noise."
             action: "kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-health status → finde 0/1-Node → cilium-agent dort neustarten (Identity-Resync). Cross-host? pve-firewall auf Proxmox-Hosts prüfen."
+
+        - alert: CiliumBPFMapPressure
+          expr: max(cilium_bpf_map_pressure) > 0.8
+          for: 5m
+          labels:
+            severity: warning
+            component: network
+            priority: P2
+          annotations:
+            summary: "Cilium eBPF map >80% full ({{ $value | humanizePercentage }})"
+            description: "Eine eBPF-Map nähert sich der Kapazität. Bei 100% scheitern neue Pods/Connections/Policies/Services LAUTLOS zu programmieren. Welche Map: cilium_bpf_map_pressure by (map_name) im Grafana."
+
+        - alert: CiliumEndpointsNotReady
+          expr: sum(cilium_endpoint_state{endpoint_state!="ready"}) > 0
+          for: 15m
+          keep_firing_for: 5m
+          labels:
+            severity: warning
+            component: network
+            priority: P2
+          annotations:
+            summary: "Cilium endpoints stuck not-ready ({{ $value }})"
+            description: "Pods deren Cilium-Networking >15m nicht programmiert ist (regenerating/disconnecting/restoring) — der Pod hat kein funktionierendes Netz. Check: cilium-dbg endpoint list (im Agent-Pod)."
