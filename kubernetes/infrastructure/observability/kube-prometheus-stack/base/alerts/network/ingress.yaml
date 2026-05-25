@@ -1,0 +1,72 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: network-ingress
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # Two 5xx alerts deduped to one (the %-based EnvoyGateway5xxRateHigh). Down+Info merged.
+  # Upstream-connection-failure → dashboard. CloudflaredAllDown = the external-access page.
+  groups:
+    # ── PAGE ──
+    - name: ingress-page
+      interval: 60s
+      rules:
+        - alert: CloudflaredAllDown
+          expr: count(up{job="cloudflared"} == 1) == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: network
+          annotations:
+            summary: "All Cloudflared tunnels down"
+            description: "External access via Cloudflare Tunnel completely down — all public services unreachable."
+
+    # ── TICKET ──
+    - name: ingress-ticket
+      interval: 60s
+      rules:
+        - alert: EnvoyGatewayDown
+          expr: up{job="envoy-gateway"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            component: network
+            priority: P2
+          annotations:
+            summary: "Envoy Gateway controller down"
+            description: "Gateway config updates blocked >3min (existing routes keep serving)."
+
+        - alert: EnvoyGateway5xxRateHigh
+          expr: |
+            100 * sum by (envoy_response_code_class) (rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[5m]))
+            /
+            clamp_min(sum(rate(envoy_cluster_upstream_rq_total[5m])), 0.001)
+            > 5
+          for: 5m
+          labels:
+            severity: warning
+            component: network
+            priority: P2
+          annotations:
+            summary: "Envoy Gateway 5xx rate >5% ({{ $value | humanize }}%)"
+            description: "Edge proxy seeing high upstream errors — backend services degraded, users see failures."
+
+        - alert: EnvoyGatewayNoEndpoints
+          expr: |
+            sum by (envoy_cluster_name, namespace) (
+              envoy_cluster_membership_healthy{envoy_cluster_name!~"xds_cluster|prometheus_stats|admin|.*_local.*"}
+            ) == 0
+            and
+            sum by (envoy_cluster_name, namespace) (
+              envoy_cluster_membership_total{envoy_cluster_name!~"xds_cluster|prometheus_stats|admin|.*_local.*"}
+            ) > 0
+          for: 10m
+          keep_firing_for: 5m
+          labels:
+            severity: warning
+            component: network
+            priority: P2
+          annotations:
+            summary: "Envoy Gateway: no healthy endpoints for {{ $labels.envoy_cluster_name }}"
+            description: "User-facing upstream has 0 healthy endpoints >10min — traffic dropped."

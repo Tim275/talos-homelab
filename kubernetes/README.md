@@ -1,81 +1,57 @@
-# Kubernetes Homelab
+# Kubernetes Homelab (GitOps)
+
+ArgoCD App-of-Apps + ApplicationSets. Bootstrap ArgoCD → it syncs everything else from Git.
 
 ## Structure
 
 ```
 kubernetes/
-├── bootstrap/
-│   ├── kustomization.yaml       # LAYER 1: Bootstrap entry point
-│   ├── security.yaml
-│   ├── infrastructure.yaml
-│   ├── platform.yaml
-│   └── apps.yaml
-│
-├── security/
-│   └── kustomization.yaml       # LAYER 2: Security ApplicationSets
-│
-├── infrastructure/
-│   ├── kustomization.yaml       # LAYER 2: Infrastructure ApplicationSets
-│   ├── monitoring-app.yaml
-│   ├── network-app.yaml
-│   ├── storage-app.yaml
-│   │
-│   ├── monitoring/
-│   │   ├── kustomization.yaml   # LAYER 3: Service selector
-│   │   ├── prometheus/
-│   │   │   └── kustomization.yaml
-│   │   └── grafana/
-│   │       └── kustomization.yaml
-│   │
-│   └── network/
-│       ├── kustomization.yaml
-│       └── cilium/
-│           └── kustomization.yaml
-│
-├── platform/
-│   └── kustomization.yaml       # LAYER 2: Platform ApplicationSets
-│
-└── apps/
-    └── kustomization.yaml       # LAYER 2: Apps ApplicationSets
+├── bootstrap/          ArgoCD + App-of-Apps (argocd, projects, clusters, applicationsets)
+├── applicationsets/    infrastructure, platform, apps, security, tenants, edge
+├── infrastructure/     argocd, network, storage, certificates, secrets, operators, ingress, observability
+├── platform/           identity, gitops
+├── apps/               n8n, cloudbeaver, audiobookshelf, uptime-kuma
+├── tenants/            drova, n8n-prod, keycloak, lldap, oms, infisical
+└── security · projects · clusters · components · scripts
 ```
 
 ## Bootstrap
 
-**Option 1: ArgoCD**
-```bash
-export KUBECONFIG="../tofu/output/kube-config.yaml"
+```sh
+cd tofu && tofu apply && cd ..
+git push
+export KUBECONFIG=tofu/output/kube-config.yaml
 
-kubectl apply -k bootstrap/
+kustomize build --enable-helm kubernetes/bootstrap | kubectl apply --server-side -f -
+kustomize build --enable-helm kubernetes/bootstrap | kubectl apply --server-side -f -
+
 kubectl get applications -n argocd -w
 ```
 
-**Option 2: Layer-by-Layer**
-```bash
-export KUBECONFIG="../tofu/output/kube-config.yaml"
+Apply twice — first pass installs the CRDs, second the CRs that reference them. `--server-side` is needed when a CRD >256 KB is created (fresh cluster); on re-apply plain works. No `--force-conflicts` on a fresh cluster.
 
-kubectl apply -k security/           # Wave 0: Security ApplicationSets
-kubectl apply -k infrastructure/     # Wave 1: Infrastructure ApplicationSets
-kubectl apply -k platform/          # Wave 15: Platform ApplicationSets
-kubectl apply -k apps/              # Wave 25: Apps ApplicationSets
+## Components individually (optional — ArgoCD does this otherwise)
+
+```sh
+kustomize build --enable-helm kubernetes/infrastructure/secrets/sealed-secrets/overlays/prod | kubectl apply -f -
+kustomize build --enable-helm kubernetes/infrastructure/network/cilium/overlays/prod         | kubectl apply -f -
+kustomize build --enable-helm kubernetes/infrastructure/storage/rook-ceph/overlays/prod      | kubectl apply --server-side -f -
+kustomize build --enable-helm kubernetes/infrastructure/argocd/overlays/prod                 | kubectl apply --server-side -f -
 ```
 
-**Option 3: Manual Core**
-```bash
-export KUBECONFIG="../tofu/output/kube-config.yaml"
+sealed-secrets first — it ships the `sealedsecrets.bitnami.com` CRD that cilium (hubble-oidc) and rook-ceph reference. Wrong order → `NotFound` on the SealedSecret (ArgoCD retries past this, a manual apply does not).
 
-kubectl kustomize --enable-helm infrastructure/network/cilium | kubectl apply -f -
-kubectl kustomize --enable-helm infrastructure/controllers/sealed-secrets | kubectl apply -f -
-kubectl kustomize --enable-helm infrastructure/storage/rook-ceph | kubectl apply --server-side --force-conflicts -f -
-kubectl kustomize --enable-helm infrastructure/controllers/argocd | kubectl apply -f -
-```
-> Note: Rook-Ceph uses `--server-side` due to large CSI Operator CRDs (>262KB annotations)
+## ArgoCD login
 
-## ArgoCD
-
-```bash
-# Password
+```sh
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
-
-# Port-forward
-kubectl port-forward svc/argocd-server -n argocd 8080:80
 ```
+
+Or via OIDC: https://argocd.timourhomelab.org
+
+## New tenant
+
+1. `tenants/<name>/` (namespace + resourcequota + limitrange + rbac + data subdirs)
+2. add `<name>` to `tenants/kustomization.yaml` + `tenants-config.yaml` AppSet list
+3. add `applicationsets/tenants/<name>-tenant.yaml`
+4. commit + push → ArgoCD reconciles

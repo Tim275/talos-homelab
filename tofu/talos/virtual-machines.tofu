@@ -9,6 +9,8 @@ resource "proxmox_virtual_environment_vm" "this" {
   on_boot     = true
   vm_id       = each.value.vm_id
 
+  stop_on_destroy = true
+
   machine       = "q35"
   scsi_hardware = "virtio-scsi-single"
   bios          = "seabios"
@@ -31,7 +33,6 @@ resource "proxmox_virtual_environment_vm" "this" {
     mac_address = each.value.mac_address
   }
 
-  # Talos OS Disk - Per-node sizing
   disk {
     datastore_id = each.value.datastore_id
     interface    = "scsi0"
@@ -40,18 +41,14 @@ resource "proxmox_virtual_environment_vm" "this" {
     discard      = "on"
     ssd          = true
     file_format  = "raw"
-    # OLD: size = 20  # Original size
-    # OLD: size = 30  # First increase (commented commit)
-    size    = each.value.os_disk_size  # Conservative: 50GB for all nodes
-    file_id = proxmox_virtual_environment_download_file.this["${each.value.host_node}_${each.value.update == true ? local.update_image_id : local.image_id}"].id
+    size         = each.value.os_disk_size
+    file_id      = proxmox_virtual_environment_download_file.this["${each.value.host_node}_${each.value.update == true ? local.update_image_id : local.image_id}"].id
   }
 
-  # Ceph Storage Disk (raw, unformatted) - Per-node sizing
-  # IMPORTANT: Only create if ceph_disk_size > 0 (control planes don't need Ceph disk)
   dynamic "disk" {
     for_each = each.value.ceph_disk_size > 0 ? [1] : []
     content {
-      datastore_id = each.value.datastore_id
+      datastore_id = coalesce(each.value.ceph_disk_datastore, each.value.datastore_id)
       interface    = "scsi1"
       iothread     = true
       cache        = "none"
@@ -91,6 +88,8 @@ resource "proxmox_virtual_environment_vm" "this" {
 
   lifecycle {
     create_before_destroy = false
+    ignore_changes        = [disk]
+    prevent_destroy       = true
   }
 
   # Force serial creation to prevent SSH overload

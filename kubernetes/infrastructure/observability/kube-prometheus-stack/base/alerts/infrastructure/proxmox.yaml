@@ -1,0 +1,92 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hypervisor-proxmox
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # ProxmoxClusterQuorumLost removed — msa2 + nipogi are 2 standalone hosts, not a PVE
+  # cluster (quorum N/A). High-load / disk-temp / near-full(85%) / pve-storage → Grafana
+  # "Proxmox" dashboard. ProxmoxNodeOffline stays disabled (pve-exporter has no API token).
+  groups:
+    # ── PAGE ──
+    - name: proxmox-page
+      interval: 60s
+      rules:
+        - alert: ProxmoxHostDown
+          expr: up{job="proxmox-host-node"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: hypervisor
+          annotations:
+            summary: "Proxmox host {{ $labels.instance }} unreachable"
+            description: "node-exporter on Proxmox host down >5min — host (and its VMs) likely offline."
+
+        - alert: ProxmoxZfsPoolCritical
+          expr: (node_zfs_zpool_alloc{job="proxmox-host-node"} / node_zfs_zpool_size{job="proxmox-host-node"}) > 0.95
+          for: 5m
+          labels:
+            severity: critical
+            component: hypervisor
+          annotations:
+            summary: "ZFS pool {{ $labels.zpool }} >95% full on {{ $labels.instance }}"
+            description: "Pool nearly full — VM-disks will fail writes. Free space or expand immediately."
+
+        - alert: ProxmoxDiskSmartFailure
+          expr: smartmon_device_smart_healthy{job="proxmox-host-node"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: hypervisor
+          annotations:
+            summary: "SMART health failure: {{ $labels.disk }} on {{ $labels.instance }}"
+            description: "Disk reporting SMART failure — replace soon (data-loss risk)."
+
+    # ── TICKET ──
+    - name: proxmox-ticket
+      interval: 60s
+      rules:
+        - alert: ProxmoxRootDiskFull
+          expr: (1 - node_filesystem_avail_bytes{job="proxmox-host-node",mountpoint="/"} / node_filesystem_size_bytes{job="proxmox-host-node",mountpoint="/"}) > 0.85
+          for: 30m
+          labels:
+            severity: warning
+            component: hypervisor
+            priority: P2
+          annotations:
+            summary: "Proxmox host {{ $labels.instance }} root disk >85% full"
+            description: "Root at {{ $value | humanizePercentage }} — PVE config write failures loom."
+
+        - alert: ProxmoxHostMemoryPressure
+          expr: (node_memory_MemAvailable_bytes{job="proxmox-host-node"} / node_memory_MemTotal_bytes{job="proxmox-host-node"}) < 0.10
+          for: 15m
+          labels:
+            severity: warning
+            component: hypervisor
+            priority: P2
+          annotations:
+            summary: "Proxmox host {{ $labels.instance }} memory <10% available"
+            description: "VM scheduling/migration may fail (nipogi RAM is tight). Available {{ $value | humanizePercentage }}."
+
+        - alert: ProxmoxZfsPoolDegraded
+          expr: node_zfs_zpool_state{job="proxmox-host-node",state!="online"} > 0
+          for: 10m
+          labels:
+            severity: warning
+            component: hypervisor
+            priority: P2
+          annotations:
+            summary: "ZFS pool {{ $labels.zpool }} degraded on {{ $labels.instance }}"
+            description: "Pool state {{ $labels.state }} — single-disk pools have no redundancy, check the disk."
+
+        - alert: ProxmoxApiExporterDown
+          expr: up{job="proxmox-pve"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            component: hypervisor
+            priority: P2
+          annotations:
+            summary: "Proxmox PVE exporter down"
+            description: "Cannot scrape Proxmox API — VM/cluster state not visible in Grafana."

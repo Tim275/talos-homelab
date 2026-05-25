@@ -50,6 +50,63 @@ reclaimPolicy: Delete
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
 
+---
+# rook-ceph-block-fast (Delete) — für ephemeral fast-storage
+# Phase 2 IaC-tune (2026-05-17)
+# Pool: replicapool-fast (device-class fast-ssd, nur msa2-OSDs)
+# Use: Redis-cache, ephemeral hot-data
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: rook-ceph-block-fast
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    storageclass.kubernetes.io/description: "Hot-tier RBD (only msa2-OSDs, fast). Reclaim=Delete. For ephemeral caches."
+provisioner: rook-ceph.rbd.csi.ceph.com
+parameters:
+  clusterID: rook-ceph
+  pool: replicapool-fast
+  imageFormat: "2"
+  imageFeatures: layering
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+  csi.storage.k8s.io/fstype: ext4
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
+
+---
+# rook-ceph-block-fast-retain — für PERSISTENT hot-storage (Postgres, important DBs)
+# Reclaim=Retain → PVC-Loss = volume bleibt, kann manuell wiederhergestellt werden
+# Pool: replicapool-fast (device-class fast-ssd, nur msa2-OSDs)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: rook-ceph-block-fast-retain
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    storageclass.kubernetes.io/description: "Hot-tier RBD (only msa2-OSDs, fast). Reclaim=Retain. For Postgres/Redis/critical."
+provisioner: rook-ceph.rbd.csi.ceph.com
+parameters:
+  clusterID: rook-ceph
+  pool: replicapool-fast
+  imageFormat: "2"
+  imageFeatures: layering
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+  csi.storage.k8s.io/fstype: ext4
+reclaimPolicy: Retain
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
+
 # DISABLED STORAGE CLASSES - Unused, saves resources
 # Re-enable by uncommenting if needed
 
@@ -148,3 +205,30 @@ parameters:
 reclaimPolicy: Retain
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
+---
+# Immediate-binding RBD SC — für PVCs deren einziger Consumer ein CronJob/Job ist
+# (z.B. keycloak-realm-export). WaitForFirstConsumer ließe solche PVCs ewig Pending
+# → ArgoCD health-gatet darauf → Bootstrap-Deadlock. Immediate bindet sofort ohne Consumer.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: rook-ceph-block-enterprise-immediate
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    storageclass.kubernetes.io/description: "Immediate binding — für delayed-consumer PVCs (cronjob-only). Reclaim=Retain."
+provisioner: rook-ceph.rbd.csi.ceph.com
+parameters:
+  clusterID: rook-ceph
+  pool: replicapool-enterprise
+  imageFormat: "2"
+  imageFeatures: layering
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+  csi.storage.k8s.io/fstype: ext4
+reclaimPolicy: Retain
+allowVolumeExpansion: true
+volumeBindingMode: Immediate

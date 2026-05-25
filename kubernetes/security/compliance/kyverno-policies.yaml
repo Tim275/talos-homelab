@@ -1,0 +1,52 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: audit-disallow-latest-tag
+spec:
+  failurePolicy: Ignore
+  background: true
+  rules:
+    - name: require-image-tag
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+      exclude:
+        any:
+          - resources:
+              namespaces: ["kube-system", "kyverno", "argocd"]
+      validate:
+        failureAction: Audit
+        message: "Using a mutable image tag like ':latest' is not allowed; pin a version."
+        pattern:
+          spec:
+            containers:
+              - image: "!*:latest"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: audit-require-requests
+spec:
+  failurePolicy: Ignore
+  background: true
+  rules:
+    - name: require-cpu-memory-requests
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+      exclude:
+        any:
+          - resources:
+              namespaces: ["kube-system", "kyverno", "argocd"]
+      validate:
+        failureAction: Audit
+        message: "CPU and memory resource requests should be set."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"

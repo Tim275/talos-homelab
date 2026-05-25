@@ -1,0 +1,137 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kubernetes-cluster
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # Dedup'd 2026-05-23: dropped 4× apiserver-down / 3× etcd-quorum / 3× nodes-down
+  # duplicates + all latency/capacity/version alerts (→ Grafana "Kubernetes / Compute
+  # Resources" + "API server" dashboards). Upstream kube-prometheus-stack already ships
+  # KubeNodeNotReady, KubeletDown, KubeCPUOvercommit etc. — single source of truth.
+  groups:
+    # ── PAGE — cluster-fatal, wake-at-3am ──────────────────────────────────
+    - name: kubernetes-page
+      interval: 30s
+      rules:
+        - alert: ClusterAPIServerDown
+          expr: up{job="apiserver"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            component: kubernetes
+          annotations:
+            summary: "Kubernetes API server is down"
+            description: "API server unreachable for >2 minutes. All cluster operations halted."
+
+        - alert: EtcdQuorumLoss
+          expr: sum(up{job=~"kube-etcd|etcd"}) < ((count(up{job=~"kube-etcd|etcd"}) / 2) + 1)
+          for: 1m
+          labels:
+            severity: critical
+            component: kubernetes
+          annotations:
+            summary: "etcd quorum lost"
+            description: "etcd has lost quorum — cluster state at risk of corruption."
+
+        - alert: ControlPlaneNodeDown
+          expr: kube_node_status_condition{condition="Ready",status="true",node="ctrl-0"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            component: control-plane
+          annotations:
+            summary: "Control plane node {{ $labels.node }} is down"
+            description: "Single control-plane node (ctrl-0 = SPOF) offline — complete cluster outage."
+
+        - alert: CoreDNSDown
+          expr: |
+            kube_deployment_status_replicas_ready{namespace="kube-system",deployment="coredns"} < 1
+            or absent(kube_deployment_status_replicas_ready{namespace="kube-system",deployment="coredns"})
+          for: 2m
+          labels:
+            severity: critical
+            component: dns
+          annotations:
+            summary: "CoreDNS has no healthy replicas"
+            description: "CoreDNS down >2min — cluster DNS resolution broken, expect cascade failures."
+            action: "kubectl get pods -n kube-system -l k8s-app=kube-dns + restart"
+
+    # ── TICKET — degradation, look soon (digest channel) ───────────────────
+    - name: kubernetes-ticket
+      interval: 60s
+      rules:
+        - alert: ImagePullBackoff
+          expr: kube_pod_container_status_waiting_reason{reason=~"ImagePullBackOff|ErrImagePull"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            component: kubernetes
+            priority: P2
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} cannot pull image"
+            description: "Container {{ $labels.container }} in {{ $labels.reason }} state for >5 minutes."
+
+        - alert: NodeMemoryPressure
+          expr: kube_node_status_condition{condition="MemoryPressure",status="true"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            component: kubernetes
+            priority: P2
+          annotations:
+            summary: "Node {{ $labels.node }} has memory pressure"
+            description: "Node {{ $labels.node }} under memory pressure — pods may be evicted."
+
+        - alert: NodeDiskPressure
+          expr: kube_node_status_condition{condition="DiskPressure",status="true"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            component: kubernetes
+            priority: P2
+          annotations:
+            summary: "Node {{ $labels.node }} has disk pressure"
+            description: "Node {{ $labels.node }} under disk pressure — pods may be evicted."
+
+        - alert: APIServerErrorRateHigh
+          expr: |
+            sum(rate(apiserver_request_total{code=~"5.."}[5m]))
+            / sum(rate(apiserver_request_total[5m])) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+            component: control-plane
+            priority: P2
+          annotations:
+            summary: "kube-apiserver 5xx-rate >5%"
+            description: "Many requests returning 5xx — check etcd, controller-manager, webhook-availability."
+
+        - alert: WebhookFailing
+          expr: |
+            sum by (name) (rate(apiserver_admission_webhook_rejection_count[5m])) > 0
+            and
+            sum by (name) (rate(apiserver_admission_webhook_admission_duration_seconds_count[5m])) < 0.01
+          for: 5m
+          labels:
+            severity: warning
+            component: webhooks
+            priority: P2
+          annotations:
+            summary: "Admission webhook {{ $labels.name }} failing"
+            description: "Webhook rejecting requests AND not responding — investigate cert-manager-webhook, cnpg-webhook, kyverno."
+            action: "kubectl delete secret <webhook-cert> -n <ns>; kubectl rollout restart deploy/<webhook>"
+
+        - alert: CronJobFailureRateHigh
+          expr: |
+            sum by (namespace, cronjob) (
+              rate(kube_job_status_failed{job_name=~".+"}[1h])
+            ) > 0.5
+          for: 2h
+          labels:
+            severity: warning
+            component: jobs
+            priority: P2
+          annotations:
+            summary: "CronJob {{ $labels.namespace }}/{{ $labels.cronjob }} failure-rate high"
+            description: ">50% of last-hour jobs failed for >2h — check job logs."

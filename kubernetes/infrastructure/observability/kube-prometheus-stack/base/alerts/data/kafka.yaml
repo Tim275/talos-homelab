@@ -1,0 +1,48 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: data-kafka
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # Symptom-level only. JVM/GC/heap/old-gen/controller-churn/event-loop/lag-internals
+  # are cause-detectors → Grafana "Strimzi Kafka" dashboard (Google-SRE: page on symptom,
+  # not cause). Drova-kafka duplicates folded into the generic rules. Kafka is not in the
+  # active-apps set → ticket-tier (no 3am page for the demo message bus).
+  groups:
+    - name: kafka
+      interval: 1m
+      rules:
+        - alert: KafkaQuorumLeaderless
+          expr: |
+            sum by (namespace) (kafka_controller_kafkacontroller_activecontrollercount{pod=~".*kafka.*"}) == 0
+          for: 2m
+          labels:
+            severity: warning
+            component: data
+            priority: P2
+          annotations:
+            summary: "Kafka KRaft quorum has NO active controller in {{ $labels.namespace }}"
+            description: "KRaft cannot elect a leader — all metadata ops blocked, producers/consumers cannot connect."
+
+        - alert: KafkaUnderMinISR
+          expr: kafka_cluster_partition_under_min_isr{pod=~".*kafka.*"} > 0
+          for: 3m
+          labels:
+            severity: warning
+            component: data
+            priority: P2
+          annotations:
+            summary: "Kafka {{ $value }} partitions under min-ISR in {{ $labels.namespace }}"
+            description: "Producers with acks=all FAIL (NotEnoughReplicasException). Restart unhealthy brokers; check disk."
+
+        - alert: KafkaConsumerLagCritical
+          expr: kafka_consumergroup_lag_sum > 50000
+          for: 10m
+          labels:
+            severity: warning
+            component: data
+            priority: P2
+          annotations:
+            summary: "Kafka consumer lag >50k: {{ $labels.consumergroup }}"
+            description: "Consumer group {{ $labels.consumergroup }} lagging {{ $value }} events — stuck or under-provisioned."

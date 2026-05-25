@@ -203,11 +203,23 @@ enableIPv6BIGTCP: false
 encryption:
   enabled: true
   type: wireguard
-  nodeEncryption: true  # Encrypt node-to-node traffic (beta feature)
+  nodeEncryption: false   # NICHT true — encrypt-node verschlüsselt trustd(:50001)-Hostverkehr → Talos-Boot-Deadlock bei Node-Reset (23.05.26)
+  wireguard:
+    persistentKeepalive: 25s
   strictMode:
     enabled: true
-    cidr: 10.244.0.0/16  # Pod CIDR - only encrypt pod traffic
+    cidr: 10.244.0.0/16
     allowRemoteNodeIdentities: false
+
+# DO NOT REMOVE — siehe notes/CLAUDE-GUIDES.md "Cilium — Complete Guide" → "WireGuard ctrl-0 opt-out trap"
+extraConfig:
+  node-encryption-opt-out-labels: "never-opt-out.never.match/key"
+  # ENFORCE node-encryption OFF explicitly. encryption.nodeEncryption:false makes the
+  # Helm template OMIT the encrypt-node key entirely -> ServerSideApply can't prune the
+  # stale `encrypt-node: "true"` that the Talos bootstrap-Cilium leaves behind, so it
+  # survived every rebuild and broke cross-node OSD heartbeats (Ceph peering deadlock,
+  # 2026-05-24). Rendering the key explicitly = ArgoCD owns it = always reconciled to false.
+  encrypt-node: "false"
 
 # NETWORKING - DNS Proxy
 
@@ -236,6 +248,15 @@ envoy:
 
 hubble:
   enabled: true
+  tls:
+    auto:
+      enabled: true
+      # cronJob = Cilium generates certs via a CronJob, not Helm template.
+      # With method:helm, ArgoCD server-side-diff sends an empty kubernetes.io/tls
+      # Secret to the API which fails validation (tls.crt/tls.key Required).
+      # cronJob removes the empty Secret from Helm output entirely.
+      method: cronJob
+      certValidityDuration: 1095  # 3 years
   metrics:
     enabled:
       - dns
@@ -296,6 +317,13 @@ authentication:
   mutual:
     spire:
       enabled: true
+      # PSAT-Token-TTL (battle-tested 2026-05-14):
+      # Default 600s (10min) → Talos-upgrade-rolling-restart läuft länger als
+      # token-renewal-window → token expires → SPIRE-agent crash → mTLS broken
+      # cluster-weit → drova-services TCP-timeout zu Kafka → User sieht Crashloop.
+      #
+      # 3600s (1h) → übersteht alle realistischen Talos-upgrade-Zyklen.
+      # Cilium-Helm chart key: spire.agent.serviceAccount.tokenExpirationSeconds
       install:
         namespace: cilium-spire
         server:
@@ -307,6 +335,9 @@ authentication:
             runAsUser: 0
         agent:
           skipKubeletVerification: true
+          # Token TTL Bump: 600s → 3600s — Talos-upgrade-resilience
+          serviceAccount:
+            tokenExpirationSeconds: 3600
 
 prometheus:
   metricsService: true

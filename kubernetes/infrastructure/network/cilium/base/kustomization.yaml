@@ -1,7 +1,5 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-commonAnnotations:
-  argocd.argoproj.io/sync-wave: "0"
 
 resources:
   - announce.yaml
@@ -9,13 +7,65 @@ resources:
   - host-firewall.yaml
   - hubble-oidc-sealed.yaml
   - hubble-httproute.yaml
-  - hubble-securitypolicy.yaml
 
 helmCharts:
   - name: cilium
     repo: https://helm.cilium.io
-    version: 1.18.0
+    version: 1.18.10
     releaseName: "cilium"
     namespace: kube-system
     includeCRDs: true
     valuesFile: values.yaml
+
+# Strategic-Merge-Patch: Cilium-Helm hardcoded PSAT-token-TTL=600s im
+# spire-agent DaemonSet. Override auf 3600s (Talos-upgrade-resilience).
+# Battle-tested 2026-05-14: ohne 1h-TTL läuft Token während Upgrade ab →
+# Agent crash → mTLS cluster-weit broken (war 26h+ unbemerkt!).
+patches:
+  - target:
+      kind: Namespace
+      name: cilium-spire
+    patch: |-
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: cilium-spire
+        labels:
+          pod-security.kubernetes.io/enforce: privileged
+          pod-security.kubernetes.io/audit: privileged
+          pod-security.kubernetes.io/warn: privileged
+  - target:
+      kind: DaemonSet
+      name: spire-agent
+      namespace: cilium-spire
+    patch: |-
+      apiVersion: apps/v1
+      kind: DaemonSet
+      metadata:
+        name: spire-agent
+        namespace: cilium-spire
+        annotations:
+          argocd.argoproj.io/sync-wave: "3"
+      spec:
+        template:
+          spec:
+            volumes:
+              - name: spire-agent
+                projected:
+                  sources:
+                    - serviceAccountToken:
+                        path: spire-agent
+                        audience: spire-server
+                        expirationSeconds: 3600
+  - target:
+      kind: StatefulSet
+      name: spire-server
+      namespace: cilium-spire
+    patch: |-
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: spire-server
+        namespace: cilium-spire
+        annotations:
+          argocd.argoproj.io/sync-wave: "2"

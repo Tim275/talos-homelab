@@ -1,0 +1,38 @@
+## RenovateJob CR for Tim275/talos-homelab repo
+## Operator: mogenius/renovate-operator (deployed in operators/ tree)
+## Schedule: hourly (default cron-style)
+apiVersion: renovate-operator.mogenius.com/v1alpha1
+kind: RenovateJob
+metadata:
+  name: renovate-talos-homelab
+  namespace: renovate-operator
+spec:
+  # Discovery: scan ONLY the talos-homelab repo
+  discoveryFilters:
+    - Tim275/talos-homelab
+  provider:
+    name: github
+    endpoint: ""  # defaults to https://api.github.com
+  image: ghcr.io/renovatebot/renovate:43.176.3   # renovate: docker=ghcr.io/renovatebot/renovate
+  ## parallelism = "max projects scanned in parallel" (per Mogenius CRD semantics).
+  ## Bei 1 Repo per Job ist parallelism>1 wirkungslos. Daher: 1.
+  parallelism: 1
+  ## Alle 6h (00/06/12/18 Uhr) — für ein Homelab völlig ausreichend. War 2×/h (zu aggressiv:
+  ## hohe GitHub-API-Last + IncompleteRead-Flakiness). Offset zu Drova (:30) gegen gleichzeitige
+  ## DockerHub-Rate-Limit-Treffer. TODO: DockerHub-PAT für mehr Throughput.
+  schedule: "0 */6 * * *"
+  secretRef: renovate-secret
+  extraEnv:
+    - name: LOG_LEVEL
+      value: info
+    - name: RENOVATE_GIT_AUTHOR
+      value: "Renovate Bot <tim275@users.noreply.github.com>"
+    ## DockerHub auth: RENOVATE_HOST_RULES wird VIA renovate-secret (secretRef) injiziert
+    ## mit FERTIGEM JSON (creds baked in).
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1500m
+      memory: 2Gi

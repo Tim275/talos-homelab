@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: uptime-kuma
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: uptime-kuma
+  template:
+    metadata:
+      labels:
+        app: uptime-kuma
+    spec:
+      # louislam/uptime-kuma's docker-entrypoint.sh chown's /app/data → braucht
+      # root. Image ist nicht rootless-fähig (battle-tested 2026-05-14).
+      # PolicyException für require-run-as-non-root deckt das ab.
+      securityContext:
+        fsGroup: 0
+      containers:
+        - name: uptime-kuma
+          image: louislam/uptime-kuma:1.23.16
+          ports:
+            - containerPort: 3001
+              name: http
+          env:
+            - name: UPTIME_KUMA_PORT
+              value: "3001"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3001
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3001
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - CHOWN
+                - FOWNER
+                - DAC_OVERRIDE
+                - SETUID
+                - SETGID
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: uptime-kuma-data
