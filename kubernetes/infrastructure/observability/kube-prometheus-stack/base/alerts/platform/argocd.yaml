@@ -1,0 +1,50 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-argocd
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # OutOfSync alerts removed entirely — apps/tenants are INTENTIONALLY manual-sync
+  # (DAX-gate), so OutOfSync is the expected steady state, not a fault. Collapsed the
+  # 4 component-down variants (controller/api/repo/appset) into one, and the
+  # Degraded/Missing/Suspended/SyncFailed Info-tier into ArgoCDAppUnhealthy.
+  groups:
+    - name: argocd-ticket
+      interval: 60s
+      rules:
+        - alert: ArgoCDControllerDown
+          expr: up{job="argocd-application-controller"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: platform
+            priority: P2
+          annotations:
+            summary: "ArgoCD application-controller down"
+            description: "GitOps reconciliation halted >5min — no auto-deploy/self-heal until restored."
+
+        - alert: ArgoCDAppUnhealthy
+          expr: argocd_app_info{health_status=~"Degraded|Missing"} == 1
+          for: 30m
+          labels:
+            severity: warning
+            component: platform
+            priority: P2
+          annotations:
+            summary: "ArgoCD app unhealthy: {{ $labels.name }} ({{ $labels.health_status }})"
+            description: "App resources Degraded/Missing >30min — distinct from expected manual-sync drift. Check the app."
+
+        - alert: LLDAPBootstrapCronJobFailing
+          expr: |
+            (time() - kube_cronjob_status_last_successful_time{namespace="lldap",cronjob="lldap-bootstrap"}) > 10800
+            or absent(kube_cronjob_status_last_successful_time{namespace="lldap",cronjob="lldap-bootstrap"})
+          for: 30m
+          labels:
+            severity: warning
+            component: identity
+            priority: P2
+          annotations:
+            summary: "LLDAP bootstrap CronJob hasn't succeeded in 3h"
+            description: "User reconciliation broken — Keycloak login may fail."
+            action: "kubectl get cronjob -n lldap; kubectl logs -n lldap -l cronjob=lldap-bootstrap"

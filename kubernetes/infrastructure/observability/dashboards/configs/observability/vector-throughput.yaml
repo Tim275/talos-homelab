@@ -1,0 +1,69 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: vector-throughput
+  namespace: grafana
+spec:
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  allowCrossNamespaceImport: true
+  folder: Observability
+  json: |
+    {
+      "title": "Vector — Log Pipeline Throughput",
+      "uid": "vector-throughput",
+      "tags": ["observability","logs","vector"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "refresh": "30s",
+      "time": {"from": "now-1h", "to": "now"},
+      "templating": {"list": []},
+      "panels": [
+        {"id":1,"type":"stat","title":"Vector agent pods","gridPos":{"x":0,"y":0,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"count(up{job=~\".*vector.*agent.*\"}==1)"}]},
+        {"id":2,"type":"stat","title":"Vector aggregator pods","gridPos":{"x":4,"y":0,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"count(up{job=~\".*vector.*aggregator.*\"}==1)"}]},
+        {"id":3,"type":"stat","title":"Events in (cluster rate)","gridPos":{"x":8,"y":0,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(rate(vector_component_received_events_total[5m]))"}],
+         "fieldConfig":{"defaults":{"unit":"reqps"}}},
+        {"id":4,"type":"stat","title":"Events out (rate)","gridPos":{"x":12,"y":0,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(rate(vector_component_sent_events_total[5m]))"}],
+         "fieldConfig":{"defaults":{"unit":"reqps"}}},
+        {"id":5,"type":"stat","title":"Events dropped (rate)","gridPos":{"x":16,"y":0,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(rate(vector_component_discarded_events_total[5m]))"}],
+         "fieldConfig":{"defaults":{"unit":"reqps","thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":0.1}]}}}},
+        {"id":6,"type":"stat","title":"Errors (rate)","gridPos":{"x":20,"y":0,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(rate(vector_component_errors_total[5m]))"}],
+         "fieldConfig":{"defaults":{"unit":"reqps","thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":0.1}]}}}},
+        {"id":10,"type":"timeseries","title":"Events received per source-component","gridPos":{"x":0,"y":4,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (component_id) (rate(vector_component_received_events_total[5m]))","legendFormat":"{{component_id}}"}],
+         "fieldConfig":{"defaults":{"unit":"reqps"}}},
+        {"id":11,"type":"timeseries","title":"Events sent per sink","gridPos":{"x":12,"y":4,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (component_id) (rate(vector_component_sent_events_total[5m]))","legendFormat":"{{component_id}}"}],
+         "fieldConfig":{"defaults":{"unit":"reqps"}}},
+        {"id":20,"type":"timeseries","title":"Bytes ingested (compressed network)","gridPos":{"x":0,"y":12,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (component_id) (rate(vector_component_received_bytes_total[5m]))","legendFormat":"{{component_id}}"}],
+         "fieldConfig":{"defaults":{"unit":"Bps"}}},
+        {"id":21,"type":"timeseries","title":"Buffer-full events (back-pressure)","gridPos":{"x":12,"y":12,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (component_id) (rate(vector_buffer_events_total[5m]))","legendFormat":"{{component_id}}"}]},
+        {"id":30,"type":"timeseries","title":"Vector memory (working-set)","gridPos":{"x":0,"y":20,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (pod) (container_memory_working_set_bytes{namespace=\"elastic-system\",pod=~\"vector.*\"})","legendFormat":"{{pod}}"}],
+         "fieldConfig":{"defaults":{"unit":"bytes"}}},
+        {"id":31,"type":"timeseries","title":"Vector CPU (cores)","gridPos":{"x":12,"y":20,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"elastic-system\",pod=~\"vector.*\"}[5m]))","legendFormat":"{{pod}}"}],
+         "fieldConfig":{"defaults":{"unit":"none"}}}
+      ]
+    }

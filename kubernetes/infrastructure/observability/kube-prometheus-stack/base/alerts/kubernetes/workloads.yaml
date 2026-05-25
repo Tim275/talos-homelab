@@ -1,0 +1,46 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kubernetes-workloads
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # Generic, namespace-wide workload health → covers EVERY app incl drova (no per-app
+  # duplicates needed). HighPodRestartRate(info) + PodPendingTooLong(dup of PodNotReady)
+  # → dashboard.
+  groups:
+    - name: kubernetes-workloads
+      interval: 1m
+      rules:
+        - alert: PodCrashLooping
+          expr: |
+            max_over_time(kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"}[5m]) == 1
+          for: 5m
+          labels:
+            severity: warning
+            component: application
+            priority: P2
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+            description: "Container {{ $labels.container }} in CrashLoopBackOff >5min."
+
+        - alert: ContainerOOMKilled
+          expr: increase(kube_pod_container_status_terminated_reason{reason="OOMKilled"}[15m]) > 0
+          labels:
+            severity: warning
+            component: application
+            priority: P2
+          annotations:
+            summary: "OOM kill: {{ $labels.namespace }}/{{ $labels.pod }}/{{ $labels.container }}"
+            description: "Container OOM-killed in last 15min — raise memory limit or fix a leak."
+
+        - alert: PodNotReady
+          expr: kube_pod_status_phase{phase!~"Running|Succeeded|Failed"} == 1
+          for: 15m
+          labels:
+            severity: warning
+            component: application
+            priority: P2
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} not ready"
+            description: "Pod stuck in {{ $labels.phase }} for 15+ min — scheduling failure or PVC unbound."

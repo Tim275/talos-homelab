@@ -243,7 +243,7 @@ Sync Period: 86400s (24 hours)
 
 ```bash
 # Deploy the LDAP federation setup job
-kubectl apply -f kubernetes/infrastructure/authentication/keycloak/ldap-federation-setup.yaml
+kubectl apply -f kubernetes/platform/identity/keycloak/base/ldap-federation-setup.yaml
 
 # Wait for job completion
 kubectl wait --for=condition=complete --timeout=120s job/keycloak-ldap-federation-setup -n keycloak
@@ -328,7 +328,7 @@ kubectl apply -f google-oauth-sealed-secret.yaml
 **3. Deploy Google OAuth Integration:**
 
 ```bash
-kubectl apply -f kubernetes/infrastructure/authentication/keycloak/google-oauth-setup.yaml
+kubectl apply -f kubernetes/platform/identity/keycloak/base/google-oauth-setup.yaml
 kubectl logs -n keycloak job/keycloak-google-oauth-setup
 ```
 

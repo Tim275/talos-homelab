@@ -1,0 +1,75 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: data-postgres
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # CnpgPrimaryDown covers all CNPG clusters (incl drova) via cnpg_pg_replication_in_recovery.
+  # Dropped the non-CNPG pg_up duplicates (PostgreSQLDown/HighConnections/ReplicationLag) +
+  # drova-specific dups. Connection-count/lag-internals → Grafana "CloudNativePG" dashboard.
+  groups:
+    # ── PAGE ──
+    - name: postgres-page
+      interval: 60s
+      rules:
+        - alert: CnpgPrimaryDown
+          expr: cnpg_pg_replication_in_recovery{role="primary"} == 1
+          for: 2m
+          labels:
+            severity: critical
+            component: data
+          annotations:
+            summary: "CNPG primary down: {{ $labels.namespace }}/{{ $labels.cluster }}"
+            description: "PostgreSQL primary not serving traffic for >2min."
+
+        - alert: CNPGBackupStale
+          expr: |
+            (time() - max by (namespace, cluster) (cnpg_collector_last_available_backup_timestamp{cluster!=""})) > 86400
+          for: 30m
+          labels:
+            severity: critical
+            component: cnpg
+          annotations:
+            summary: "CNPG {{ $labels.namespace }}/{{ $labels.cluster }} no successful backup in 24h"
+            description: "Last backup older than 24h — RPO exceeded, data-loss risk on failure."
+            action: "kubectl get backup -n <ns> | grep <cluster> ; check ScheduledBackup + barman plugin pod"
+
+    # ── TICKET ──
+    - name: postgres-ticket
+      interval: 60s
+      rules:
+        - alert: CnpgReplicationLagHigh
+          expr: cnpg_pg_replication_lag > 30
+          for: 5m
+          labels:
+            severity: warning
+            component: data
+            priority: P2
+          annotations:
+            summary: "CNPG replication lag >30s: {{ $labels.namespace }}/{{ $labels.cluster }}"
+            description: "Replica lagging primary by {{ $value }}s — failover would lose recent writes."
+
+        - alert: CnpgStorageNearFull
+          expr: (kubelet_volume_stats_used_bytes{persistentvolumeclaim=~".*-postgres-.*|.*-cnpg-.*"} / kubelet_volume_stats_capacity_bytes{persistentvolumeclaim=~".*-postgres-.*|.*-cnpg-.*"}) > 0.85
+          for: 15m
+          labels:
+            severity: warning
+            component: data
+            priority: P2
+          annotations:
+            summary: "PostgreSQL PVC >85% full: {{ $labels.persistentvolumeclaim }}"
+            description: "Storage at {{ $value | humanizePercentage }} — disk full = DB crash. Expand PVC."
+
+        - alert: CNPGBackupNeverRan
+          expr: |
+            absent_over_time(cnpg_collector_last_available_backup_timestamp[7d])
+            and on() count(kube_customresource_count{customresource_kind="Cluster",customresource_group="postgresql.cnpg.io"} > 0) > 0
+          for: 1h
+          labels:
+            severity: warning
+            component: cnpg
+            priority: P2
+          annotations:
+            summary: "CNPG backup-timestamp metric absent — backups likely not running"
+            description: "No backup metric for 7d while CNPG clusters exist — verify ScheduledBackup + object-store creds."

@@ -1,0 +1,67 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: keycloak-full
+  namespace: grafana
+spec:
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  allowCrossNamespaceImport: true
+  folder: General
+  json: |
+    {
+      "title": "Keycloak — Logins, Sessions, OIDC",
+      "uid": "keycloak-full",
+      "tags": ["identity","keycloak","oidc"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "refresh": "30s",
+      "time": {"from": "now-6h", "to": "now"},
+      "templating": {"list": []},
+      "panels": [
+        {"id":1,"type":"stat","title":"Keycloak pods ready","gridPos":{"x":0,"y":0,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(kube_pod_status_ready{namespace=\"keycloak\",condition=\"true\"} * on(pod,namespace) kube_pod_labels{namespace=\"keycloak\",label_app=\"keycloak\"})"}],
+         "fieldConfig":{"defaults":{"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"yellow","value":2},{"color":"green","value":3}]}}}},
+        {"id":2,"type":"stat","title":"HTTP 5xx (rate)","gridPos":{"x":4,"y":0,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(rate(http_server_requests_seconds_count{namespace=\"keycloak\",status=~\"5..\"}[5m]))"}],
+         "fieldConfig":{"defaults":{"unit":"reqps","thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":0.1},{"color":"red","value":1}]}}}},
+        {"id":3,"type":"stat","title":"Active sessions (estimate)","gridPos":{"x":8,"y":0,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(keycloak_user_sessions) or sum(http_server_requests_active{namespace=\"keycloak\"})"}]},
+        {"id":4,"type":"stat","title":"Failed logins (5m)","gridPos":{"x":12,"y":0,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(rate(keycloak_failed_login_attempts[5m])) or vector(0)"}],
+         "fieldConfig":{"defaults":{"unit":"reqps","thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":0.5},{"color":"red","value":2}]}}}},
+        {"id":5,"type":"stat","title":"Infinispan cache size","gridPos":{"x":16,"y":0,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(vendor_cache_size{namespace=\"keycloak\"}) or sum(infinispan_cache_size{namespace=\"keycloak\"}) or vector(0)"}]},
+        {"id":6,"type":"stat","title":"DB connections used","gridPos":{"x":20,"y":0,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(agroal_active_count{namespace=\"keycloak\"}) or vector(0)"}]},
+        {"id":10,"type":"timeseries","title":"HTTP request rate (RED)","gridPos":{"x":0,"y":4,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"sum by (uri) (rate(http_server_requests_seconds_count{namespace=\"keycloak\"}[5m]))","legendFormat":"{{uri}}"}
+         ],
+         "fieldConfig":{"defaults":{"unit":"reqps"}}},
+        {"id":11,"type":"timeseries","title":"HTTP p99 latency","gridPos":{"x":12,"y":4,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"histogram_quantile(0.99, sum by (uri, le) (rate(http_server_requests_seconds_bucket{namespace=\"keycloak\"}[5m])))","legendFormat":"{{uri}}"}],
+         "fieldConfig":{"defaults":{"unit":"s"}}},
+        {"id":20,"type":"timeseries","title":"OIDC token issuance rate","gridPos":{"x":0,"y":12,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (uri) (rate(http_server_requests_seconds_count{namespace=\"keycloak\",uri=~\".*token.*|.*auth.*\"}[5m]))","legendFormat":"{{uri}}"}],
+         "fieldConfig":{"defaults":{"unit":"reqps"}}},
+        {"id":21,"type":"timeseries","title":"JVM heap usage","gridPos":{"x":12,"y":12,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (pod) (jvm_memory_used_bytes{namespace=\"keycloak\",area=\"heap\"})","legendFormat":"{{pod}}"}],
+         "fieldConfig":{"defaults":{"unit":"bytes"}}},
+        {"id":30,"type":"row","title":"Recent login events (Loki)","gridPos":{"x":0,"y":20,"w":24,"h":1}},
+        {"id":31,"type":"logs","title":"Login/Failed-login events","gridPos":{"x":0,"y":21,"w":24,"h":12},
+         "datasource":{"type":"loki","uid":"loki"},
+         "targets":[{"expr":"{namespace=\"keycloak\"} |~ \"LOGIN|LOGIN_ERROR|CODE_TO_TOKEN|USER_INFO_REQUEST\""}]}
+      ]
+    }

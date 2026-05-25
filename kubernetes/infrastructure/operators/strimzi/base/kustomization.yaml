@@ -1,0 +1,37 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - cluster-rbac.yaml
+
+helmCharts:
+  - name: strimzi-kafka-operator
+    repo: https://strimzi.io/charts
+    version: "0.51.0"
+    releaseName: strimzi-kafka-operator
+    namespace: kafka
+    includeCRDs: true
+    valuesInline:
+      resources:
+        limits:
+          cpu: "1"
+          memory: 768Mi
+        requests:
+          cpu: 200m
+          memory: 512Mi
+
+patches:
+  # Strimzi: watch all namespaces for Kafka CRs.
+  # ClusterRoleBinding strimzi-cluster-operator-namespaced-global (cluster-rbac.yaml) grants
+  # the cluster-wide RBAC; this just flips STRIMZI_NAMESPACE to * without touching Helm values.
+  - target:
+      kind: Deployment
+      name: strimzi-cluster-operator
+      namespace: kafka
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env/0
+        value:
+          name: STRIMZI_NAMESPACE
+          value: "*"

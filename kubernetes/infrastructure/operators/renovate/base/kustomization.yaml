@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+
+helmCharts:
+  # Renovate Operator (mogenius — MIT). CRD-based scheduling (RenovateJob) + Web-UI.
+  - name: renovate-operator
+    repo: oci://ghcr.io/mogenius/helm-charts
+    version: "4.7.1"
+    releaseName: renovate-operator
+    namespace: renovate-operator
+    includeCRDs: true
+    valuesInline:
+      serviceMonitor:
+        enabled: true
+        labels:
+          release: kube-prometheus-stack
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      route:
+        enabled: true
+        hostnames:
+          - renovate.timourhomelab.org
+        parentRefs:
+          - name: envoy-gateway
+            namespace: gateway
+            sectionName: https
+            group: gateway.networking.k8s.io
+            kind: Gateway

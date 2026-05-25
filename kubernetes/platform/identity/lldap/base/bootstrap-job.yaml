@@ -14,11 +14,12 @@ spec:
   schedule: "0 * * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
-  failedJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
   startingDeadlineSeconds: 600
   jobTemplate:
     spec:
       backoffLimit: 3
+      ttlSecondsAfterFinished: 600
       template:
         spec:
           restartPolicy: OnFailure
@@ -43,7 +44,7 @@ spec:
               resources:
                 requests:
                   cpu: 10m
-                  memory: 16Mi
+                  memory: 32Mi
                 limits:
                   cpu: 50m
                   memory: 32Mi
@@ -186,9 +187,16 @@ spec:
                     fi
                   done
 
-                  if [ ${FAILED:-0} -gt 0 ]; then
-                    echo "ERROR: $FAILED password operations failed — job will be marked failed"
+                  # 2026-05-16: Don't fail the whole CronJob run if 1-2 users have
+                  # dual-store-bug. Bootstrap is idempotent reconcile — admins should
+                  # be alerted but recurring CronJob-failure-alerts are noise.
+                  # Failed users keep getting retried hourly. WHEN ALL users start
+                  # failing → real auth-issue, then alert via lldap-bootstrap-script.
+                  if [ ${FAILED:-0} -ge 3 ]; then
+                    echo "ERROR: $FAILED password operations failed — job marked failed (≥3 fails = real issue)"
                     exit 1
+                  elif [ ${FAILED:-0} -gt 0 ]; then
+                    echo "WARN: $FAILED users hit dual-store-bug — continuing (idempotent retry next hour)"
                   fi
 
                   echo ""

@@ -338,9 +338,9 @@ data:
 - [PromQL Query Guide](https://prometheus.io/docs/prometheus/latest/querying/basics/)
 
 ### **Our GitOps Patterns**
-- [ArgoCD Applications](/kubernetes/infrastructure/monitoring/README.md)
-- [ServiceMonitor Configuration](/kubernetes/infrastructure/monitoring/SERVICEMONITOR_README.md)
-- [Prometheus Setup](/kubernetes/infrastructure/monitoring/prometheus/README.md)
+- [ArgoCD Applications](/kubernetes/platform/observability/README.md)
+- [ServiceMonitor Configuration](/kubernetes/platform/observability/SERVICEMONITOR_README.md)
+- [Prometheus Setup](/kubernetes/platform/observability/prometheus/README.md)
 
 ### **Dashboard Examples**
 - [Grafana Dashboard Repository](https://grafana.com/grafana/dashboards/)

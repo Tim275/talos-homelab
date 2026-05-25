@@ -1,0 +1,50 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-cert-manager
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # CertExpiringIn7Days = the page (service breaks on expiry). 30d = ticket. Dropped the
+  # duplicate <14d Info alert (wrong metric prefix cert_manager_ vs certmanager_) and the
+  # webhook-down (CertManagerDown covers "renewals blocked").
+  groups:
+    # ── PAGE ──
+    - name: cert-manager-page
+      interval: 5m
+      rules:
+        - alert: CertExpiringIn7Days
+          expr: certmanager_certificate_expiration_timestamp_seconds - time() < 7 * 24 * 3600
+          for: 1h
+          labels:
+            severity: critical
+            component: platform
+          annotations:
+            summary: "TLS cert expires in <7d: {{ $labels.name }}"
+            description: "Certificate {{ $labels.name }} in {{ $labels.namespace }} expires in {{ $value | humanizeDuration }} — service will break."
+
+    # ── TICKET ──
+    - name: cert-manager-ticket
+      interval: 5m
+      rules:
+        - alert: CertExpiringIn30Days
+          expr: certmanager_certificate_expiration_timestamp_seconds - time() < 30 * 24 * 3600
+          for: 12h
+          labels:
+            severity: warning
+            component: platform
+            priority: P2
+          annotations:
+            summary: "TLS cert expires in <30d: {{ $labels.name }}"
+            description: "Renewal should happen automatically — verify cert-manager is healthy."
+
+        - alert: CertManagerDown
+          expr: up{job="cert-manager"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: platform
+            priority: P2
+          annotations:
+            summary: "cert-manager controller down"
+            description: "Unreachable >5min — certificate renewals + new issuance blocked."

@@ -1,0 +1,58 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: compliance-kyverno
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    # ─────────────────────────────────────────────────────────────────────
+    # KYVERNO — Policy violations (mutate failures, validate failures)
+    # ─────────────────────────────────────────────────────────────────────
+    - name: kyverno
+      interval: 60s
+      rules:
+        - alert: KyvernoPolicyFailures
+          expr: |
+            sum by (policy_name, resource_namespace, resource_kind) (
+              rate(kyverno_policy_results_total{rule_result="fail", policy_name!~"audit-.*"}[5m])
+            ) > 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: kyverno
+          annotations:
+            summary: "Kyverno policy {{ $labels.policy_name }} failing in {{ $labels.resource_namespace }}"
+            description: "Resource {{ $labels.resource_kind }} in ns {{ $labels.resource_namespace }} fails policy {{ $labels.policy_name }}. Check `kubectl get policyreport -n {{ $labels.resource_namespace }}`."
+            action: "kubectl get policyreport -n {{ $labels.resource_namespace }} -o yaml | grep -B2 'result: fail'"
+
+        - alert: KyvernoAdmissionDenied
+          expr: |
+            sum by (resource_kind, resource_namespace) (
+              rate(kyverno_admission_requests_total{request_allowed=""}[5m])
+            ) > 0
+            or
+            sum by (resource_kind, resource_namespace) (
+              rate(kyverno_admission_requests_total{request_allowed!="true"}[5m])
+            ) > 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: kyverno
+          annotations:
+            summary: "Kyverno actively denied admission of {{ $labels.resource_kind }} in {{ $labels.resource_namespace }}"
+            description: "Enforce-mode policy blocked a {{ $labels.resource_kind }} create/update. Workload is degraded."
+
+        - alert: KyvernoControllerDown
+          expr: |
+            kube_deployment_status_replicas_available{deployment=~"kyverno.*"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: kyverno
+          annotations:
+            summary: "Kyverno controller {{ $labels.deployment }} down"
+            description: "Policy enforcement disabled — security risk."
