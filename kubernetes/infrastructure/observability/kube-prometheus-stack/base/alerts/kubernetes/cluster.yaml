@@ -96,6 +96,28 @@ spec:
             summary: "CoreDNS plugin panic ({{ $value }})"
             description: "CoreDNS-Plugin gepanict — DNS instabil. kubectl logs -n kube-system -l k8s-app=kube-dns"
 
+        - alert: KubeStateMetricsDown
+          expr: absent(kube_node_status_condition{condition="Ready"})
+          for: 10m
+          labels:
+            severity: warning
+            component: observability
+            priority: P2
+          annotations:
+            summary: "kube-state-metrics liefert keine Metriken — kube_*-Alerts blind"
+            description: "KSM down → ~die Hälfte der Alerts (Pods/Nodes/Deployments/Jobs/PVCs auf kube_*-Basis) feuern STILL nicht mehr = Meta-Blindheit. Check: kubectl get pods -n monitoring -l app.kubernetes.io/name=kube-state-metrics"
+
+        - alert: KubeNodeNotReady
+          expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: kubernetes
+            priority: P2
+          annotations:
+            summary: "Node {{ $labels.node }} NotReady (>5m)"
+            description: "Kubelet meldet Node nicht Ready — Pods werden evicted/rescheduled, Kapazität weg. (ControlPlaneNodeDown deckt nur ctrl-0.) Check: kubectl describe node {{ $labels.node }}"
+
         - alert: ImagePullBackoff
           expr: kube_pod_container_status_waiting_reason{reason=~"ImagePullBackOff|ErrImagePull"} == 1
           for: 5m
