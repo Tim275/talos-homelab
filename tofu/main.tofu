@@ -5,9 +5,10 @@ module "talos" {
     proxmox = proxmox
   }
 
-  image   = var.talos_image
-  cluster = var.talos_cluster_config
-  nodes   = var.talos_nodes
+  image               = var.talos_image
+  cluster             = var.talos_cluster_config
+  nodes               = var.talos_nodes
+  skip_cluster_health = var.skip_cluster_health
 }
 
 module "sealed-secrets" {
