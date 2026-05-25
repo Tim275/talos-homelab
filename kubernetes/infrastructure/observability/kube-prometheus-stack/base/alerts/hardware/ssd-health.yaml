@@ -1,0 +1,73 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: storage-ssd-health
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # SSD-death pages on "failing NOW" (media errors / NVMe critical-warning bitfield).
+  # Wear% + spare% + temp are gradual → ticket / Grafana "smartctl" dashboard. The
+  # proactive SSD monitoring (smartctl_exporter :9633) the homelab set up in 2026-05.
+  groups:
+    # ── PAGE — disk is failing now ──
+    - name: ssd-page
+      interval: 5m
+      rules:
+        - alert: SSDCriticalWarning
+          expr: smartctl_device_critical_warning > 0
+          for: 5m
+          labels:
+            severity: critical
+            component: storage
+          annotations:
+            summary: "SSD {{ $labels.device }} CRITICAL WARNING flag set (value {{ $value }})"
+            description: "NVMe critical-warning bitfield non-zero (spare/temp/reliability/read-only). Replace soon."
+            action: "nvme smart-log /dev/{{ $labels.device }} on the host to decode the warning bits."
+
+        - alert: SSDMediaErrors
+          expr: increase(smartctl_device_media_errors[1h]) > 0
+          for: 5m
+          labels:
+            severity: critical
+            component: storage
+          annotations:
+            summary: "SSD {{ $labels.device }} media errors ({{ $value }} new in 1h)"
+            description: "Uncorrectable NAND errors — the drive is failing. Back up + replace (Ceph replicas on the other node protect cluster data)."
+
+    # ── TICKET — wearing out / blind spot ──
+    - name: ssd-ticket
+      interval: 5m
+      rules:
+        - alert: SSDAvailableSpareLow
+          expr: smartctl_device_available_spare < 10
+          for: 30m
+          labels:
+            severity: warning
+            component: storage
+            priority: P2
+          annotations:
+            summary: "SSD {{ $labels.device }} spare blocks low ({{ $value }}%)"
+            description: "NVMe available-spare <10% — controller will soon enter read-only mode. Migrate Ceph OSD off (ceph osd out) + replace."
+
+        - alert: SSDWearLevelCritical
+          expr: smartctl_device_percentage_used > 95
+          for: 30m
+          labels:
+            severity: warning
+            component: storage
+            priority: P2
+          annotations:
+            summary: "SSD {{ $labels.device }} at {{ $value }}% wear — near end-of-life"
+            description: "Past 95% of rated TBW. Order replacement; failure risk rising."
+
+        - alert: SSDSmartExporterDown
+          expr: up{job="proxmox-smart"} == 0
+          for: 15m
+          labels:
+            severity: warning
+            component: storage
+            priority: P2
+          annotations:
+            summary: "smartctl_exporter on {{ $labels.instance }} is down"
+            description: "No SMART data from this Proxmox host — SSD health is unmonitored (blind spot)."
+            action: "systemctl status smartctl_exporter on the host. Restart if needed."

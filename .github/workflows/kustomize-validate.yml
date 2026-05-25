@@ -1,15 +1,15 @@
 name: kustomize-validate
 
 on:
-  pull_request:
-    branches: [main]
+  push:
+    branches: ['**']
     paths:
       - "kubernetes/**"
       - ".github/workflows/kustomize-validate.yml"
-  push:
-    branches: [main]
+  pull_request:
     paths:
       - "kubernetes/**"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -31,12 +31,21 @@ jobs:
         with:
           version: v3.16.0
 
-      - name: Validate kustomize builds
+      - name: Install kubeconform
+        run: |
+          VERSION="0.7.0"
+          curl -sLO "https://github.com/yannh/kubeconform/releases/download/v${VERSION}/kubeconform-linux-amd64.tar.gz"
+          tar xzf "kubeconform-linux-amd64.tar.gz" kubeconform
+          sudo mv kubeconform /usr/local/bin/
+          kubeconform -v
+
+      - name: Validate kustomize builds + manifest schemas
         run: |
           set +e
           FAILED=0
           PASSED=0
           FAILED_DIRS=()
+          mkdir -p /tmp/kubeconform-cache
 
           while IFS= read -r kfile; do
             DIR=$(dirname "$kfile")
@@ -45,10 +54,25 @@ jobs:
 
             if [ $STATUS -ne 0 ]; then
               FAILED=$((FAILED+1))
-              FAILED_DIRS+=("$DIR")
+              FAILED_DIRS+=("$DIR (build)")
               echo "::error file=$kfile::kustomize build failed in $DIR"
-              echo "::group::Error in $DIR"
+              echo "::group::Build error in $DIR"
               echo "$OUTPUT"
+              echo "::endgroup::"
+              continue
+            fi
+
+            CONFORM=$(echo "$OUTPUT" | kubeconform \
+              -ignore-missing-schemas \
+              -schema-location default \
+              -cache /tmp/kubeconform-cache \
+              -summary 2>&1)
+            if [ $? -ne 0 ]; then
+              FAILED=$((FAILED+1))
+              FAILED_DIRS+=("$DIR (schema)")
+              echo "::error file=$kfile::kubeconform schema validation failed in $DIR"
+              echo "::group::Schema error in $DIR"
+              echo "$CONFORM"
               echo "::endgroup::"
             else
               PASSED=$((PASSED+1))

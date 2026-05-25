@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pve-exporter
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: pve-exporter
+    app.kubernetes.io/component: exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pve-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pve-exporter
+    spec:
+      containers:
+        - name: exporter
+          # No --config.file flag → exporter reads PVE_USER / PVE_TOKEN_NAME /
+          # PVE_TOKEN_VALUE from env (via config_from_env in cli.py). When --config.file
+          # is set, env vars are silently ignored — that's how the previous setup got
+          # "401 invalid token value": the file had no token_value field.
+          image: docker.io/prompve/prometheus-pve-exporter:3.8.3@sha256:4527b8080c4bd53ae8d7326ff7a3469dad0c1abb5753ff0bae9f1ef1c23cb2c9
+          args:
+            - --web.listen-address=:9221
+          env:
+            - name: PVE_USER
+              value: "tofu@pve"
+            - name: PVE_TOKEN_NAME
+              value: "homelab-tofu"
+            - name: PVE_VERIFY_SSL
+              value: "false"
+            - name: PVE_TOKEN_VALUE
+              valueFrom:
+                secretKeyRef:
+                  name: pve-exporter-token
+                  key: token_value
+          ports:
+            - name: metrics
+              containerPort: 9221
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pve-exporter
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: pve-exporter
+spec:
+  selector:
+    app.kubernetes.io/name: pve-exporter
+  ports:
+    - name: metrics
+      port: 9221
+      targetPort: metrics

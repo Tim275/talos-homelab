@@ -1,0 +1,23 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: observability-tempo
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # Tracing is observability infra → ticket. Distributor-down (no trace ingest) is the
+  # symptom; ingester-internals → Grafana "Tempo" dashboard.
+  groups:
+    - name: tempo
+      interval: 60s
+      rules:
+        - alert: TempoDistributorDown
+          expr: up{job=~".*tempo.*distributor.*"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: tempo
+            priority: P2
+          annotations:
+            summary: "Tempo distributor down — traces being dropped"
+            description: "Apps cannot push traces; OTel-Collector queue grows. (Tracing only — no user impact.)"

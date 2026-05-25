@@ -1,0 +1,40 @@
+# Envoy Gateway Helm values (chart: oci://docker.io/envoyproxy/gateway-helm)
+# Migrated from raw install.yaml so config lives in a values interface and the
+# certgen hook can be made ServerSideApply-safe (see certgen.job.annotations).
+
+# EnvoyGateway runtime config -> rendered into the envoy-gateway-config ConfigMap.
+config:
+  envoyGateway:
+    gateway:
+      controllerName: gateway.envoyproxy.io/gatewayclass-controller
+    provider:
+      type: Kubernetes
+    logging:
+      level:
+        default: info
+    # Backend API: production-grade TLS to backends (e.g. Ceph dashboard).
+    extensionApis:
+      enableBackend: true
+    # Global rate limiting via the redis-gateway instance.
+    rateLimit:
+      backend:
+        type: Redis
+        redis:
+          url: redis://redis-gateway.gateway.svc.cluster.local:6379
+
+# Topology injector webhook is disabled: its MutatingWebhookConfiguration does
+# not exist on a fresh install, which made the certgen job fail when it tried to
+# patch it. Disabling avoids that ordering trap (was the --disable-topology-injector arg).
+topologyInjector:
+  enabled: false
+
+certgen:
+  job:
+    # ROOT-CAUSE FIX for the bootstrap deadlock:
+    # certgen ships as a helm.sh/hook (PreSync). With the app-level
+    # ServerSideApply=true (required for the ~1.2MB envoyproxies CRD), ArgoCD
+    # never creates the hook Job -> sync hangs forever "waiting for completion
+    # of hook batch/Job/eg-gateway-helm-certgen". Forcing client-side apply for
+    # this one small hook resource makes it run; the big CRDs keep using SSA.
+    annotations:
+      argocd.argoproj.io/sync-options: ServerSideApply=false

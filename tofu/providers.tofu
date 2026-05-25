@@ -1,4 +1,13 @@
 terraform {
+  backend "azurerm" {
+    resource_group_name  = "rg-tofu-state"
+    storage_account_name = "tofustatehomelab"
+    container_name       = "tfstate"
+    key                  = "talos-homelab.tfstate"
+    use_azuread_auth     = true
+    subscription_id      = "72c89487-4bc9-4c91-a0f7-0cc51fc89336"
+  }
+
   required_providers {
     talos = {
       source  = "siderolabs/talos"
@@ -33,8 +42,10 @@ provider "proxmox" {
 }
 
 provider "kubernetes" {
-  # Use existing kubeconfig file to avoid circular dependency during import
-  config_path = "${path.module}/output/kube-config.yaml"
+  host                   = module.talos.kube_config.kubernetes_client_configuration.host
+  client_certificate     = base64decode(module.talos.kube_config.kubernetes_client_configuration.client_certificate)
+  client_key             = base64decode(module.talos.kube_config.kubernetes_client_configuration.client_key)
+  cluster_ca_certificate = base64decode(module.talos.kube_config.kubernetes_client_configuration.ca_certificate)
 }
 
 provider "restapi" {

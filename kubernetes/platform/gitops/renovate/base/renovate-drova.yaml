@@ -1,0 +1,36 @@
+## RenovateJob CR for Tim275/drova repo (Code-Repository)
+## Different schedule than talos-homelab — separate parallel job.
+apiVersion: renovate-operator.mogenius.com/v1alpha1
+kind: RenovateJob
+metadata:
+  name: renovate-drova
+  namespace: renovate-operator
+spec:
+  discoveryFilters:
+    - Tim275/drova
+  provider:
+    name: github
+    endpoint: ""
+  image: ghcr.io/renovatebot/renovate:43.176.3   # renovate: docker=ghcr.io/renovatebot/renovate
+  ## parallelism = "max projects scanned in parallel" (per Mogenius CRD semantics).
+  ## Bei 1 Repo per Job ist parallelism>1 wirkungslos. Daher: 1.
+  parallelism: 1
+  ## Alle 6h um :30 (00:30/06:30/12:30/18:30) — Homelab-Takt, versetzt zu talos-homelab (:00)
+  ## gegen gleichzeitige DockerHub-Rate-Limits. War */15 (Ramp-up nach PAT-Fix, jetzt steady).
+  schedule: "30 */6 * * *"
+  secretRef: renovate-secret
+  extraEnv:
+    - name: LOG_LEVEL
+      value: info
+    - name: RENOVATE_GIT_AUTHOR
+      value: "Renovate Bot <tim275@users.noreply.github.com>"
+    ## DockerHub auth: RENOVATE_HOST_RULES wird VIA renovate-secret (secretRef) injiziert
+    ## mit FERTIGEM JSON (creds baked in). Grund: K8s expandiert $(VAR) NUR in env:-Block,
+    ## NICHT in envFrom: — daher müssen creds direkt im secret-value sein.
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1500m
+      memory: 2Gi

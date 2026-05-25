@@ -1,0 +1,38 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: data-redis
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # RedisDown (redis_up==0) covers all instances incl drova. Eviction-rate/hit-rate/
+  # heap/replication-internals → Grafana "Redis" dashboard. Redis backs the n8n queue →
+  # ticket-tier (degrades n8n, recovers on restart; not a 3am page).
+  groups:
+    - name: redis
+      interval: 1m
+      rules:
+        - alert: RedisDown
+          expr: redis_up == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: data
+            priority: P2
+          annotations:
+            summary: "Redis down: {{ $labels.namespace }}/{{ $labels.pod }}"
+            description: "Redis unreachable >5min — n8n queue / cache unavailable."
+
+        - alert: RedisOutOfMemory
+          expr: |
+            redis_memory_max_bytes > 0
+            and
+            (redis_memory_used_bytes / redis_memory_max_bytes) > 0.95
+          for: 5m
+          labels:
+            severity: warning
+            component: data
+            priority: P2
+          annotations:
+            summary: "Redis OOM imminent: {{ $labels.namespace }}/{{ $labels.pod }}"
+            description: "Memory at {{ $value | humanizePercentage }} of maxmemory — eviction storm likely."

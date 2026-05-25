@@ -1,0 +1,60 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: jaeger-internals
+  namespace: grafana
+spec:
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  allowCrossNamespaceImport: true
+  folder: Observability
+  json: |
+    {
+      "title": "Jaeger v2 — Query, Sampling, Storage",
+      "uid": "jaeger-internals",
+      "tags": ["observability","jaeger","tracing"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "refresh": "30s",
+      "time": {"from": "now-3h", "to": "now"},
+      "templating": {"list": []},
+      "panels": [
+        {"id":1,"type":"stat","title":"Spans received (rate)","gridPos":{"x":0,"y":0,"w":6,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(rate(jaeger_collector_spans_received_total[5m]))"}],
+         "fieldConfig":{"defaults":{"unit":"reqps"}}},
+        {"id":2,"type":"stat","title":"Spans rejected","gridPos":{"x":6,"y":0,"w":6,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(rate(jaeger_collector_spans_rejected_total[5m]))"}],
+         "fieldConfig":{"defaults":{"unit":"reqps","thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":0.1}]}}}},
+        {"id":3,"type":"stat","title":"Query requests (5m rate)","gridPos":{"x":12,"y":0,"w":6,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(rate(jaeger_query_requests_total[5m]))"}],
+         "fieldConfig":{"defaults":{"unit":"reqps"}}},
+        {"id":4,"type":"stat","title":"Query latency p99","gridPos":{"x":18,"y":0,"w":6,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"histogram_quantile(0.99, sum by (le) (rate(jaeger_query_latency_bucket[5m])))"}],
+         "fieldConfig":{"defaults":{"unit":"s"}}},
+        {"id":10,"type":"timeseries","title":"Span receive rate per service","gridPos":{"x":0,"y":4,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (svc) (rate(jaeger_collector_spans_received_total[5m]))","legendFormat":"{{svc}}"}],
+         "fieldConfig":{"defaults":{"unit":"reqps"}}},
+        {"id":11,"type":"timeseries","title":"Storage write latency p99 (ES)","gridPos":{"x":12,"y":4,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"histogram_quantile(0.99, sum by (le) (rate(jaeger_collector_save_latency_bucket[5m])))","legendFormat":"p99"}],
+         "fieldConfig":{"defaults":{"unit":"s"}}},
+        {"id":20,"type":"timeseries","title":"Spans queued in collector","gridPos":{"x":0,"y":12,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(jaeger_collector_queue_length)","legendFormat":"queue depth"}]},
+        {"id":21,"type":"timeseries","title":"Query errors (rate)","gridPos":{"x":12,"y":12,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (operation) (rate(jaeger_query_requests_total{result=\"err\"}[5m]))","legendFormat":"{{operation}}"}],
+         "fieldConfig":{"defaults":{"unit":"reqps"}}},
+        {"id":30,"type":"row","title":"Sampling effectiveness","gridPos":{"x":0,"y":20,"w":24,"h":1}},
+        {"id":31,"type":"timeseries","title":"Spans dropped by sampling (rate)","gridPos":{"x":0,"y":21,"w":24,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (svc) (rate(jaeger_sampler_spans_total{outcome=\"dropped\"}[5m]))","legendFormat":"{{svc}} dropped"}],
+         "fieldConfig":{"defaults":{"unit":"reqps"}}}
+      ]
+    }

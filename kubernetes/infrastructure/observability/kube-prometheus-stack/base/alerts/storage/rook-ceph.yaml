@@ -1,0 +1,100 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: storage-rook-ceph
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # CephClusterDown (==3) removed — ceph_health_status is only 0/1/2, so it never fired.
+  # CephHealthError(==2) is the real cluster-error page. Dropped HEALTH_WARN (too noisy —
+  # benign warns), the OSDDown/SlowOps/Capacity Info+Warning duplicates, and PG-recovery/
+  # slow-ops internals → Grafana "Ceph - Cluster" / "Ceph - OSD" dashboards.
+  groups:
+    # ── PAGE ──
+    - name: ceph-page
+      interval: 30s
+      rules:
+        - alert: CephHealthError
+          expr: ceph_health_status == 2
+          for: 5m
+          labels:
+            severity: critical
+            component: storage
+          annotations:
+            summary: "Ceph cluster HEALTH_ERR"
+            description: "Rook-Ceph reports HEALTH_ERR — data integrity at risk."
+
+        - alert: CephQuorumLost
+          expr: (ceph_osd_up + ceph_osd_in) / (ceph_osd_up + ceph_osd_down) < 0.5
+          for: 1m
+          labels:
+            severity: critical
+            component: storage
+          annotations:
+            summary: "Ceph lost quorum — majority of OSDs down"
+            description: "More than 50% of OSDs down — DATA LOSS RISK, storage unavailable."
+
+    # ── TICKET ──
+    - name: ceph-ticket
+      interval: 60s
+      rules:
+        - alert: CephOSDDown
+          expr: ceph_osd_up == 0
+          for: 10m
+          labels:
+            severity: warning
+            component: storage
+            priority: P2
+          annotations:
+            summary: "Ceph OSD {{ $labels.ceph_daemon }} down"
+            description: "OSD down >10min — replication degraded (replica=2, msa2 still holds copies)."
+
+        - alert: CephPGsNotActive
+          # Targeted replacement for the dropped (noisy) blanket HEALTH_WARN: fires ONLY when
+          # PGs are genuinely not active (stuck peering / inactive = data unavailable), which
+          # benign warns (scrub, nearfull) never cause. A 12h stuck-peering deadlock from a
+          # broken cross-node WireGuard link (encrypt-node, 2026-05-24) went completely unalerted.
+          expr: (ceph_pg_total - ceph_pg_active) > 0
+          for: 15m
+          labels:
+            severity: warning
+            component: storage
+            priority: P2
+          annotations:
+            summary: "Ceph {{ $value }} PGs not active for 15m — data availability degraded"
+            description: "PGs stuck inactive/peering — clients on them block (slow-ops cascade → RGW/CNPG timeouts). Check 'ceph pg dump_stuck inactive' + cross-node OSD heartbeats / Cilium NodeEncryption."
+
+        - alert: CephOSDNearFull
+          expr: ceph_osd_stat_bytes_used / ceph_osd_stat_bytes > 0.75
+          for: 30m
+          labels:
+            severity: warning
+            component: storage
+            priority: P2
+          annotations:
+            summary: "Ceph OSD {{ $labels.ceph_daemon }} >75% full"
+            description: "OSD at {{ $value | humanizePercentage }} — add capacity before it blocks writes."
+
+        - alert: RookCephOperatorDown
+          expr: up{job="rook-ceph-operator"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: storage
+            priority: P2
+          annotations:
+            summary: "Rook-Ceph operator down"
+            description: "Operator unreachable >5min — Ceph reconcile/management operations blocked."
+
+        - alert: RGWBucketQuotaWarning
+          expr: |
+            (ceph_rgw_bucket_used_bytes / ceph_rgw_bucket_quota_bytes) > 0.85
+            and ceph_rgw_bucket_quota_bytes > 0
+          for: 30m
+          labels:
+            severity: warning
+            component: storage
+            priority: P2
+          annotations:
+            summary: "RGW bucket {{ $labels.bucket }} >85% of quota"
+            description: "Bucket fills soon — Velero/CNPG/Loki/Tempo writes will fail at 100%."

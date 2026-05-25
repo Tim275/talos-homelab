@@ -1,0 +1,60 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: drova-business
+  namespace: grafana
+spec:
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  allowCrossNamespaceImport: true
+  folder: Drova
+  json: |
+    {
+      "title": "Drova — Business Metrics",
+      "uid": "drova-business",
+      "tags": ["drova","business","product"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "refresh": "1m",
+      "time": {"from": "now-24h", "to": "now"},
+      "templating": {"list":[]},
+      "panels": [
+        {"id":1,"type":"stat","title":"Trip-creates (24h)","gridPos":{"x":0,"y":0,"w":6,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(increase(http_server_request_duration_seconds_count{service_name=\"api-gateway\",http_route=~\"/api/trips|/v1/trips\",http_request_method=\"POST\",http_response_status_code=~\"2..\"}[24h])) or vector(0)"}]},
+        {"id":2,"type":"stat","title":"Driver-checkins (24h)","gridPos":{"x":6,"y":0,"w":6,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(increase(http_server_request_duration_seconds_count{service_name=\"api-gateway\",http_route=~\"/api/drivers/.*/online|/v1/drivers/.*/checkin\"}[24h])) or vector(0)"}]},
+        {"id":3,"type":"stat","title":"Payment-success rate (24h)","gridPos":{"x":12,"y":0,"w":6,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(rate(http_server_request_duration_seconds_count{service_name=\"payment-service\",http_response_status_code=~\"2..\"}[24h])) / clamp_min(sum(rate(http_server_request_duration_seconds_count{service_name=\"payment-service\"}[24h])),0.001)"}],
+         "fieldConfig":{"defaults":{"unit":"percentunit","thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"yellow","value":0.95},{"color":"green","value":0.99}]}}}},
+        {"id":4,"type":"stat","title":"Chat messages (24h)","gridPos":{"x":18,"y":0,"w":6,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(increase(http_server_request_duration_seconds_count{service_name=\"chat-service\",http_request_method=\"POST\"}[24h])) or vector(0)"}]},
+        {"id":10,"type":"timeseries","title":"Request rate per service (RED)","gridPos":{"x":0,"y":4,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|user-service|chat-service|trip-service|driver-service|payment-service\"}[5m]))","legendFormat":"{{service_name}}"}],
+         "fieldConfig":{"defaults":{"unit":"reqps"}}},
+        {"id":11,"type":"timeseries","title":"Error rate per service (5xx)","gridPos":{"x":12,"y":4,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|user-service|chat-service|trip-service|driver-service|payment-service\",http_response_status_code=~\"5..\"}[5m]))","legendFormat":"{{service_name}}"}],
+         "fieldConfig":{"defaults":{"unit":"reqps"}}},
+        {"id":20,"type":"timeseries","title":"p99 latency per service","gridPos":{"x":0,"y":12,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"histogram_quantile(0.99, sum by (service_name, le) (rate(http_server_request_duration_seconds_bucket{service_name=~\"api-gateway|user-service|chat-service|trip-service|driver-service|payment-service\"}[5m])))","legendFormat":"{{service_name}}"}],
+         "fieldConfig":{"defaults":{"unit":"s"}}},
+        {"id":21,"type":"timeseries","title":"DB connections per CNPG cluster","gridPos":{"x":12,"y":12,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (cluster) (cnpg_backends_total)","legendFormat":"{{cluster}}"}]},
+        {"id":30,"type":"timeseries","title":"Kafka throughput (drova topics)","gridPos":{"x":0,"y":20,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (topic) (rate(kafka_server_brokertopicmetrics_messagesin_total{topic=~\"trip-.*|driver-.*|payment-.*|chat-.*\"}[5m]))","legendFormat":"{{topic}}"}],
+         "fieldConfig":{"defaults":{"unit":"reqps"}}},
+        {"id":31,"type":"timeseries","title":"Redis ops/sec (drova)","gridPos":{"x":12,"y":20,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (pod) (rate(redis_commands_processed_total{namespace=\"drova\"}[5m]))","legendFormat":"{{pod}}"}],
+         "fieldConfig":{"defaults":{"unit":"reqps"}}}
+      ]
+    }

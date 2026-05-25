@@ -1,7 +1,7 @@
 [tools]
 "ubi:derailed/k9s" = "latest"
 "ubi:mikefarah/yq" = "latest"
-opentofu = "latest"
+opentofu = "1.12.0"
 talosctl = "latest"
 helm = "latest"
 kustomize = "latest"
@@ -48,13 +48,13 @@ experimental = true
 #     kubeconfig ~/.kube/config-break-glass
 #   chmod 600 ~/.kube/config-break-glass
 #
-# Wenn config-oidc kaputt: einfach diese Datei wieder erstellen mit
-# dem User-Block aus CLAUDE.md "Phase 8 — kubelogin Setup".
+# Wenn config-oidc kaputt: kubelogin-Setup wiederholen.
 #
 # ════════════════════════════════════════════════════════════════════════
 [env]
-# Default beim `cd` in dieses Repo: OIDC-Pfad (Keycloak-Login Pflicht)
-KUBECONFIG = "{{ env.HOME }}/.kube/config-oidc"
+# Default beim `cd`: aktuelle Admin-Kubeconfig (X.509, post-rebuild CA).
+# config-break-glass war stale (pre-2026-05-22-rebuild CA) → ECDSA failure.
+KUBECONFIG = "{{ env.HOME }}/.kube/homelab-admin.yaml"
 
 # Aliases via mise tasks (siehe unten):
 #   mise run kube-oidc        → zeigt OIDC-Pfad an
@@ -73,22 +73,30 @@ description = "Show cluster information"
 run = """
 echo " Talos Cluster Info:"
 kubectl get nodes -o wide
-kubectl get pods -A --field-selector=status.phase!=Running
+kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded
 """
 
 [tasks.cluster-status]
 description = "Check cluster health (Talos + Kubernetes)"
 run = """
 echo "🏥 Talos Cluster Health:"
-talosctl --talosconfig tofu/output/talos-config.yaml health
+ENDPOINT="192.168.0.101"
+CP_IPS=$(talosctl get members -n $ENDPOINT -o json 2>/dev/null | \
+  jq -r '[.items[] | select(.spec.machineType=="controlplane") | .spec.addresses[0]] | join(",")' 2>/dev/null || echo "$ENDPOINT")
+WORKER_IPS=$(talosctl get members -n $ENDPOINT -o json 2>/dev/null | \
+  jq -r '[.items[] | select(.spec.machineType=="worker") | .spec.addresses[0]] | join(",")' 2>/dev/null || echo "")
+talosctl -n "$ENDPOINT" health \
+  --control-plane-nodes "$CP_IPS" \
+  --worker-nodes "$WORKER_IPS" \
+  --wait-timeout 1m
 
 echo ""
 echo "☸️ Kubernetes Nodes:"
-kubectl --kubeconfig tofu/output/kube-config.yaml get nodes -o wide
+kubectl get nodes -o wide
 
 echo ""
-echo " Not Running Pods:"
-kubectl --kubeconfig tofu/output/kube-config.yaml get pods -A --field-selector=status.phase!=Running
+echo "⚠️ Not Running Pods:"
+kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded
 """
 
 [tasks.apply-manifests]
@@ -116,7 +124,7 @@ tofu apply
 
 # ─── Kubeconfig-Switcher ────────────────────────────────────────────────
 [tasks.kube-oidc]
-description = "🔑 Switch to OIDC kubeconfig (Daily-Driver via Keycloak)"
+description = "🔑 ZEIGT den OIDC-export-Befehl (Task kann Parent-Shell nicht ändern → selbst ausführen)"
 run = """
 echo "export KUBECONFIG=$HOME/.kube/config-oidc"
 echo ""
@@ -127,7 +135,7 @@ echo "   • Permissions: cluster-admin via group cluster-admins"
 """
 
 [tasks.kube-break-glass]
-description = "🚨 Switch to Break-Glass kubeconfig (X.509 admin, KC bypassen)"
+description = "🚨 ZEIGT den Break-Glass-export-Befehl (Task kann Parent-Shell nicht ändern → selbst ausführen)"
 run = """
 echo "export KUBECONFIG=$HOME/.kube/config-break-glass"
 echo ""
@@ -150,6 +158,37 @@ kubectl config current-context 2>/dev/null
 kubectl auth whoami 2>/dev/null || true
 """
 
+# ─── Network / Cilium Debugging ─────────────────────────────────────────
+[tasks.cilium-health]
+description = "🌐 Cilium Node-zu-Node Datapath-Matrix (DAS Tool für Netzwerk-Outages)"
+run = "kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-health status"
+
+[tasks.cilium-status]
+description = "🌐 Cilium Agent-Status (Encryption/WireGuard/Controller)"
+run = "kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg status"
+
+# ─── Rook-Ceph ──────────────────────────────────────────────────────────
+[tasks.ceph-status]
+description = "💾 Rook-Ceph Cluster-Status (via Toolbox)"
+run = "kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph status"
+
+[tasks.ceph-health]
+description = "💾 Rook-Ceph health detail + OSD-Status + Auslastung"
+run = """
+echo '-- ceph health detail --'; kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph health detail
+echo '-- osd status --';         kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd status
+echo '-- df --';                 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph df
+"""
+
+# ─── Kafka / Strimzi (namespace drova) ──────────────────────────────────
+[tasks.kafka-status]
+description = "📨 Kafka/Strimzi Status — Cluster + NodePools + Topics + Pods (drova)"
+run = """
+echo '-- kafka cluster + nodepools --'; kubectl get kafka,kafkanodepool -n drova
+echo '-- topics --';                    kubectl get kafkatopic -n drova
+echo '-- broker/controller pods --';    kubectl get pods -n drova -l strimzi.io/cluster=drova-kafka -o wide
+"""
+
 [hooks]
 enter = """
 mise trust --quiet 2>/dev/null || true
@@ -163,8 +202,9 @@ echo ''
 echo '══════════════════════════════════════════════════════════════════'
 echo '🐧 TALOSCTL'
 echo '══════════════════════════════════════════════════════════════════'
-echo '  talosctl health                          # Cluster Health Check'
-echo '  talosctl get members                     # Alle Nodes anzeigen'
+echo '  mise run cluster-status                  # Cluster Health Check (auto-discover IPs)'
+echo '  talosctl -n <cp-ip> health --control-plane-nodes <cp-ip> --worker-nodes <w1>,<w2>  # single -n!'
+echo '  talosctl get members -n 192.168.0.101   # Alle Nodes + IPs anzeigen'
 echo '  talosctl version                         # Talos Version (client + server)'
 echo '  talosctl dashboard                       # Live Node Dashboard (TUI)'
 echo ''
@@ -203,7 +243,7 @@ echo '════════════════════════�
 echo '⚓ KUBECTL — PODS & WORKLOADS'
 echo '══════════════════════════════════════════════════════════════════'
 echo '  kubectl get pods -A                     # Alle Pods aller Namespaces'
-echo '  kubectl get pods -A --field-selector=status.phase!=Running  # Nicht-Running Pods'
+echo '  kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded  # Nicht-Running Pods'
 echo '  kubectl get pods -n <ns> -o wide        # Pods mit Node-Zuweisung'
 echo '  kubectl describe pod <name> -n <ns>     # Pod Details + Events'
 echo '  kubectl logs <pod> -n <ns> -f           # Logs live verfolgen'
@@ -236,6 +276,48 @@ echo '  kubectl get httproute -A               # Gateway API Routes'
 echo '  kubectl get crd                        # Alle installierten CRDs'
 echo ''
 echo '══════════════════════════════════════════════════════════════════'
+echo '🌐 CILIUM / NETWORK DEBUGGING'
+echo '══════════════════════════════════════════════════════════════════'
+echo '  mise run cilium-health                  # ⭐ Node-zu-Node Datapath-Matrix — DER Outage-Check'
+echo '  mise run cilium-status                  # Agent-Status (Encryption/WireGuard/Controller)'
+echo '  POD=$(kubectl get pod -n kube-system -l k8s-app=cilium --field-selector spec.nodeName=worker-2 -o name|head -1)'
+echo '  kubectl exec -n kube-system $POD -c cilium-agent -- cilium-health status   # Sicht EINES Nodes'
+echo '  kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg bpf ct flush global  # conntrack flushen'
+echo '  hubble observe --verdict DROPPED -f     # Live: gedroppte Pakete'
+echo ''
+echo '  🔍 Diagnose-Leiter bei "Pod kann nicht connecten":'
+echo '   1. cilium-health → welcher Node-Pfad ist 0/1?  (der Ausreißer = das Problem)'
+echo '   2. Symptom-Pod + Ziel-Pod: auf welchen NODES?   (kubectl get pod -o wide)'
+echo '   3. Test-Pod auf Quell-Node pinnen → nc zur AKTUELLEN Ziel-Pod-IP (nie stale!)'
+echo '   4. Cross-host? → SSH Proxmox: pve-firewall (NIEMALS an!) + nft list ruleset'
+echo '   5. Node stuck trotz fix? → cordon+drain+delete ciliumnode → reboot'
+echo ''
+echo '══════════════════════════════════════════════════════════════════'
+echo '💾 ROOK-CEPH'
+echo '══════════════════════════════════════════════════════════════════'
+echo '  mise run ceph-status                    # Cluster-Status (HEALTH_OK?)'
+echo '  mise run ceph-health                    # health detail + osd status + df'
+echo '  kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph <cmd>   # beliebiger ceph-Befehl:'
+echo '     ceph osd tree        # OSD-Baum (welche OSD auf welchem Node)'
+echo '     ceph osd df          # Auslastung pro OSD'
+echo '     ceph pg stat         # Placement-Group-Status'
+echo '  kubectl get cephcluster -n rook-ceph    # Cluster-CR Status'
+echo '  kubectl -n rook-ceph get pods           # Rook-Pods (mon/osd/mgr/mds/rgw)'
+echo ''
+echo '══════════════════════════════════════════════════════════════════'
+echo '📨 KAFKA / STRIMZI (namespace drova)'
+echo '══════════════════════════════════════════════════════════════════'
+echo '  mise run kafka-status                   # Cluster + NodePools + Topics + Pods'
+echo '  kubectl get kafka,kafkanodepool,kafkatopic -n drova   # Strimzi-CRs (Ready-Spalte!)'
+echo '  kubectl get pods -n drova -l strimzi.io/cluster=drova-kafka -o wide   # broker[0-2]+ctrl[3-5]'
+echo '  kubectl describe kafka drova-kafka -n drova           # Conditions/Warnings'
+echo '  kubectl logs -n drova drova-kafka-controller-3 -c kafka -f   # KRaft-Quorum/Leader (Ctrl-Log)'
+echo '  kubectl logs -n drova drova-kafka-broker-0 -c kafka -f       # Broker-Log'
+echo '  kubectl get kafkatopic <topic> -n drova -o yaml       # Topic-Detail (Partitions/ISR)'
+echo '  ⚠ rohe kafka-*.sh CLI geht NICHT direkt: Listener=SASL+TLS (9095). Für'
+echo '     Quorum/Lag → Controller-Logs oben + Grafana (kafka-exporter), nicht kafka-topics.sh'
+echo ''
+echo '══════════════════════════════════════════════════════════════════'
 echo '🔒 SEALED SECRETS'
 echo '══════════════════════════════════════════════════════════════════'
 echo '  kubeseal --fetch-cert --controller-name=sealed-secrets --controller-namespace=sealed-secrets > pub-cert.pem'
@@ -244,7 +326,9 @@ echo ''
 echo '══════════════════════════════════════════════════════════════════'
 echo '🔑 ARGOCD'
 echo '══════════════════════════════════════════════════════════════════'
-echo '  argocd app list                         # Alle Apps + Sync Status'
+echo '  ⚠ erst login: argocd login <argocd-host> --sso   (sonst TLS/connection-refused)'
+echo '  ODER ohne CLI: kubectl get applications -n argocd        # Apps + Sync/Health direkt'
+echo '  argocd app list                         # Alle Apps + Sync Status (nach login)'
 echo '  argocd app sync <app>                   # App manuell syncen'
 echo '  argocd app diff <app>                   # Was würde sich ändern?'
 echo '  argocd app get <app>                    # App Details'
@@ -266,6 +350,11 @@ echo '  mise run cluster-status   # Talos Health + K8s Nodes'
 echo '  mise run cluster-info     # Nodes + nicht-Running Pods'
 echo '  mise run tofu-plan        # Infrastructure Plan'
 echo '  mise run tofu-apply       # Infrastructure Apply'
+echo '  mise run cilium-health    # 🌐 Node-Datapath-Matrix (Netzwerk-Outage-Check)'
+echo '  mise run cilium-status    # 🌐 Cilium Agent-Status'
+echo '  mise run ceph-status      # 💾 Rook-Ceph Status'
+echo '  mise run ceph-health      # 💾 Rook-Ceph health + osd + df'
+echo '  mise run kafka-status     # 📨 Kafka/Strimzi Cluster + Topics + Pods'
 echo '══════════════════════════════════════════════════════════════════'
 echo ''
 """

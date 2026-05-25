@@ -1,0 +1,44 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: apps-keycloak
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # KeycloakDown is the page (SSO down = login broken cluster-wide). Dropped the duplicate
+  # Info up==0 alert. Login-failure-spike kept as a security ticket.
+  groups:
+    # ── PAGE ──
+    - name: keycloak-page
+      interval: 60s
+      rules:
+        - alert: KeycloakDown
+          # Keycloak runs as a StatefulSet (Keycloak Operator), NOT a Deployment.
+          # The old kube_deployment_status_replicas_available{deployment="keycloak"} series
+          # never existed -> alert was structurally dead (missed a 23x OOMKill crashloop, 2026-05-24).
+          # `or absent(...)` also catches the case where the SS metric disappears entirely.
+          expr: |
+            (kube_statefulset_status_replicas_ready{namespace="keycloak",statefulset="keycloak"} == 0)
+            or absent(kube_statefulset_status_replicas_ready{namespace="keycloak",statefulset="keycloak"})
+          for: 3m
+          labels:
+            severity: critical
+            component: apps
+          annotations:
+            summary: "Keycloak down — auth provider unavailable"
+            description: "All Keycloak replicas not ready — OIDC login broken cluster-wide (ArgoCD, Grafana, n8n, etc.)."
+
+    # ── TICKET ──
+    - name: keycloak-ticket
+      interval: 60s
+      rules:
+        - alert: KeycloakLoginFailureSpike
+          expr: sum by (realm) (rate(keycloak_failed_login_attempts[5m])) > 0.5
+          for: 5m
+          labels:
+            severity: warning
+            component: keycloak
+            priority: P2
+          annotations:
+            summary: "Keycloak realm {{ $labels.realm }} elevated failed-login rate"
+            description: "{{ $value }} failed logins/sec — possible credential-stuffing or brute-force."

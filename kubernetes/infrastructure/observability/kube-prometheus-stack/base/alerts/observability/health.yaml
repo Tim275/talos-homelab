@@ -1,0 +1,111 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: observability-health
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # Dedup'd 2026-05-23: dropped the inferior up==0 PrometheusDown/AlertmanagerDown
+  # (+ their Warning/Info twins) — the kube-state *PodMissing alerts below are
+  # strictly better (catch the Phase=Succeeded gap that up{} misses, HA-aware).
+  # Cardinality/ingestion-rate → Grafana "Prometheus"/"Loki" dashboards. Kubescape
+  # disabled → its target-down alert removed.
+  groups:
+    # ── PAGE — monitoring itself is blind ──────────────────────────────────
+    - name: observability-page
+      interval: 30s
+      rules:
+        - alert: PrometheusPodMissing
+          expr: |
+            kube_statefulset_status_replicas_ready{namespace="monitoring",statefulset="prometheus-kube-prometheus-stack-prometheus"}
+            < kube_statefulset_replicas{namespace="monitoring",statefulset="prometheus-kube-prometheus-stack-prometheus"}
+          for: 5m
+          labels:
+            severity: critical
+            component: monitoring
+          annotations:
+            summary: "Prometheus replica missing — metrics stopped"
+            description: "Fewer ready Prometheus pods than desired >5min (often Phase=Succeeded after upgrade-eviction). All SLO/Rollout alerts blind until restarted."
+
+        - alert: AlertmanagerPodMissing
+          expr: |
+            kube_statefulset_status_replicas_ready{namespace="monitoring",statefulset="alertmanager-kube-prometheus-stack-alertmanager"}
+            < kube_statefulset_replicas{namespace="monitoring",statefulset="alertmanager-kube-prometheus-stack-alertmanager"}
+          for: 10m
+          labels:
+            severity: critical
+            component: monitoring
+          annotations:
+            summary: "Alertmanager replica missing — gossip mesh degraded"
+            description: "Fewer ready AM pods than desired >10min. A single dead AM can stay invisible (HA majority). Fix: kubectl delete pod -n monitoring <name> --force."
+
+    # ── TICKET — degradation (digest channel) ──────────────────────────────
+    - name: observability-ticket
+      interval: 60s
+      rules:
+        - alert: PrometheusTargetDown
+          expr: up == 0
+          for: 15m
+          labels:
+            severity: warning
+            component: observability
+            priority: P2
+          annotations:
+            summary: "Scrape target down: {{ $labels.job }}/{{ $labels.instance }}"
+            description: "Prometheus cannot scrape {{ $labels.instance }} for >15min."
+
+        - alert: GrafanaDown
+          expr: up{job="grafana"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: observability
+            priority: P2
+          annotations:
+            summary: "Grafana is down"
+            description: "Grafana unreachable >5min — dashboards unavailable (alerting unaffected)."
+
+        - alert: RolloutAborted
+          expr: rollout_phase{phase="Degraded"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            component: deployment
+            priority: P2
+          annotations:
+            summary: "Argo Rollout aborted — {{ $labels.namespace }}/{{ $labels.name }}"
+            description: "Rollout Degraded >5min (AnalysisTemplate fail, canary health-check, image-pull). New release stuck; users on old version."
+
+        - alert: EnvoyGatewayPodCompletedLoop
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="gateway",container="envoy"}[1h]) > 10
+          for: 10m
+          labels:
+            severity: warning
+            component: ingress
+            priority: P2
+          annotations:
+            summary: "Envoy-gateway pod restart-loop (>10 in 1h)"
+            description: "Repeated cold-starts hurt user-facing latency. If Reason=Completed: likely Talos-eviction race."
+
+        - alert: LokiDown
+          expr: up{job=~".*loki.*"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            component: observability
+            priority: P2
+          annotations:
+            summary: "Loki {{ $labels.job }} down"
+            description: "Log store unreachable >10min — log ingestion/query unavailable (metrics-alerting unaffected)."
+
+        - alert: VectorPipelineDown
+          expr: up{job=~".*vector.*"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            component: observability
+            priority: P2
+          annotations:
+            summary: "Vector log-shipper {{ $labels.instance }} down"
+            description: "Vector agent/aggregator down >10min — pod logs not shipped to Loki/Elasticsearch."

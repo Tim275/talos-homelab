@@ -1,0 +1,49 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: data-elasticsearch
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # Single-node ES is permanently YELLOW (replicas unassigned) → ClusterYellow removed
+  # (would alert forever). UnassignedPrimaryShards == ClusterRed (dup) removed.
+  # Heap/GC-internals → Grafana "Elasticsearch" dashboard.
+  groups:
+    - name: elasticsearch
+      interval: 1m
+      rules:
+        - alert: ElasticsearchClusterRed
+          expr: elasticsearch_cluster_health_status{color="red"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            component: data
+            priority: P2
+          annotations:
+            summary: "Elasticsearch cluster RED"
+            description: "Primary shards unassigned — log/SIEM data unavailable. Check disk + node health."
+
+        - alert: ElasticsearchDiskFillingUp
+          expr: |
+            (elasticsearch_filesystem_data_size_bytes - elasticsearch_filesystem_data_free_bytes)
+            / elasticsearch_filesystem_data_size_bytes > 0.85
+          for: 10m
+          labels:
+            severity: warning
+            component: data
+            priority: P2
+          annotations:
+            summary: "Elasticsearch disk >85% on {{ $labels.instance }}"
+            description: "{{ $value | humanizePercentage }} used. ES blocks writes at 95% (flood watermark)."
+
+        - alert: ElasticsearchSnapshotStale
+          expr: |
+            (time() - elasticsearch_slm_stats_last_success_timestamp_seconds) > 86400 * 2
+          for: 1h
+          labels:
+            severity: warning
+            component: data
+            priority: P2
+          annotations:
+            summary: "Elasticsearch last successful snapshot >48h old"
+            description: "SLM policy not running — check repository + cluster health."

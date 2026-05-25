@@ -1,0 +1,32 @@
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: keycloak-db-backup-store
+  namespace: keycloak
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+spec:
+  configuration:
+    destinationPath: s3://cnpg-keycloak-backup/
+    endpointURL: http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
+    s3Credentials:
+      accessKeyId:
+        name: cnpg-keycloak-backup
+        key: AWS_ACCESS_KEY_ID
+      secretAccessKey:
+        name: cnpg-keycloak-backup
+        key: AWS_SECRET_ACCESS_KEY
+    wal:
+      compression: gzip
+    data:
+      compression: gzip
+      jobs: 2
+  retentionPolicy: "90d"
+  instanceSidecarConfiguration:
+    resources:
+      requests:
+        cpu: 200m            # bumped 2026-05-15: CPUThrottlingHigh 49% at 500m limit
+        memory: 128Mi
+      limits:
+        cpu: 1000m           # 1.0 CPU for WAL-archive bursts (compression intensive)
+        memory: 256Mi

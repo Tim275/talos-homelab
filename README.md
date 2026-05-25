@@ -10,65 +10,6 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
 [![ArgoCD](https://img.shields.io/badge/GitOps-ArgoCD-00D4AA?style=for-the-badge&logo=argo&logoColor=white)](https://argo-cd.readthedocs.io/)
 [![Renovate](https://img.shields.io/badge/Deps-Renovate-1F8FFF?style=for-the-badge&logo=renovatebot&logoColor=white)](https://docs.renovatebot.com/)
 
-## 📖 Overview
-
-This repository hosts the IaC (Infrastructure as Code) configuration for a production-grade Kubernetes homelab.
-
-The cluster runs **Talos Linux** on **Proxmox VE** hypervisor nodes, with VMs bootstrapped using **OpenTofu**.
-**Argo CD** manages everything declaratively from this repo using the App-of-Apps pattern, layered into:
-`security → infrastructure → platform → apps`.
-
-## 🧑‍💻 Getting Started
-
-The cluster is bootstrapped from `tofu/` (Proxmox VMs + Talos config) and then handed off to Argo CD, which reconciles
-everything under `kubernetes/`. The full bootstrap order:
-
-1. `tofu apply` → Proxmox VMs provisioned, Talos installed, kubeconfig written.
-2. `kubectl apply -k kubernetes/bootstrap/` → installs Argo CD + Sealed Secrets + ApplicationSets.
-3. Argo CD takes over and syncs the rest of the repo automatically.
-
-## 🗃️ Folder Structure
-
-```
-.
-├── 📂 kubernetes                  # All cluster state (managed by Argo CD)
-│   │
-│   ├── bootstrap                 # App-of-Apps root
-│   ├── clusters                  # Cluster registrations
-│   ├── projects                  # Argo CD AppProjects
-│   ├── applicationsets           # ApplicationSet-based deployment
-│   │   ├── tenants               #   per-tenant AppSets
-│   │   ├── infrastructure        #   controllers, network, storage, observability
-│   │   ├── platform              #   data, identity
-│   │   ├── security              #   foundation, compliance
-│   │   └── edge                  #   staging cluster
-│   ├── components                # Reusable Kustomize components
-│   ├── security                  # Network-policies, RBAC, Kyverno, compliance
-│   ├── infrastructure            # Cluster-shared services
-│   │   ├── controllers           #   Argo CD, cert-manager, sealed-secrets, operators
-│   │   ├── network               #   Cilium, Envoy Gateway, Cloudflare Tunnel, CoreDNS
-│   │   ├── storage               #   Rook-Ceph, Velero
-│   │   ├── observability         #   Prometheus, Loki, Tempo, Jaeger, Grafana, ES, Vector
-│   │   └── vpn                   #   Tailscale, NetBird
-│   ├── platform                  # Platform services
-│   │   ├── identity              #   Keycloak, LLDAP
-│   │   ├── data                  #   CNPG Postgres, Redis, CloudBeaver
-│   │   ├── messaging             #   Strimzi Kafka
-│   │   └── governance/tenants    #   per-tenant RBAC
-│   └── apps                      # User-facing applications
-│       ├── base                  #   shared manifests
-│       └── overlays              #   environment patches
-│
-├── 🧱 tofu                        # OpenTofu (Terraform fork)
-│   ├── bootstrap                 #   Sealed-secrets cert + key
-│   ├── talos                     #   Talos machine-configs
-│   └── gitlab                    #   GitLab VM
-│
-└── ⚙️  scripts                     # Operations scripts
-    ├── identity                  #   onboard-user, kubeconfig-oidc
-    └── upgrades                  #   pre-upgrade, post-upgrade-verify
-```
-
 ## 📦 Applications
 
 End-user applications deployed via Argo CD across dev / staging / production overlays:
@@ -177,6 +118,11 @@ Lifecycle, scaling, and HA management for stateful workloads:
         <td><img width="32" src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/postgresql.svg"></td>
         <td><a href="https://cloudnative-pg.io/">CloudNativePG Operator</a></td>
         <td>Postgres HA with Barman Cloud Plugin backups + PITR</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://avatars.githubusercontent.com/u/38656520?s=200&v=4"></td>
+        <td><a href="https://github.com/mogenius/homepunk-renovate-operator">Renovate Operator</a></td>
+        <td>Mogenius operator managing scheduled RenovateJob CRs per repo</td>
     </tr>
 </table>
 
@@ -308,6 +254,11 @@ Databases, messaging, identity:
         <td><img width="32" src="https://about.gitlab.com/images/press/logo/png/gitlab-icon-rgb.png"></td>
         <td><a href="https://gitlab.com/">GitLab CE</a></td>
         <td>Self-hosted Git platform with CI/CD — runs as VM on Proxmox (separate from K8s)</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://avatars.githubusercontent.com/u/38656520?s=200&v=4"></td>
+        <td><a href="https://docs.renovatebot.com/">Renovate</a></td>
+        <td>Self-hosted dependency bot (Mogenius operator) — tier-based stability windows, separate jobs for talos-homelab + drova repos</td>
     </tr>
 </table>
 

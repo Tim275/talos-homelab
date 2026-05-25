@@ -1,0 +1,34 @@
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: drova-backup-store
+  namespace: drova
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+spec:
+  configuration:
+    destinationPath: s3://cnpg-drova-backup/
+    endpointURL: http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
+    s3Credentials:
+      accessKeyId:
+        name: cnpg-drova-backup
+        key: AWS_ACCESS_KEY_ID
+      secretAccessKey:
+        name: cnpg-drova-backup
+        key: AWS_SECRET_ACCESS_KEY
+    wal:
+      compression: gzip
+    data:
+      compression: gzip
+      jobs: 2
+  retentionPolicy: "90d"
+  # CPU bump 2026-05-16: 500m was STILL causing 70% throttling (alert active).
+  # 1500m gives barman-cloud parallel-jobs=2 + WAL room without throttling.
+  instanceSidecarConfiguration:
+    resources:
+      requests:
+        cpu: 200m
+        memory: 128Mi
+      limits:
+        cpu: 1500m
+        memory: 256Mi

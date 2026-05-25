@@ -1,0 +1,1173 @@
+# ARGOCD CONFIGURATION
+
+configs:
+  # CRITICAL: Secret Management
+  # ArgoCD Helm chart auto-generates these secrets on first install:
+  # - server.secretkey (for session encryption)
+  # - admin.password (initial admin password)
+  # - webhook.github.secret, etc.
+  # We explicitly tell Helm to create the secret (default behavior)
+  secret:
+    createSecret: true
+    # NEVER manually specify secrets here - let Helm auto-generate them!
+    # Manual secrets can cause "server.secretkey is missing" errors
+
+  cm:
+    create: true
+    application.resourceTrackingMethod: annotation+label
+    admin.enabled: true
+    url: https://argo.timourhomelab.org
+    # Enable Helm support in Kustomize for all applications
+    kustomize.buildOptions: --enable-helm
+
+    # EXEC TIMEOUT - Extended for operators kustomization with 9 Helm charts
+    exec.timeout: "300s"  # 5 minutes for kustomize build (default 90s)
+
+    # KEYCLOAK OIDC AUTHENTICATION - PRODUCTION SSO
+
+    # Client secret is stored in SealedSecret: oidc-secret.yaml
+    oidc.config: |
+      name: Keycloak
+      issuer: https://iam.timourhomelab.org/realms/kubernetes
+      clientID: argocd
+      clientSecret: $argocd-oidc-secret:clientSecret
+      requestedScopes: ["openid", "profile", "email", "groups"]
+      requestedIDTokenClaims:
+        groups:
+          essential: true
+      # RP-Initiated Logout: ArgoCD "Log out" → KC end_session_endpoint
+      # → KC kills its session too → next login requires re-authentication.
+      logoutURL: https://iam.timourhomelab.org/realms/kubernetes/protocol/openid-connect/logout?post_logout_redirect_uri={{returnURL}}&client_id=argocd
+    # PERFORMANCE: Optimized timeout and reconciliation settings
+    timeout.reconciliation: "360s"        # Extended from 180s default
+    timeout.reconciliation.jitter: "30s"   # Add jitter to prevent thundering herd
+    timeout.hard.reconciliation: "600s"    # Hard limit for reconciliation
+
+    # GATEWAY API HEALTH CHECKS - 2025 KUBERNETES GATEWAY API
+
+    # Custom health checks for Gateway API resources
+    resource.customizations.health.gateway.networking.k8s.io_Gateway: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "Programmed" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = condition.message
+              return hs
+            elseif condition.type == "Programmed" and condition.status == "False" then
+              hs.status = "Degraded"
+              hs.message = condition.message
+              return hs
+            end
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for Gateway to be Programmed"
+      return hs
+    resource.customizations.health.gateway.networking.k8s.io_HTTPRoute: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.parents ~= nil then
+          numAccepted = 0
+          numParents = 0
+          for i, parent in ipairs(obj.status.parents) do
+            numParents = numParents + 1
+            if parent.conditions ~= nil then
+              for i, condition in ipairs(parent.conditions) do
+                if condition.type == "Accepted" and condition.status == "True" then
+                  numAccepted = numAccepted + 1
+                elseif condition.type == "Accepted" and condition.status == "False" then
+                  hs.status = "Degraded"
+                  hs.message = condition.message
+                  return hs
+                end
+              end
+            end
+          end
+          if numAccepted == numParents then
+            hs.status = "Healthy"
+            hs.message = "HTTPRoute accepted by all parents"
+            return hs
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for HTTPRoute to be accepted by parent Gateway"
+      return hs
+
+    #  STRIMZI KAFKA HEALTH CHECKS - Fix permanent "Progressing" status
+
+    resource.customizations.health.kafka.strimzi.io_Kafka: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "Ready" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = "Kafka cluster is ready"
+              return hs
+            elseif condition.type == "Ready" and condition.status == "False" then
+              hs.status = "Degraded"
+              hs.message = condition.message or "Kafka cluster not ready"
+              return hs
+            end
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for Kafka cluster to be ready"
+      return hs
+    resource.customizations.health.kafka.strimzi.io_KafkaTopic: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "Ready" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = "KafkaTopic is ready"
+              return hs
+            elseif condition.type == "Ready" and condition.status == "False" then
+              hs.status = "Degraded"
+              hs.message = condition.message or "KafkaTopic not ready"
+              return hs
+            end
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for KafkaTopic"
+      return hs
+    resource.customizations.health.kafka.strimzi.io_KafkaNodePool: |
+      hs = {}
+      if obj.status ~= nil then
+        -- KafkaNodePool uses replicas field, not conditions
+        if obj.status.replicas ~= nil and obj.status.replicas > 0 then
+          hs.status = "Healthy"
+          hs.message = "KafkaNodePool has " .. obj.status.replicas .. " replica(s)"
+          return hs
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for KafkaNodePool replicas"
+      return hs
+
+    # CLOUDNATIVE PG HEALTH CHECK
+
+    resource.customizations.health.postgresql.cnpg.io_Cluster: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "Ready" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = "CNPG Cluster is ready (" .. (obj.status.readyInstances or 0) .. "/" .. (obj.status.instances or 0) .. " instances)"
+              return hs
+            elseif condition.type == "Ready" and condition.status == "False" then
+              hs.status = "Progressing"
+              hs.message = condition.message or "CNPG Cluster not ready"
+              return hs
+            end
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for CNPG Cluster to be ready"
+      return hs
+
+    # OPSTREE REDIS REPLICATION HEALTH CHECK
+
+    resource.customizations.health.redis.redis.opstreelabs.in_RedisReplication: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.masterNode ~= nil and obj.status.masterNode ~= "" then
+          hs.status = "Healthy"
+          hs.message = "RedisReplication ready, master: " .. obj.status.masterNode
+          return hs
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for RedisReplication master election"
+      return hs
+
+    # Keycloak Operator (k8s.keycloak.org/v2alpha1)
+    resource.customizations.health.k8s.keycloak.org_Keycloak: |
+      hs = {}
+      if obj.status ~= nil and obj.status.conditions ~= nil then
+        for i, condition in ipairs(obj.status.conditions) do
+          if condition.type == "Ready" and condition.status == "True" then
+            hs.status = "Healthy"
+            hs.message = "Keycloak ready"
+            return hs
+          end
+          if condition.type == "HasErrors" and condition.status == "True" then
+            hs.status = "Degraded"
+            hs.message = condition.message or "Keycloak has errors"
+            return hs
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for Keycloak to become ready"
+      return hs
+
+    # KeycloakRealmImport — realm-as-code import progress
+    resource.customizations.health.k8s.keycloak.org_KeycloakRealmImport: |
+      hs = {}
+      if obj.status ~= nil and obj.status.conditions ~= nil then
+        for i, condition in ipairs(obj.status.conditions) do
+          if condition.type == "Done" and condition.status == "True" then
+            hs.status = "Healthy"
+            hs.message = "Realm imported"
+            return hs
+          end
+          if condition.type == "HasErrors" and condition.status == "True" then
+            hs.status = "Degraded"
+            hs.message = condition.message or "Realm import failed"
+            return hs
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Realm import in progress"
+      return hs
+
+    # Rook-Ceph CephCluster — cluster health
+    resource.customizations.health.ceph.rook.io_CephCluster: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.phase == "Ready" then
+          if obj.status.ceph ~= nil and obj.status.ceph.health == "HEALTH_OK" then
+            hs.status = "Healthy"
+            hs.message = "Ceph cluster healthy (HEALTH_OK)"
+            return hs
+          end
+          if obj.status.ceph ~= nil and obj.status.ceph.health == "HEALTH_WARN" then
+            hs.status = "Degraded"
+            hs.message = obj.status.ceph.details or "Ceph cluster in HEALTH_WARN"
+            return hs
+          end
+        end
+        if obj.status.phase == "Failed" then
+          hs.status = "Degraded"
+          hs.message = "CephCluster phase=Failed"
+          return hs
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "CephCluster initializing"
+      return hs
+
+    # ECK Elasticsearch CR
+    resource.customizations.health.elasticsearch.k8s.elastic.co_Elasticsearch: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.health == "green" then
+          hs.status = "Healthy"
+          hs.message = "ES cluster green (" .. (obj.status.availableNodes or "?") .. " nodes)"
+          return hs
+        end
+        if obj.status.health == "yellow" then
+          hs.status = "Degraded"
+          hs.message = "ES cluster yellow — replicas missing"
+          return hs
+        end
+        if obj.status.health == "red" then
+          hs.status = "Degraded"
+          hs.message = "ES cluster red — data unavailable"
+          return hs
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "ES cluster initializing"
+      return hs
+
+    # ApplicationSet — self-referential health (waits for all generated apps healthy)
+    resource.customizations.health.argoproj.io_ApplicationSet: |
+      hs = {}
+      if obj.status ~= nil and obj.status.conditions ~= nil then
+        for i, condition in ipairs(obj.status.conditions) do
+          if condition.type == "ResourcesUpToDate" and condition.status == "True" then
+            hs.status = "Healthy"
+            hs.message = "ApplicationSet up to date"
+            return hs
+          end
+          if condition.type == "ErrorOccurred" and condition.status == "True" then
+            hs.status = "Degraded"
+            hs.message = condition.message or "ApplicationSet generation error"
+            return hs
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "ApplicationSet reconciling"
+      return hs
+
+  cmp:
+    create: true
+    plugins:
+      kustomize-build-with-helm:
+        generate:
+          command: [ sh, -c ]
+          args: [ kustomize build --enable-helm ]
+
+  params:
+    controller.diff.server.side: true
+    server.insecure: true
+    server.grpc.web: true
+    # 2025 FIX: Globally disable orphaned resources warnings
+    controller.ignore.orphaned.resources: true
+    application.resource-tracking-method: annotation+label
+
+    # CRITICAL: Global Cache Control to Prevent File Reference Errors
+    reposerver.git.request.timeout: "300s"      # Git request timeout
+    reposerver.git.lfs.support: "true"          # Enable Git LFS support
+    reposerver.cache.enable: "true"             # Enable cache but with controls
+    reposerver.cache.expiration: "10m"          # Very short global cache expiration
+
+    # PERFORMANCE TUNING - 2025 OPTIMIZATIONS
+
+    # Timeouts (Extended for large repositories and Helm charts)
+    controller.repo.server.timeout.seconds: "600"    # Increased from 300s
+    server.repo.server.timeout.seconds: "600"        # Match controller timeout
+    controller.operation.processors: "25"            # Optimized for 1000+ apps
+    controller.status.processors: "50"               # Optimized for 1000+ apps
+
+    # Kubernetes API Performance Tuning
+    controller.kubectl.parallelism.limit: "20"       # Prevent API server overload
+    controller.k8s.client.qps: "50"                  # API request rate limit
+    controller.k8s.client.burst: "100"               # API burst rate limit
+
+    # Repository and Cache Performance
+    reposerver.parallelism.limit: "10"               # Increased from 1 for better throughput
+    repo.cache.expiration: "1h"                      # Reduced from 24h for faster updates
+    controller.cache.default.expiration: "60m"       # Cache optimization
+
+    #  2025 CACHE OPTIMIZATION - LATEST STANDARDS
+
+    controller.app.state.cache.expiration: "1h"           # Application state cache TTL
+    controller.revision-cache-expiration: "300s"          # Git revision cache for rapid sync
+    controller.diff.cache.expiration: "300s"              # Diff result caching
+    controller.manifest.generation.cache.expiration: "1h" # Manifest generation cache
+    controller.app.operation.cache.expiration: "300s"     # Operation result cache
+
+    # Controller scaling
+    controller.app.resync: "180"                          # Application resync interval (seconds)
+    controller.app.hard.resync: "86400"                   # Hard resync once per day
+    controller.self.heal.timeout.seconds: "300"           # Self-heal operation timeout
+    controller.status.hard.resync: "3600"                 # Status hard resync (1 hour)
+
+    # Repository server 2025 cache optimization
+    reposerver.git.lfs.cache.expiration: "1h"             # Git LFS cache TTL
+    reposerver.helm.cache.expiration: "1h"                # Helm cache optimization
+    reposerver.disable.compression: "false"               # Enable compression for bandwidth
+
+    # Git Operations Optimization
+    controller.git.attempts.count: "3"               # Retry failed git operations
+    controller.enable.proxy.extension: "false"       # Disable if not needed
+
+    # Application Sync Optimization
+    application.sync.wave.delay: "2"                 # Seconds between sync waves
+    application.operation.retry.backoff.duration: "5s"  # Retry backoff
+    application.operation.retry.backoff.factor: "2"     # Exponential backoff
+    application.operation.retry.backoff.maxDuration: "3m" # Max retry wait
+
+    # DELETE GUARANTEE - Applications/ApplicationSets müssen IMMER löschbar sein
+
+    application.finalizer.timeout: "60s"                 # Max 1 minute finalizer wait
+    applicationset.finalizer.timeout: "60s"              # Max 1 minute finalizer wait
+    controller.finalizer.timeout: "60s"                  # Global finalizer timeout
+    application.deletion.propagation: "background"       # Fast background deletion
+    controller.enable.prune: "true"                      # Enable resource pruning
+    controller.prune.propagation.policy: "foreground"    # Immediate deletion
+
+    # Cache Control für garantierte Deletion
+    reposerver.cache.disable.on.deletion: "true"         # Disable cache during deletion
+    controller.refresh.after.deletion: "true"            # Force refresh after delete
+    application.sync.retry.limit: "0"                    # No retry during deletion
+
+  # RBAC CONFIGURATION - KEYCLOAK GROUP MAPPING
+
+  rbac:
+    create: true
+    policy.default: role:readonly
+    policy.csv: |
+      # KEYCLOAK GROUP-BASED RBAC - PRODUCTION SECURITY
+
+      # ROLE: ADMIN (Full Access)
+
+      # Built-in role:admin has all permissions
+      g, cluster-admins, role:admin
+
+      # ROLE: DEVELOPER (No Delete!)
+
+      # Create applications
+      p, role:developer, applications, create, */*, allow
+      # View applications (get = read single, list = read all)
+      p, role:developer, applications, get, */*, allow
+      # Update applications (change YAML)
+      p, role:developer, applications, update, */*, allow
+      # Sync applications (deploy)
+      p, role:developer, applications, sync, */*, allow
+      # Override application (force sync)
+      p, role:developer, applications, override, */*, allow
+      # Rollback to previous version
+      p, role:developer, applications, action/*, */*, allow
+      # DELETE IS DENIED (not explicitly allowed denied by default!)
+
+      # Repository access (read-only)
+      p, role:developer, repositories, get, *, allow
+      p, role:developer, repositories, list, *, allow
+
+      # Cluster access (read-only)
+      p, role:developer, clusters, get, *, allow
+      p, role:developer, clusters, list, *, allow
+
+      # Projects access (read-only)
+      p, role:developer, projects, get, *, allow
+
+      # Logs access
+      p, role:developer, logs, get, */*, allow
+
+      # Map LDAP group ArgoCD role
+      g, developers, role:developer
+
+      # ROLE: DEPLOYER (CI/CD Bot)
+
+      # View applications
+      p, role:deployer, applications, get, */*, allow
+      # Sync applications (deploy)
+      p, role:deployer, applications, sync, */*, allow
+      # View sync status
+      p, role:deployer, applications, action/*, */*, allow
+      # NO create/update/delete!
+
+      # Map LDAP groups ArgoCD role
+      g, deployers, role:deployer
+
+      # ROLE: VIEWER (Read-Only)
+
+      # View applications
+      p, role:viewer, applications, get, */*, allow
+      # View clusters
+      p, role:viewer, clusters, get, *, allow
+      # View repositories
+      p, role:viewer, repositories, get, *, allow
+      # View projects
+      p, role:viewer, projects, get, *, allow
+      # View logs
+      p, role:viewer, logs, get, */*, allow
+      # NO write access!
+
+      # Map LDAP group ArgoCD role
+      g, viewers, role:viewer
+
+      # ─── TENANT ROLES (per-namespace scoped) ─────────────────────────
+      # Drova-Tenant: User in LLDAP group `drova-admins` darf NUR
+      # ArgoCD-Apps im Drova-Project verwalten.
+      p, role:drova-admin, applications, *, drova-tenant/*, allow
+      p, role:drova-admin, repositories, get, *, allow
+      p, role:drova-admin, clusters, get, *, allow
+      p, role:drova-admin, logs, get, */*, allow
+      p, role:drova-admin, exec, create, drova-tenant/*, allow
+      g, drova-admins, role:drova-admin
+
+    scopes: '[groups, email]'
+
+crds:
+  install: true
+  keep: false
+
+controller:
+  # SCALING CONFIGURATION
+  # 2 replicas + sharding via ARGOCD_CONTROLLER_REPLICAS env.
+  # Pod-restart visible-less; sharding splits managed clusters across replicas.
+  replicas: 2
+
+  # Pod-Disruption-Budget — kein voluntary-eviction wenn nur 1 Pod left.
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+  resources:
+    requests:
+      cpu: 100m      # Homelab scale - reduced for bootstrap
+      memory: 1Gi    # INCREASED: 65 apps need more memory (was 512Mi)
+    limits:
+      cpu: 1000m     # Homelab scale - reduced CPU limit
+      memory: 8Gi    # INCREASED: 60+ apps cause OOMKilled (was 4Gi)
+
+  # ADVANCED PERFORMANCE METRICS
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: argocd
+      additionalLabels:
+        release: kube-prometheus-stack  # Ensure Prometheus discovery
+      interval: 30s
+      scrapeTimeout: 10s
+
+  # ENVIRONMENT VARIABLES
+  extraEnv:
+    # Execution and Timeout Configuration
+    - name: ARGOCD_EXEC_TIMEOUT
+      value: "600"                           # Increased for complex operations
+    - name: ARGOCD_RECONCILIATION_TIMEOUT
+      value: "600"                           # Extended reconciliation timeout
+    - name: ARGOCD_HARD_RECONCILIATION_TIMEOUT
+      value: "900"                           # Hard limit
+
+    # Kubernetes API Client Optimization
+    - name: ARGOCD_K8S_CLIENT_QPS
+      value: "50"                            # High QPS for performance
+    - name: ARGOCD_K8S_CLIENT_BURST
+      value: "100"                           # Burst capacity
+
+    # Git and Repository Optimization
+    - name: ARGOCD_GIT_ATTEMPTS_COUNT
+      value: "3"                             # Retry failed git operations
+    - name: ARGOCD_GIT_RETRY_DURATION
+      value: "1s"                            # Git retry interval
+
+    # Controller Sharding Preparation (for future scaling)
+    - name: ARGOCD_CONTROLLER_REPLICAS
+      value: "2"                             # Match replica count
+
+    # Memory and Performance Tuning
+    - name: GOGC
+      value: "50"                            # ULTRA aggressive GC - prevent memory hangs
+    - name: GOMEMLIMIT
+      value: "8GiB"                          # INCREASED: Match memory limit (was 4GiB)
+
+    # ANTI-HANG PROTECTION - NEVER STUCK AGAIN!
+
+    - name: ARGOCD_CONTROLLER_HEARTBEAT_TIME
+      value: "30s"                           # Restart if no heartbeat for 30s
+    - name: ARGOCD_CONTROLLER_LIVENESS_PROBE_TIMEOUT
+      value: "60s"                           # Force restart if stuck for 60s
+    - name: ARGOCD_CONTROLLER_OPERATION_TIMEOUT
+      value: "300s"                          # Kill hanging operations after 5min
+    - name: ARGOCD_CONTROLLER_SELF_HEAL_TIMEOUT
+      value: "120s"                          # Self-heal timeout
+    - name: ARGOCD_CONTROLLER_DISABLE_COMPRESSION
+      value: "true"                          # Prevent compression hangs
+
+    #  2025 REDIS OPTIMIZATION - Reduce Redis traffic
+
+    - name: ARGOCD_APPLICATION_TREE_SHARD_SIZE
+      value: "100"
+      # Split large app trees (default: 0 = no split)
+      # Reduces Redis key size for 1000+ resource apps
+
+    #  2025 CONTROLLER SCALING
+
+    - name: ARGOCD_APP_STATE_CACHE_EXPIRATION
+      value: "1h"                            # Application state cache optimization
+    - name: ARGOCD_CONTROLLER_DIFF_CACHE_EXPIRATION
+      value: "5m"                            # Diff result cache for faster comparisons
+    - name: ARGOCD_CONTROLLER_MANIFEST_GENERATION_CACHE_EXPIRATION
+      value: "1h"                            # Manifest cache for Helm/Kustomize
+    - name: ARGOCD_CONTROLLER_REVISION_CACHE_EXPIRATION
+      value: "5m"                            # Git revision cache for rapid sync
+    - name: ARGOCD_CONTROLLER_APP_RESYNC_PERIOD
+      value: "180s"                          # Application resync interval
+    - name: ARGOCD_CONTROLLER_APP_HARD_RESYNC_PERIOD
+      value: "24h"                           # Hard resync once per day
+    - name: ARGOCD_CONTROLLER_STATUS_HARD_RESYNC_PERIOD
+      value: "1h"                            # Status hard resync frequency
+  # Prefer nodes that are NOT work-00 or work-02 (i5 server)
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                  - work-00
+                  - work-02
+
+dex:
+  enabled: false
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+# DISABLE INTERNAL REDIS - USE REDIS-HA INSTEAD FOR BULLETPROOF CACHE
+
+# Single Redis = single point of failure. Redis-HA = 3 replicas + Sentinel
+redis:
+  enabled: false  # Disable single Redis - using redis-ha chart below
+
+#  REDIS-HA: BULLETPROOF 3-NODE SETUP WITH SENTINEL AUTO-FAILOVER
+
+# Never cache freeze, never hang - automatic failover in seconds
+redis-ha:
+  enabled: true
+
+  # DISABLE HELM TEST JOBS - NOT FOR BOOTSTRAP
+  tests:
+    enabled: false  # No test pods during bootstrap
+
+  # DISABLE ALL HELM HOOKS (test pods)
+  configmapTest:
+    enabled: false
+  serviceTest:
+    enabled: false
+
+  # 3 REDIS REPLICAS for true HA (1 master + 2 replicas)
+  replicas: 3
+
+  #  SENTINEL CONFIGURATION - Auto-failover orchestration
+  sentinel:
+    quorum: 2  # Need 2 out of 3 sentinels to agree on failover
+
+  # REDIS-HA RESOURCES - Enterprise sizing for homelab
+  redis:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+    #  REDIS PERFORMANCE TUNING (s)
+    config:
+      maxmemory-policy: "allkeys-lru"  # LRU eviction
+      save: ""                         # No persistence - pure cache
+      appendonly: "no"                 # No AOF
+      tcp-keepalive: "300"             # Connection stability
+      maxclients: "10000"              # Max connections
+      timeout: "300"                   # 5min idle timeout
+
+  # HAPROXY LOAD BALANCER - Distribute traffic across Redis nodes
+  haproxy:
+    enabled: true
+    replicas: 3  # HA for load balancer too!
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+  # POD ANTI-AFFINITY - Force distribution across nodes
+  hardAntiAffinity: true  # Never run 2 Redis on same node
+
+  # PROMETHEUS METRICS
+  exporter:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: argocd
+      additionalLabels:
+        release: kube-prometheus-stack
+
+server:
+  # HIGH AVAILABILITY SERVER CONFIGURATION
+  # 2 replicas + PDB. Server is stateless → no sharding nötig.
+  replicas: 2
+
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+  service:
+    type: ClusterIP  # No LoadBalancer - use Ingress instead
+    # loadBalancerIP: "192.168.68.160"  # Disabled - no LoadBalancer
+    servicePortHttpsAppProtocol: kubernetes.io/h2c
+
+  # ENHANCED METRICS AND MONITORING
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: argocd
+      additionalLabels:
+        release: kube-prometheus-stack
+      interval: 30s
+      scrapeTimeout: 10s
+
+  certificate:
+    enabled: false  # Disabled until cert-manager is deployed
+    domain: argo.timourhomelab.org
+    issuer:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: cloudflare-cluster-issuer
+    privateKey:
+      algorithm: ECDSA
+      size: 256
+
+  resources:
+    requests:
+      cpu: 100m      # Homelab scale - reduced for bootstrap
+      memory: 128Mi  # Homelab scale - reduced memory
+    limits:
+      cpu: 500m      # Homelab scale - reduced CPU limit
+      memory: 1Gi    # Homelab scale - reduced memory limit
+
+  # SERVER PERFORMANCE TUNING
+  extraEnv:
+    - name: ARGOCD_SERVER_REPO_SERVER_TIMEOUT_SECONDS
+      value: "600"     # Match repo server timeout
+    - name: ARGOCD_SERVER_INSECURE
+      value: "true"    # Already configured via params
+    # Enable GRPC metrics for Prometheus dashboards
+    - name: ARGOCD_ENABLE_GRPC_TIME_HISTOGRAM
+      value: "true"
+
+    # SERVER ANTI-FREEZE PROTECTION
+
+    - name: ARGOCD_SERVER_CONNECTION_STATUS_CACHE_EXPIRATION
+      value: "1m"                          # Short connection cache - prevent connection hangs
+    - name: ARGOCD_SERVER_DISABLE_AUTH
+      value: "false"                       # Keep auth but prevent auth hangs
+    - name: ARGOCD_SERVER_GRPC_KEEPALIVE_TIME
+      value: "30s"                         # GRPC keepalive
+    - name: ARGOCD_SERVER_GRPC_KEEPALIVE_TIMEOUT
+      value: "5s"                          # GRPC keepalive timeout
+    - name: ARGOCD_SERVER_MAX_CONCURRENT_LOGIN_REQUESTS_COUNT
+      value: "50"                          # Limit concurrent login requests
+
+  # INGRESS DISABLED - Using kubectl port-forward instead
+  ingress:
+    enabled: false  # Disabled per user request - use kubectl port-forward
+
+repoServer:
+  # REPO SERVER - ULTRA PERFORMANCE CONFIG
+  # 2 replicas → parallel manifest-generation für 65+ apps.
+  replicas: 2
+
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+  # PROMETHEUS METRICS CONFIGURATION
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8084"
+    prometheus.io/path: "/metrics"
+
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+
+  # IMPROVED READINESS/LIVENESS PROBES - Prevent premature restarts
+
+  readinessProbe:
+    initialDelaySeconds: 30  # Wait 30s before first check (was 10s)
+    periodSeconds: 10        # Check every 10s
+    timeoutSeconds: 5        # Timeout after 5s
+    successThreshold: 1      # 1 success = ready
+    failureThreshold: 5      # 5 failures before marking unhealthy (was 3)
+  livenessProbe:
+    initialDelaySeconds: 60  # Wait 60s before first check (was 30s)
+    periodSeconds: 30        # Check every 30s
+    timeoutSeconds: 10       # Timeout after 10s
+    successThreshold: 1
+    failureThreshold: 3      # 3 failures = restart
+
+  # PERSISTENT VOLUME CONFIGURATION FOR CACHING
+  volumes:
+    - name: cmp-kustomize-build-with-helm
+      configMap:
+        name: argocd-cmp-cm
+    - name: cmp-tmp
+      emptyDir:
+        sizeLimit: 2Gi  # Limit tmp space
+    # EMPTYDIR CACHE FOR BOOTSTRAP (no PVC dependency)
+    - name: repo-cache
+      emptyDir:
+        sizeLimit: 5Gi
+    # ADDITIONAL TMP SPACE FOR LARGE REPOSITORIES
+    - name: repo-tmp
+      emptyDir:
+        sizeLimit: 5Gi
+        medium: Memory  # In-memory for speed
+
+  volumeMounts:
+    - name: repo-cache
+      mountPath: /repo-cache      # Custom cache directory
+    - name: repo-tmp
+      mountPath: /repo-tmp        # Fix: use unique mount path
+
+  # ADVANCED METRICS AND MONITORING
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: argocd
+      additionalLabels:
+        release: kube-prometheus-stack
+      interval: 30s
+      scrapeTimeout: 10s
+
+  # RESOURCE ALLOCATION
+  resources:
+    requests:
+      cpu: 100m      # Homelab scale - reduced for bootstrap
+      memory: 256Mi  # Homelab scale - reduced memory
+    limits:
+      cpu: 1000m     # Increased: 70% throttling at 500m
+      memory: 1Gi    # Homelab scale - reduced memory limit
+
+  # REPO SERVER PERFORMANCE ENVIRONMENT VARIABLES
+  extraEnv:
+    # Cache and Performance
+    - name: TMPDIR
+      value: "/repo-tmp"                   # Fix: match updated mount path
+    - name: ARGOCD_EXEC_TIMEOUT
+      value: "600"                         # Extended execution timeout
+    - name: ARGOCD_GIT_ATTEMPTS_COUNT
+      value: "3"                           # Git retry count
+    - name: ARGOCD_REPO_SERVER_PARALLELISM_LIMIT
+      value: "10"                          # Parallel manifest generation
+
+    # Enable GRPC metrics for Prometheus dashboards
+    - name: ARGOCD_ENABLE_GRPC_TIME_HISTOGRAM
+      value: "true"
+
+    # Go Runtime Optimization
+    - name: GOGC
+      value: "80"                          # Aggressive GC for memory efficiency
+    - name: GOMEMLIMIT
+      value: "3GiB"                        # Go memory limit
+
+    # Git Configuration
+    - name: GIT_CONFIG_GLOBAL
+      value: "/repo-cache/.gitconfig"      # Custom git config location
+
+    # Repository Cache Configuration
+    - name: ARGOCD_REPO_CACHE_EXPIRATION
+      value: "1h"                          # Faster cache invalidation
+
+    # CRITICAL: Prevent aggressive cache persistence that causes file reference errors
+    - name: ARGOCD_REPO_SERVER_DISABLE_CACHE
+      value: "false"                       # Keep cache but with short expiration
+    - name: ARGOCD_REPO_SERVER_CACHE_EXPIRATION
+      value: "10m"                         # Very short cache expiration to prevent stale refs
+    - name: ARGOCD_REPO_SERVER_STRICT_TLS
+      value: "false"                       # Allow non-strict TLS for faster git operations
+
+    # REPO SERVER ANTI-HANG PROTECTION
+
+    - name: ARGOCD_REPO_SERVER_TIMEOUT_SECONDS
+      value: "120"                         # Kill hanging git operations after 2min
+    - name: ARGOCD_REPO_SERVER_GIT_REQUEST_TIMEOUT
+      value: "90s"                         # Git operation timeout
+    - name: ARGOCD_REPO_SERVER_PARALLELISM_LIMIT
+      value: "5"                           # Limit concurrent operations
+    - name: ARGOCD_REPO_SERVER_DISABLE_TLS_VERIFY
+      value: "false"                       # Prevent TLS verification hangs
+
+  # DISABLED PERSISTENT CACHE FOR BOOTSTRAP (can enable later)
+  persistence:
+    enabled: false  # Disable for bootstrap - use emptyDir
+    size: 20Gi
+    storageClassName: rook-cephblock-enterprise
+    accessModes:
+      - ReadWriteOnce
+  extraContainers:
+    - name: kustomize-build-with-helm
+      command:
+        - argocd-cmp-server
+      image: >-
+        {{ default .Values.global.image.repository .Values.repoServer.image.repository }}:{{
+        default (include "argo-cd.defaultTag" .) .Values.repoServer.image.tag }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop: [ ALL ]
+      # Homelab Stability: Resource limits for Kustomize+Helm plugin
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 500m     # 10x burst for Helm chart rendering
+          memory: 1Gi   # 8x headroom for large manifests
+      volumeMounts:
+        - name: plugins
+          mountPath: /home/argocd/cmp-server/plugins
+        - name: cmp-kustomize-build-with-helm
+          mountPath: /home/argocd/cmp-server/config/plugin.yaml
+          subPath: kustomize-build-with-helm.yaml
+        - mountPath: /tmp
+          name: cmp-tmp
+  # Also avoid i5 server nodes
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                  - work-00
+                  - work-02
+
+applicationSet:
+
+  replicas: 2  # HA configuration
+
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+  resources:
+    requests:
+      cpu: 200m      # Increased for processing many ApplicationSets
+      memory: 256Mi  # Higher baseline
+    limits:
+      cpu: 1000m     # Allow burst processing
+      memory: 2Gi    # Enterprise memory allocation
+
+  # APPLICATIONSET PERFORMANCE TUNING
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: argocd
+      additionalLabels:
+        release: kube-prometheus-stack
+
+  extraEnv:
+    # Removed duplicate REPO_SERVER_TIMEOUT - already in configs.params
+    - name: ARGOCD_APPLICATIONSET_CONTROLLER_PARALLELISM_LIMIT
+      value: "10"      # Process multiple ApplicationSets in parallel
+
+notifications:
+  enabled: true
+
+  #  ARGOCD NOTIFICATIONS - Deployment Status Tracking
+
+  # Separate from Prometheus alerts - focuses on deployment health
+  # Secret is managed in monitoring/alerts/argocd-slack-webhook-secret.yaml
+
+  secret:
+    create: false  # Secret managed externally in monitoring/alerts/
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: argocd
+      additionalLabels:
+        release: kube-prometheus-stack
+
+  # CONTEXT - ArgoCD URLs for notifications
+  context:
+    argocdUrl: https://argo.timourhomelab.org
+
+  # NOTIFICATION SERVICES - Slack Incoming Webhook
+  # Using webhook service for Slack Incoming Webhooks (not Bot Token)
+  # Reference: https://argo-cd.readthedocs.io/en/stable/operator-manual/notifications/services/webhook/
+  notifiers:
+    service.webhook.slack: |
+      url: $slack-token
+      headers:
+        - name: Content-Type
+          value: application/json
+
+  #  SLACK TEMPLATES - Enterprise Rich Notifications with Slack Blocks
+  # Uses Webhook service with Slack Attachments API for colored sidebars
+  # Reference: https://argo-cd.readthedocs.io/en/stable/operator-manual/notifications/services/webhook/
+  templates:
+    template.app-deployed: |
+      webhook:
+        slack:
+          method: POST
+          body: |
+            {
+              "attachments": [{
+                "title": " Application Deployed",
+                "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
+                "color": "#18be52",
+                "fields": [
+                  {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
+                  {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true},
+                  {"title": "Sync Status", "value": "{{.app.status.sync.status}}", "short": true},
+                  {"title": "Health", "value": "{{.app.status.health.status}}", "short": true},
+                  {"title": "Revision", "value": "{{.app.status.sync.revision | substr 0 7}}", "short": true}
+                ],
+                "footer": "ArgoCD Homelab",
+                "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png"
+              }]
+            }
+
+    template.app-health-degraded: |
+      webhook:
+        slack:
+          method: POST
+          body: |
+            {
+              "attachments": [{
+                "title": " Application Health Degraded",
+                "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
+                "color": "#E96D76",
+                "fields": [
+                  {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
+                  {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true},
+                  {"title": "Health", "value": "{{.app.status.health.status}}", "short": true},
+                  {"title": "Sync", "value": "{{.app.status.sync.status}}", "short": true}
+                ],
+                "footer": "ArgoCD Homelab - NEEDS ATTENTION"
+              }]
+            }
+
+    template.app-sync-failed: |
+      webhook:
+        slack:
+          method: POST
+          body: |
+            {
+              "attachments": [{
+                "title": " Application Sync Failed",
+                "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
+                "color": "#E01E5A",
+                "fields": [
+                  {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
+                  {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true},
+                  {"title": "Phase", "value": "{{.app.status.operationState.phase}}", "short": true},
+                  {"title": "Sync", "value": "{{.app.status.sync.status}}", "short": true}
+                ],
+                "footer": "ArgoCD Homelab - ACTION REQUIRED"
+              }]
+            }
+
+    template.app-sync-succeeded: |
+      webhook:
+        slack:
+          method: POST
+          body: |
+            {
+              "attachments": [{
+                "title": " Application Sync Succeeded",
+                "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
+                "color": "#2EB67D",
+                "fields": [
+                  {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
+                  {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true},
+                  {"title": "Sync", "value": "{{.app.status.sync.status}}", "short": true},
+                  {"title": "Health", "value": "{{.app.status.health.status}}", "short": true}
+                ],
+                "footer": "ArgoCD Homelab"
+              }]
+            }
+
+    template.app-sync-status-unknown: |
+      webhook:
+        slack:
+          method: POST
+          body: |
+            {
+              "attachments": [{
+                "title": " Application Out of Sync",
+                "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
+                "color": "#FFA500",
+                "fields": [
+                  {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
+                  {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true},
+                  {"title": "Sync", "value": "{{.app.status.sync.status}}", "short": true},
+                  {"title": "Health", "value": "{{.app.status.health.status}}", "short": true}
+                ],
+                "footer": "ArgoCD Homelab - SYNC REQUIRED"
+              }]
+            }
+
+  # TRIGGERS - Production-grade with deduplication and null-safety
+  triggers:
+    # PRODUCTION: Deployed = Sync succeeded AND healthy (not just sync)
+    trigger.on-deployed: |
+      - description: Application is synced and healthy
+        oncePer: app.status.operationState.syncResult.revision
+        send:
+        - app-deployed
+        when: app.status.operationState != nil and app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+
+    # PRODUCTION: Health degraded (standalone, no operationState dependency)
+    trigger.on-health-degraded: |
+      - description: Application health is degraded
+        oncePer: app.metadata.name
+        send:
+        - app-health-degraded
+        when: app.status.health.status == 'Degraded'
+
+    # PRODUCTION: Sync failed (critical action needed)
+    trigger.on-sync-failed: |
+      - description: Application sync failed
+        oncePer: app.status.operationState.syncResult.revision
+        send:
+        - app-sync-failed
+        when: app.status.operationState != nil and app.status.operationState.phase in ['Error', 'Failed']
+
+    #  DISABLED: Sync running (too verbose for production)
+    # trigger.on-sync-running: |
+    #   - description: Application is syncing
+    #     send:
+    #     - app-sync-running
+    #     when: app.status.operationState != nil and app.status.operationState.phase in ['Running']
+
+    # Sync succeeded (separate from deployed for visibility)
+    trigger.on-sync-succeeded: |
+      - description: Application sync succeeded
+        oncePer: app.status.operationState.syncResult.revision
+        send:
+        - app-sync-succeeded
+        when: app.status.operationState != nil and app.status.operationState.phase in ['Succeeded']
+
+    # PRODUCTION: OutOfSync with auto-sync disabled (manual intervention needed)
+    trigger.on-sync-status-unknown: |
+      - description: Application out of sync with auto-sync disabled (manual intervention needed)
+        oncePer: app.metadata.name
+        send:
+        - app-sync-status-unknown
+        when: app.status.sync.status == 'OutOfSync' and app.spec.syncPolicy.automated == nil
+
+    # PRODUCTION: Sync Failed + Degraded Health (critical combo)
+    trigger.on-sync-failed-degraded: |
+      - description: Application sync failed AND health degraded (critical)
+        oncePer: app.status.operationState.syncResult.revision
+        send:
+        - app-sync-failed
+        when: app.status.operationState != nil and app.status.operationState.phase in ['Error', 'Failed'] and app.status.health.status == 'Degraded'
+
+  # DEFAULT SUBSCRIPTIONS - Production-grade triggers (no noise!)
+  # Global subscription for all apps (can override per-app via annotations)
+  # For webhooks: just use the webhook name (matches service.webhook.<name>)
+  subscriptions:
+    - recipients: ["slack"]
+      triggers:
+        - on-deployed
+        - on-health-degraded
+        - on-sync-failed
+        - on-sync-failed-degraded
+        - on-sync-status-unknown
+
+# REVERTED: Keep redis-secret-init enabled (default behavior)
+# The Job creates the argocd-redis secret automatically
+# Original issue was Helm hook causing ArgoCD sync hangs, but we need the secret
+redisSecretInit:
+  enabled: true  # Keep default - auto-creates argocd-redis secret
