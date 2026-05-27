@@ -187,6 +187,22 @@ echo '-- osd status --';         kubectl -n rook-ceph exec deploy/rook-ceph-tool
 echo '-- df --';                 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph df
 """
 
+# ─── Elasticsearch (ECK, elastic-system) ────────────────────────────────
+[tasks.es-status]
+description = "🔎 Elasticsearch Cluster-Health + Nodes (ECK)"
+run = "kubectl get elasticsearch,kibana -n elastic-system"
+
+[tasks.es-health]
+description = "🔎 Elasticsearch _cluster/health + gelbe/rote Indizes"
+run = """
+PW=$(kubectl get secret -n elastic-system production-cluster-es-elastic-user -o jsonpath='{.data.elastic}' | base64 -d)
+P=production-cluster-es-master-data-0
+echo '-- cluster health --'
+kubectl exec -n elastic-system $P -c elasticsearch -- curl -s -k -u "elastic:$PW" "https://localhost:9200/_cluster/health?pretty"
+echo '-- gelbe/rote Indizes (leer = alles gruen) --'
+kubectl exec -n elastic-system $P -c elasticsearch -- curl -s -k -u "elastic:$PW" "https://localhost:9200/_cat/indices?v&health=yellow,red&h=health,index,pri,rep,store.size"
+"""
+
 # ─── Kafka / Strimzi (namespace drova) ──────────────────────────────────
 [tasks.kafka-status]
 description = "📨 Kafka/Strimzi Status — Cluster + NodePools + Topics + Pods (drova)"
@@ -361,6 +377,14 @@ echo '     ceph osd tree   # OSD-Baum (welche OSD auf welchem Node)'
 echo '     ceph osd df     # Auslastung pro OSD'
 echo '     ceph pg stat    # Placement-Group-Status'
 echo '  kubectl get cephcluster -n rook-ceph · kubectl -n rook-ceph get pods'
+echo ''
+echo '🔎 ELASTICSEARCH (ECK, elastic-system)'
+echo '  mise run es-status               Health + Nodes (ECK CR)'
+echo '  mise run es-health               _cluster/health + gelbe/rote Indizes'
+echo '  → yellow bei 1-Node-Cluster = unassigned Replica-Shards (1 Node hat'
+echo '    keine Replica-Targets). FIX: alle Indizes auf replicas=0 setzen.'
+echo '    PUT _all/_settings {index.number_of_replicas:0}  +  jaeger/log-Templates auf 0'
+echo '    (System-Indizes regeln sich via auto_expand_replicas: 0-1 selbst)'
 """
 
 [tasks.help-kafka]
