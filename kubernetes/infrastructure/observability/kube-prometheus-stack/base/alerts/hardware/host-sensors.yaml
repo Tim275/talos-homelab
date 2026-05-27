@@ -35,13 +35,18 @@ spec:
             description: "OOM-killer likely active — VMs at risk of being killed (nipogi runs 84G allocated / 77G physical)."
 
         - alert: HostSwapUsageHigh
+          # Feuert nur bei ECHTEM Thrashing: Swap voll UND wenig RAM frei.
+          # (Swap>50% allein ist ein nachlaufender Wert — bleibt nach einem
+          #  Last-Peak voll, obwohl wieder RAM verfügbar ist → war Dauer-Noise.)
           expr: |
-            (node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes) / clamp_min(node_memory_SwapTotal_bytes, 1) > 0.5
+            (node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes) / clamp_min(node_memory_SwapTotal_bytes, 1) > 0.8
+            and
+            node_memory_MemAvailable_bytes / clamp_min(node_memory_MemTotal_bytes, 1) < 0.15
           for: 15m
           labels:
             severity: warning
             component: hardware
             priority: P2
           annotations:
-            summary: "{{ $labels.instance }} swap >50% used"
-            description: "Host swapping heavily → severe performance degradation for VMs/Ceph."
+            summary: "{{ $labels.instance }} thrashing: swap >80% + RAM frei <15%"
+            description: "Host unter echtem Speicher-Druck (Swap voll UND wenig RAM frei) → Performance-Einbruch für VMs/Ceph. Right-sizing/Workload reduzieren."
