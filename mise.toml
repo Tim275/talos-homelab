@@ -161,6 +161,36 @@ kubectl config current-context 2>/dev/null
 kubectl auth whoami 2>/dev/null || true
 """
 
+# ─── GESAMT-Status (alles auf einen Blick) ──────────────────────────────
+[tasks.status]
+description = "🏥 GESAMT-Status: Nodes · Problem-Pods · Cilium · Ceph · ES · Kafka · ArgoCD · Events"
+run = """
+set +e   # eine kaputte Sektion darf den Rest nicht abbrechen
+echo '═══════════ ☸️  NODES ═══════════'
+kubectl get nodes -o wide
+echo ''
+echo '═══════════ ⚠️  PROBLEM-PODS ═══════════'
+kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded
+echo ''
+echo '═══════════ 🌐 CILIUM ═══════════'
+cilium status | head -12
+echo ''
+echo '═══════════ 💾 CEPH ═══════════'
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph health
+echo ''
+echo '═══════════ 🔎 ELASTICSEARCH ═══════════'
+kubectl get elasticsearch -n elastic-system
+echo ''
+echo '═══════════ 📨 KAFKA ═══════════'
+kubectl get kafka -n drova
+echo ''
+echo '═══════════ 🔁 ARGOCD (nicht Synced/Healthy) ═══════════'
+kubectl get applications -n argocd -o custom-columns='NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status' | grep -vE 'Synced +Healthy'
+echo ''
+echo '═══════════ 📰 LETZTE EVENTS ═══════════'
+kubectl get events -A --sort-by=.lastTimestamp | tail -10
+"""
+
 # ─── Network / Cilium Debugging ─────────────────────────────────────────
 [tasks.cilium-health]
 description = "🌐 Cilium Node-zu-Node Datapath-Matrix (DAS Tool für Netzwerk-Outages)"
@@ -174,6 +204,19 @@ run = "kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg statu
 description = "🌐 Cilium Deployment-Überblick (lokale CLI: DaemonSets/Operator/Hubble/Images)"
 run = "cilium status"
 
+[tasks.cilium]
+description = "🌐 Cilium ALLES: Overview + Agent-Status + Datapath-Health (3-in-1)"
+run = """
+echo '═══════════ 1/3  cilium status — Deployment-Überblick (Mac-CLI) ═══════════'
+cilium status
+echo ''
+echo '═══════════ 2/3  cilium-dbg status — Agent (Encryption/WireGuard/Controllers) ═══════════'
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg status
+echo ''
+echo '═══════════ 3/3  cilium-health status — Node-zu-Node Datapath-Matrix ═══════════'
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-health status
+"""
+
 # ─── Rook-Ceph ──────────────────────────────────────────────────────────
 [tasks.ceph-status]
 description = "💾 Rook-Ceph Cluster-Status (via Toolbox)"
@@ -185,6 +228,15 @@ run = """
 echo '-- ceph health detail --'; kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph health detail
 echo '-- osd status --';         kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd status
 echo '-- df --';                 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph df
+"""
+
+[tasks.ceph]
+description = "💾 Ceph ALLES: status + health detail + osd df + pool df (3+1-in-1)"
+run = """
+echo '═══ ceph status ═══';         kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph status
+echo '═══ health detail ═══';       kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph health detail
+echo '═══ osd df (Auslastung) ═══'; kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd df
+echo '═══ df (Pools) ═══';          kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph df
 """
 
 # ─── Elasticsearch (ECK, elastic-system) ────────────────────────────────
@@ -201,6 +253,16 @@ echo '-- cluster health --'
 kubectl exec -n elastic-system $P -c elasticsearch -- curl -s -k -u "elastic:$PW" "https://localhost:9200/_cluster/health?pretty"
 echo '-- gelbe/rote Indizes (leer = alles gruen) --'
 kubectl exec -n elastic-system $P -c elasticsearch -- curl -s -k -u "elastic:$PW" "https://localhost:9200/_cat/indices?v&health=yellow,red&h=health,index,pri,rep,store.size"
+"""
+
+[tasks.es]
+description = "🔎 Elasticsearch ALLES: CR-Status + cluster/health + gelbe/rote Indizes"
+run = """
+echo '═══ ECK CR ═══'; kubectl get elasticsearch,kibana -n elastic-system
+PW=$(kubectl get secret -n elastic-system production-cluster-es-elastic-user -o jsonpath='{.data.elastic}' | base64 -d)
+P=production-cluster-es-master-data-0
+echo '═══ cluster/health ═══'; kubectl exec -n elastic-system $P -c elasticsearch -- curl -s -k -u "elastic:$PW" "https://localhost:9200/_cluster/health?pretty"
+echo '═══ gelbe/rote Indizes ═══'; kubectl exec -n elastic-system $P -c elasticsearch -- curl -s -k -u "elastic:$PW" "https://localhost:9200/_cat/indices?v&health=yellow,red&h=health,index,pri,rep,store.size"
 """
 
 # ─── Kafka / Strimzi (namespace drova) ──────────────────────────────────
@@ -547,10 +609,10 @@ echo '     mise run help-gitops     SealedSecrets · ArgoCD · Kubeconfig'
 echo '     mise run help-tricks     🪄 Pro-Tricks (cnpg · stern · debug · tree …)'
 echo ''
 echo '  ⚡ LIVE-STATUS:'
-echo '     mise run cluster-status  Talos-Health + K8s-Nodes'
-echo '     mise run events          📰 aktuellste Cluster-Events'
-echo '     mise run cilium-health   🌐 Node-Datapath-Matrix (Outage-Check)'
-echo '     mise run ceph-status     💾 Ceph    es-status 🔎 ES    kafka-status 📨 Kafka'
+echo '     mise run status          🏥 ALLES auf einen Blick (Nodes·Cilium·Ceph·ES·Kafka·ArgoCD·Events)'
+echo '     mise run cluster-status  Talos-Health + K8s-Nodes      events  📰 Events'
+echo '     mise run cilium          🌐 ALLES (overview+agent+datapath)'
+echo '     mise run ceph            💾 ALLES (status+health+osd+df)    es  🔎 ES    kafka-status  📨 Kafka'
 echo ''
 echo '  🌍 tofu-plan · tofu-apply    🔐 kube-status    📋 mise run menu (diese Übersicht)'
 echo ''
