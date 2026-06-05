@@ -77,11 +77,18 @@ spec:
                   OUT_DIR=/backup
                   mkdir -p "$OUT_DIR"
 
-                  echo "=== Authenticating ==="
-                  /opt/keycloak/bin/kcadm.sh config credentials \
-                    --config /tmp/kc.cfg \
-                    --server "$KC_URL" --realm master \
-                    --user "$KC_ADMIN" --password "$KC_ADMIN_PASSWORD"
+                  echo "=== Authenticating (with retries) ==="
+                  authok=0
+                  for ((i=1; i<=30; i++)); do
+                    if /opt/keycloak/bin/kcadm.sh config credentials \
+                         --config /tmp/kc.cfg \
+                         --server "$KC_URL" --realm master \
+                         --user "$KC_ADMIN" --password "$KC_ADMIN_PASSWORD" 2>/dev/null; then
+                      authok=1; echo "authenticated"; break
+                    fi
+                    echo "  KC not ready ($i/30), retry in 10s..."; sleep 10
+                  done
+                  [ "$authok" = "1" ] || { echo "ERROR: KC auth failed after retries"; exit 1; }
 
                   echo "=== Partial-export realm $REALM ==="
                   OUT_FILE="$OUT_DIR/realm-${REALM}-${TS}.json"
@@ -104,14 +111,16 @@ spec:
 
                   echo "Export size: $(wc -c < "$OUT_FILE") bytes"
 
-                  ln -sf "realm-${REALM}-${TS}.json" "$OUT_DIR/realm-${REALM}-latest.json"
+                  # Export is valid — cleanup below must NOT fail the job
+                  set +e
+                  ln -sf "realm-${REALM}-${TS}.json" "$OUT_DIR/realm-${REALM}-latest.json" || echo "warn: symlink update failed"
 
                   echo "=== Rotation: keep last 7 ==="
-                  cd "$OUT_DIR"
-                  ls -1t realm-${REALM}-*Z.json 2>/dev/null | tail -n +8 | xargs -r rm -f
+                  cd "$OUT_DIR" && ls -1t realm-${REALM}-*Z.json 2>/dev/null | tail -n +8 | xargs -r rm -f
 
                   echo "=== Export complete ==="
                   ls -la "$OUT_DIR/" | head -10
+                  exit 0
               volumeMounts:
                 - name: backup
                   mountPath: /backup
