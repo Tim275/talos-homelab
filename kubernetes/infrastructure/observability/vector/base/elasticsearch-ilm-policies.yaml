@@ -212,6 +212,47 @@ spec:
                 }'
 
               # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              # POLICY 5: AUDIT LOGS (90 days — security forensics / compliance)
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              echo " Creating ILM Policy: logs-audit-policy"
+
+              curl -k -X PUT "${ES_URL}/_ilm/policy/logs-audit-policy" \
+                -u "elastic:${ELASTIC_PASSWORD}" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "policy": {
+                    "phases": {
+                      "hot": {
+                        "min_age": "0ms",
+                        "actions": {
+                          "rollover": {
+                            "max_primary_shard_size": "20gb",
+                            "max_age": "7d"
+                          },
+                          "set_priority": {
+                            "priority": 100
+                          }
+                        }
+                      },
+                      "warm": {
+                        "min_age": "7d",
+                        "actions": {
+                          "set_priority": {
+                            "priority": 50
+                          }
+                        }
+                      },
+                      "delete": {
+                        "min_age": "90d",
+                        "actions": {
+                          "delete": {}
+                        }
+                      }
+                    }
+                  }
+                }'
+
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
               # APPLY ILM POLICIES TO DATA STREAMS
               # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
               echo " Applying ILM Policies to Data Streams..."
@@ -246,6 +287,14 @@ spec:
                 -H 'Content-Type: application/json' \
                 -d '{
                   "index.lifecycle.name": "logs-debug-policy"
+                }'
+
+              # Apply to AUDIT logs (overrides the severity-based binding above → 90d)
+              curl -k -X PUT "${ES_URL}/_data_stream/logs-kube-audit.*-*/_settings" \
+                -u "elastic:${ELASTIC_PASSWORD}" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "index.lifecycle.name": "logs-audit-policy"
                 }'
 
               echo " All ILM Policies created and applied!"
