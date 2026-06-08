@@ -1,0 +1,30 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: honeytoken-access-detection
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,ServerSideApply=true
+spec:
+  kprobes:
+    - call: security_file_permission
+      syscall: false
+      return: true
+      args:
+        - index: 0
+          type: file
+        - index: 1
+          type: int
+      returnArg:
+        index: 0
+        type: int
+      returnArgAction: Post
+      selectors:
+        - matchArgs:
+            - index: 0
+              operator: Equal
+              values:
+                - /var/run/secrets/aws-prod/credentials
+            - index: 1
+              operator: Equal
+              values:
+                - "4"
