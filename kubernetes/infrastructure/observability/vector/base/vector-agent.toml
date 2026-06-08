@@ -68,6 +68,10 @@ type = "remap"
 inputs = ["kube_audit_logs"]
 source = '''
 . = parse_json!(string!(.message))
+# Drop raw request/response bodies + annotations — full K8s objects explode the ES mapping
+del(.requestObject)
+del(.responseObject)
+del(.annotations)
 .source = "kubernetes-audit"
 .cluster = "talos-homelab"
 .environment = "production"
@@ -81,10 +85,13 @@ source = '''
 ."event.outcome" = if exists(.responseStatus.code) && to_int!(.responseStatus.code) < 400 { "success" } else { "failure" }
 ."user.name" = string(.user.username) ?? "unknown"
 ."user.id" = string(.user.uid) ?? ""
-."source.ip" = if exists(.sourceIPs) && length!(.sourceIPs) > 0 { string!(.sourceIPs[0]) } else { "" }
+."source_ip" = if exists(.sourceIPs) && length!(.sourceIPs) > 0 { string!(.sourceIPs[0]) } else { "" }
 ."kubernetes.namespace" = string(.objectRef.namespace) ?? ""
 ."kubernetes.resource" = string(.objectRef.resource) ?? ""
 ."kubernetes.name" = string(.objectRef.name) ?? ""
+del(.user)
+del(.objectRef)
+del(.responseStatus)
 '''
 
 [sources.hubble_flows]
