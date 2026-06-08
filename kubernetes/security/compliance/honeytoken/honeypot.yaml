@@ -1,0 +1,66 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: honeytoken
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: honeypot
+  namespace: honeytoken
+  labels:
+    app.kubernetes.io/name: honeypot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: honeypot
+  template:
+    metadata:
+      labels:
+        app: honeypot
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: seed-decoy
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - printf '[default]\naws_access_key_id = AKIAIOSFODNN7DECOY00\naws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYDECOYKEY\n' > /seed/credentials
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: decoy
+              mountPath: /seed
+      containers:
+        - name: honeypot
+          image: busybox:1.36
+          command: [sh, -c, sleep infinity]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 50m, memory: 32Mi }
+          volumeMounts:
+            - name: decoy
+              mountPath: /var/run/secrets/aws-prod
+              readOnly: true
+      volumes:
+        - name: decoy
+          emptyDir: {}
