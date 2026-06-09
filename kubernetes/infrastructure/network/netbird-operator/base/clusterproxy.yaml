@@ -1,0 +1,57 @@
+# kubectl via NetBird (BeyondCorp-Style): exposed kube-apiserver übers Mesh.
+# Der Proxy impersoniert deine NetBird-Identität → k8s-RBAC.
+apiVersion: netbird.io/v1alpha1
+kind: ClusterProxy
+metadata:
+  name: homelab
+  namespace: netbird
+spec:
+  clusterName: homelab
+  serviceAccountName: clusterproxy
+  # apiServer default: https://kubernetes.default.svc.cluster.local
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: clusterproxy
+  namespace: netbird
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: clusterproxy
+rules:
+  - apiGroups: [""]
+    resources: [users, groups]
+    verbs: [impersonate]
+  - apiGroups: [authentication.k8s.io]
+    resources: [userextras/*, uids]
+    verbs: [impersonate]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: clusterproxy
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: clusterproxy
+subjects:
+  - kind: ServiceAccount
+    name: clusterproxy
+    namespace: netbird
+---
+# Dich (NetBird-Identität) auf cluster-admin mappen (Solo-Homelab).
+# Granularer: eigene Gruppe statt User, read-only ClusterRole etc.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: netbird-admin
+subjects:
+  - kind: User
+    name: timour.miagol@outlook.de
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
