@@ -106,8 +106,8 @@ Lifecycle, scaling, and HA management for stateful workloads:
     </tr>
     <tr>
         <td><img width="32" src="https://raw.githubusercontent.com/netbirdio/netbird/main/docs/media/logo-full.png"></td>
-        <td><a href="https://docs.netbird.io/selfhosted/selfhosted-quickstart">NetBird</a></td>
-        <td>Self-hosted Mesh-VPN — coordination in cluster, OIDC via Keycloak</td>
+        <td><a href="https://github.com/netbirdio/kubernetes-operator">NetBird Operator</a></td>
+        <td>Cloud-coordinated Mesh-VPN for internal infrastructure access</td>
     </tr>
     <tr>
         <td><img width="32" src="https://raw.githubusercontent.com/argoproj/argo-cd/master/docs/assets/argo.png"></td>
@@ -150,7 +150,7 @@ GitOps, networking, storage, backup and observability core services:
     <tr>
         <td><img width="32" src="https://www.vectorlogo.zone/logos/cloudflare/cloudflare-icon.svg"></td>
         <td><a href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/">Cloudflare Tunnel</a></td>
-        <td>Zero-trust secure tunnel for external access — no port forwarding required</td>
+        <td>Zero-trust tunnel for public app ingress — no port forwarding required</td>
     </tr>
     <tr>
         <td><img width="32" src="https://cdn.jsdelivr.net/gh/cilium/cilium/Documentation/images/logo-solo.svg"></td>
