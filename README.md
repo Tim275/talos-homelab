@@ -27,11 +27,6 @@ End-user applications deployed via Argo CD across dev / staging / production ove
         <td>Ride-sharing microservices showcase — api-gateway, user, trip, driver, chat, payment services with Kafka, CNPG Postgres, Redis, OpenTelemetry tracing, Cilium-SPIRE mTLS, tiered backups</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://www.vectorlogo.zone/logos/apache_kafka/apache_kafka-icon.svg"></td>
-        <td><a href="https://strimzi.io/">Kafka (Strimzi)</a></td>
-        <td>Event streaming clusters — KafkaCluster CR, Topics, Users, Schema-Registry. Used by Drova services</td>
-    </tr>
-    <tr>
         <td><img width="32" src="https://dbeaver.io/wp-content/uploads/2015/09/beaver-head.png"></td>
         <td><a href="https://dbeaver.io/docs/cloudbeaver/">CloudBeaver</a></td>
         <td>Web-based database management UI for Postgres, MongoDB and more</td>
@@ -98,11 +93,6 @@ Lifecycle, scaling, and HA management for stateful workloads:
         <td><img width="32" src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/redis/redis-original.svg"></td>
         <td><a href="https://redis-operator.opstree.dev/">Redis Operator</a></td>
         <td>Redis Standalone / Replication / Sentinel / Cluster</td>
-    </tr>
-    <tr>
-        <td><img width="32" src="https://tailscale.com/files/press/tailscale-symbol-color.svg"></td>
-        <td><a href="https://tailscale.com/kb/1236/kubernetes-operator">Tailscale Operator</a></td>
-        <td>SaaS-coordinated Mesh-VPN for kubectl + cluster-internal access</td>
     </tr>
     <tr>
         <td><img width="32" src="https://raw.githubusercontent.com/netbirdio/netbird/main/docs/media/logo-full.png"></td>
