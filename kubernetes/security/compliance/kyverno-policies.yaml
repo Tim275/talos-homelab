@@ -50,3 +50,33 @@ spec:
                   requests:
                     cpu: "?*"
                     memory: "?*"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: audit-verify-drova-signatures
+spec:
+  failurePolicy: Ignore
+  webhookTimeoutSeconds: 30
+  background: false
+  rules:
+    - name: verify-cosign-keyless
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+              namespaces: ["drova"]
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/tim275/drova/*"
+          failureAction: Audit
+          mutateDigest: false
+          verifyDigest: false
+          required: true
+          attestors:
+            - entries:
+                - keyless:
+                    subject: "https://github.com/Tim275/drova/.github/workflows/docker-build-push.yaml@*"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev
