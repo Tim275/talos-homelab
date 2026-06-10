@@ -196,6 +196,12 @@ pod_name = to_string(.kubernetes.pod_name) ?? ""
   "cloudnative-pg"
 } else if exists(.source) && .source == "kubernetes-audit" {
   "kube-audit"
+} else if exists(.source) && .source == "hubble" {
+  "hubble-drops"
+} else if starts_with(to_string(.kubernetes.pod_name) ?? "", "tetragon") {
+  "tetragon"
+} else if .namespace == "gateway" {
+  "envoy-access"
 } else {
   # Fallback: use namespace as service_name
   .namespace
@@ -284,10 +290,14 @@ if exists(.error) {
 '''
 
 # Sample logs to reduce volume (optional)
+# Vector semantics: rate = N keeps 1 out of every N events.
+# rate=100 silently dropped 99% of all logs (drova/lldap/spire never reached
+# ES or Loki). rate=1 keeps everything — the Hubble flood that motivated
+# sampling is now filtered at the agent (security verdicts only).
 [transforms.sample_logs]
 type = "sample"
 inputs = ["enrich_logs"]
-rate = 100  # Keep all logs (set lower to sample, e.g. 10 = 10%)
+rate = 1
 key_field = ".kubernetes.pod"  # Sample per pod
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -302,7 +312,7 @@ inputs = ["sample_logs"]
 # Fix 2026-05-17: stricter VRL parser in newer Vector versions rejects
 # `||` line-continuation inside `(...)`. Use `includes()` with array literal
 # (set-membership check). Same semantics, parser-stable.
-condition = '(exists(.kubernetes.pod_namespace) && includes(["drova","drova-prod","keycloak","lldap","argocd","kyverno","security","cilium-spire","cnpg-system","velero"], .kubernetes.pod_namespace)) || (exists(.source) && .source == "kubernetes-audit")'
+condition = '(exists(.kubernetes.pod_namespace) && includes(["drova","drova-prod","keycloak","lldap","argocd","kyverno","security","cilium-spire","cnpg-system","velero","gateway","netbird"], .kubernetes.pod_namespace)) || (exists(.source) && .source == "kubernetes-audit") || (exists(.source) && .source == "hubble") || (exists(.kubernetes.pod_name) && starts_with(string!(.kubernetes.pod_name), "tetragon"))'
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ELASTICSEARCH SINK - DATA STREAMS + ECS (sensitive NS only)

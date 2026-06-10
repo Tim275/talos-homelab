@@ -1,0 +1,53 @@
+# NetBird audit trail -> SIEM. The cloud API holds login/peer/policy events;
+# this job prints them as JSON lines to stdout, where the Vector agent picks
+# them up (netbird ns is ES-allowlisted) -> logs-netbird.* data stream.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: netbird-audit-export
+  namespace: netbird
+spec:
+  schedule: "15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 120
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: export
+              image: badouralix/curl-jq:alpine
+              env:
+                - name: NB_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: netbird-mgmt-api-key
+                      key: NB_API_KEY
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  SINCE=$(date -u -d "-65 minutes" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-65M +%Y-%m-%dT%H:%M:%SZ)
+                  curl -sf -H "Authorization: Token ${NB_API_KEY}" \
+                    "https://api.netbird.io/api/events/audit" \
+                    | jq -c --arg since "$SINCE" \
+                        '.[] | select(.timestamp >= $since) + {source: "netbird-audit"}'
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 50m
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                runAsUser: 100
+                capabilities:
+                  drop: ["ALL"]
+                seccompProfile:
+                  type: RuntimeDefault
