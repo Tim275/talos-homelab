@@ -34,21 +34,16 @@ spec:
         type: Image
         image:
           url: ghcr.io/corazawaf/coraza-proxy-wasm:0.6.0
-      config: |
-        {
-          "directives_map": {
-            "default": [
-              "SecRuleEngine DetectionOnly",
-              "SecRequestBodyAccess On",
-              "SecRequestBodyLimit 13107200",
-              "SecRequestBodyNoFilesLimit 131072",
-              "SecResponseBodyAccess Off",
-              "SecDebugLogLevel 0",
-              "SecRule REQUEST_HEADERS:Upgrade \"@streq websocket\" \"id:1000,phase:1,pass,nolog,ctl:ruleEngine=Off\"",
-              "SecRule REQUEST_HEADERS:Content-Type \"@beginsWith application/grpc\" \"id:1001,phase:1,pass,nolog,ctl:ruleEngine=Off\"",
-              "Include @owasp_crs/crs-setup.conf.example",
-              "Include @owasp_crs/rules/*.conf"
-            ]
-          },
-          "default_directives": "default"
-        }
+      # config MUST be a structured object (not a |-string) — Envoy serializes it to JSON
+      # for the plugin. A string becomes "{...}" and Coraza reports "no default WAF".
+      # Includes verified 2026-06-10 in the test-rig: loads OWASP CRS 4.14.0, detects SQLi (942100).
+      config:
+        directives_map:
+          default:
+            - "Include @recommended-conf"
+            - "Include @crs-setup-conf"
+            - "SecRuleEngine DetectionOnly"
+            - 'SecRule REQUEST_HEADERS:Upgrade "@streq websocket" "id:1000,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - 'SecRule REQUEST_HEADERS:Content-Type "@beginsWith application/grpc" "id:1001,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - "Include @owasp_crs/*.conf"
+        default_directives: "default"
