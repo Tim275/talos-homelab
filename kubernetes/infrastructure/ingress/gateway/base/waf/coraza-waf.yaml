@@ -1,3 +1,19 @@
+# Coraza WAF (OWASP CRS) — gateway-wide Envoy WASM filter. INFRA, not app.
+#
+# targetRef: Gateway -> covers EVERY HTTPRoute through this gateway with one
+# policy that lives entirely here (an EnvoyExtensionPolicy is namespace-scoped
+# and can only target routes in its own namespace, so per-route targeting would
+# force the policy into each app's namespace/repo — gateway-wide is the only
+# clean infra-only option).
+#
+# WebSocket/gRPC are bypassed by header (Upgrade:websocket / application/grpc ->
+# ruleEngine=Off). This is correct by design, not a workaround: after the upgrade
+# the stream is raw frames (not HTTP), which a WAF physically cannot inspect.
+#
+# ROLLOUT (see notes/CLAUDE-PLANNING.md "CORAZA WAF"):
+#   Phase 1  validate WS-bypass on the throwaway test-rig FIRST (../../test-rig/)
+#   Phase 2  enable here (DetectionOnly), soak, tune FPs via Kibana (logs-envoy-access.*)
+#   Phase 3  flip SecRuleEngine -> On. failOpen:true keeps traffic flowing if Coraza crashes.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyExtensionPolicy
 metadata:
@@ -13,7 +29,6 @@ spec:
   wasm:
     - name: coraza
       rootID: coraza
-      # failOpen: if Coraza crashes traffic passes through (no downtime)
       failOpen: true
       code:
         type: Image
