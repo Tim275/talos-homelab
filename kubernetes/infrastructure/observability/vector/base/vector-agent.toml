@@ -46,15 +46,17 @@ if err == null {
 '''
 
 # Filter out noisy logs
+# Tetragon runs in kube-system but its runtime-security events must pass (SIEM).
 [transforms.filter_noise]
 type = "filter"
 inputs = ["parse_json"]
 condition = '''
-!contains(to_string(.message) ?? "", "GET /healthz") &&
+(!contains(to_string(.message) ?? "", "GET /healthz") &&
 !contains(to_string(.message) ?? "", "GET /readyz") &&
-!contains(to_string(.kubernetes.namespace) ?? "", "kube-system") ||
+!contains(to_string(.kubernetes.namespace) ?? "", "kube-system")) ||
 contains(to_string(.level) ?? "", "error") ||
-contains(to_string(.level) ?? "", "warn")
+contains(to_string(.level) ?? "", "warn") ||
+starts_with(to_string(.kubernetes.pod_name) ?? "", "tetragon")
 '''
 
 # Kubernetes API server audit logs (control plane nodes only)
@@ -109,10 +111,20 @@ source = '''
 .cluster = "talos-homelab"
 '''
 
+# Security-relevant flows only. FORWARDED/TRACED flooded the pipeline
+# (every TCP packet event) and starved the sampler — Hubble UI/metrics
+# already cover healthy traffic; logs only need verdicts that matter.
+[transforms.filter_hubble_security]
+type = "filter"
+inputs = ["parse_hubble"]
+condition = '''
+includes(["DROPPED", "ERROR", "AUDIT", "POLICY_DENIED"], to_string(.flow.verdict) ?? to_string(.verdict) ?? "")
+'''
+
 # Forward to Vector Aggregator
 [sinks.vector_aggregator]
 type = "vector"
-inputs = ["filter_noise", "parse_kube_audit", "parse_hubble"]
+inputs = ["filter_noise", "parse_kube_audit", "filter_hubble_security"]
 address = "vector-aggregator.elastic-system.svc.cluster.local:6000"
 version = "2"
 
