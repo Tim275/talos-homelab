@@ -568,32 +568,39 @@ alertmanager:
                 url: '{{ template "slack.silenceURL" . }}'
 
       # ─────────────────────────────────────────────────────────────────────
-      # EMAIL receiver — OPTIONAL template (commented). How to receive alerts by
-      # mail + how to onboard a teammate. Uncomment, add the smtp_* global below +
-      # a sealed smtp password, then add an email route.
+      # EMAIL receiver — prepared, COMMENTED (activate when wanted).
+      # Activation = 4 steps, ~5 min:
       # ─────────────────────────────────────────────────────────────────────
-      # 1) Add to `global:` (top of this config) — smarthost + sealed app-password:
-      #      smtp_smarthost: 'smtp.gmail.com:587'
-      #      smtp_from: 'homelab-alerts@yourdomain.org'
-      #      smtp_auth_username: 'homelab-alerts@yourdomain.org'
-      #      smtp_auth_password_file: /etc/alertmanager/secrets/smtp-password/password
+      # 1) Outlook app password: account.microsoft.com → Security → App passwords
+      #    (requires 2FA; the normal login password will NOT work for SMTP).
       #
-      # 2) The receiver. BEST PRACTICE: send to a DISTRIBUTION LIST (oncall@company),
-      #    not individuals — onboarding a new teammate = add them to that list in your
-      #    mail provider, with ZERO change here. If you must list people inline, use a
-      #    comma-separated `to:`.
-      # - name: 'email-oncall'
+      # 2) Seal it (bootstrap cert → rebuild-safe) into monitoring ns:
+      #      kubectl create secret generic smtp-password -n monitoring \
+      #        --from-literal=password='<app-password>' --dry-run=client -o yaml \
+      #      | kubeseal --cert tofu/bootstrap/sealed-secrets/certificate/sealed-secrets.crt -o yaml
+      #    + add `smtp-password` to alertmanagerSpec.secrets (top of this file).
+      #
+      # 3) Add to `global:` (top of this config):
+      #      smtp_smarthost: 'smtp-mail.outlook.com:587'
+      #      smtp_from: 'sagichdirnicht259@outlook.de'
+      #      smtp_auth_username: 'sagichdirnicht259@outlook.de'
+      #      smtp_auth_password_file: /etc/alertmanager/secrets/smtp-password/password
+      #      smtp_require_tls: true
+      #
+      # 4) Uncomment the receiver below + add the route (step 5).
+      #    BEST PRACTICE at scale: point `to:` at a distribution list (oncall@...) —
+      #    onboarding a teammate = mail-provider change only, zero IaC change.
+      # - name: 'email-critical'
       #   email_configs:
-      #     - to: 'oncall@yourdomain.org'          # ← distribution list (preferred)
-      #       # to: 'alice@x.org, bob@x.org'       # ← or explicit, comma-separated
+      #     - to: 'sagichdirnicht259@outlook.de'
       #       send_resolved: true
       #       headers:
       #         subject: '[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}'
       #
-      # 3) Route critical → email too (add under route.routes, next to slack-critical):
+      # 5) Route critical → email too (add under route.routes, next to slack-critical):
       #      - matchers: [ severity="critical" ]
-      #        receiver: 'email-oncall'
-      #        continue: true   # ← keep going to Slack/Telegram as well
+      #        receiver: 'email-critical'
+      #        continue: true   # ← REQUIRED: keep delivering to Slack/Telegram as well
 
   templateFiles:
     homelab.tmpl: |-
