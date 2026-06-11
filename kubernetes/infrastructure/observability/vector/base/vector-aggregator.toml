@@ -315,14 +315,27 @@ inputs = ["sample_logs"]
 # Fix 2026-05-17: stricter VRL parser in newer Vector versions rejects
 # `||` line-continuation inside `(...)`. Use `includes()` with array literal
 # (set-membership check). Same semantics, parser-stable.
-condition = '(exists(.kubernetes.pod_namespace) && includes(["drova","drova-prod","keycloak","lldap","argocd","kyverno","security","cilium-spire","cnpg-system","velero","gateway","netbird"], .kubernetes.pod_namespace)) || (exists(.source) && .source == "kubernetes-audit") || (exists(.source) && .source == "hubble") || (exists(.kubernetes.pod_name) && starts_with(string!(.kubernetes.pod_name), "tetragon"))'
+condition = '(exists(.kubernetes.pod_namespace) && includes(["drova","drova-prod","keycloak","lldap","argocd","kyverno","security","cilium-spire","cnpg-system","velero","gateway","netbird","n8n-prod","kafka","cloudbeaver","audiobookshelf-prod","redis-operator-system"], .kubernetes.pod_namespace)) || (exists(.source) && .source == "kubernetes-audit") || (exists(.source) && .source == "hubble") || (exists(.kubernetes.pod_name) && starts_with(string!(.kubernetes.pod_name), "tetragon"))'
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ES-VOLUME-SCHUTZ: laute INFO-Quellen (kafka/n8n-prod) auf 1/5 samplen.
+# WARN/CRITICAL + alle anderen NS bleiben 1:1 (exclude). Loki bekommt weiter alles.
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[transforms.sample_noisy_for_es]
+type = "sample"
+inputs = ["filter_sensitive_for_es"]
+rate = 5
+key_field = ".kubernetes.pod"
+exclude = '''
+.severity != "info" || !(exists(.kubernetes.pod_namespace) && includes(["kafka","n8n-prod"], .kubernetes.pod_namespace))
+'''
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ELASTICSEARCH SINK - DATA STREAMS + ECS (sensitive NS only)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [sinks.elasticsearch]
 type = "elasticsearch"
-inputs = ["filter_sensitive_for_es"]
+inputs = ["sample_noisy_for_es"]
 endpoints = ["https://production-cluster-es-http.elastic-system.svc.cluster.local:9200"]
 mode = "data_stream"  # ← DATA STREAMS! (automatic rollover)
 data_stream.type = "logs"
