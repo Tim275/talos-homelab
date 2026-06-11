@@ -109,3 +109,15 @@ spec:
           annotations:
             summary: "Vector log-shipper {{ $labels.instance }} down"
             description: "Vector agent/aggregator down >10min — pod logs not shipped to Loki/Elasticsearch."
+
+        - alert: VectorSinkDroppingEvents
+          expr: |
+            sum by (component_id) (rate(vector_component_discarded_events_total{component_kind="sink"}[10m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+            component: observability
+            priority: P2
+          annotations:
+            summary: "Vector sink {{ $labels.component_id }} dropping events"
+            description: "Vector is discarding events at the {{ $labels.component_id }} sink for >15min — poison docs (ES mapping conflict), template-render failures or batch rejects. Logs silently lost. Check: kubectl logs -n elastic-system deploy/vector-aggregator | grep -v '^{' | grep ERROR"
