@@ -51,3 +51,22 @@ spec:
             - 'SecRule REQUEST_HEADERS:Content-Type "@beginsWith application/grpc" "id:1001,phase:1,pass,nolog,ctl:ruleEngine=Off"'
             - "Include @owasp_crs/*.conf"
         default_directives: "default"
+      # ─────────────────────────────────────────────────────────────────────────────
+      # ENTERPRISE TUNING PLAYBOOK — apply AFTER soak (test each step in ../../test-rig/ FIRST)
+      # Current state: SecRuleEngine DetectionOnly · CRS Paranoia-Level 1 · anomaly-threshold 5 (defaults).
+      #
+      # 1. SOAK (running since activation 2026-06-11): watch detections in Kibana
+      #    (Discover, KQL `message:"Coraza"`) for ~3-7 days → spot FALSE-POSITIVES
+      #    (legit requests that tripped a rule — n8n webhooks / drova API with odd chars are prime suspects).
+      # 2. FP-EXCLUSIONS per finding — add to a separate coraza-exclusions.yaml (waf/kustomization.yaml),
+      #    placed BEFORE `Include @owasp_crs/*.conf`, e.g.:
+      #      - 'SecRuleUpdateTargetById 942100 "!ARGS:webhook_payload"'   # exclude one field from one rule
+      #      - 'SecRuleRemoveById 920420'                                  # disable a noisy rule (last resort)
+      # 3. PARANOIA 1→2 (more coverage, ONLY after FPs are clean) — add AFTER @crs-setup-conf:
+      #      - 'SecAction "id:9000001,phase:1,nolog,pass,t:none,setvar:tx.blocking_paranoia_level=2"'
+      #      (use a 7-digit id — the CRS 900000-range collides; verify load in test-rig).
+      # 4. THRESHOLD tune (optional): tx.inbound_anomaly_score_threshold (5=strict · 7-10=tolerant).
+      # 5. ENFORCE (the actual protection): change `SecRuleEngine DetectionOnly` above → `On`.
+      #    failOpen:true stays (Coraza crash = traffic flows). Watch the 403-rate after the flip + be
+      #    ready to revert (DetectionOnly) if legit traffic gets blocked.
+      # ─────────────────────────────────────────────────────────────────────────────
