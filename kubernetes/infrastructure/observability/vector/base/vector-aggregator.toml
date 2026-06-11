@@ -172,6 +172,11 @@ pod_name = to_string(.kubernetes.pod_name) ?? ""
     # Fallback for other OMS pods (mongodb, rabbitmq, etc.)
     "oms-infra"
   }
+# Tetragon runs IN kube-system — this pod-name check MUST precede the kube-system
+# namespace branch, else tetragon events get filed under "kube-system" instead of
+# their own "tetragon" stream (was muddling ~1.4GB of runtime-security into kube-system).
+} else if starts_with(to_string(.kubernetes.pod_name) ?? "", "tetragon") {
+  "tetragon"
 } else if .namespace == "kube-system" {
   "kube-system"
 } else if .namespace == "rook-ceph" {
@@ -198,8 +203,6 @@ pod_name = to_string(.kubernetes.pod_name) ?? ""
   "kube-audit"
 } else if exists(.source) && .source == "hubble" {
   "hubble-drops"
-} else if starts_with(to_string(.kubernetes.pod_name) ?? "", "tetragon") {
-  "tetragon"
 } else if .namespace == "gateway" {
   "envoy-access"
 } else {
