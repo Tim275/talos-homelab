@@ -85,8 +85,9 @@ spec:
             - -c
             - |
               set -e
-              # Use external URL to bypass Istio mTLS
-              KIBANA_URL="https://kibana.timourhomelab.org"
+              # In-cluster URL: the public hostname is VPN-only since the NetBird
+              # migration. ECK runs Kibana with TLS disabled, so plain HTTP.
+              KIBANA_URL="http://production-kibana-kb-http.elastic-system.svc.cluster.local:5601"
 
               echo "=== Tier-0 Kibana Data Views Bootstrap ==="
               echo "Waiting for Kibana to be ready..."
@@ -103,18 +104,16 @@ spec:
 
               echo ""
               echo "Step 1: Deleting existing data views..."
-              # Get all data view IDs
-              EXISTING=$(curl -s -k -u "elastic:${ELASTIC_PASSWORD}" \
+              EXISTING=$(curl -s -u "elastic:${ELASTIC_PASSWORD}" \
                 -H "kbn-xsrf: true" \
-                "${KIBANA_URL}/api/data_views" 2>/dev/null || echo '{"data_view":[]}')
+                "${KIBANA_URL}/api/saved_objects/_find?type=index-pattern&per_page=300" 2>/dev/null || echo '{}')
 
-              # Parse and delete each data view
-              echo "$EXISTING" | grep -o '"id":"[^"]*"' | sed 's/"id":"//g' | sed 's/"//g' | while read id; do
+              echo "$EXISTING" | grep -o '"id":"[^"]*"' | sed 's/"id":"//g' | sed 's/"//g' | sort -u | while read id; do
                 if [ -n "$id" ]; then
                   echo "  Deleting: $id"
-                  curl -s -k -X DELETE -u "elastic:${ELASTIC_PASSWORD}" \
+                  curl -s -o /dev/null -X DELETE -u "elastic:${ELASTIC_PASSWORD}" \
                     -H "kbn-xsrf: true" \
-                    "${KIBANA_URL}/api/data_views/data_view/${id}" 2>/dev/null || true
+                    "${KIBANA_URL}/api/saved_objects/index-pattern/${id}?force=true" 2>/dev/null || true
                 fi
               done
 
