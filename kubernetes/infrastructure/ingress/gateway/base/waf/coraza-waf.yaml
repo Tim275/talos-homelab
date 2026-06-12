@@ -1,19 +1,5 @@
-# Coraza WAF (OWASP CRS) — gateway-wide Envoy WASM filter. INFRA, not app.
-#
-# targetRef: Gateway -> covers EVERY HTTPRoute through this gateway with one
-# policy that lives entirely here (an EnvoyExtensionPolicy is namespace-scoped
-# and can only target routes in its own namespace, so per-route targeting would
-# force the policy into each app's namespace/repo — gateway-wide is the only
-# clean infra-only option).
-#
-# WebSocket/gRPC are bypassed by header (Upgrade:websocket / application/grpc ->
-# ruleEngine=Off). This is correct by design, not a workaround: after the upgrade
-# the stream is raw frames (not HTTP), which a WAF physically cannot inspect.
-#
-# ROLLOUT (see notes/CLAUDE-PLANNING.md "CORAZA WAF"):
-#   Phase 1  validate WS-bypass on the throwaway test-rig FIRST (../../test-rig/)
-#   Phase 2  enable here (DetectionOnly), soak, tune FPs via Kibana (logs-envoy-access.*)
-#   Phase 3  flip SecRuleEngine -> On. failOpen:true keeps traffic flowing if Coraza crashes.
+# Coraza WAF (OWASP CRS 4.14) — gateway-wide Envoy WASM filter, DetectionOnly.
+# Rollout + tuning playbook: CLAUDE.md → "Envoy Gateway + Coraza WAF".
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyExtensionPolicy
 metadata:
@@ -34,39 +20,19 @@ spec:
         type: Image
         image:
           url: ghcr.io/corazawaf/coraza-proxy-wasm:0.6.0
-      # config MUST be a structured object (not a |-string) — Envoy serializes it to JSON
-      # for the plugin. A string becomes "{...}" and Coraza reports "no default WAF".
-      # Includes verified 2026-06-10 in the test-rig: loads OWASP CRS 4.14.0, detects SQLi (942100).
       config:
+        # config must be a structured object, not a |-string (string → "no default WAF").
         directives_map:
           default:
             - "Include @recommended-conf"
             - "Include @crs-setup-conf"
-            - "SecRuleEngine DetectionOnly"
-            # @recommended-conf turns response-body access On with a 512KB limit; drova's SPA
-            # response exceeds it -> "response_payload_too_large" -> empty 520. Off keeps the
-            # request-side SQLi/XSS protection (a WAF's real job). Verified drova-safe in rig 2026-06-11.
-            - "SecResponseBodyAccess Off"
+            # - 'SecAction "id:9000001,phase:1,nolog,pass,t:none,setvar:tx.blocking_paranoia_level=2"'  # PL2 — activate after FP-soak
+            - "SecRuleEngine DetectionOnly"  # → On to enforce (after soak)
+            - "SecResponseBodyAccess Off"  # drova SPA > 512KB → empty 520; Off keeps request-side protection
             - 'SecRule REQUEST_HEADERS:Upgrade "@streq websocket" "id:1000,phase:1,pass,nolog,ctl:ruleEngine=Off"'
             - 'SecRule REQUEST_HEADERS:Content-Type "@beginsWith application/grpc" "id:1001,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            # Kibana false-positive exclusions (942220 INT_MAX in bsearch, 911100 DELETE on saved_objects)
+            - 'SecRule REQUEST_URI "@beginsWith /internal/bsearch" "id:1100010,phase:1,pass,nolog,ctl:ruleRemoveById=942220"'
+            - 'SecRule REQUEST_URI "@beginsWith /api/saved_objects" "id:1100011,phase:1,pass,nolog,ctl:ruleRemoveById=911100"'
             - "Include @owasp_crs/*.conf"
         default_directives: "default"
-      # ─────────────────────────────────────────────────────────────────────────────
-      # ENTERPRISE TUNING PLAYBOOK — apply AFTER soak (test each step in ../../test-rig/ FIRST)
-      # Current state: SecRuleEngine DetectionOnly · CRS Paranoia-Level 1 · anomaly-threshold 5 (defaults).
-      #
-      # 1. SOAK (running since activation 2026-06-11): watch detections in Kibana
-      #    (Discover, KQL `message:"Coraza"`) for ~3-7 days → spot FALSE-POSITIVES
-      #    (legit requests that tripped a rule — n8n webhooks / drova API with odd chars are prime suspects).
-      # 2. FP-EXCLUSIONS per finding — add to a separate coraza-exclusions.yaml (waf/kustomization.yaml),
-      #    placed BEFORE `Include @owasp_crs/*.conf`, e.g.:
-      #      - 'SecRuleUpdateTargetById 942100 "!ARGS:webhook_payload"'   # exclude one field from one rule
-      #      - 'SecRuleRemoveById 920420'                                  # disable a noisy rule (last resort)
-      # 3. PARANOIA 1→2 (more coverage, ONLY after FPs are clean) — add AFTER @crs-setup-conf:
-      #      - 'SecAction "id:9000001,phase:1,nolog,pass,t:none,setvar:tx.blocking_paranoia_level=2"'
-      #      (use a 7-digit id — the CRS 900000-range collides; verify load in test-rig).
-      # 4. THRESHOLD tune (optional): tx.inbound_anomaly_score_threshold (5=strict · 7-10=tolerant).
-      # 5. ENFORCE (the actual protection): change `SecRuleEngine DetectionOnly` above → `On`.
-      #    failOpen:true stays (Coraza crash = traffic flows). Watch the 403-rate after the flip + be
-      #    ready to revert (DetectionOnly) if legit traffic gets blocked.
-      # ─────────────────────────────────────────────────────────────────────────────
