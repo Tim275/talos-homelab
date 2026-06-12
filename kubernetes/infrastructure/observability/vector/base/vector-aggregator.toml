@@ -414,16 +414,50 @@ inputs = ["sample_logs"]
 encoding.codec = "json"
 target = "stdout"
 
+# Coraza has no metrics of its own — derive waf_coraza_detections_total from its
+# log lines. Additive branch off enrich_logs (a failure here can't touch ES/Loki).
+[transforms.coraza_extract]
+type = "remap"
+inputs = ["enrich_logs"]
+source = '''
+msg = to_string(.message) ?? ""
+.is_coraza_detection = false
+if contains(msg, "] Coraza: ") && (contains(msg, "Coraza: Warning") || contains(msg, "Coraza: Access denied")) {
+  m = parse_regex(msg, r'\[id "(?P<rule_id>\d+)"\]') ?? null
+  if m != null {
+    .coraza_rule_id = m.rule_id
+    .is_coraza_detection = true
+    .coraza_action = if contains(msg, "Access denied") { "denied" } else { "warning" }
+  }
+}
+'''
+
+[transforms.coraza_filter]
+type = "filter"
+inputs = ["coraza_extract"]
+condition = '.is_coraza_detection == true'
+
+[transforms.coraza_metric]
+type = "log_to_metric"
+inputs = ["coraza_filter"]
+
+[[transforms.coraza_metric.metrics]]
+type = "counter"
+field = "coraza_rule_id"
+name = "coraza_detections_total"
+namespace = "waf"
+tags.rule_id = "{{ coraza_rule_id }}"
+tags.action = "{{ coraza_action }}"
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# PROMETHEUS EXPORTER - Vector Internal Metrics
+# PROMETHEUS EXPORTER - Vector Internal Metrics + Coraza WAF counter
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Internal metrics source (Vector's own telemetry)
 [sources.internal_metrics]
 type = "internal_metrics"
 
 # Expose internal metrics via Prometheus exporter
 [sinks.prometheus_exporter]
 type = "prometheus_exporter"
-inputs = ["internal_metrics"]
+inputs = ["internal_metrics", "coraza_metric"]
 address = "0.0.0.0:9090"
 default_namespace = "vector"
