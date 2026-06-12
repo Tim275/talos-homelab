@@ -23,12 +23,18 @@ variable "tunnel_id" {
 
 variable "public_hosts" {
   type        = list(string)
-  default     = ["drova", "n8n", "iam", "status"]
-  description = "NUR diese Subdomains sind public (resolven zum Tunnel). Alles andere (grafana, argocd, ...) = NICHT public → nur via NetBird-VPN."
+  default     = ["drova", "n8n", "iam", "status", "netbird"]
+  description = "NUR diese Subdomains sind public (explizite CNAME → cloudflared-Tunnel, Vorrang vor dem Wildcard). netbird = gRPC-Endpoint MUSS public. Alles andere fällt automatisch auf den Wildcard → Envoy-LB (VPN-only)."
 }
 
 variable "publish_apex" {
   type        = bool
   default     = false
   description = "true wenn timourhomelab.org (apex) auch public sein soll (Landing-Page)."
+}
+
+variable "envoy_lb_ip" {
+  type        = string
+  default     = "192.168.0.152"
+  description = "Cilium-L2 LoadBalancer-IP des Envoy-Gateway (im Heim-LAN). VPN-Clients erreichen sie über die NetBird-LAN-Route."
 }
