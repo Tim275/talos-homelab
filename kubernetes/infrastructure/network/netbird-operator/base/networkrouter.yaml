@@ -1,3 +1,18 @@
+# Persistenter Setup-Key (ephemeral=FALSE). Der Operator-Default-Key ist ephemeral=true
+# → NetBird löscht die Routing-Peer-Pods nach ~10min Offline → Login ungültig → Routing tot.
+# Diese CR + workloadOverride unten biegen NB_SETUP_KEY auf den persistenten Key.
+apiVersion: netbird.io/v1alpha1
+kind: SetupKey
+metadata:
+  name: networkrouter-persistent
+  namespace: netbird
+spec:
+  name: networkrouter-persistent
+  ephemeral: false
+  allowExtraDnsLabels: false
+  autoGroups:
+    - name: networkrouter-homelab
+---
 apiVersion: netbird.io/v1alpha1
 kind: NetworkRouter
 metadata:
@@ -8,6 +23,19 @@ spec:
   # Records pro exposed Service an (service.namespace.zone).
   dnsZoneRef:
     name: k8s.timourhomelab.org
+  # NB_SETUP_KEY auf den persistenten Key umbiegen (sonst ephemeral → Peers gelöscht).
+  workloadOverride:
+    replicas: 3
+    podTemplate:
+      spec:
+        containers:
+          - name: netbird
+            env:
+              - name: NB_SETUP_KEY
+                valueFrom:
+                  secretKeyRef:
+                    name: setup-key-networkrouter-persistent
+                    key: setup-key
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
