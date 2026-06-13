@@ -1,0 +1,150 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: n8n-overview
+  namespace: monitoring
+spec:
+  uid: n8n-overview
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  allowCrossNamespaceImport: true
+  folder: n8n
+  resyncPeriod: 5m
+  json: |
+    {
+      "title": "n8n — Tenant Overview (Queue + Runtime)",
+      "uid": "n8n-overview",
+      "tags": ["n8n","tenant","queue","sre"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "refresh": "30s",
+      "time": {"from": "now-6h", "to": "now"},
+      "templating": {"list": []},
+      "annotations": {
+        "list": [
+          {"name": "Deploys", "datasource": {"type": "prometheus", "uid": "prometheus"}, "enable": true, "iconColor": "rgba(0, 211, 255, 1)", "expr": "changes(kube_deployment_status_observed_generation{namespace=\"n8n-prod\"}[1m]) > 0", "titleFormat": "Deploy: {{deployment}}", "tagKeys": "deployment"}
+        ]
+      },
+      "panels": [
+        {"id":900,"type":"row","title":"🎯 Queue Health & SLO","gridPos":{"x":0,"y":0,"w":24,"h":1}},
+        {"id":1,"type":"stat","title":"Job Success Rate (24h)",
+         "gridPos":{"x":0,"y":1,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"100 * (1 - (sum(rate(n8n_scaling_mode_queue_jobs_failed[24h])) / clamp_min(sum(rate(n8n_scaling_mode_queue_jobs_completed[24h])) + sum(rate(n8n_scaling_mode_queue_jobs_failed[24h])), 0.0001)))"}],
+         "fieldConfig":{"defaults":{"unit":"percent","decimals":2,"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"yellow","value":95},{"color":"green","value":99}]}}}},
+        {"id":2,"type":"stat","title":"Job Throughput (jobs/s)",
+         "gridPos":{"x":4,"y":1,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(rate(n8n_scaling_mode_queue_jobs_completed[5m]))"}],
+         "fieldConfig":{"defaults":{"unit":"short","decimals":3}},
+         "options":{"colorMode":"value","graphMode":"area"}},
+        {"id":3,"type":"stat","title":"Failed Jobs (jobs/s)",
+         "gridPos":{"x":8,"y":1,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(rate(n8n_scaling_mode_queue_jobs_failed[5m]))"}],
+         "fieldConfig":{"defaults":{"unit":"short","decimals":3,"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":0.001}]}}},
+         "options":{"colorMode":"background","graphMode":"none"}},
+        {"id":4,"type":"stat","title":"Queue Depth (active)",
+         "gridPos":{"x":12,"y":1,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(n8n_scaling_mode_queue_jobs_active)"}],
+         "fieldConfig":{"defaults":{"unit":"short","thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":50},{"color":"red","value":200}]}}}},
+        {"id":5,"type":"stat","title":"n8n Pods Ready",
+         "gridPos":{"x":16,"y":1,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(kube_deployment_status_replicas_available{namespace=\"n8n-prod\",deployment=~\"n8n-main|n8n-worker|n8n-webhook\"})"}],
+         "fieldConfig":{"defaults":{"unit":"short","thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"green","value":3}]}}}},
+        {"id":6,"type":"stat","title":"Active Workflows",
+         "gridPos":{"x":20,"y":1,"w":4,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"max(n8n_active_workflow_count)"}],
+         "fieldConfig":{"defaults":{"unit":"short"}}},
+
+        {"id":905,"type":"row","title":"📊 Queue / Workflow Throughput","gridPos":{"x":0,"y":5,"w":24,"h":1}},
+        {"id":10,"type":"timeseries","title":"Job Throughput — completed vs failed (jobs/s)",
+         "gridPos":{"x":0,"y":6,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"sum(rate(n8n_scaling_mode_queue_jobs_completed[5m]))","legendFormat":"completed"},
+           {"expr":"sum(rate(n8n_scaling_mode_queue_jobs_failed[5m]))","legendFormat":"failed"}
+         ],
+         "fieldConfig":{"defaults":{"unit":"short","custom":{"fillOpacity":15,"showPoints":"never"}},"overrides":[{"matcher":{"id":"byName","options":"failed"},"properties":[{"id":"color","value":{"mode":"fixed","fixedColor":"red"}}]}]},
+         "options":{"legend":{"displayMode":"list","placement":"bottom"}}},
+        {"id":11,"type":"timeseries","title":"Queue Depth (active jobs in flight)",
+         "gridPos":{"x":12,"y":6,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(n8n_scaling_mode_queue_jobs_active)","legendFormat":"active"}],
+         "fieldConfig":{"defaults":{"unit":"short","custom":{"fillOpacity":20,"showPoints":"never"}}}},
+
+        {"id":910,"type":"row","title":"⚙️ Node.js Runtime Health (Saturation — kritisch für n8n)","gridPos":{"x":0,"y":14,"w":24,"h":1}},
+        {"id":20,"type":"timeseries","title":"Event-Loop Lag (p50/p90/p99)",
+         "gridPos":{"x":0,"y":15,"w":8,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"max(n8n_nodejs_eventloop_lag_p50_seconds)","legendFormat":"p50"},
+           {"expr":"max(n8n_nodejs_eventloop_lag_p90_seconds)","legendFormat":"p90"},
+           {"expr":"max(n8n_nodejs_eventloop_lag_p99_seconds)","legendFormat":"p99"}
+         ],
+         "fieldConfig":{"defaults":{"unit":"s","custom":{"fillOpacity":5,"showPoints":"never"},"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":0.1},{"color":"red","value":0.5}]}}}},
+        {"id":21,"type":"timeseries","title":"Heap Used / Total per Pod",
+         "gridPos":{"x":8,"y":15,"w":8,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"sum by (pod) (n8n_nodejs_heap_size_used_bytes)","legendFormat":"{{pod}} used"},
+           {"expr":"sum by (pod) (n8n_nodejs_heap_size_total_bytes)","legendFormat":"{{pod}} total"}
+         ],
+         "fieldConfig":{"defaults":{"unit":"bytes","custom":{"fillOpacity":5,"showPoints":"never"}}},
+         "options":{"legend":{"displayMode":"list","placement":"bottom"}}},
+        {"id":22,"type":"timeseries","title":"GC Duration rate / CPU",
+         "gridPos":{"x":16,"y":15,"w":8,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"sum by (pod) (rate(n8n_nodejs_gc_duration_seconds_sum[5m]))","legendFormat":"{{pod}} gc-s/s"},
+           {"expr":"sum by (pod) (rate(n8n_process_cpu_seconds_total[5m]))","legendFormat":"{{pod}} cpu"}
+         ],
+         "fieldConfig":{"defaults":{"unit":"short","custom":{"fillOpacity":5,"showPoints":"never"}}},
+         "options":{"legend":{"displayMode":"list","placement":"bottom"}}},
+
+        {"id":915,"type":"row","title":"💾 Per-Pod Resources & HA-Leader","gridPos":{"x":0,"y":22,"w":24,"h":1}},
+        {"id":30,"type":"timeseries","title":"Resident Memory (RSS) per Pod",
+         "gridPos":{"x":0,"y":23,"w":8,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (pod) (n8n_process_resident_memory_bytes)","legendFormat":"{{pod}}"}],
+         "fieldConfig":{"defaults":{"unit":"bytes","custom":{"fillOpacity":5,"showPoints":"never"}}},
+         "options":{"legend":{"displayMode":"list","placement":"bottom"}}},
+        {"id":31,"type":"timeseries","title":"CPU vs Limit per Pod",
+         "gridPos":{"x":8,"y":23,"w":8,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"100 * sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"n8n-prod\",container!=\"\"}[5m])) / clamp_min(sum by (pod) (kube_pod_container_resource_limits{namespace=\"n8n-prod\",resource=\"cpu\"}), 0.001)","legendFormat":"{{pod}}"}],
+         "fieldConfig":{"defaults":{"unit":"percent","max":100,"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":70},{"color":"red","value":90}]}}}},
+        {"id":32,"type":"timeseries","title":"HA Leader (1 = leader)",
+         "gridPos":{"x":16,"y":23,"w":8,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"max by (pod) (n8n_instance_role_leader)","legendFormat":"{{pod}}"}],
+         "fieldConfig":{"defaults":{"unit":"short","max":1,"custom":{"fillOpacity":20,"showPoints":"never"}}},
+         "options":{"legend":{"displayMode":"list","placement":"bottom"}}},
+
+        {"id":920,"type":"row","title":"🔗 Dependencies (Queue-Backend: Postgres + Redis)","gridPos":{"x":0,"y":30,"w":24,"h":1}},
+        {"id":40,"type":"stat","title":"Postgres Replicas Up",
+         "gridPos":{"x":0,"y":31,"w":6,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"count(cnpg_collector_up{namespace=\"n8n-prod\"} == 1) OR on() vector(0)"}],
+         "fieldConfig":{"defaults":{"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"green","value":1}]}}}},
+        {"id":41,"type":"stat","title":"Redis Up",
+         "gridPos":{"x":6,"y":31,"w":6,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"count(redis_up{namespace=\"n8n-prod\"} == 1) OR on() vector(0)"}],
+         "fieldConfig":{"defaults":{"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"green","value":1}]}}}},
+        {"id":42,"type":"timeseries","title":"Postgres Connections",
+         "gridPos":{"x":12,"y":31,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (pod) (cnpg_backends_total{namespace=\"n8n-prod\"})","legendFormat":"{{pod}}"}],
+         "fieldConfig":{"defaults":{"unit":"short","custom":{"fillOpacity":5,"showPoints":"never"}}}},
+        {"id":43,"type":"stat","title":"Postgres Replicas (CNPG)",
+         "gridPos":{"x":0,"y":35,"w":12,"h":3},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"count(cnpg_collector_up{namespace=\"n8n-prod\"})"}],
+         "fieldConfig":{"defaults":{"unit":"short"}}}
+      ]
+    }
