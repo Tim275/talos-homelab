@@ -1,0 +1,30 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kafka-drova
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # App-level Kafka signal (otelgrpc/messaging instrumentation, v0.20.0+).
+  # Broker-level alerts (quorum/ISR/lag) live in ../../data/kafka.yaml — this is the
+  # complementary "a service fails to process/emit events" signal. Latency + per-topic
+  # throughput → Grafana "drova-overview" Kafka row, not alerts (lean principle).
+  groups:
+    - name: drova-kafka-processing
+      interval: 1m
+      rules:
+        - alert: DrovaKafkaProcessingErrors
+          expr: |
+            sum by (service_name) (rate(messaging_consume_messages_total{status="error"}[5m])) > 0
+            or
+            sum by (service_name) (rate(messaging_publish_messages_total{status="error"}[5m])) > 0
+          for: 10m
+          labels:
+            severity: warning
+            priority: P2
+            component: kafka
+            tenant: drova
+          annotations:
+            summary: "Drova {{ $labels.service_name }} failing Kafka event processing"
+            description: "{{ $labels.service_name }} has Kafka publish/consume errors (messaging_*{status=\"error\"}) sustained >10min — events route to drova.retry.* or are dropped. Check the consumer/producer handler."
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-overview"
