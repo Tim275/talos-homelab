@@ -76,7 +76,7 @@ provider "registry.opentofu.org/hashicorp/http" {
 
 provider "registry.opentofu.org/hashicorp/kubernetes" {
   version     = "2.38.0"
-  constraints = ">= 2.31.0, >= 2.32.0, 2.38.0"
+  constraints = ">= 2.31.0, >= 2.38.0, 2.38.0"
   hashes = [
     "h1:3VVgWmwdwXFT54fjrplnq+N4+4LZ3ZeLHAlr/0jhPiA=",
     "h1:9LfHMXiMOboc6PhcEEelKjA3VL94l3MCj7RlbKO1PQM=",
