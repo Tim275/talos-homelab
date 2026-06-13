@@ -23,8 +23,8 @@ variable "tunnel_id" {
 
 variable "public_hosts" {
   type        = list(string)
-  default     = ["drova", "n8n", "netbird"]
-  description = "NUR diese Subdomains sind public (explizite CNAME → cloudflared, Vorrang vor Wildcard). iam (Keycloak) + status sind bewusst NICHT hier → fallen auf den Wildcard → Envoy-LB = VPN/LAN-only. NetBird ist der ZTNA-Perimeter, der IdP wird nicht internet-exponiert. netbird = legacy gRPC-Endpoint (warp-routing), bleibt vorerst."
+  default     = ["drova", "n8n"]
+  description = "NUR diese Subdomains sind public (explizite CNAME → cloudflared-Tunnel, Vorrang vor Wildcard). Alles andere (iam/Keycloak, status, grafana, argo, …) fällt auf den Wildcard → Envoy-LB = VPN/LAN-only. NetBird ist der ZTNA-Perimeter, interne Apps + IdP werden nicht internet-exponiert."
 }
 
 variable "publish_apex" {
