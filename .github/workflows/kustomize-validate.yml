@@ -51,8 +51,15 @@ jobs:
 
           while IFS= read -r kfile; do
             DIR=$(dirname "$kfile")
-            OUTPUT=$(kustomize build "$DIR" --enable-helm --load-restrictor=LoadRestrictionsNone 2>&1)
-            STATUS=$?
+            # Retry to survive transient helm-repo errors (external chart pulls, e.g. 503)
+            for attempt in 1 2 3; do
+              OUTPUT=$(kustomize build "$DIR" --enable-helm --load-restrictor=LoadRestrictionsNone 2>&1)
+              STATUS=$?
+              [ $STATUS -eq 0 ] && break
+              echo "$OUTPUT" | grep -qiE 'cannot be reached|503|Service Unavailable|timeout|temporarily|connection refused|no such host|TLS handshake|i/o timeout' || break
+              echo "::warning::transient build failure in $DIR (attempt $attempt/3), retrying"
+              sleep $((attempt * 5))
+            done
 
             if [ $STATUS -ne 0 ]; then
               FAILED=$((FAILED+1))
