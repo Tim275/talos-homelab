@@ -171,20 +171,6 @@ spec:
           initial_interval: 1s
           max_interval: 30s
 
-      # Elasticsearch for log search/analytics
-      elasticsearch:
-        endpoints:
-          - https://production-cluster-es-http.elastic-system.svc.cluster.local:9200
-        logs_index: logs-otel
-        tls:
-          insecure_skip_verify: true
-        auth:
-          authenticator: basicauth/es
-        retry:
-          enabled: true
-          initial_interval: 1s
-          max_interval: 30s
-
       # --- METRICS ---
       # Prometheus Remote Write
       prometheusremotewrite:
@@ -209,12 +195,6 @@ spec:
     # EXTENSIONS - Additional functionality
 
     extensions:
-      # Basic auth for Elasticsearch
-      basicauth/es:
-        client_auth:
-          username: elastic
-          password: ${env:ES_PASSWORD}
-
       # Health check endpoint
       health_check:
         endpoint: 0.0.0.0:13133
@@ -227,7 +207,6 @@ spec:
 
     service:
       extensions:
-        - basicauth/es
         - health_check
         - zpages
 
@@ -244,13 +223,15 @@ spec:
           exporters:
             - otlp/gateway
 
-        # Structured application logs via OTLP SDK (Drova services, etc.)
-        # NOTE: Pod stdout/stderr still handled by Vector → Loki (Option E pattern).
-        # This pipeline handles SDK-emitted logs only (different signal source).
+        # Structured application logs via OTLP SDK (Drova services, etc.) → Loki.
+        # Pod stdout/stderr still handled by Vector → Loki + ES (Option E pattern).
+        # 2026-06-14: elasticsearch-Exporter entfernt — war redundant (Vector indexiert
+        # dieselben Logs schon nach ES) + scheiterte permanent mit 401 (elastic-Superuser-
+        # Passwort driftet bei jedem ES-Rebuild). Kein ES-Export hier = kein Drift, dauerhaft.
         logs:
           receivers: [otlp]
           processors: [memory_limiter, k8sattributes, resource, batch]
-          exporters: [otlphttp/loki, elasticsearch]
+          exporters: [otlphttp/loki]
 
         # Metrics pipeline Prometheus
         metrics:
@@ -273,8 +254,4 @@ spec:
                     host: 0.0.0.0
                     port: 8888
 
-  # Environment variables for secrets
-  envFrom:
-    - secretRef:
-        name: otel-collector-secrets
 
