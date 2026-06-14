@@ -24,6 +24,7 @@ spec:
             dashboard_url: "/d/k8s-pod-overview"
             summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
             description: "Container {{ $labels.container }} in CrashLoopBackOff >5min."
+            action: "kubectl logs -n {{ $labels.namespace }} {{ $labels.pod }} --previous; describe for the crash reason; fix config/image/resources."
 
         - alert: ContainerOOMKilled
           expr: increase(kube_pod_container_status_terminated_reason{reason="OOMKilled"}[15m]) > 0
@@ -35,6 +36,7 @@ spec:
             dashboard_url: "/d/k8s-pod-overview"
             summary: "OOM kill: {{ $labels.namespace }}/{{ $labels.pod }}/{{ $labels.container }}"
             description: "Container OOM-killed in last 15min — raise memory limit or fix a leak."
+            action: "Raise {{ $labels.container }}'s memory limit or fix the leak; kubectl describe pod -n {{ $labels.namespace }} {{ $labels.pod }}."
 
         - alert: PodNotReady
           expr: kube_pod_status_phase{phase!~"Running|Succeeded|Failed"} == 1
@@ -47,3 +49,4 @@ spec:
             dashboard_url: "/d/k8s-pod-overview"
             summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} not ready"
             description: "Pod stuck in {{ $labels.phase }} for 15+ min — scheduling failure or PVC unbound."
+            action: "kubectl describe pod -n {{ $labels.namespace }} {{ $labels.pod }}; check events — scheduling, PVC-unbound, or failing readiness."

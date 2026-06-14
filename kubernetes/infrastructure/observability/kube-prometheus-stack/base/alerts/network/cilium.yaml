@@ -23,6 +23,7 @@ spec:
             dashboard_url: "/d/cilium-agent"
             summary: "Multiple Cilium agents down ({{ $value }})"
             description: "More than 1 Cilium agent unreachable — pod-to-pod networking degraded cluster-wide."
+            action: "kubectl -n kube-system get pod -l k8s-app=cilium; 'kubectl logs -p' the crashing agents — usually kernel/eBPF or a bad config rollout."
 
     # ── TICKET ──
     - name: cilium-ticket
@@ -40,6 +41,7 @@ spec:
             dashboard_url: "/d/cilium-agent"
             summary: "Cilium operator down (all replicas)"
             description: "New IPs/policies cannot be programmed. (Dampened — single-master restart-storms are benign.)"
+            action: "kubectl -n kube-system rollout restart deploy/cilium-operator; check logs (single-master restart-storms are benign)."
 
         - alert: SPIREAgentDown
           expr: |
@@ -68,6 +70,7 @@ spec:
             dashboard_url: "/d/cilium-agent"
             summary: "Cilium WireGuard encryption disabled on {{ $value }} agents"
             description: "Pod traffic not encrypted — investigate WireGuard transparent encryption."
+            action: "Check cilium-config enable-wireguard + agent 'cilium status | grep Encryption'; restart affected agents (watch encrypt-node drift 2026-05-23)."
 
         - alert: HubbleHighPolicyDrops
           expr: sum(rate(hubble_drop_total{reason="POLICY_DENIED"}[5m])) > 10
@@ -80,6 +83,7 @@ spec:
             dashboard_url: "/d/cilium-agent"
             summary: "High NetworkPolicy denial rate ({{ $value | humanize }}/s)"
             description: "Many flows dropped by NetworkPolicies — misconfigured policy or attempted lateral movement."
+            action: "hubble observe --verdict DROPPED to find source/dest; fix the policy, or treat as a lateral-movement attempt."
 
         - alert: CiliumNodeUnreachable
           expr: max(cilium_unreachable_nodes) > 0
@@ -106,3 +110,4 @@ spec:
             dashboard_url: "/d/cilium-agent"
             summary: "Cilium eBPF map >80% full ({{ $value | humanizePercentage }})"
             description: "Eine eBPF-Map nähert sich der Kapazität. Bei 100% scheitern neue Pods/Connections/Policies/Services LAUTLOS zu programmieren. Welche Map: cilium_bpf_map_pressure by (map_name) im Grafana."
+            action: "Grafana 'cilium_bpf_map_pressure by (map_name)' → identify the full map; reduce policy/endpoint count or raise the map size."

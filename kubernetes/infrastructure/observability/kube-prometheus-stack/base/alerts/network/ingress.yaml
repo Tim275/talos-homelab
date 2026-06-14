@@ -22,6 +22,7 @@ spec:
             dashboard_url: "/d/envoy-global"
             summary: "All Cloudflared tunnels down"
             description: "External access via Cloudflare Tunnel completely down — all public services unreachable."
+            action: "kubectl -n cloudflared get pod -l app=cloudflared + logs; check the tunnel token secret + Cloudflare dashboard tunnel status."
 
     # ── TICKET ──
     - name: ingress-ticket
@@ -38,6 +39,7 @@ spec:
             dashboard_url: "/d/envoy-global"
             summary: "Envoy Gateway controller down"
             description: "Gateway config updates blocked >3min (existing routes keep serving)."
+            action: "kubectl -n envoy-gateway-system rollout restart deploy/envoy-gateway; existing routes keep serving meanwhile."
 
         - alert: EnvoyGateway5xxRateHigh
           expr: |
@@ -54,6 +56,7 @@ spec:
             dashboard_url: "/d/envoy-global"
             summary: "Envoy Gateway 5xx rate >5% ({{ $value | humanize }}%)"
             description: "Edge proxy seeing high upstream errors — backend services degraded, users see failures."
+            action: "Find the failing upstream in the envoy-global dashboard; check that backend's pods/health + any recent deploy."
 
         - alert: EnvoyGatewayNoEndpoints
           expr: |
@@ -74,3 +77,4 @@ spec:
             dashboard_url: "/d/envoy-global"
             summary: "Envoy Gateway: no healthy endpoints for {{ $labels.envoy_cluster_name }}"
             description: "User-facing upstream has 0 healthy endpoints >10min — traffic dropped."
+            action: "kubectl get endpoints -n {{ $labels.namespace }} {{ $labels.envoy_cluster_name }} — backend has 0 ready pods; check the deployment + readiness probe."
