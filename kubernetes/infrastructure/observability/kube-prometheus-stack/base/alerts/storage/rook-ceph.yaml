@@ -112,3 +112,19 @@ spec:
             summary: "RGW bucket {{ $labels.bucket }} >85% of quota"
             description: "Bucket fills soon — Velero/CNPG/Loki/Tempo writes will fail at 100%."
             action: "Raise quota ('radosgw-admin quota set') or prune old objects (Velero/Loki/Tempo retention)."
+
+        - alert: CephSlowOps
+          # Service-level signal for BlueStore slow-ops (HEALTH_WARN). Replaces the noisy
+          # upstream NodeDiskIOSaturation (disabled in values-prod) which false-fires on
+          # Ceph disks. Ticket-tier: slow-ops = degraded performance, not an outage.
+          expr: ceph_healthcheck_slow_ops > 0
+          for: 15m
+          labels:
+            severity: warning
+            component: storage
+            priority: P2
+          annotations:
+            dashboard_url: "/d/ceph-cluster"
+            summary: "Ceph BlueStore slow operations ({{ $value }})"
+            description: "Slow-ops sustained >15min — OSDs can't keep up (usually consumer-SSD write pressure, e.g. msa2 Crucial running 3 OSDs). Degraded, not failure."
+            action: "Toolbox: 'ceph health detail' (which OSDs) + 'ceph osd perf' (latency); check disk SMART + the heaviest write-load on that node."
