@@ -23,6 +23,7 @@ spec:
             dashboard_url: "/d/proxmox-cluster"
             summary: "Proxmox host {{ $labels.instance }} unreachable"
             description: "node-exporter on Proxmox host down >5min — host (and its VMs) likely offline."
+            action: "Check the Proxmox host ({{ $labels.instance }}) physically; SSH it; its VMs are down too — full-host outage."
 
         - alert: ProxmoxZfsPoolCritical
           expr: (node_zfs_zpool_alloc{job="proxmox-host-node"} / node_zfs_zpool_size{job="proxmox-host-node"}) > 0.95
@@ -34,6 +35,7 @@ spec:
             dashboard_url: "/d/proxmox-cluster"
             summary: "ZFS pool {{ $labels.zpool }} >95% full on {{ $labels.instance }}"
             description: "Pool nearly full — VM-disks will fail writes. Free space or expand immediately."
+            action: "SSH the host; 'zpool list {{ $labels.zpool }}'; free space (old VM disks/snapshots) or expand the pool."
 
         - alert: ProxmoxDiskSmartFailure
           expr: smartmon_device_smart_healthy{job="proxmox-host-node"} == 0
@@ -45,6 +47,7 @@ spec:
             dashboard_url: "/d/proxmox-cluster"
             summary: "SMART health failure: {{ $labels.disk }} on {{ $labels.instance }}"
             description: "Disk reporting SMART failure — replace soon (data-loss risk)."
+            action: "SSH the host; 'smartctl -a {{ $labels.disk }}'; plan a disk replacement (data-loss risk)."
 
     # ── TICKET ──
     - name: proxmox-ticket
@@ -61,6 +64,7 @@ spec:
             dashboard_url: "/d/proxmox-cluster"
             summary: "Proxmox host {{ $labels.instance }} root disk >85% full"
             description: "Root at {{ $value | humanizePercentage }} — PVE config write failures loom."
+            action: "SSH the host; clean /var/log + old ISOs/backups; PVE config writes fail when root fills."
 
         - alert: ProxmoxHostMemoryPressure
           expr: (node_memory_MemAvailable_bytes{job="proxmox-host-node"} / node_memory_MemTotal_bytes{job="proxmox-host-node"}) < 0.10
@@ -73,6 +77,7 @@ spec:
             dashboard_url: "/d/proxmox-cluster"
             summary: "Proxmox host {{ $labels.instance }} memory <10% available"
             description: "VM scheduling/migration may fail (nipogi RAM is tight). Available {{ $value | humanizePercentage }}."
+            action: "SSH the host; check VM RAM allocation (nipogi is tight); reduce/rebalance before migration fails."
 
         - alert: ProxmoxZfsPoolDegraded
           expr: node_zfs_zpool_state{job="proxmox-host-node",state!="online"} > 0
@@ -85,6 +90,7 @@ spec:
             dashboard_url: "/d/proxmox-cluster"
             summary: "ZFS pool {{ $labels.zpool }} degraded on {{ $labels.instance }}"
             description: "Pool state {{ $labels.state }} — single-disk pools have no redundancy, check the disk."
+            action: "SSH the host; 'zpool status {{ $labels.zpool }}'; single-disk pool = no redundancy, check/replace the disk."
 
         - alert: ProxmoxApiExporterDown
           expr: up{job="proxmox-pve"} == 0
@@ -97,6 +103,7 @@ spec:
             dashboard_url: "/d/proxmox-cluster"
             summary: "Proxmox PVE exporter down"
             description: "Cannot scrape Proxmox API — VM/cluster state not visible in Grafana."
+            action: "Check the pve-exporter pod + the Proxmox API token; Grafana loses VM/cluster state meanwhile."
 
         - alert: ProxmoxBackupStale
           expr: time() - max by (host) (pve_vzdump_last_backup_timestamp_seconds) > 93600
@@ -109,3 +116,4 @@ spec:
             dashboard_url: "/d/proxmox-cluster"
             summary: "Proxmox VM-backup on {{ $labels.host }} is stale"
             description: "Newest vzdump archive on {{ $labels.host }} older than 26h — nightly job (02:00) missed or failed."
+            action: "SSH {{ $labels.host }}; check the vzdump cron (02:00) + 'pvesm status'; is the backup storage reachable?"
