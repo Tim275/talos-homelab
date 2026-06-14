@@ -24,6 +24,7 @@ spec:
             dashboard_url: "/d/ceph-cluster"
             summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} <10% free ({{ $value | humanizePercentage }})"
             description: "Disk nearly full — app may fail / data loss. Expand the PVC now."
+            action: "Expand the PVC (edit spec.resources.requests.storage — Ceph RBD online-grows), or free space inside the volume."
 
     # ── TICKET ──
     - name: csi-ticket
@@ -56,6 +57,7 @@ spec:
             dashboard_url: "/d/ceph-cluster"
             summary: "Ceph CSI provisioner {{ $labels.deployment }} has 0 replicas"
             description: "PVC creation/deletion blocked cluster-wide while provisioner is down."
+            action: "kubectl -n rook-ceph rollout restart deploy/csi-rbdplugin-provisioner; check provisioner + rook-ceph-operator logs."
 
         - alert: ReleasedPVsAccumulating
           expr: sum(kube_persistentvolume_status_phase{phase="Released"}) > 15
@@ -68,6 +70,7 @@ spec:
             dashboard_url: "/d/ceph-cluster"
             summary: "{{ $value }} Released PVs — CSI cleanup not keeping up"
             description: "Released PVs accumulate when CSI deletion sticks on omap-locks. Hourly cleanup CronJob should handle it."
+            action: "Check the hourly released-PV cleanup CronJob; manually 'kubectl get pv | grep Released' and delete stale ones after verifying data."
 
         - alert: CephOSDFlapping
           expr: changes(ceph_osd_up[10m]) > 2
@@ -80,3 +83,4 @@ spec:
             dashboard_url: "/d/ceph-cluster"
             summary: "Ceph OSD {{ $labels.ceph_daemon }} flapping (>2 state changes in 10min)"
             description: "OSD bouncing up/down — investigate disk health, network, or memory pressure."
+            action: "Toolbox: 'ceph osd df' for the daemon; check its disk SMART + node memory/network pressure."
