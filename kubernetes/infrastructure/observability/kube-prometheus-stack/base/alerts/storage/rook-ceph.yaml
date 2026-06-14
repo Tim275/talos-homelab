@@ -112,3 +112,34 @@ spec:
             summary: "RGW bucket {{ $labels.bucket }} >85% of quota"
             description: "Bucket fills soon — Velero/CNPG/Loki/Tempo writes will fail at 100%."
             action: "Raise quota ('radosgw-admin quota set') or prune old objects (Velero/Loki/Tempo retention)."
+
+        - alert: CephSlowOps
+          # Service-level signal for BlueStore slow-ops (HEALTH_WARN). Replaces the noisy
+          # upstream NodeDiskIOSaturation (disabled in values-prod) which false-fires on
+          # Ceph disks. Ticket-tier: slow-ops = degraded performance, not an outage.
+          expr: ceph_health_detail{name="BLUESTORE_SLOW_OP_ALERT"} > 0
+          for: 15m
+          labels:
+            severity: warning
+            component: storage
+            priority: P2
+          annotations:
+            dashboard_url: "/d/ceph-cluster"
+            summary: "Ceph BlueStore slow operations on OSDs"
+            description: "Slow-ops sustained >15min — OSDs can't keep up (usually consumer-SSD write pressure, e.g. msa2 Crucial running 3 OSDs). Degraded, not failure."
+            action: "Toolbox: 'ceph health detail' (which OSDs) + 'ceph osd perf' (latency); check disk SMART + the heaviest write-load on that node."
+
+        - alert: CephMonClockSkew
+          # mon clock skew → quorum instability + cert/SVID/SA-token auth risk (same NTP root
+          # as TalosNodeClockSkew / SPIRE). Service-level via ceph_health_detail.
+          expr: ceph_health_detail{name="MON_CLOCK_SKEW"} > 0
+          for: 10m
+          labels:
+            severity: warning
+            component: storage
+            priority: P2
+          annotations:
+            dashboard_url: "/d/ceph-cluster"
+            summary: "Ceph mon clock skew detected"
+            description: "A Ceph mon's clock drifted — risks quorum instability + cert/token auth. Same NTP root cause as TalosNodeClockSkew."
+            action: "Toolbox: 'ceph time-sync-status'; check NTP on the Proxmox hosts + Talos nodes ('talosctl time')."
