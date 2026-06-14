@@ -25,6 +25,7 @@ spec:
             dashboard_url: "/d/kafka-exporter"
             summary: "Kafka KRaft quorum has NO active controller in {{ $labels.namespace }}"
             description: "KRaft cannot elect a leader — all metadata ops blocked, producers/consumers cannot connect."
+            action: "kubectl -n {{ $labels.namespace }} get pod -l strimzi.io/controller-role=true + logs; do NOT delete all controllers (KRaft quorum)."
 
         - alert: KafkaUnderMinISR
           expr: kafka_cluster_partition_under_min_isr{pod=~".*kafka.*"} > 0
@@ -37,6 +38,7 @@ spec:
             dashboard_url: "/d/kafka-exporter"
             summary: "Kafka {{ $value }} partitions under min-ISR in {{ $labels.namespace }}"
             description: "Producers with acks=all FAIL (NotEnoughReplicasException). Restart unhealthy brokers; check disk."
+            action: "kubectl -n {{ $labels.namespace }} get pod -l strimzi.io/broker-role=true; restart unhealthy brokers one at a time; check broker disk."
 
         - alert: KafkaConsumerLagCritical
           expr: kafka_consumergroup_lag_sum > 50000
@@ -49,3 +51,4 @@ spec:
             dashboard_url: "/d/kafka-exporter"
             summary: "Kafka consumer lag >50k: {{ $labels.consumergroup }}"
             description: "Consumer group {{ $labels.consumergroup }} lagging {{ $value }} events — stuck or under-provisioned."
+            action: "Check the consumer pods (scaled/stuck?); 'kafka-consumer-groups --describe'; scale or restart the consumer."

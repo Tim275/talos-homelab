@@ -23,6 +23,7 @@ spec:
             dashboard_url: "/d/cert-manager"
             summary: "TLS cert expires in <7d: {{ $labels.name }}"
             description: "Certificate {{ $labels.name }} in {{ $labels.namespace }} expires in {{ $value | humanizeDuration }} — service will break."
+            action: "kubectl describe certificate {{ $labels.name }} -n {{ $labels.namespace }}; check the Issuer + cert-manager logs; force renewal if stuck."
 
     # ── TICKET ──
     - name: cert-manager-ticket
@@ -39,6 +40,7 @@ spec:
             dashboard_url: "/d/cert-manager"
             summary: "TLS cert expires in <30d: {{ $labels.name }}"
             description: "Renewal should happen automatically — verify cert-manager is healthy."
+            action: "Renewal is automatic — verify cert-manager pods healthy + the (Cluster)Issuer is Ready."
 
         - alert: CertManagerDown
           expr: up{job="cert-manager"} == 0
@@ -51,3 +53,4 @@ spec:
             dashboard_url: "/d/cert-manager"
             summary: "cert-manager controller down"
             description: "Unreachable >5min — certificate renewals + new issuance blocked."
+            action: "kubectl -n cert-manager rollout restart deploy/cert-manager; check logs + webhook availability."
