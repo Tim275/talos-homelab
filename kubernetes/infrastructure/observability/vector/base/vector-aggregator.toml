@@ -121,6 +121,17 @@ del(.kubernetes.namespace_labels)
 del(.kubernetes.node_labels)
 del(.kubernetes.pod_annotations)
 
+# Tetragon events embed the same label problem nested in their pod metadata:
+# plain "app" vs dotted "app.kubernetes.io/*" keys collide in ES (object vs value)
+del(.process_exec.process.pod.pod_labels)
+del(.process_exec.parent.pod.pod_labels)
+del(.process_exit.process.pod.pod_labels)
+del(.process_exit.parent.pod.pod_labels)
+del(.process_kprobe.process.pod.pod_labels)
+del(.process_kprobe.parent.pod.pod_labels)
+del(.process_tracepoint.process.pod.pod_labels)
+del(.process_tracepoint.parent.pod.pod_labels)
+
 # Add timestamp if missing
 if !exists(.timestamp) {
   .timestamp = now()
@@ -172,6 +183,11 @@ pod_name = to_string(.kubernetes.pod_name) ?? ""
     # Fallback for other OMS pods (mongodb, rabbitmq, etc.)
     "oms-infra"
   }
+# Tetragon runs IN kube-system — this pod-name check MUST precede the kube-system
+# namespace branch, else tetragon events get filed under "kube-system" instead of
+# their own "tetragon" stream (was muddling ~1.4GB of runtime-security into kube-system).
+} else if starts_with(to_string(.kubernetes.pod_name) ?? "", "tetragon") {
+  "tetragon"
 } else if .namespace == "kube-system" {
   "kube-system"
 } else if .namespace == "rook-ceph" {
@@ -196,6 +212,10 @@ pod_name = to_string(.kubernetes.pod_name) ?? ""
   "cloudnative-pg"
 } else if exists(.source) && .source == "kubernetes-audit" {
   "kube-audit"
+} else if exists(.source) && .source == "hubble" {
+  "hubble-drops"
+} else if .namespace == "gateway" {
+  "envoy-access"
 } else {
   # Fallback: use namespace as service_name
   .namespace
@@ -284,10 +304,14 @@ if exists(.error) {
 '''
 
 # Sample logs to reduce volume (optional)
+# Vector semantics: rate = N keeps 1 out of every N events.
+# rate=100 silently dropped 99% of all logs (drova/lldap/spire never reached
+# ES or Loki). rate=1 keeps everything — the Hubble flood that motivated
+# sampling is now filtered at the agent (security verdicts only).
 [transforms.sample_logs]
 type = "sample"
 inputs = ["enrich_logs"]
-rate = 100  # Keep all logs (set lower to sample, e.g. 10 = 10%)
+rate = 1
 key_field = ".kubernetes.pod"  # Sample per pod
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -302,14 +326,31 @@ inputs = ["sample_logs"]
 # Fix 2026-05-17: stricter VRL parser in newer Vector versions rejects
 # `||` line-continuation inside `(...)`. Use `includes()` with array literal
 # (set-membership check). Same semantics, parser-stable.
-condition = 'exists(.kubernetes.pod_namespace) && includes(["drova","drova-prod","keycloak","lldap","argocd","kyverno","security","cilium-spire","cnpg-system","velero"], .kubernetes.pod_namespace)'
+# 2026-06-14: tetragon aus ES auskommentiert — info-level war ~15GB (halber ES-Store).
+# Bleibt 1:1 in Loki (Forensik per grep). Re-enable = tetragon-Klausel unten wieder
+# an die condition anhängen (das `||` davor nicht vergessen):
+#   || (exists(.kubernetes.pod_name) && starts_with(string!(.kubernetes.pod_name), "tetragon"))
+condition = '(exists(.kubernetes.pod_namespace) && includes(["drova","drova-prod","keycloak","lldap","argocd","kyverno","security","cilium-spire","cnpg-system","velero","gateway","netbird","n8n-prod","kafka","cloudbeaver","audiobookshelf-prod","redis-operator-system"], .kubernetes.pod_namespace)) || (exists(.source) && .source == "kubernetes-audit") || (exists(.source) && .source == "hubble")'
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ES-VOLUME-SCHUTZ: laute INFO-Quellen (kafka/n8n-prod) auf 1/5 samplen.
+# WARN/CRITICAL + alle anderen NS bleiben 1:1 (exclude). Loki bekommt weiter alles.
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[transforms.sample_noisy_for_es]
+type = "sample"
+inputs = ["filter_sensitive_for_es"]
+rate = 5
+key_field = ".kubernetes.pod"
+exclude = '''
+.severity != "info" || !(exists(.kubernetes.pod_namespace) && includes(["kafka","n8n-prod"], .kubernetes.pod_namespace))
+'''
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ELASTICSEARCH SINK - DATA STREAMS + ECS (sensitive NS only)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [sinks.elasticsearch]
 type = "elasticsearch"
-inputs = ["filter_sensitive_for_es"]
+inputs = ["sample_noisy_for_es"]
 endpoints = ["https://production-cluster-es-http.elastic-system.svc.cluster.local:9200"]
 mode = "data_stream"  # ← DATA STREAMS! (automatic rollover)
 data_stream.type = "logs"
@@ -377,16 +418,50 @@ inputs = ["sample_logs"]
 encoding.codec = "json"
 target = "stdout"
 
+# Coraza has no metrics of its own — derive waf_coraza_detections_total from its
+# log lines. Additive branch off enrich_logs (a failure here can't touch ES/Loki).
+[transforms.coraza_extract]
+type = "remap"
+inputs = ["enrich_logs"]
+source = '''
+msg = to_string(.message) ?? ""
+.is_coraza_detection = false
+if contains(msg, "] Coraza: ") && (contains(msg, "Coraza: Warning") || contains(msg, "Coraza: Access denied")) {
+  m = parse_regex(msg, r'\[id "(?P<rule_id>\d+)"\]') ?? null
+  if m != null {
+    .coraza_rule_id = m.rule_id
+    .is_coraza_detection = true
+    .coraza_action = if contains(msg, "Access denied") { "denied" } else { "warning" }
+  }
+}
+'''
+
+[transforms.coraza_filter]
+type = "filter"
+inputs = ["coraza_extract"]
+condition = '.is_coraza_detection == true'
+
+[transforms.coraza_metric]
+type = "log_to_metric"
+inputs = ["coraza_filter"]
+
+[[transforms.coraza_metric.metrics]]
+type = "counter"
+field = "coraza_rule_id"
+name = "coraza_detections_total"
+namespace = "waf"
+tags.rule_id = "{{ coraza_rule_id }}"
+tags.action = "{{ coraza_action }}"
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# PROMETHEUS EXPORTER - Vector Internal Metrics
+# PROMETHEUS EXPORTER - Vector Internal Metrics + Coraza WAF counter
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Internal metrics source (Vector's own telemetry)
 [sources.internal_metrics]
 type = "internal_metrics"
 
 # Expose internal metrics via Prometheus exporter
 [sinks.prometheus_exporter]
 type = "prometheus_exporter"
-inputs = ["internal_metrics"]
+inputs = ["internal_metrics", "coraza_metric"]
 address = "0.0.0.0:9090"
 default_namespace = "vector"

@@ -24,8 +24,10 @@ spec:
             severity: critical
             component: monitoring
           annotations:
+            dashboard_url: "/d/prometheus-stats"
             summary: "Prometheus replica missing — metrics stopped"
             description: "Fewer ready Prometheus pods than desired >5min (often Phase=Succeeded after upgrade-eviction). All SLO/Rollout alerts blind until restarted."
+            action: "kubectl get pod -n monitoring -l app.kubernetes.io/name=prometheus; if Phase=Succeeded after eviction: 'kubectl delete pod ... --force'."
 
         - alert: AlertmanagerPodMissing
           expr: |
@@ -36,8 +38,10 @@ spec:
             severity: critical
             component: monitoring
           annotations:
+            dashboard_url: "/d/prometheus-stats"
             summary: "Alertmanager replica missing — gossip mesh degraded"
             description: "Fewer ready AM pods than desired >10min. A single dead AM can stay invisible (HA majority). Fix: kubectl delete pod -n monitoring <name> --force."
+            action: "kubectl delete pod -n monitoring -l app.kubernetes.io/name=alertmanager --force (a single dead AM hides behind HA majority)."
 
     # ── TICKET — degradation (digest channel) ──────────────────────────────
     - name: observability-ticket
@@ -51,8 +55,10 @@ spec:
             component: observability
             priority: P2
           annotations:
+            dashboard_url: "/d/prometheus-stats"
             summary: "Scrape target down: {{ $labels.job }}/{{ $labels.instance }}"
             description: "Prometheus cannot scrape {{ $labels.instance }} for >15min."
+            action: "Check {{ $labels.instance }} ({{ $labels.job }}): is the exporter/pod up? ServiceMonitor selector + network policy?"
 
         - alert: GrafanaDown
           expr: up{job="grafana"} == 0
@@ -62,8 +68,10 @@ spec:
             component: observability
             priority: P2
           annotations:
+            dashboard_url: "/d/prometheus-stats"
             summary: "Grafana is down"
             description: "Grafana unreachable >5min — dashboards unavailable (alerting unaffected)."
+            action: "kubectl -n monitoring rollout restart deploy/grafana; check logs + its DB/datasources."
 
         - alert: RolloutAborted
           expr: rollout_phase{phase="Degraded"} == 1
@@ -73,8 +81,10 @@ spec:
             component: deployment
             priority: P2
           annotations:
+            dashboard_url: "/d/prometheus-stats"
             summary: "Argo Rollout aborted — {{ $labels.namespace }}/{{ $labels.name }}"
             description: "Rollout Degraded >5min (AnalysisTemplate fail, canary health-check, image-pull). New release stuck; users on old version."
+            action: "kubectl argo rollouts get rollout {{ $labels.name }} -n {{ $labels.namespace }}; check the AnalysisRun/canary; retry or abort."
 
         - alert: EnvoyGatewayPodCompletedLoop
           expr: |
@@ -85,8 +95,10 @@ spec:
             component: ingress
             priority: P2
           annotations:
+            dashboard_url: "/d/prometheus-stats"
             summary: "Envoy-gateway pod restart-loop (>10 in 1h)"
             description: "Repeated cold-starts hurt user-facing latency. If Reason=Completed: likely Talos-eviction race."
+            action: "kubectl -n gateway describe pod -l app.kubernetes.io/name=envoy; if Reason=Completed it's a Talos-eviction race — check node pressure."
 
         - alert: LokiDown
           expr: up{job=~".*loki.*"} == 0
@@ -96,8 +108,10 @@ spec:
             component: observability
             priority: P2
           annotations:
+            dashboard_url: "/d/prometheus-stats"
             summary: "Loki {{ $labels.job }} down"
             description: "Log store unreachable >10min — log ingestion/query unavailable (metrics-alerting unaffected)."
+            action: "kubectl -n monitoring get pod -l app.kubernetes.io/name=loki + logs; check its object-store (Ceph-RGW) backend."
 
         - alert: VectorPipelineDown
           expr: up{job=~".*vector.*"} == 0
@@ -107,5 +121,21 @@ spec:
             component: observability
             priority: P2
           annotations:
+            dashboard_url: "/d/prometheus-stats"
             summary: "Vector log-shipper {{ $labels.instance }} down"
             description: "Vector agent/aggregator down >10min — pod logs not shipped to Loki/Elasticsearch."
+            action: "kubectl -n elastic-system get pod -l app.kubernetes.io/name=vector + logs; restart the agent/aggregator."
+
+        - alert: VectorSinkDroppingEvents
+          expr: |
+            sum by (component_id) (rate(vector_component_discarded_events_total{component_kind="sink"}[10m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+            component: observability
+            priority: P2
+          annotations:
+            dashboard_url: "/d/prometheus-stats"
+            summary: "Vector sink {{ $labels.component_id }} dropping events"
+            description: "Vector is discarding events at the {{ $labels.component_id }} sink for >15min — poison docs (ES mapping conflict), template-render failures or batch rejects. Logs silently lost. Check: kubectl logs -n elastic-system deploy/vector-aggregator | grep -v '^{' | grep ERROR"
+            action: "kubectl logs -n elastic-system deploy/vector-aggregator | grep -v '^{' | grep ERROR — poison doc (ES mapping conflict) or sink backpressure; check ES disk/health."

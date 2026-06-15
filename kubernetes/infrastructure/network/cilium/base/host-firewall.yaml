@@ -18,6 +18,13 @@ spec:
               protocol: TCP  # Talos API
             - port: "6443"
               protocol: TCP  # Kubernetes API
+            # Envoy-Gateway LoadBalancer (Cilium-L2, 192.168.0.152) — LAN/VPN-Clients
+            # erreichen die internen Apps über die echte LB-IP (echtes Cert + SSO).
+            # Ohne diese Rule blockt die Host-Firewall LAN→443/80 (nur cluster-Entity).
+            - port: "443"
+              protocol: TCP
+            - port: "80"
+              protocol: TCP
     # Tailscale VPN — von überall (VPN-Traffic)
     - fromCIDR:
         - "100.64.0.0/10"  # Tailscale CGNAT Range
@@ -32,6 +39,22 @@ spec:
         - ports:
             - port: "51871"
               protocol: UDP  # Cilium WireGuard Port
+    # NetBird WireGuard (P2P) — clusterproxy-Peer (kubectl-über-VPN) + Host-Router-Mesh.
+    # Ohne 51820 fällt der Peer auf Relay statt P2P.
+    - fromCIDR:
+        - "192.168.0.0/24"
+      toPorts:
+        - ports:
+            - port: "51820"
+              protocol: UDP
+    - fromEntities:
+        - cluster
+        - host
+        - remote-node
+      toPorts:
+        - ports:
+            - port: "51820"
+              protocol: UDP
     # Pods im Cluster kube-apiserver + Hubble peer + Ceph MON + Monitoring
     - fromEntities:
         - cluster
@@ -72,6 +95,8 @@ spec:
               protocol: TCP  # Cilium envoy metrics
             - port: "9965"
               protocol: TCP  # Hubble metrics
+            - port: "2112"
+              protocol: TCP  # Tetragon agent metrics
             - port: "9926"
               protocol: TCP  # Rook-Ceph exporter
             - port: "9283"

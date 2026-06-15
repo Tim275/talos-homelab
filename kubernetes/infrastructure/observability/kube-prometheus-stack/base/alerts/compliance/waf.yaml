@@ -1,0 +1,35 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: compliance-waf
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: waf-ticket
+      interval: 60s
+      rules:
+        - alert: CorazaWAFDetectionSpike
+          expr: sum(increase(waf_coraza_detections_total[10m])) > 50
+          for: 10m
+          labels:
+            severity: warning
+            component: security
+            priority: P2
+          annotations:
+            dashboard_url: "/d/envoy-global"
+            summary: "Coraza WAF detection spike ({{ $value | humanize }} in 10m)"
+            description: "CRS rule-matches above baseline — new false-positive source or a real probe. Triage in Kibana (KQL `message:\"Coraza\"`), then add an exclusion or treat as attack."
+            action: "Kibana KQL message:Coraza → FP source or probe? Add a path-scoped exclusion (coraza-waf.yaml directives_map) or treat as attack."
+        - alert: CorazaWAFBlockingSpike
+          expr: sum(increase(waf_coraza_detections_total{action="denied"}[10m])) > 50
+          for: 10m
+          labels:
+            severity: warning
+            component: security
+            priority: P2
+          annotations:
+            dashboard_url: "/d/envoy-global"
+            summary: "Coraza WAF blocking spike ({{ $value | humanize }} 403s in 10m)"
+            description: "Sustained 403s above baseline — an attack wave, or a false-positive hitting real users. Triage in Kibana (KQL `message:\"Coraza\"`): if legit traffic is blocked, add an exclusion or revert to DetectionOnly. Routine bot-scans below 50/10m stay silent."
+            action: "Kibana KQL message:Coraza → if legit traffic blocked, add an exclusion or revert SecRuleEngine to DetectionOnly; else attack wave."

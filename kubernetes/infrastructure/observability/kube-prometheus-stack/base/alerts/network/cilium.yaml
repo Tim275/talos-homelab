@@ -20,8 +20,10 @@ spec:
             severity: critical
             component: network
           annotations:
+            dashboard_url: "/d/cilium-agent"
             summary: "Multiple Cilium agents down ({{ $value }})"
             description: "More than 1 Cilium agent unreachable — pod-to-pod networking degraded cluster-wide."
+            action: "kubectl -n kube-system get pod -l k8s-app=cilium; 'kubectl logs -p' the crashing agents — usually kernel/eBPF or a bad config rollout."
 
     # ── TICKET ──
     - name: cilium-ticket
@@ -36,8 +38,10 @@ spec:
             component: network
             priority: P2
           annotations:
+            dashboard_url: "/d/cilium-agent"
             summary: "Cilium operator down (all replicas)"
             description: "New IPs/policies cannot be programmed. (Dampened — single-master restart-storms are benign.)"
+            action: "kubectl -n kube-system rollout restart deploy/cilium-operator; check logs (single-master restart-storms are benign)."
 
         - alert: SPIREAgentDown
           expr: |
@@ -50,6 +54,7 @@ spec:
             component: security
             priority: P2
           annotations:
+            dashboard_url: "/d/cilium-agent"
             summary: "SPIRE-Agents down — Cilium mTLS not enforced"
             description: "Without SPIRE, mTLS-required NetworkPolicies silently stop enforcing (4-day breakage on 2026-05-13)."
             action: "kubectl rollout restart -n cilium-spire daemonset/spire-agent"
@@ -62,8 +67,10 @@ spec:
             component: network
             priority: P2
           annotations:
+            dashboard_url: "/d/cilium-agent"
             summary: "Cilium WireGuard encryption disabled on {{ $value }} agents"
             description: "Pod traffic not encrypted — investigate WireGuard transparent encryption."
+            action: "Check cilium-config enable-wireguard + agent 'cilium status | grep Encryption'; restart affected agents (watch encrypt-node drift 2026-05-23)."
 
         - alert: HubbleHighPolicyDrops
           expr: sum(rate(hubble_drop_total{reason="POLICY_DENIED"}[5m])) > 10
@@ -73,8 +80,10 @@ spec:
             component: network
             priority: P2
           annotations:
+            dashboard_url: "/d/cilium-agent"
             summary: "High NetworkPolicy denial rate ({{ $value | humanize }}/s)"
             description: "Many flows dropped by NetworkPolicies — misconfigured policy or attempted lateral movement."
+            action: "hubble observe --verdict DROPPED to find source/dest; fix the policy, or treat as a lateral-movement attempt."
 
         - alert: CiliumNodeUnreachable
           expr: max(cilium_unreachable_nodes) > 0
@@ -85,6 +94,7 @@ spec:
             component: network
             priority: P2
           annotations:
+            dashboard_url: "/d/cilium-agent"
             summary: "Cilium: {{ $value }} node(s) unreachable in datapath (>15m)"
             description: "Node-to-node Cilium health-probe failing though agents are UP — datapath/WireGuard/identity broken (not a process crash). This is the gap that hid the 2026-05-24/25 cross-host outages behind PrometheusTargetDown-noise."
             action: "kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-health status → finde 0/1-Node → cilium-agent dort neustarten (Identity-Resync). Cross-host? pve-firewall auf Proxmox-Hosts prüfen."
@@ -97,5 +107,7 @@ spec:
             component: network
             priority: P2
           annotations:
+            dashboard_url: "/d/cilium-agent"
             summary: "Cilium eBPF map >80% full ({{ $value | humanizePercentage }})"
             description: "Eine eBPF-Map nähert sich der Kapazität. Bei 100% scheitern neue Pods/Connections/Policies/Services LAUTLOS zu programmieren. Welche Map: cilium_bpf_map_pressure by (map_name) im Grafana."
+            action: "Grafana 'cilium_bpf_map_pressure by (map_name)' → identify the full map; reduce policy/endpoint count or raise the map size."

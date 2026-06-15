@@ -1,0 +1,40 @@
+# Coraza WAF (OWASP CRS 4.14) — gateway-wide Envoy WASM filter, DetectionOnly.
+# Rollout + tuning playbook: CLAUDE.md → "Envoy Gateway + Coraza WAF".
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyExtensionPolicy
+metadata:
+  name: coraza-waf
+  namespace: gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: envoy-gateway
+  wasm:
+    - name: coraza
+      rootID: coraza
+      failOpen: true
+      code:
+        type: Image
+        image:
+          url: ghcr.io/corazawaf/coraza-proxy-wasm:0.6.0
+      config:
+        # config must be a structured object, not a |-string (string → "no default WAF").
+        directives_map:
+          default:
+            - "Include @recommended-conf"
+            - "Include @crs-setup-conf"
+            # - 'SecAction "id:9000001,phase:1,nolog,pass,t:none,setvar:tx.blocking_paranoia_level=2"'  # PL2 — activate after FP-soak
+            - "SecRuleEngine On"  # enforcing — revert to DetectionOnly if legit traffic gets 403'd
+            - "SecResponseBodyAccess Off"  # drova SPA > 512KB → empty 520; Off keeps request-side protection
+            - 'SecRule REQUEST_HEADERS:Upgrade "@streq websocket" "id:1000,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - 'SecRule REQUEST_HEADERS:Content-Type "@beginsWith application/grpc" "id:1001,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            # Kibana false-positive exclusions (complex KQL/bsearch trips 942xxx SQLi → 949110 block)
+            - 'SecRule REQUEST_URI "@beginsWith /internal/bsearch" "id:1100010,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - 'SecRule REQUEST_URI "@beginsWith /api/saved_objects" "id:1100011,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            # Grafana false-positive exclusion (PromQL in /api/ds/query trips 942xxx SQLi → 949110 block)
+            - 'SecRule REQUEST_URI "@beginsWith /api/ds/" "id:1100012,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - "Include @owasp_crs/*.conf"
+        default_directives: "default"

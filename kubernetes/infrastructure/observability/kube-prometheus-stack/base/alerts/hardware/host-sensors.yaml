@@ -20,8 +20,10 @@ spec:
             component: hardware
             priority: P2
           annotations:
+            dashboard_url: "/d/k8s-node-overview"
             summary: "CPU/sensor {{ $labels.chip }} on {{ $labels.instance }} at {{ $value }}°C"
             description: "Thermal shutdown imminent — host may power off. Check airflow / dust / fan."
+            action: "PHYSICAL: clean dust + check fan/airflow on the host; reduce load until temp drops below throttle."
 
         - alert: HostMemoryCritical
           expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.05
@@ -31,8 +33,10 @@ spec:
             component: hardware
             priority: P2
           annotations:
+            dashboard_url: "/d/k8s-node-overview"
             summary: "{{ $labels.instance }} critically low RAM ({{ $value | humanizePercentage }})"
             description: "OOM-killer likely active — VMs at risk of being killed (nipogi runs 84G allocated / 77G physical)."
+            action: "kubectl top nodes; reduce/rebalance VM RAM (nipogi overcommitted 84G/77G) before the OOM-killer hits."
 
         - alert: HostSwapUsageHigh
           # Feuert nur bei ECHTEM Thrashing: Swap voll UND wenig RAM frei.
@@ -48,5 +52,7 @@ spec:
             component: hardware
             priority: P2
           annotations:
+            dashboard_url: "/d/k8s-node-overview"
             summary: "{{ $labels.instance }} thrashing: swap >80% + RAM frei <15%"
             description: "Host unter echtem Speicher-Druck (Swap voll UND wenig RAM frei) → Performance-Einbruch für VMs/Ceph. Right-sizing/Workload reduzieren."
+            action: "kubectl top pods -A --sort-by=memory; right-size the memory-heavy workloads on this host."
