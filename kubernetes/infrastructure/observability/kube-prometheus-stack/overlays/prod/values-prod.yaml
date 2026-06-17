@@ -230,6 +230,40 @@ kube-state-metrics:
     timeoutSeconds: 10
     failureThreshold: 6
 
+  # CNPG backup monitoring (#33): the barman-cloud PLUGIN backs up out-of-band, so the core
+  # cnpg collector never populates cnpg_collector_last_available_backup_timestamp (the old
+  # alerts watched a dead metric). Expose the Backup CR's stoppedAt instead — KSM Gauge
+  # auto-parses the RFC3339 value to a unix timestamp. (A bad value is skipped gracefully;
+  # only a malformed config STRUCTURE would crash KSM, so this uses the standard schema.)
+  rbac:
+    extraRules:
+      - apiGroups: ["postgresql.cnpg.io"]
+        resources: ["backups"]
+        verbs: ["list", "watch"]
+  customResourceState:
+    enabled: true
+    config:
+      spec:
+        resources:
+          - groupVersionKind:
+              group: postgresql.cnpg.io
+              version: v1
+              kind: Backup
+            metricNamePrefix: cnpg_backup
+            labelsFromPath:
+              namespace: [metadata, namespace]
+              name: [metadata, name]
+              cluster: [spec, cluster, name]
+            metrics:
+              - name: stopped_at_timestamp_seconds
+                help: "CNPG Backup stoppedAt as a unix timestamp, per Backup CR"
+                each:
+                  type: Gauge
+                  gauge:
+                    path: [status, stoppedAt]
+                    labelsFromPath:
+                      phase: [status, phase]
+
 alertmanager:
   # PodDisruptionBudget — gossip-mesh-resilience (battle-tested 2026-05-14):
   # Heute war alertmanager-0 16h silent-dead nach Talos-upgrade. minAvailable: 2
