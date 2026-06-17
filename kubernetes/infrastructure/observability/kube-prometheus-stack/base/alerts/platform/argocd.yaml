@@ -57,3 +57,18 @@ spec:
             summary: "LLDAP bootstrap CronJob hasn't succeeded in 3h"
             description: "User reconciliation broken — Keycloak login may fail."
             action: "kubectl get cronjob -n lldap; kubectl logs -n lldap -l cronjob=lldap-bootstrap"
+
+        # Restores lldap-SERVICE coverage after lldap was excluded from the generic
+        # ArgoCDAppUnhealthy above — this watches the DEPLOYMENT, not the noisy bootstrap job.
+        - alert: LLDAPDown
+          expr: kube_deployment_status_replicas_available{namespace="lldap",deployment="lldap"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: identity
+            priority: P2
+          annotations:
+            dashboard_url: "/d/argocd-overview"
+            summary: "LLDAP directory down — Keycloak LDAP federation will fail"
+            description: "lldap Deployment has 0 available replicas >5min → LDAP-backed Keycloak logins start failing (SSO impact)."
+            action: "kubectl -n lldap get pod,deploy; kubectl -n lldap logs deploy/lldap; check its PVC/SQLite + the node."
