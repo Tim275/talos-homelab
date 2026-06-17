@@ -26,19 +26,22 @@ spec:
             action: "Check the Proxmox host ({{ $labels.instance }}) physically; SSH it; its VMs are down too — full-host outage."
 
         - alert: ProxmoxZfsPoolCritical
-          expr: (node_zfs_zpool_alloc{job="proxmox-host-node"} / node_zfs_zpool_size{job="proxmox-host-node"}) > 0.95
+          # node_zfs_zpool_alloc/size don't exist (node-exporter has no pool-capacity gauge).
+          # Repointed to pool HEALTH: faulted/unavail/suspended = data-loss state = page.
+          # (ProxmoxZfsPoolDegraded warns on any state!="online", incl. "degraded".)
+          expr: node_zfs_zpool_state{job="proxmox-host-node",state=~"faulted|unavail|suspended|removed"} == 1
           for: 5m
           labels:
             severity: critical
             component: hypervisor
           annotations:
             dashboard_url: "/d/proxmox-cluster"
-            summary: "ZFS pool {{ $labels.zpool }} >95% full on {{ $labels.instance }}"
-            description: "Pool nearly full — VM-disks will fail writes. Free space or expand immediately."
-            action: "SSH the host; 'zpool list {{ $labels.zpool }}'; free space (old VM disks/snapshots) or expand the pool."
+            summary: "ZFS pool {{ $labels.zpool }} {{ $labels.state }} on {{ $labels.instance }}"
+            description: "Pool in a data-loss state ({{ $labels.state }}) — VMs/Ceph on it at risk."
+            action: "SSH the host; 'zpool status {{ $labels.zpool }}'; check failed disks, replace + resilver."
 
         - alert: ProxmoxDiskSmartFailure
-          expr: smartmon_device_smart_healthy{job="proxmox-host-node"} == 0
+          expr: smartctl_device_smart_status == 0
           for: 5m
           labels:
             severity: critical
