@@ -30,19 +30,6 @@ spec:
             description: "All Keycloak replicas not ready — OIDC login broken cluster-wide (ArgoCD, Grafana, n8n, etc.)."
             action: "kubectl -n keycloak get pod -l app=keycloak + logs (watch OOMKill — 23x crashloop 2026-05-24); check the CNPG keycloak-db."
 
-    # ── TICKET ──
-    - name: keycloak-ticket
-      interval: 60s
-      rules:
-        - alert: KeycloakLoginFailureSpike
-          expr: sum by (realm) (rate(keycloak_failed_login_attempts[5m])) > 0.5
-          for: 5m
-          labels:
-            severity: warning
-            component: keycloak
-            priority: P2
-          annotations:
-            dashboard_url: "/d/keycloak-health"
-            summary: "Keycloak realm {{ $labels.realm }} elevated failed-login rate"
-            description: "{{ $value }} failed logins/sec — possible credential-stuffing or brute-force."
-            action: "Check keycloak logs for realm {{ $labels.realm }}; if credential-stuffing: rate-limit + block the source IPs."
+    # KeycloakLoginFailureSpike removed: keycloak_failed_login_attempts needs the 3rd-party
+    # keycloak-metrics-spi (not deployed) → was permanently blind. Re-add via that SPI, OR a
+    # Vector log_to_metric over keycloak login-failure events (like waf_coraza_detections_total).
