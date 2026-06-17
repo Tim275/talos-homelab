@@ -36,5 +36,10 @@ spec:
             - 'SecRule REQUEST_URI "@beginsWith /api/saved_objects" "id:1100011,phase:1,pass,nolog,ctl:ruleEngine=Off"'
             # Grafana false-positive exclusion (PromQL in /api/ds/query trips 942xxx SQLi → 949110 block)
             - 'SecRule REQUEST_URI "@beginsWith /api/ds/" "id:1100012,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            # Keycloak OIDC-Login false-positive: CRS 934110 (SSRF) flaggt redirect_uri=http://localhost:18000
+            # (kubelogins lokaler Callback) als "Cloud-Metadata-URL" → anomaly score 5 → 949111 blockt (403).
+            # Blockt kubectl-OIDC + SSO. Verifiziert via Envoy-Coraza-Log 2026-06-17. login-actions = Login-Form-POST.
+            - 'SecRule REQUEST_URI "@beginsWith /realms/kubernetes/protocol/openid-connect" "id:1100013,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - 'SecRule REQUEST_URI "@beginsWith /realms/kubernetes/login-actions" "id:1100014,phase:1,pass,nolog,ctl:ruleEngine=Off"'
             - "Include @owasp_crs/*.conf"
         default_directives: "default"
