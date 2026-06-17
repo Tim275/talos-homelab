@@ -23,6 +23,7 @@ talos_nodes = {
     os_disk_size        = 50
     ceph_disk_size      = 170
     ceph_disk_datastore = "cephpool"
+    # pool              = "stateful"
   }
   "worker-2" = {
     host_node           = "nipogi"
@@ -36,6 +37,7 @@ talos_nodes = {
     os_disk_size        = 50
     ceph_disk_size      = 170
     ceph_disk_datastore = "cephpool"
+    # pool              = "stateful"
   }
   "worker-3" = {
     host_node      = "msa2proxmox"
@@ -48,6 +50,7 @@ talos_nodes = {
     datastore_id   = "local-zfs"
     os_disk_size   = 50
     ceph_disk_size = 250
+    # pool         = "stateless"
   }
   "worker-4" = {
     host_node      = "msa2proxmox"
@@ -60,6 +63,7 @@ talos_nodes = {
     datastore_id   = "local-zfs"
     os_disk_size   = 50
     ceph_disk_size = 250
+    # pool         = "stateless"
   }
   "worker-5" = {
     host_node      = "msa2proxmox"
@@ -72,5 +76,6 @@ talos_nodes = {
     datastore_id   = "local-zfs"
     os_disk_size   = 50
     ceph_disk_size = 250
+    # pool         = "stateless"
   }
 }
