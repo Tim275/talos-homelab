@@ -100,45 +100,24 @@ prometheus:
           #     app: prometheus
 
 # https://github.com/siderolabs/talos/discussions/7214
+# Control-plane scrape DISABLED on this single-node Talos: kcm/scheduler/etcd are not
+# reachable for scraping by default (the discussions/7214 relabelings alone don't fix
+# reachability) → permanent up==0 = false TargetDown + EtcdQuorumLoss noise with zero data.
+# Their component-alerting is already off (defaultRules below). Real control-plane failure
+# surfaces as ClusterAPIServerDown + ControlPlaneNodeDown (symptom, not cause).
+# Re-enable needs proper Talos metrics-exposure (+ etcd client-cert for kubeEtcd).
 kubeControllerManager:
-  enabled: true
-  serviceMonitor:
-    relabelings:
-      - sourceLabels: [ __meta_kubernetes_pod_node_name ]
-        separator: ;
-        regex: ^(.*)$
-        targetLabel: nodename
-        replacement: $1
-        action: replace
-    metricRelabelings:
-      - action: labeldrop
-        regex: pod
+  enabled: false
 
 kubeEtcd:
-  enabled: true
-  service:
-    selector:
-      # etcd doesn't run as a container,
-      # but most probably runs on the same nodes that host a controller
-      k8s-app: kube-controller-manager
-  serviceMonitor:
-    relabelings:
-      - sourceLabels: [ __meta_kubernetes_pod_node_name ]
-        separator: ;
-        regex: ^(.*)$
-        targetLabel: nodename
-        replacement: $1
-        action: replace
-    metricRelabelings:
-      - action: labeldrop
-        regex: pod
+  enabled: false  # unscrapable on Talos w/o etcd client-cert → was the EtcdQuorumLoss false-source
 
 kubeProxy:
   # Cilium replaces Kube Proxy
   enabled: false
 
 kubeScheduler:
-  enabled: true
+  enabled: false  # see kubeControllerManager note — unscrapable on Talos
   serviceMonitor:
     relabelings:
       - sourceLabels: [ __meta_kubernetes_pod_node_name ]
