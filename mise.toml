@@ -54,9 +54,8 @@ experimental = true
 #
 # ════════════════════════════════════════════════════════════════════════
 [env]
-# Default beim `cd`: aktuelle Admin-Kubeconfig (X.509, post-rebuild CA).
-# config-break-glass war stale (pre-2026-05-22-rebuild CA) → ECDSA failure.
-KUBECONFIG = "{{ env.HOME }}/.kube/homelab-admin.yaml"
+# KUBECONFIG bewusst NICHT hier setzen — sonst überschreibt mise bei jedem Prompt
+# den manuellen `export KUBECONFIG=config-oidc`. Default kommt aus der .zshrc.
 
 # Aliases via mise tasks (siehe unten "Kubeconfig-Switcher"):
 #   mise run kube-oidc        → OIDC (Keycloak) Export anzeigen
@@ -185,6 +184,34 @@ echo ""
 echo "Current user:"
 kubectl config current-context 2>/dev/null
 kubectl auth whoami 2>/dev/null || true
+"""
+
+[tasks.kube-switch]
+description = "🔀 Kubeconfig wechseln: daily (OIDC) ↔ god mode (break-glass) — zeigt die Befehle"
+run = """
+echo '═══════════════════════════════════════════════════════════════'
+echo '  🔀 KUBECONFIG WECHSELN  —  daily (OIDC)  ↔  god mode (break-glass)'
+echo '═══════════════════════════════════════════════════════════════'
+echo ''
+echo "  Aktiv:  ${KUBECONFIG:-$HOME/.kube/config (default)}"
+echo '  User:'
+kubectl auth whoami 2>/dev/null || kubectl config current-context 2>/dev/null || true
+echo ''
+echo '  ── DAILY (OIDC, kontrollierter Pfad) ────────────────────────'
+echo '     Keycloak-Login + 2FA · RBAC via Gruppe · auditierbar/revocable'
+echo '       export KUBECONFIG=$HOME/.kube/config-oidc'
+echo ''
+echo '  ── GOD MODE (Break-Glass) ───────────────────────────────────'
+echo '     X.509 system:masters · umgeht OIDC+KC komplett · NUR Notfall'
+echo '       export KUBECONFIG=$HOME/.kube/config-break-glass'
+echo ''
+echo '  ── Mac-Default (.zshrc beim Login) ──────────────────────────'
+echo '       export KUBECONFIG=$HOME/.kube/homelab-admin.yaml'
+echo ''
+echo '  Einmal ohne Export:  KUBECONFIG=~/.kube/config-break-glass kubectl get nodes'
+echo '  Status prüfen:       mise run kube-status'
+echo '  ⚠ mise ändert die Parent-Shell NICHT → den Export selbst ausführen.'
+echo '═══════════════════════════════════════════════════════════════'
 """
 
 # ─── GESAMT-Status (alles auf einen Blick) ──────────────────────────────
@@ -595,7 +622,10 @@ echo '  ⚠ erst login: argocd login <host> --sso   (ODER: kubectl get applicati
 echo '  argocd app list · sync <app> · diff <app> · get <app> · history <app> · rollback <app> <id>'
 echo ''
 echo '🔐 KUBECONFIG — wo · wechseln · OIDC'
-echo '  Aktiv prüfen:   echo $KUBECONFIG   ·   mise run kube-status'
+echo '  Wechseln (daily ↔ god):'
+echo '    export KUBECONFIG=$HOME/.kube/config-oidc          # daily (OIDC + 2FA)'
+echo '    export KUBECONFIG=$HOME/.kube/config-break-glass   # god mode (X.509, Notfall)'
+echo '  Aktiv prüfen:   echo $KUBECONFIG'
 echo '  Dateien (~/.kube/):'
 echo '    homelab-admin.yaml   default (in .zshrc gesetzt)'
 echo '    config-oidc          OIDC Daily-Driver (timour@iam.timourhomelab.org)'
@@ -643,7 +673,10 @@ echo '     mise run ceph            💾 Ceph          (status+health+osd+df)'
 echo '     mise run es              🔎 Elasticsearch (CR+health+Indizes)'
 echo '     mise run kafka-status    📨 Kafka         (Cluster+NodePools+Topics)'
 echo ''
-echo '  🌍 tofu-plan · tofu-apply    🔐 kube-status    📋 mise run menu (diese Übersicht)'
+echo '     export KUBECONFIG=$HOME/.kube/homelab-admin.yaml   # admin'
+echo '     export KUBECONFIG=$HOME/.kube/config-oidc          # oidc (daily)'
+echo ''
+echo '  🌍 tofu-plan · tofu-apply    🔐 kube-status    📋 mise run menu'
 echo ''
 """
 
