@@ -5,9 +5,9 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
-  # Disk-full has one page (PVCCriticallyFull <10%); the <20% Warning + 4h/7d predictive
-  # variants → Grafana "Persistent Volumes" dashboard. PVCPending deduped to the 30min
-  # rule. VolumeAttachment/Volume-stuck internals → dashboard.
+  # Disk-full: <10% free critical page (PVCCriticallyFull) + <20% free warning (PVCFillingUp,
+  # excl. CNPG which has CnpgStorageNearFull at 85%). 4h/7d predictive → Grafana "Persistent
+  # Volumes" dashboard. PVCPending deduped to the 30min rule.
   groups:
     # ── PAGE ──
     - name: csi-page
@@ -30,6 +30,19 @@ spec:
     - name: csi-ticket
       interval: 60s
       rules:
+        - alert: PVCFillingUp
+          expr: |
+            (kubelet_volume_stats_available_bytes{job="kubelet",persistentvolumeclaim!~".*-postgres-.*|.*-cnpg-.*"} / kubelet_volume_stats_capacity_bytes{job="kubelet",persistentvolumeclaim!~".*-postgres-.*|.*-cnpg-.*"}) < 0.20
+          for: 30m
+          labels:
+            severity: warning
+            component: storage
+            priority: P2
+          annotations:
+            dashboard_url: "/d/ceph-cluster"
+            summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} <20% free ({{ $value | humanizePercentage }})"
+            description: "Volume over 80% full — early warning before the <10% critical page. Plan a PVC expansion."
+            action: "Expand the PVC (spec.resources.requests.storage — Ceph RBD online-grows) before it hits the critical page."
         - alert: PVCPendingCritical
           expr: |
             (kube_persistentvolumeclaim_status_phase{phase="Pending"} == 1)
