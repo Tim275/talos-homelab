@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gatus-config
+  namespace: gatus
+data:
+  config.yaml: |
+    web:
+      port: 8080
+    ui:
+      title: "Homelab Status"
+      header: "Timour Homelab"
+      logo: ""
+    storage:
+      type: memory
+    endpoints:
+      # ── Platform ──
+      - name: ArgoCD
+        group: Platform
+        url: "http://argocd-server.argocd.svc.cluster.local:80/healthz"
+        interval: 60s
+        conditions: ["[STATUS] == 200"]
+      - name: Keycloak
+        group: Platform
+        url: "http://keycloak-service.keycloak.svc.cluster.local:9000/health/ready"
+        interval: 60s
+        conditions: ["[STATUS] == 200"]
+      - name: LLDAP
+        group: Platform
+        url: "http://lldap.lldap.svc.cluster.local:17170/"
+        interval: 60s
+        conditions: ["[STATUS] == any(200, 302)"]
+
+      # ── Observability ──
+      - name: Grafana
+        group: Observability
+        url: "http://grafana-service.grafana.svc.cluster.local:3000/api/health"
+        interval: 60s
+        conditions: ["[STATUS] == 200"]
+      - name: Prometheus
+        group: Observability
+        url: "http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090/-/healthy"
+        interval: 60s
+        conditions: ["[STATUS] == 200"]
+      - name: Alertmanager
+        group: Observability
+        url: "http://alertmanager-operated.monitoring.svc.cluster.local:9093/-/healthy"
+        interval: 60s
+        conditions: ["[STATUS] == 200"]
+      - name: Kibana
+        group: Observability
+        url: "https://production-kibana-kb-http.elastic-system.svc.cluster.local:5601/login"
+        client:
+          insecure: true
+        interval: 60s
+        conditions: ["[STATUS] == any(200, 302)"]
+      - name: Elasticsearch
+        group: Observability
+        url: "tcp://production-cluster-es-http.elastic-system.svc.cluster.local:9200"
+        interval: 60s
+        conditions: ["[CONNECTED] == true"]
+      - name: Hubble
+        group: Observability
+        url: "http://hubble-ui.kube-system.svc.cluster.local:80/"
+        interval: 60s
+        conditions: ["[STATUS] == 200"]
+
+      # ── Apps ──
+      - name: n8n
+        group: Apps
+        url: "http://n8n.n8n-prod.svc.cluster.local:5678/healthz"
+        interval: 60s
+        conditions: ["[STATUS] == 200"]
+      - name: Audiobookshelf
+        group: Apps
+        url: "http://audiobookshelf.audiobookshelf-prod.svc.cluster.local:80/healthcheck"
+        interval: 60s
+        conditions: ["[STATUS] == any(200, 302, 404)"]
+
+      # ── Storage ──
+      - name: Ceph Dashboard
+        group: Storage
+        url: "http://rook-ceph-mgr-dashboard.rook-ceph.svc.cluster.local:7000/"
+        interval: 60s
+        conditions: ["[STATUS] == any(200, 301, 302, 303)"]
