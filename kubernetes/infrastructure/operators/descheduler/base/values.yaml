@@ -1,0 +1,38 @@
+kind: CronJob
+schedule: "*/30 * * * *"
+
+# dry-run phase: erst logs lesen, dann flag entfernen
+cmdOptions:
+  v: 3
+  dry-run: true
+
+deschedulerPolicy:
+  profiles:
+    - name: rebalance
+      pluginConfig:
+        - name: DefaultEvictor
+          args:
+            evictSystemCriticalPods: false
+            evictLocalStoragePods: false
+            ignorePvcPods: true
+            nodeFit: true
+            minReplicas: 2
+        - name: RemoveDuplicates
+        - name: RemovePodsViolatingTopologySpreadConstraint
+          args:
+            constraints:
+              - DoNotSchedule
+              - ScheduleAnyway
+      plugins:
+        balance:
+          enabled:
+            - RemoveDuplicates
+            - RemovePodsViolatingTopologySpreadConstraint
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
