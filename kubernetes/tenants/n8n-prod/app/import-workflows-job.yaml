@@ -1,0 +1,79 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: n8n-import-workflows
+  namespace: n8n-prod
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: workflow-import
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: import
+          image: docker.n8n.io/n8nio/n8n:2.20.9@sha256:fe36dc659e17c046255eb56ef65e7776eb7d13e4ca83a76bef137effa090972d
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: n8n-configmap
+            - secretRef:
+                name: n8n-secrets
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              if ls /workflows/*.json >/dev/null 2>&1; then
+                echo "Importing workflows from /workflows ..."
+                # Retry until the CNPG DB is reachable. The PostSync hook can fire before
+                # the SEPARATE n8n-prod-cnpg app's primary is ready -> import fails.
+                # Previously the script swallowed that failure (no set -e, last cmd = echo)
+                # so the job reported Succeeded while nothing was imported (cold-bootstrap silent-fail).
+                for i in $(seq 1 30); do
+                  if n8n import:workflow --separate --input=/workflows; then
+                    echo "Import done."
+                    exit 0
+                  fi
+                  echo "import attempt $i failed (DB not ready yet?) — retry in 10s"
+                  sleep 10
+                done
+                echo "ERROR: workflow import failed after 30 attempts"
+                exit 1
+              else
+                echo "No workflow JSON in /workflows — nothing to import."
+              fi
+          volumeMounts:
+            - name: workflows
+              mountPath: /workflows
+              readOnly: true
+            - name: n8n-home
+              mountPath: /home/node/.n8n
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: workflows
+          configMap:
+            name: n8n-workflows
+        - name: n8n-home
+          emptyDir: {}
