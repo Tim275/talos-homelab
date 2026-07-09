@@ -1,17 +1,36 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-#  : Production Environment Overlay
 namespace: n8n-prod
 
+# n8n queue-mode: main (UI/API) + webhook (HA) + worker (HPA)
+# lag vorher unter apps/n8n/environments/production (geloescht in #334,
+# app konnte nicht mehr syncen) — lebt jetzt direkt im tenant
 resources:
-  - ../../../apps/n8n/environments/production
+  - configmap.yaml
+  - sealed-secrets.yaml
+  - deployment-main.yaml
+  - deployment-webhook.yaml
+  - deployment-worker.yaml
+  - hpa-worker.yaml
+  - pdb.yaml
+  - service.yaml
+  - service-webhook.yaml
+  - httproute.yaml
+  - backend-traffic-policy.yaml
+  - workflow-creds-sealed.yaml
+  - import-credentials-job.yaml
+  - import-workflows-job.yaml
+
+commonLabels:
+  app.kubernetes.io/name: n8n
+  environment: production
+  team: timour
 
 # Production-Specific Labels
 labels:
   - pairs:
       app.kubernetes.io/environment: prod
       app.kubernetes.io/managed-by: argocd
-      team: timour
       criticality: high
 
 #  Production annotations
@@ -19,3 +38,10 @@ commonAnnotations:
   environment: production
   auto-sync: "false"  # Manual approval for prod
   backup.enabled: "true"
+
+configMapGenerator:
+  - name: n8n-workflows
+    files:
+      - workflows/github-homelab-auto-updater.json
+    options:
+      disableNameSuffixHash: true
