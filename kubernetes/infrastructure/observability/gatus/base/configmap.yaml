@@ -1,0 +1,152 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gatus-config
+data:
+  config.yaml: |
+    web:
+      port: 8080
+    ui:
+      title: "Homelab Status"
+      header: "Timour Homelab"
+      logo: ""
+    metrics: true
+    storage:
+      type: memory
+    endpoints:
+      # ── Platform ──
+      - name: ArgoCD
+        group: Platform
+        url: "http://argocd-server.argocd.svc.cluster.local:80/healthz"
+        interval: 60s
+        conditions: ["[STATUS] == 200"]
+      - name: Keycloak
+        group: Platform
+        url: "http://keycloak-service.keycloak.svc.cluster.local:9000/health/ready"
+        interval: 60s
+        conditions: ["[STATUS] == 200"]
+      - name: LLDAP
+        group: Platform
+        url: "http://lldap.lldap.svc.cluster.local:17170/"
+        interval: 60s
+        conditions: ["[STATUS] == any(200, 302)"]
+
+      # ── Observability ──
+      - name: Grafana
+        group: Observability
+        url: "http://grafana-service.grafana.svc.cluster.local:3000/api/health"
+        interval: 60s
+        conditions: ["[STATUS] == 200"]
+      - name: Prometheus
+        group: Observability
+        url: "http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090/-/healthy"
+        interval: 60s
+        conditions: ["[STATUS] == 200"]
+      - name: Alertmanager
+        group: Observability
+        url: "http://alertmanager-operated.monitoring.svc.cluster.local:9093/-/healthy"
+        interval: 60s
+        conditions: ["[STATUS] == 200"]
+      - name: Kibana
+        group: Observability
+        url: "tcp://production-kibana-kb-http.elastic-system.svc.cluster.local:5601"
+        interval: 60s
+        conditions: ["[CONNECTED] == true"]
+      - name: Elasticsearch
+        group: Observability
+        url: "tcp://production-cluster-es-http.elastic-system.svc.cluster.local:9200"
+        interval: 60s
+        conditions: ["[CONNECTED] == true"]
+      - name: Hubble
+        group: Observability
+        url: "http://hubble-ui.kube-system.svc.cluster.local:80/"
+        interval: 60s
+        conditions: ["[STATUS] == 200"]
+      - name: Jaeger
+        group: Observability
+        url: "http://jaeger-collector.jaeger.svc.cluster.local:16686/"
+        interval: 60s
+        conditions: ["[STATUS] == 200"]
+      - name: Loki
+        group: Observability
+        url: "tcp://loki-gateway.monitoring.svc.cluster.local:80"
+        interval: 60s
+        conditions: ["[CONNECTED] == true"]
+      - name: Tempo
+        group: Observability
+        url: "tcp://tempo-gateway.monitoring.svc.cluster.local:80"
+        interval: 60s
+        conditions: ["[CONNECTED] == true"]
+      - name: OTel Collector
+        group: Observability
+        url: "tcp://otel-collector-collector.opentelemetry.svc.cluster.local:4318"
+        interval: 60s
+        conditions: ["[CONNECTED] == true"]
+      - name: Vector
+        group: Observability
+        url: "tcp://vector-aggregator.elastic-system.svc.cluster.local:8686"
+        interval: 60s
+        conditions: ["[CONNECTED] == true"]
+
+      # ── Apps ──
+      - name: n8n
+        group: Apps
+        url: "http://n8n.n8n-prod.svc.cluster.local:5678/healthz"
+        interval: 60s
+        conditions: ["[STATUS] == 200"]
+      - name: Drova
+        group: Apps
+        url: "tcp://api-gateway.drova.svc.cluster.local:8081"
+        interval: 60s
+        conditions: ["[CONNECTED] == true"]
+      - name: Audiobookshelf
+        group: Apps
+        url: "http://audiobookshelf.audiobookshelf-prod.svc.cluster.local:80/healthcheck"
+        interval: 60s
+        conditions: ["[STATUS] == any(200, 302, 404)"]
+      - name: CloudBeaver
+        group: Apps
+        url: "http://cloudbeaver.cloudbeaver.svc.cluster.local:8978/"
+        interval: 60s
+        conditions: ["[STATUS] == any(200, 302)"]
+
+      # ── Data ──
+      - name: Drova Postgres
+        group: Data
+        url: "tcp://drova-postgres-rw.drova.svc.cluster.local:5432"
+        interval: 60s
+        conditions: ["[CONNECTED] == true"]
+      - name: n8n Postgres
+        group: Data
+        url: "tcp://n8n-postgres-rw.n8n-prod.svc.cluster.local:5432"
+        interval: 60s
+        conditions: ["[CONNECTED] == true"]
+      - name: Redis
+        group: Data
+        url: "tcp://redis-n8n.n8n-prod.svc.cluster.local:6379"
+        interval: 60s
+        conditions: ["[CONNECTED] == true"]
+      - name: Kafka
+        group: Data
+        url: "tcp://drova-kafka-kafka-bootstrap.drova.svc.cluster.local:9095"
+        interval: 60s
+        conditions: ["[CONNECTED] == true"]
+      # TLS statt TCP: erkennt Atlas-IP-Allowlist-Blocks (TCP verbindet auch
+      # bei Block — der Handshake bricht). Frische Verbindung alle 5 min.
+      - name: MongoDB Atlas (extern)
+        group: Data
+        url: "tls://ac-b8zv3qi-shard-00-00.xynlqj8.mongodb.net:27017"
+        interval: 300s
+        conditions: ["[CONNECTED] == true"]
+
+      # ── Storage ──
+      - name: Ceph Dashboard
+        group: Storage
+        url: "http://rook-ceph-mgr-dashboard.rook-ceph.svc.cluster.local:7000/"
+        interval: 60s
+        conditions: ["[STATUS] == any(200, 301, 302, 303)"]
+      - name: Velero
+        group: Storage
+        url: "http://velero.velero.svc.cluster.local:8085/metrics"
+        interval: 60s
+        conditions: ["[STATUS] == 200"]
