@@ -5,19 +5,18 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
-  # Mesh traegt noch keinen Prod-Traffic (Phase 1-2) → alles warning.
-  # Nach drova-Enrollment (Phase 3): IstiodDown + ZtunnelNodeDown auf critical ziehen.
+  # Seit Phase 3 traegt das Mesh drova-Prod-Traffic → Istiod/Ztunnel = critical.
   groups:
-    - name: istio-ticket
+    - name: istio-page
       interval: 60s
       rules:
         - alert: IstiodDown
           expr: absent(up{job="istiod"} == 1)
           for: 5m
           labels:
-            severity: warning
+            severity: critical
             component: network
-            priority: P2
+            priority: P1
           annotations:
             summary: "istiod down — Mesh-Control-Plane weg"
             description: "Keine xDS-Config/Cert-Ausstellung mehr; laufender ambient-Traffic laeuft weiter, neue Pods/Cert-Rotation blockiert."
@@ -26,13 +25,16 @@ spec:
           expr: sum(up{job=~".*ztunnel.*"} == 1) < 6
           for: 10m
           labels:
-            severity: warning
+            severity: critical
             component: network
-            priority: P2
+            priority: P1
           annotations:
             summary: "ztunnel fehlt auf mind. einem Worker"
             description: "Ambient-mTLS-Datapath auf betroffenem Node tot — enrollte Pods dort verlieren Mesh-Traffic."
             action: "kubectl -n istio-system get pods -l app=ztunnel -o wide; DaemonSet-Events pruefen."
+    - name: istio-ticket
+      interval: 60s
+      rules:
         - alert: IstioRootCertExpiringSoon
           expr: (citadel_server_root_cert_expiry_timestamp - time()) < 30 * 24 * 3600
           for: 1h
