@@ -44,3 +44,25 @@ spec:
             summary: "Istio Root-CA laeuft in <30d ab"
             description: "Alle Workload-Identitaeten haengen an dieser CA — Ablauf = Mesh-weiter mTLS-Ausfall."
             action: "Root-Cert-Rotation planen (istiod self-signed CA, 10y default — Alert = Anomalie)."
+        - alert: IstioCertIssuanceFailing
+          expr: rate(citadel_server_csr_count[10m]) - rate(citadel_server_success_cert_issuance_count[10m]) > 0
+          for: 10m
+          labels:
+            severity: warning
+            component: network
+            priority: P2
+          annotations:
+            summary: "istiod stellt Workload-Certs nicht aus"
+            description: "CSRs kommen an, aber Issuance schlaegt fehl — neue Pods kriegen keine mTLS-Identity, Rotation stockt."
+            action: "kubectl -n istio-system logs deploy/istiod | grep -i csr; ztunnel↔istiod-Verbindung pruefen."
+        - alert: IstioXdsConfigRejected
+          expr: rate(pilot_total_xds_rejects[10m]) > 0
+          for: 10m
+          labels:
+            severity: warning
+            component: network
+            priority: P2
+          annotations:
+            summary: "Proxies lehnen istiod-Config ab (xDS reject)"
+            description: "Ausgerollte Mesh-Config ist fuer ztunnel/waypoints ungueltig — Daten-Ebene laeuft auf alter Config weiter."
+            action: "kubectl -n istio-system logs deploy/istiod | grep -i reject; letzte Istio-/mesh-Config-Aenderung pruefen."
