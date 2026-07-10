@@ -2,6 +2,9 @@ cluster:
   name: talos
   id: 1
 
+# 1.18 → 1.19 upgrade: haelt Datapath-Kompatibilitaet waehrend des Rollouts (Cilium-Upgrade-Prozedur)
+upgradeCompatibility: "1.18"
+
 kubeProxyReplacement: true
 
 hostFirewall:
@@ -173,7 +176,6 @@ enableIPv6BIGTCP: false
 # - Pod-to-pod traffic encrypted at network layer (transparent to apps)
 # - Compliance: GDPR, SOC2, PCI-DSS, HIPAA
 # - Multi-tenant isolation (encrypted by default)
-# - Production-grade: Used by Google GKE, AWS EKS
 #
 # PERFORMANCE IMPACT:
 # - BIG TCP disabled (incompatible) -> ~20-40% CPU overhead vs BIG TCP
@@ -312,32 +314,9 @@ hubble:
 ingressController:
   enabled: false  # Not used — all routing via Envoy Gateway HTTPRoute
 
+# mTLS kommt seit Istio ambient (Phase 3/4) vom ztunnel — SPIRE-Stack abgebaut 2026-07-10
 authentication:
-  enabled: true
-  mutual:
-    spire:
-      enabled: true
-      # PSAT-Token-TTL (battle-tested 2026-05-14):
-      # Default 600s (10min) → Talos-upgrade-rolling-restart läuft länger als
-      # token-renewal-window → token expires → SPIRE-agent crash → mTLS broken
-      # cluster-weit → drova-services TCP-timeout zu Kafka → User sieht Crashloop.
-      #
-      # 3600s (1h) → übersteht alle realistischen Talos-upgrade-Zyklen.
-      # Cilium-Helm chart key: spire.agent.serviceAccount.tokenExpirationSeconds
-      install:
-        namespace: cilium-spire
-        server:
-          dataStorage:
-            storageClass: rook-ceph-block-enterprise
-          podSecurityContext:
-            fsGroup: 1000
-          securityContext:
-            runAsUser: 0
-        agent:
-          skipKubeletVerification: true
-          # Token TTL Bump: 600s → 3600s — Talos-upgrade-resilience
-          serviceAccount:
-            tokenExpirationSeconds: 3600
+  enabled: false
 
 prometheus:
   metricsService: true

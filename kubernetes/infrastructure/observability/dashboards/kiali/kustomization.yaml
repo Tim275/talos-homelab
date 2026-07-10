@@ -1,18 +1,31 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-commonAnnotations:
-  argocd.argoproj.io/sync-wave: "5"
-
 namespace: istio-system
 
 resources:
-  - serviceaccount.yaml
-  - rbac.yaml
-  - clusterrolebinding.yaml
-  - deployment.yaml
-  - service.yaml
+  - httproute.yaml
+  - basic-auth-sealed.yaml
 
-configMapGenerator:
-  - name: kiali
-    files:
-      - config.yaml
+helmCharts:
+  - name: kiali-server
+    repo: https://kiali.org/helm-charts
+    version: 2.28.0
+    releaseName: kiali
+    namespace: istio-system
+    valuesInline:
+      auth:
+        strategy: anonymous
+      deployment:
+        cluster_wide_access: true
+      external_services:
+        prometheus:
+          url: http://kube-prometheus-stack-prometheus.monitoring.svc:9090
+        grafana:
+          enabled: true
+          internal_url: http://grafana-service.grafana.svc:3000
+          external_url: https://grafana.timourhomelab.org
+        tracing:
+          enabled: true
+          internal_url: http://jaeger-collector.jaeger.svc:16686
+          external_url: https://jaeger.timourhomelab.org
+          use_grpc: false
