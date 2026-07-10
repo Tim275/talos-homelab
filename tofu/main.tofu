@@ -35,19 +35,20 @@ module "proxmox_csi_plugin" {
   proxmox_api_token = var.proxmox_api_token
 }
 
-module "volumes" {
-  depends_on = [module.proxmox_csi_plugin]
-  source     = "./bootstrap/volumes"
-
-  providers = {
-    restapi    = restapi
-    kubernetes = kubernetes
-  }
-
-  proxmox_api       = var.proxmox
-  proxmox_api_token = var.proxmox_api_token
-  volumes           = var.kubernetes_volumes
-}
+# DISABLED 2026-07-10: 6 ungenutzte Prä-Ceph proxmox-csi Volumes (thin zvols) manuell entfernt (zfs destroy + PV delete + state rm). Alles auf Ceph.
+# module "volumes" {
+#   depends_on = [module.proxmox_csi_plugin]
+#   source     = "./bootstrap/volumes"
+#
+#   providers = {
+#     restapi    = restapi
+#     kubernetes = kubernetes
+#   }
+#
+#   proxmox_api       = var.proxmox
+#   proxmox_api_token = var.proxmox_api_token
+#   volumes           = var.kubernetes_volumes
+# }
 
 # GitLab VM disabled 2026-05-16 — VM was manually deleted; preventing accidental
 # re-creation via tofu apply. Re-enable by uncommenting + restoring gitlab.auto.tfvars.
