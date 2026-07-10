@@ -3,6 +3,8 @@ kind: Probe
 metadata:
   name: external-connectivity
   namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
 spec:
   jobName: blackbox-external
   module: http_2xx
@@ -23,6 +25,8 @@ kind: Probe
 metadata:
   name: external-dns
   namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
 spec:
   jobName: blackbox-dns
   module: dns_external
@@ -31,17 +35,20 @@ spec:
   targets:
     staticConfig:
       static:
-        - 1.1.1.1:53
-        - 8.8.8.8:53
-        - 192.168.0.1:53
+        # Cilium FQDN-egress blockt direktes externes :53 (Pods müssen über CoreDNS).
+        # CoreDNS einen externen Namen auflösen lassen testet den echten Resolution-Pfad;
+        # direkte external-resolver-Targets (1.1.1.1:53 etc.) wären strukturell False-Positives.
+        - kube-dns.kube-system.svc.cluster.local:53
       labels:
-        env: external
+        env: cluster-dns
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: Probe
 metadata:
   name: homelab-public-services
   namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
 spec:
   jobName: blackbox-homelab
   module: http_2xx

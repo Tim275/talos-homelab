@@ -1,5 +1,12 @@
 # ARGOCD CONFIGURATION
 
+global:
+  priorityClassName: platform-critical
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+
 configs:
   # CRITICAL: Secret Management
   # ArgoCD Helm chart auto-generates these secrets on first install:
@@ -37,7 +44,7 @@ configs:
           essential: true
       # RP-Initiated Logout: ArgoCD "Log out" → KC end_session_endpoint
       # → KC kills its session too → next login requires re-authentication.
-      logoutURL: https://iam.timourhomelab.org/realms/kubernetes/protocol/openid-connect/logout?post_logout_redirect_uri={{returnURL}}&client_id=argocd
+      logoutURL: https://iam.timourhomelab.org/realms/kubernetes/protocol/openid-connect/logout?id_token_hint={{token}}&post_logout_redirect_uri={{logoutRedirectURL}}
     # PERFORMANCE: Optimized timeout and reconciliation settings
     timeout.reconciliation: "360s"        # Extended from 180s default
     timeout.reconciliation.jitter: "30s"   # Add jitter to prevent thundering herd
@@ -399,6 +406,7 @@ configs:
 
       # Built-in role:admin has all permissions
       g, cluster-admins, role:admin
+      g, timour@timourhomelab.org, role:admin
 
       # ROLE: DEVELOPER (No Delete!)
 
@@ -1001,6 +1009,7 @@ notifications:
           method: POST
           body: |
             {
+              "channel": "#argocd-deployments",
               "attachments": [{
                 "title": " Application Deployed",
                 "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
@@ -1160,7 +1169,6 @@ notifications:
   subscriptions:
     - recipients: ["slack"]
       triggers:
-        - on-deployed
         - on-health-degraded
         - on-sync-failed
         - on-sync-failed-degraded

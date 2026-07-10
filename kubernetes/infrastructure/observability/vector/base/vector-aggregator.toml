@@ -301,6 +301,12 @@ if exists(.user_id) {
 if exists(.error) {
   ."error.message" = string!(.error)
 }
+
+# Loki labels template {{ kubernetes.pod_name }} + {{ kubernetes.container_name }} — non-pod
+# events (proxmox/talos syslog, kube-audit) lack these → label-render fails → Loki silently
+# DROPS the event (root cause of VectorSinkDroppingEvents). Default so every event ships.
+if !exists(.kubernetes.pod_name) { .kubernetes.pod_name = "none" }
+if !exists(.kubernetes.container_name) { .kubernetes.container_name = "none" }
 '''
 
 # Sample logs to reduce volume (optional)
@@ -326,7 +332,11 @@ inputs = ["sample_logs"]
 # Fix 2026-05-17: stricter VRL parser in newer Vector versions rejects
 # `||` line-continuation inside `(...)`. Use `includes()` with array literal
 # (set-membership check). Same semantics, parser-stable.
-condition = '(exists(.kubernetes.pod_namespace) && includes(["drova","drova-prod","keycloak","lldap","argocd","kyverno","security","cilium-spire","cnpg-system","velero","gateway","netbird","n8n-prod","kafka","cloudbeaver","audiobookshelf-prod","redis-operator-system"], .kubernetes.pod_namespace)) || (exists(.source) && .source == "kubernetes-audit") || (exists(.source) && .source == "hubble") || (exists(.kubernetes.pod_name) && starts_with(string!(.kubernetes.pod_name), "tetragon"))'
+# 2026-06-14: tetragon aus ES auskommentiert — info-level war ~15GB (halber ES-Store).
+# Bleibt 1:1 in Loki (Forensik per grep). Re-enable = tetragon-Klausel unten wieder
+# an die condition anhängen (das `||` davor nicht vergessen):
+#   || (exists(.kubernetes.pod_name) && starts_with(string!(.kubernetes.pod_name), "tetragon"))
+condition = '(exists(.kubernetes.pod_namespace) && includes(["drova","drova-prod","keycloak","lldap","argocd","cert-manager","kyverno","security","cilium-spire","cnpg-system","velero","gateway","netbird","n8n-prod","kafka","cloudbeaver","audiobookshelf-prod","redis-operator-system"], .kubernetes.pod_namespace)) || (exists(.source) && .source == "kubernetes-audit") || (exists(.source) && .source == "hubble")'
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ES-VOLUME-SCHUTZ: laute INFO-Quellen (kafka/n8n-prod) auf 1/5 samplen.

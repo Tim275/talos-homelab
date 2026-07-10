@@ -3,10 +3,10 @@
 prometheus:
   # PodDisruptionBudget — Talos-upgrade-resilience (battle-tested 2026-05-14):
   # Ohne PDB konnte Talos-upgrade alle prometheus-Pods evicten → "Completed"-loop.
-  # minAvailable: 1 → mindestens 1 Replica überlebt rolling-node-drain.
   podDisruptionBudget:
     enabled: true
-    minAvailable: 1
+    minAvailable: null
+    maxUnavailable: 1
   prometheusSpec:
     # 1 Replica — RAM-Spar auf RAM-engen Hosts; Mimir hält die Long-Term-Daten.
     # (war 2 für HA; bei Pod-Restart kurze Scrape-Lücke, sonst nichts verloren.)
@@ -100,45 +100,24 @@ prometheus:
           #     app: prometheus
 
 # https://github.com/siderolabs/talos/discussions/7214
+# Control-plane scrape DISABLED on this single-node Talos: kcm/scheduler/etcd are not
+# reachable for scraping by default (the discussions/7214 relabelings alone don't fix
+# reachability) → permanent up==0 = false TargetDown + EtcdQuorumLoss noise with zero data.
+# Their component-alerting is already off (defaultRules below). Real control-plane failure
+# surfaces as ClusterAPIServerDown + ControlPlaneNodeDown (symptom, not cause).
+# Re-enable needs proper Talos metrics-exposure (+ etcd client-cert for kubeEtcd).
 kubeControllerManager:
-  enabled: true
-  serviceMonitor:
-    relabelings:
-      - sourceLabels: [ __meta_kubernetes_pod_node_name ]
-        separator: ;
-        regex: ^(.*)$
-        targetLabel: nodename
-        replacement: $1
-        action: replace
-    metricRelabelings:
-      - action: labeldrop
-        regex: pod
+  enabled: false
 
 kubeEtcd:
-  enabled: true
-  service:
-    selector:
-      # etcd doesn't run as a container,
-      # but most probably runs on the same nodes that host a controller
-      k8s-app: kube-controller-manager
-  serviceMonitor:
-    relabelings:
-      - sourceLabels: [ __meta_kubernetes_pod_node_name ]
-        separator: ;
-        regex: ^(.*)$
-        targetLabel: nodename
-        replacement: $1
-        action: replace
-    metricRelabelings:
-      - action: labeldrop
-        regex: pod
+  enabled: false  # unscrapable on Talos w/o etcd client-cert → was the EtcdQuorumLoss false-source
 
 kubeProxy:
   # Cilium replaces Kube Proxy
   enabled: false
 
 kubeScheduler:
-  enabled: true
+  enabled: false  # see kubeControllerManager note — unscrapable on Talos
   serviceMonitor:
     relabelings:
       - sourceLabels: [ __meta_kubernetes_pod_node_name ]
@@ -174,6 +153,9 @@ defaultRules:
   disabled:
     AlertmanagerFailedToSendAlerts: true
     AlertmanagerClusterFailedToSendAlerts: true
+    # Noisy on a Ceph cluster — rbd/OSD disks are IO-busy by design (aqu-sq>10 false-fires).
+    # Replaced by the service-level CephSlowOps alert (base/alerts/storage/rook-ceph.yaml).
+    NodeDiskIOSaturation: true
   rules:
     alertmanager: true
     configReloaders: true
@@ -247,6 +229,40 @@ kube-state-metrics:
     periodSeconds: 10
     timeoutSeconds: 10
     failureThreshold: 6
+
+  # CNPG backup monitoring (#33): the barman-cloud PLUGIN backs up out-of-band, so the core
+  # cnpg collector never populates cnpg_collector_last_available_backup_timestamp (the old
+  # alerts watched a dead metric). Expose the Backup CR's stoppedAt instead — KSM Gauge
+  # auto-parses the RFC3339 value to a unix timestamp. (A bad value is skipped gracefully;
+  # only a malformed config STRUCTURE would crash KSM, so this uses the standard schema.)
+  rbac:
+    extraRules:
+      - apiGroups: ["postgresql.cnpg.io"]
+        resources: ["backups"]
+        verbs: ["list", "watch"]
+  customResourceState:
+    enabled: true
+    config:
+      spec:
+        resources:
+          - groupVersionKind:
+              group: postgresql.cnpg.io
+              version: v1
+              kind: Backup
+            metricNamePrefix: cnpg_backup
+            labelsFromPath:
+              namespace: [metadata, namespace]
+              name: [metadata, name]
+              cluster: [spec, cluster, name]
+            metrics:
+              - name: stopped_at_timestamp_seconds
+                help: "CNPG Backup stoppedAt as a unix timestamp, per Backup CR"
+                each:
+                  type: Gauge
+                  gauge:
+                    path: [status, stoppedAt]
+                    labelsFromPath:
+                      phase: [status, phase]
 
 alertmanager:
   # PodDisruptionBudget — gossip-mesh-resilience (battle-tested 2026-05-14):

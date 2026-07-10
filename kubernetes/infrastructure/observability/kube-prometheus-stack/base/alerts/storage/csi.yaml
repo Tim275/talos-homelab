@@ -5,9 +5,9 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
-  # Disk-full has one page (PVCCriticallyFull <10%); the <20% Warning + 4h/7d predictive
-  # variants → Grafana "Persistent Volumes" dashboard. PVCPending deduped to the 30min
-  # rule. VolumeAttachment/Volume-stuck internals → dashboard.
+  # Disk-full: <10% free critical page (PVCCriticallyFull) + <20% free warning (PVCFillingUp,
+  # excl. CNPG which has CnpgStorageNearFull at 85%). 4h/7d predictive → Grafana "Persistent
+  # Volumes" dashboard. PVCPending deduped to the 30min rule.
   groups:
     # ── PAGE ──
     - name: csi-page
@@ -24,11 +24,25 @@ spec:
             dashboard_url: "/d/ceph-cluster"
             summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} <10% free ({{ $value | humanizePercentage }})"
             description: "Disk nearly full — app may fail / data loss. Expand the PVC now."
+            action: "Expand the PVC (edit spec.resources.requests.storage — Ceph RBD online-grows), or free space inside the volume."
 
     # ── TICKET ──
     - name: csi-ticket
       interval: 60s
       rules:
+        - alert: PVCFillingUp
+          expr: |
+            (kubelet_volume_stats_available_bytes{job="kubelet",persistentvolumeclaim!~".*-postgres-.*|.*-cnpg-.*"} / kubelet_volume_stats_capacity_bytes{job="kubelet",persistentvolumeclaim!~".*-postgres-.*|.*-cnpg-.*"}) < 0.20
+          for: 30m
+          labels:
+            severity: warning
+            component: storage
+            priority: P2
+          annotations:
+            dashboard_url: "/d/ceph-cluster"
+            summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} <20% free ({{ $value | humanizePercentage }})"
+            description: "Volume over 80% full — early warning before the <10% critical page. Plan a PVC expansion."
+            action: "Expand the PVC (spec.resources.requests.storage — Ceph RBD online-grows) before it hits the critical page."
         - alert: PVCPendingCritical
           expr: |
             (kube_persistentvolumeclaim_status_phase{phase="Pending"} == 1)
@@ -56,6 +70,7 @@ spec:
             dashboard_url: "/d/ceph-cluster"
             summary: "Ceph CSI provisioner {{ $labels.deployment }} has 0 replicas"
             description: "PVC creation/deletion blocked cluster-wide while provisioner is down."
+            action: "kubectl -n rook-ceph rollout restart deploy/csi-rbdplugin-provisioner; check provisioner + rook-ceph-operator logs."
 
         - alert: ReleasedPVsAccumulating
           expr: sum(kube_persistentvolume_status_phase{phase="Released"}) > 15
@@ -68,6 +83,7 @@ spec:
             dashboard_url: "/d/ceph-cluster"
             summary: "{{ $value }} Released PVs — CSI cleanup not keeping up"
             description: "Released PVs accumulate when CSI deletion sticks on omap-locks. Hourly cleanup CronJob should handle it."
+            action: "Check the hourly released-PV cleanup CronJob; manually 'kubectl get pv | grep Released' and delete stale ones after verifying data."
 
         - alert: CephOSDFlapping
           expr: changes(ceph_osd_up[10m]) > 2
@@ -80,3 +96,4 @@ spec:
             dashboard_url: "/d/ceph-cluster"
             summary: "Ceph OSD {{ $labels.ceph_daemon }} flapping (>2 state changes in 10min)"
             description: "OSD bouncing up/down — investigate disk health, network, or memory pressure."
+            action: "Toolbox: 'ceph osd df' for the daemon; check its disk SMART + node memory/network pressure."
