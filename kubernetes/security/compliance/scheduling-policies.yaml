@@ -9,7 +9,8 @@ metadata:
       Workloads mit >=2 Replicas brauchen ein PDB im Namespace,
       sonst kann ein Node-Drain alle Replicas gleichzeitig evicten.
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
+  failurePolicy: Ignore
   background: true
   rules:
     - name: pdb-exists-in-namespace
@@ -19,6 +20,11 @@ spec:
               kinds:
                 - Deployment
                 - StatefulSet
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
       preconditions:
         all:
           - key: "{{ request.object.spec.replicas || `1` }}"
@@ -49,7 +55,8 @@ metadata:
       Workloads mit >=2 Replicas ohne topologySpreadConstraints und ohne
       podAntiAffinity koennen komplett auf einem Node/Host landen.
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
+  failurePolicy: Ignore
   background: true
   rules:
     - name: spread-or-antiaffinity
@@ -59,6 +66,11 @@ spec:
               kinds:
                 - Deployment
                 - StatefulSet
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
       preconditions:
         all:
           - key: "{{ request.object.spec.replicas || `1` }}"
@@ -87,7 +99,8 @@ metadata:
       system-node-critical/system-cluster-critical verdraengen ALLES
       (Preemption) — nur System-Namespaces duerfen sie nutzen.
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
+  failurePolicy: Ignore
   background: true
   rules:
     - name: no-system-priority-outside-system-ns
@@ -102,6 +115,7 @@ spec:
               namespaces:
                 - kube-system
                 - rook-ceph
+                - cilium-spire
       preconditions:
         all:
           - key: "{{ request.object.spec.priorityClassName || '' }}"
