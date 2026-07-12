@@ -12,7 +12,7 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
 
 ## Architecture Diagram
 
-[![Architecture Diagram](docs/homelab.svg)](https://raw.githubusercontent.com/Tim275/talos-homelab/main/docs/homelab.png)
+[![Architecture Diagram](docs/homelabarchitecture.svg)](https://raw.githubusercontent.com/Tim275/talos-homelab/main/docs/homelabarchitecture.svg)
 
 <sub>click the diagram for full resolution</sub>
 
