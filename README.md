@@ -10,6 +10,10 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
 [![ArgoCD](https://img.shields.io/badge/GitOps-ArgoCD-00D4AA?style=for-the-badge&logo=argo&logoColor=white)](https://argo-cd.readthedocs.io/)
 [![Renovate](https://img.shields.io/badge/Deps-Renovate-1F8FFF?style=for-the-badge&logo=renovatebot&logoColor=white)](https://docs.renovatebot.com/)
 
+## Architecture Diagram
+
+![Architecture Diagram](docs/homelab.png)
+
 ## 📦 Applications
 
 End-user applications deployed via Argo CD across dev / staging / production overlays:
