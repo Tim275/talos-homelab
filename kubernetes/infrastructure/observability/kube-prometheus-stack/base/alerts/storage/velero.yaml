@@ -14,7 +14,7 @@ spec:
       interval: 60s
       rules:
         - alert: VeleroNoRecentBackup
-          expr: time() - velero_backup_last_successful_timestamp{schedule!=""} > 86400
+          expr: time() - velero_backup_last_successful_timestamp{schedule!="",schedule!~"tier2-.*"} > 86400
           for: 10m
           labels:
             severity: critical
@@ -23,6 +23,17 @@ spec:
             dashboard_url: "/d/velero-overview"
             summary: "No successful Velero backup in 24h for {{ $labels.schedule }}"
             description: "RPO exceeded — covers failed/partial/not-running causes. DR-readiness compromised."
+            action: "velero backup get ; velero backup logs <name> ; check RGW bucket quota + creds"
+        - alert: VeleroNoRecentWeeklyBackup
+          expr: time() - velero_backup_last_successful_timestamp{schedule=~"tier2-.*"} > 691200
+          for: 10m
+          labels:
+            severity: critical
+            component: backup
+          annotations:
+            dashboard_url: "/d/velero-overview"
+            summary: "No successful weekly Velero backup in 8d for {{ $labels.schedule }}"
+            description: "Weekly-tier RPO exceeded (>8d). DR-readiness compromised."
             action: "velero backup get ; velero backup logs <name> ; check RGW bucket quota + creds"
 
     # ── TICKET ──
