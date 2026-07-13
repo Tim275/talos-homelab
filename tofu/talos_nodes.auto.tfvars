@@ -7,7 +7,7 @@ talos_nodes = {
     vm_id          = 1000
     cpu            = 6
     ram_dedicated  = 14336
-    datastore_id   = "local-zfs"
+    datastore_id   = "cephpool"
     os_disk_size   = 50
     ceph_disk_size = 0
   }
