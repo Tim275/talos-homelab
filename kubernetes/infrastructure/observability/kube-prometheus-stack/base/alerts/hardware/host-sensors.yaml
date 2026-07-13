@@ -13,9 +13,10 @@ spec:
       interval: 1m
       rules:
         - alert: HostCPUTemperatureCritical
-          expr: node_hwmon_temp_celsius > 95
+          expr: node_hwmon_temp_celsius{chip!~"nvme.*"} > 95
           # 2m war zu kurz: msa2 k10temp (CPU) spitzt unter Ceph-Last transient >95°C und
           # resolved selbst → Flap-Noise. 15m = nur SUSTAINED Hitze (echte Gefahr) alarmiert.
+          # nvme excluded → eigener HostNVMeTemperatureCritical (node_exporter labelt SSD-Hotspot sonst als "CPU")
           for: 15m
           labels:
             severity: warning
@@ -23,9 +24,21 @@ spec:
             priority: P2
           annotations:
             dashboard_url: "/d/k8s-node-overview"
-            summary: "CPU/sensor {{ $labels.chip }} on {{ $labels.instance }} at {{ $value }}°C"
+            summary: "CPU {{ $labels.chip }} on {{ $labels.instance }} at {{ $value }}°C"
             description: "Thermal shutdown imminent — host may power off. Check airflow / dust / fan."
             action: "PHYSICAL: clean dust + check fan/airflow on the host; reduce load until temp drops below throttle."
+        - alert: HostNVMeTemperatureCritical
+          expr: node_hwmon_temp_celsius{chip=~"nvme.*"} > 85
+          for: 15m
+          labels:
+            severity: warning
+            component: hardware
+            priority: P2
+          annotations:
+            dashboard_url: "/d/k8s-node-overview"
+            summary: "NVMe {{ $labels.chip }}/{{ $labels.sensor }} on {{ $labels.instance }} at {{ $value }}°C"
+            description: "NVMe running hot — thermal-throttles and degrades Ceph performance."
+            action: "PHYSICAL: add/reseat heatsink, improve airflow/dust; reduce write load."
 
         - alert: HostMemoryCritical
           expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.05
