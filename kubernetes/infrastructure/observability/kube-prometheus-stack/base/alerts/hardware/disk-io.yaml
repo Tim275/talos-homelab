@@ -27,3 +27,25 @@ spec:
             summary: "{{ $labels.instance }} root filesystem critically full ({{ $value | humanizePercentage }})"
             description: "Node out of disk space imminent — write failures, stuck services."
             action: "SSH host; 'journalctl --vacuum-size=200M'; 'du -sh /var/*' to find the offender; prune images/logs."
+
+    # ── TICKET ──
+    - name: disk-io-ticket
+      interval: 1m
+      rules:
+        - alert: TalosNodeDiskFillingUp
+          # Talos node-exporter reports the writable partition as mountpoint="/var" (holds
+          # etcd, containerd images, logs). Nodes expose no "/" → this is the ONLY node
+          # disk-fill signal. Leading warn <15%; NodeDiskPressure (kubelet) is the lagging backstop.
+          expr: |
+            node_filesystem_avail_bytes{job="node-exporter",mountpoint="/var"}
+            / node_filesystem_size_bytes{job="node-exporter",mountpoint="/var"} < 0.15
+          for: 15m
+          labels:
+            severity: warning
+            component: hardware
+            priority: P2
+          annotations:
+            dashboard_url: "/d/k8s-node-overview"
+            summary: "{{ $labels.instance }} /var {{ $value | humanizePercentage }} free"
+            description: "Talos node writable partition (/var: etcd, containerd, logs) filling — evictions/CrashLoops loom before kubelet DiskPressure."
+            action: "talosctl -n {{ $labels.instance }} df; prune unused images (crictl rmi --prune via debug); check log growth."
