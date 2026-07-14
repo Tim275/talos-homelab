@@ -58,6 +58,61 @@ spec:
             description: "Edge proxy seeing high upstream errors — backend services degraded, users see failures."
             action: "Find the failing upstream in the envoy-global dashboard; check that backend's pods/health + any recent deploy."
 
+        - alert: EnvoyEdgeSLOFastBurn
+          # Edge availability SLO 99.5% (error budget 0.5%). Multi-window burn: 5m AND 1h
+          # 5xx-ratio both >14.4× budget (7.2%) = a month's budget gone in ~2 days → PAGE.
+          # Front-door SLO for EVERY exposed app (n8n, grafana, drova, …) — n8n has no internal
+          # error-SLI, so its user-facing availability is captured here. Traffic-floor kills
+          # low-traffic night false-pages.
+          expr: |
+            (
+              sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[1h]))
+              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total[1h])), 0.001) > 0.072
+            )
+            and
+            (
+              sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[5m]))
+              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total[5m])), 0.001) > 0.072
+            )
+            and
+            sum(rate(envoy_cluster_upstream_rq_total[5m])) > 0.05
+          for: 2m
+          labels:
+            severity: critical
+            component: network
+            priority: P1
+          annotations:
+            dashboard_url: "/d/envoy-global"
+            summary: "Edge SLO fast-burn: {{ $value | humanizePercentage }} 5xx (budget 0.5%)"
+            description: "The ingress edge is burning its availability error budget 14.4× — a month's budget in ~2 days. Every exposed app is affected."
+            action: "envoy-global dashboard → which upstream is 5xx'ing; check that backend + recent deploys. Pages because the whole front door is degraded."
+
+        - alert: EnvoyEdgeSLOSlowBurn
+          # Slow window: 30m AND 6h 5xx-ratio both >6× budget (3%) → catches a grinding
+          # degradation the fast-burn misses. Ticket.
+          expr: |
+            (
+              sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[6h]))
+              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total[6h])), 0.001) > 0.03
+            )
+            and
+            (
+              sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[30m]))
+              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total[30m])), 0.001) > 0.03
+            )
+            and
+            sum(rate(envoy_cluster_upstream_rq_total[30m])) > 0.05
+          for: 15m
+          labels:
+            severity: warning
+            component: network
+            priority: P2
+          annotations:
+            dashboard_url: "/d/envoy-global"
+            summary: "Edge SLO slow-burn: {{ $value | humanizePercentage }} 5xx (budget 0.5%)"
+            description: "The ingress edge has burned availability budget at 6× for hours — a persistent low-grade failure across the front door."
+            action: "envoy-global dashboard → the chronically-failing upstream; likely one backend flapping. Fix before it erodes the month's budget."
+
         - alert: EnvoyGatewayNoEndpoints
           expr: |
             sum by (envoy_cluster_name, namespace) (
