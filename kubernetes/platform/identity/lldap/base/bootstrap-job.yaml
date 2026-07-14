@@ -220,6 +220,25 @@ spec:
                     done
                   fi
 
+                  # --- Cleanup: delete LLDAP groups NOT in config (declarative) ---
+                  # Protect LLDAP built-in groups. Skip if config somehow empty.
+                  echo ""
+                  echo "--- Group cleanup (drift removal) ---"
+                  CFG_GROUPS=$(cat /config/groups.json | jq -r '.[].name')
+                  if [ "$(echo "$CFG_GROUPS" | grep -c .)" -lt 1 ]; then
+                    echo "  SAFETY: config lists 0 groups → skip"
+                  else
+                    gql '{"query":"{ groups { id displayName } }"}' \
+                      | jq -r '.data.groups[] | "\(.id)|\(.displayName)"' | while IFS='|' read gid gname; do
+                      case "$gname" in lldap_admin|lldap_password_manager|lldap_strict_readonly) continue;; esac
+                      if ! echo "$CFG_GROUPS" | grep -qx "$gname"; then
+                        echo "  DELETING drift group: $gname (id $gid)"
+                        gql "{\"query\": \"mutation { deleteGroup(groupId: $gid) { ok } }\"}" > /dev/null 2>&1 \
+                          || echo "    (delete failed for $gname)"
+                      fi
+                    done
+                  fi
+
                   echo ""
                   echo "============================================"
                   echo "Bootstrap Complete!"
