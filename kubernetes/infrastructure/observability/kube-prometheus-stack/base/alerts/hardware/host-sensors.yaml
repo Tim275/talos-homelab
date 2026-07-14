@@ -5,9 +5,10 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
-  # CPU-temp >85 (warn-tier) + load + memory-pressure(<10%, dup of proxmox.yaml) → Grafana
-  # "Node Exporter / Nodes" dashboard. Kept the early-warning tickets: thermal-shutdown
-  # imminent (>95), host OOM (<5%), heavy swap (nipogi runs RAM-overcommitted).
+  # CPU-temp (PAGE: thermal-shutdown imminent >95 → host power-off kills its Talos workers)
+  # + NVMe-temp + heavy swap (nipogi runs RAM-overcommitted) → Grafana "Node Exporter /
+  # Nodes" dashboard. Host-memory dropped 2026-07-14: duplicated ProxmoxHostMemoryPressure
+  # (hosts) + NodeMemoryPressure (Talos).
   groups:
     - name: host-sensors
       interval: 1m
@@ -19,9 +20,9 @@ spec:
           # nvme excluded → eigener HostNVMeTemperatureCritical (node_exporter labelt SSD-Hotspot sonst als "CPU")
           for: 15m
           labels:
-            severity: warning
+            severity: critical
             component: hardware
-            priority: P2
+            priority: P1
           annotations:
             dashboard_url: "/d/k8s-node-overview"
             summary: "CPU {{ $labels.chip }} on {{ $labels.instance }} at {{ $value }}°C"
@@ -39,19 +40,6 @@ spec:
             summary: "NVMe {{ $labels.chip }}/{{ $labels.sensor }} on {{ $labels.instance }} at {{ $value }}°C"
             description: "NVMe running hot — thermal-throttles and degrades Ceph performance."
             action: "PHYSICAL: add/reseat heatsink, improve airflow/dust; reduce write load."
-
-        - alert: HostMemoryCritical
-          expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.05
-          for: 5m
-          labels:
-            severity: warning
-            component: hardware
-            priority: P2
-          annotations:
-            dashboard_url: "/d/k8s-node-overview"
-            summary: "{{ $labels.instance }} critically low RAM ({{ $value | humanizePercentage }})"
-            description: "OOM-killer likely active — VMs at risk of being killed (nipogi runs 84G allocated / 77G physical)."
-            action: "kubectl top nodes; reduce/rebalance VM RAM (nipogi overcommitted 84G/77G) before the OOM-killer hits."
 
         - alert: HostSwapUsageHigh
           # Feuert nur bei ECHTEM Thrashing: Swap voll UND wenig RAM frei.

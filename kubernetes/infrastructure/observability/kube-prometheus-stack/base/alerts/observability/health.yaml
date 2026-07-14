@@ -60,6 +60,22 @@ spec:
             description: "Prometheus cannot scrape {{ $labels.instance }} for >15min."
             action: "Check {{ $labels.instance }} ({{ $labels.job }}): is the exporter/pod up? ServiceMonitor selector + network policy?"
 
+        - alert: PrometheusRuleFailures
+          # A recording/alerting rule erroring at eval time = silent blind spot: the alert it
+          # would raise never fires. We add rules often → catch a broken PromQL/template.
+          # (Does NOT catch a missing `release` label — that rule never loads, no failure metric.)
+          expr: increase(prometheus_rule_evaluation_failures_total[10m]) > 0
+          for: 15m
+          labels:
+            severity: warning
+            component: observability
+            priority: P2
+          annotations:
+            dashboard_url: "/d/prometheus-stats"
+            summary: "Prometheus rule group {{ $labels.rule_group }} failing evaluation"
+            description: "A Prometheus rule has been erroring at evaluation for >15min — the alert/recording rule it defines is silently not working."
+            action: "Prometheus UI → Status → Rules for the red group; fix the PromQL/template error in the offending PrometheusRule."
+
         - alert: GrafanaDown
           expr: up{job="grafana"} == 0
           for: 5m
