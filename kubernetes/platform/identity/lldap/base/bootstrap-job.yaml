@@ -56,7 +56,7 @@ spec:
                 - -c
                 - |
                   set -e
-                  apk add --no-cache curl jq
+                  apk add --no-cache curl jq gettext
 
                   echo "============================================"
                   echo "LLDAP Bootstrap - Creating Users and Groups"
@@ -108,7 +108,7 @@ spec:
                   # Create users from ConfigMap
                   echo ""
                   echo "--- Creating Users ---"
-                  USERS_JSON=$(sed "s|\${LLDAP_USER_PASSWORD}|$LLDAP_USER_PASSWORD|g" /config/users.json)
+                  USERS_JSON=$(envsubst '$LLDAP_USER_PASSWORD $LLDAP_ANNA_PASSWORD $LLDAP_BEN_PASSWORD $LLDAP_CLARA_PASSWORD' < /config/users.json)
                   echo "$USERS_JSON" | jq -c '.[]' | while read user; do
                     ID=$(echo "$user" | jq -r '.id')
                     EMAIL=$(echo "$user" | jq -r '.email')
@@ -144,7 +144,7 @@ spec:
                   echo "--- Setting Passwords via LDAP ---"
                   apk add --no-cache openldap-clients
 
-                  USERS_JSON=$(sed "s|\${LLDAP_USER_PASSWORD}|$LLDAP_USER_PASSWORD|g" /config/users.json)
+                  USERS_JSON=$(envsubst '$LLDAP_USER_PASSWORD $LLDAP_ANNA_PASSWORD $LLDAP_BEN_PASSWORD $LLDAP_CLARA_PASSWORD' < /config/users.json)
                   echo "$USERS_JSON" | jq -c '.[]' > /tmp/users.txt
 
                   # Redirect from a file (not a pipe) so FAILED survives the loop —
@@ -200,6 +200,45 @@ spec:
                     echo "WARN: $FAILED users hit dual-store-bug — continuing (idempotent retry next hour)"
                   fi
 
+                  # --- Cleanup: delete LLDAP users NOT in config (declarative reconcile) ---
+                  # Makes Git the source of truth. Guards: never touch 'admin', skip if config
+                  # somehow empty (prevents wiping everyone on a bad mount).
+                  echo ""
+                  echo "--- Cleanup (drift removal) ---"
+                  CONFIG_IDS=$(echo "$USERS_JSON" | jq -r '.[].id')
+                  if [ "$(echo "$CONFIG_IDS" | grep -c .)" -lt 1 ]; then
+                    echo "  SAFETY: config lists 0 users → skip cleanup (won't wipe)"
+                  else
+                    LIVE_IDS=$(gql '{"query":"{ users { id } }"}' | jq -r '.data.users[].id')
+                    for uid in $LIVE_IDS; do
+                      [ "$uid" = "admin" ] && continue
+                      if ! echo "$CONFIG_IDS" | grep -qx "$uid"; then
+                        echo "  DELETING drift user: $uid (not in config)"
+                        gql "{\"query\": \"mutation { deleteUser(userId: \\\"$uid\\\") { ok } }\"}" > /dev/null 2>&1 \
+                          || echo "    (delete failed for $uid)"
+                      fi
+                    done
+                  fi
+
+                  # --- Cleanup: delete LLDAP groups NOT in config (declarative) ---
+                  # Protect LLDAP built-in groups. Skip if config somehow empty.
+                  echo ""
+                  echo "--- Group cleanup (drift removal) ---"
+                  CFG_GROUPS=$(cat /config/groups.json | jq -r '.[].name')
+                  if [ "$(echo "$CFG_GROUPS" | grep -c .)" -lt 1 ]; then
+                    echo "  SAFETY: config lists 0 groups → skip"
+                  else
+                    gql '{"query":"{ groups { id displayName } }"}' \
+                      | jq -r '.data.groups[] | "\(.id)|\(.displayName)"' | while IFS='|' read gid gname; do
+                      case "$gname" in lldap_admin|lldap_password_manager|lldap_strict_readonly) continue;; esac
+                      if ! echo "$CFG_GROUPS" | grep -qx "$gname"; then
+                        echo "  DELETING drift group: $gname (id $gid)"
+                        gql "{\"query\": \"mutation { deleteGroup(groupId: $gid) { ok } }\"}" > /dev/null 2>&1 \
+                          || echo "    (delete failed for $gname)"
+                      fi
+                    done
+                  fi
+
                   echo ""
                   echo "============================================"
                   echo "Bootstrap Complete!"
@@ -217,6 +256,21 @@ spec:
                     secretKeyRef:
                       name: lldap-secrets
                       key: user-password
+                - name: LLDAP_ANNA_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: lldap-secrets
+                      key: anna-password
+                - name: LLDAP_BEN_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: lldap-secrets
+                      key: ben-password
+                - name: LLDAP_CLARA_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: lldap-secrets
+                      key: clara-password
               volumeMounts:
                 - name: config
                   mountPath: /config
