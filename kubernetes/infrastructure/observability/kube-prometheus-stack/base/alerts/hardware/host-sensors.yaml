@@ -29,7 +29,11 @@ spec:
             description: "Thermal shutdown imminent — host may power off. Check airflow / dust / fan."
             action: "PHYSICAL: clean dust + check fan/airflow on the host; reduce load until temp drops below throttle."
         - alert: HostNVMeTemperatureCritical
-          expr: node_hwmon_temp_celsius{chip=~"nvme.*"} > 85
+          # sensor="temp1" = COMPOSITE (== smartctl current, live verifiziert 51/79°C match).
+          # temp2/temp3 sind Controller-HOTSPOT-Sensoren, die bauartbedingt 20-30° heißer
+          # laufen — 2026-07-14 feuerte temp3=107°C auf der nipogi-Samsung, während
+          # Composite bei 79°C lag (Throttle ~82°C). Hotspot alarmieren = Dauer-False-Positive.
+          expr: node_hwmon_temp_celsius{chip=~"nvme.*",sensor="temp1"} > 85
           for: 15m
           labels:
             severity: warning
