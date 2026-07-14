@@ -1,0 +1,70 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: edge-slo
+  namespace: grafana
+spec:
+  uid: edge-slo
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  allowCrossNamespaceImport: true
+  folder: Network
+  json: |
+    {
+      "title": "Edge SLO — Availability 99.5% (Envoy front door)",
+      "uid": "edge-slo",
+      "tags": ["sre","slo","edge","envoy"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "refresh": "30s",
+      "time": {"from": "now-24h", "to": "now"},
+      "templating": {"list":[]},
+      "panels": [
+        {"id":1,"type":"stat","title":"SLO compliance (30d)","gridPos":{"x":0,"y":0,"w":5,"h":5},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"100 * avg_over_time(slo:edge_availability:ratio_rate1h[30d])"}],
+         "fieldConfig":{"defaults":{"unit":"percent","decimals":3,"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"yellow","value":99},{"color":"green","value":99.5}]}}}},
+        {"id":2,"type":"stat","title":"Error budget remaining (30d)","gridPos":{"x":5,"y":0,"w":5,"h":5},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"100 * clamp_min(1 - ((1 - avg_over_time(slo:edge_availability:ratio_rate1h[30d])) / 0.005), 0)"}],
+         "fieldConfig":{"defaults":{"unit":"percent","decimals":1,"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"yellow","value":50},{"color":"green","value":80}]}}}},
+        {"id":3,"type":"stat","title":"Fast burn (1h, page ≥14.4)","gridPos":{"x":10,"y":0,"w":5,"h":5},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"(1 - slo:edge_availability:ratio_rate1h) / 0.005"}],
+         "fieldConfig":{"defaults":{"decimals":2,"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":6},{"color":"red","value":14.4}]}}}},
+        {"id":4,"type":"stat","title":"Slow burn (6h, ticket ≥6)","gridPos":{"x":15,"y":0,"w":5,"h":5},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"(1 - slo:edge_availability:ratio_rate6h) / 0.005"}],
+         "fieldConfig":{"defaults":{"decimals":2,"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":1},{"color":"red","value":6}]}}}},
+        {"id":5,"type":"stat","title":"Traffic (req/s)","gridPos":{"x":20,"y":0,"w":4,"h":5},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"slo:edge_requests:rate5m"}],
+         "fieldConfig":{"defaults":{"unit":"reqps","decimals":2,"thresholds":{"mode":"absolute","steps":[{"color":"text","value":null}]}}}},
+        {"id":10,"type":"row","title":"Multi-Window Burn-Rate (alert pair: 14.4× fast / 6× slow)","gridPos":{"x":0,"y":5,"w":24,"h":1}},
+        {"id":11,"type":"timeseries","title":"Fast windows: 5m + 1h burn (EnvoyEdgeSLOFastBurn pages at 14.4)","gridPos":{"x":0,"y":6,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"(1 - slo:edge_availability:ratio_rate5m) / 0.005","legendFormat":"burn 5m"},
+           {"expr":"(1 - slo:edge_availability:ratio_rate1h) / 0.005","legendFormat":"burn 1h"}],
+         "fieldConfig":{"defaults":{"custom":{"axisLabel":"× budget"},"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":14.4}]}}}},
+        {"id":12,"type":"timeseries","title":"Slow windows: 30m + 6h burn (EnvoyEdgeSLOSlowBurn tickets at 6)","gridPos":{"x":12,"y":6,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"(1 - slo:edge_availability:ratio_rate30m) / 0.005","legendFormat":"burn 30m"},
+           {"expr":"(1 - slo:edge_availability:ratio_rate6h) / 0.005","legendFormat":"burn 6h"}],
+         "fieldConfig":{"defaults":{"custom":{"axisLabel":"× budget"},"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":6}]}}}},
+        {"id":20,"type":"row","title":"Error budget","gridPos":{"x":0,"y":13,"w":24,"h":1}},
+        {"id":21,"type":"timeseries","title":"Budget burndown (rolling 30d window)","gridPos":{"x":0,"y":14,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"100 * clamp_min(1 - ((1 - avg_over_time(slo:edge_availability:ratio_rate1h[30d])) / 0.005), 0)","legendFormat":"budget remaining"}],
+         "fieldConfig":{"defaults":{"unit":"percent","min":0,"max":100,"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"yellow","value":50},{"color":"green","value":80}]}}}},
+        {"id":22,"type":"timeseries","title":"5xx ratio (5m / 1h / 6h)","gridPos":{"x":12,"y":14,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"1 - slo:edge_availability:ratio_rate5m","legendFormat":"5m"},
+           {"expr":"1 - slo:edge_availability:ratio_rate1h","legendFormat":"1h"},
+           {"expr":"1 - slo:edge_availability:ratio_rate6h","legendFormat":"6h"}],
+         "fieldConfig":{"defaults":{"unit":"percentunit","thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":0.005}]}}}}
+      ]
+    }

@@ -1,0 +1,50 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: waf-coraza
+  namespace: grafana
+spec:
+  uid: waf-coraza
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  allowCrossNamespaceImport: true
+  folder: Security
+  json: |
+    {
+      "title": "Coraza WAF — Detections & Blocks",
+      "uid": "waf-coraza",
+      "tags": ["security","waf","coraza","owasp-crs"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "refresh": "1m",
+      "time": {"from": "now-7d", "to": "now"},
+      "templating": {"list":[]},
+      "panels": [
+        {"id":1,"type":"text","title":"","gridPos":{"x":0,"y":0,"w":24,"h":2},
+         "options":{"mode":"markdown","content":"**Event-getriebene Metrik** (`waf_coraza_detections_total`, erzeugt von Vector `log_to_metric` aus Envoy/Coraza-Logs): *No data = keine Angriffe erkannt* — die Serie wird stale, wenn nichts detektiert wird. Pipeline-Test: Request mit SQLi-Pattern gegen eine öffentliche Route schicken → Panel muss zucken. Alerts: CorazaWAFDetectionSpike / CorazaWAFBlockingSpike."}},
+        {"id":2,"type":"stat","title":"Detections (24h)","gridPos":{"x":0,"y":2,"w":6,"h":5},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(increase(waf_coraza_detections_total[24h])) or vector(0)"}],
+         "fieldConfig":{"defaults":{"decimals":0,"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":10},{"color":"red","value":100}]}}}},
+        {"id":3,"type":"stat","title":"Detections (7d)","gridPos":{"x":6,"y":2,"w":6,"h":5},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(increase(waf_coraza_detections_total[7d])) or vector(0)"}],
+         "fieldConfig":{"defaults":{"decimals":0,"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":50},{"color":"red","value":500}]}}}},
+        {"id":4,"type":"stat","title":"Actions (24h)","gridPos":{"x":12,"y":2,"w":12,"h":5},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (action) (increase(waf_coraza_detections_total[24h]))","legendFormat":"{{action}}","instant":true}],
+         "options":{"textMode":"value_and_name"},
+         "fieldConfig":{"defaults":{"decimals":0,"thresholds":{"mode":"absolute","steps":[{"color":"text","value":null}]}}}},
+        {"id":10,"type":"row","title":"Timeline","gridPos":{"x":0,"y":7,"w":24,"h":1}},
+        {"id":11,"type":"timeseries","title":"Detections by action (1h rate)","gridPos":{"x":0,"y":8,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (action) (increase(waf_coraza_detections_total[1h]))","legendFormat":"{{action}}"}],
+         "fieldConfig":{"defaults":{"decimals":0,"custom":{"drawStyle":"bars","fillOpacity":60}}}},
+        {"id":12,"type":"bargauge","title":"Top rule IDs (7d) — CRS-Regel-Treffer","gridPos":{"x":12,"y":8,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"topk(10, sum by (rule_id) (increase(waf_coraza_detections_total[7d])))","legendFormat":"{{rule_id}}","instant":true}],
+         "options":{"displayMode":"gradient","orientation":"horizontal"},
+         "fieldConfig":{"defaults":{"decimals":0,"thresholds":{"mode":"absolute","steps":[{"color":"blue","value":null}]}}}}
+      ]
+    }

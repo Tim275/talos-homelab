@@ -8,6 +8,40 @@ spec:
   # Two 5xx alerts deduped to one (the %-based EnvoyGateway5xxRateHigh). Down+Info merged.
   # Upstream-connection-failure → dashboard. CloudflaredAllDown = the external-access page.
   groups:
+    # ── RECORDING — edge SLO ratios (single source for the burn alerts below AND the
+    # edge-slo Grafana dashboard; availability = 1 - 5xx-ratio at the Envoy front door) ──
+    - name: edge-slo-recording
+      interval: 30s
+      rules:
+        - record: slo:edge_availability:ratio_rate5m
+          expr: |
+            1 - (
+              sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[5m]))
+              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total[5m])), 0.001)
+            )
+        - record: slo:edge_availability:ratio_rate30m
+          expr: |
+            1 - (
+              sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[30m]))
+              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total[30m])), 0.001)
+            )
+        - record: slo:edge_availability:ratio_rate1h
+          expr: |
+            1 - (
+              sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[1h]))
+              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total[1h])), 0.001)
+            )
+        - record: slo:edge_availability:ratio_rate6h
+          expr: |
+            1 - (
+              sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[6h]))
+              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total[6h])), 0.001)
+            )
+        - record: slo:edge_requests:rate5m
+          expr: sum(rate(envoy_cluster_upstream_rq_total[5m]))
+        - record: slo:edge_requests:rate30m
+          expr: sum(rate(envoy_cluster_upstream_rq_total[30m]))
+
     # ── PAGE ──
     - name: ingress-page
       interval: 60s
@@ -65,17 +99,11 @@ spec:
           # error-SLI, so its user-facing availability is captured here. Traffic-floor kills
           # low-traffic night false-pages.
           expr: |
-            (
-              sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[1h]))
-              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total[1h])), 0.001) > 0.072
-            )
+            ((1 - slo:edge_availability:ratio_rate1h) > 0.072)
             and
-            (
-              sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[5m]))
-              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total[5m])), 0.001) > 0.072
-            )
+            ((1 - slo:edge_availability:ratio_rate5m) > 0.072)
             and
-            sum(rate(envoy_cluster_upstream_rq_total[5m])) > 0.05
+            slo:edge_requests:rate5m > 0.05
           for: 2m
           labels:
             severity: critical
@@ -91,17 +119,11 @@ spec:
           # Slow window: 30m AND 6h 5xx-ratio both >6× budget (3%) → catches a grinding
           # degradation the fast-burn misses. Ticket.
           expr: |
-            (
-              sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[6h]))
-              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total[6h])), 0.001) > 0.03
-            )
+            ((1 - slo:edge_availability:ratio_rate6h) > 0.03)
             and
-            (
-              sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[30m]))
-              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total[30m])), 0.001) > 0.03
-            )
+            ((1 - slo:edge_availability:ratio_rate30m) > 0.03)
             and
-            sum(rate(envoy_cluster_upstream_rq_total[30m])) > 0.05
+            slo:edge_requests:rate30m > 0.05
           for: 15m
           labels:
             severity: warning
