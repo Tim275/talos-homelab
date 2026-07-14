@@ -5,7 +5,7 @@ metadata:
   namespace: lldap
 data:
   LLDAP_URL: "http://lldap:17170"
-  DO_CLEANUP: "true"  # Remove users/groups not in config
+  DO_CLEANUP: "true"  # Enforced by bootstrap-job cleanup step — deletes LLDAP users not in users.json (admin protected, skips if config empty)
 
 ---
 # Custom Attributes Schema (LLDAP v0.6+)
@@ -47,17 +47,13 @@ metadata:
   name: bootstrap-users
   namespace: lldap
 data:
+  # Git = single source of truth. bootstrap-job reconciles LLDAP to match this list:
+  # creates missing users AND deletes drift (anything here missing → removed, admin protected).
+  # ONBOARDING a new person: add a block below with a LEAST-PRIV group (developers/viewers —
+  # NOT the admin groups). They get a temp password here; on first login they set their own
+  # via LLDAP UI, then Keycloak syncs them + forces TOTP (MFA).
   users.json: |
     [
-      {
-        "id": "timour",
-        "email": "timour@timourhomelab.org",
-        "firstName": "Timour",
-        "lastName": "Homelab",
-        "displayName": "Timour - Keycloak User",
-        "password": "${LLDAP_USER_PASSWORD}",
-        "groups": ["cluster-admins", "argocd-admins", "lldap_admin"]
-      },
       {
         "id": "tim275",
         "email": "timour.miagol@outlook.de",
@@ -65,15 +61,33 @@ data:
         "lastName": "Miagol",
         "displayName": "Timour Miagol - Cluster Admin",
         "password": "${LLDAP_USER_PASSWORD}",
-        "groups": ["cluster-admins", "argocd-admins", "lldap_admin"]
+        "groups": ["cluster-admins", "lldap_admin"]
       },
       {
-        "id": "crasher",
-        "email": "crasher222220000@gmail.com",
-        "firstName": "Crasher",
-        "lastName": "Test",
-        "displayName": "Crasher Test - Drova Admin",
-        "password": "${LLDAP_USER_PASSWORD}",
+        "id": "anna",
+        "email": "anna@timourhomelab.org",
+        "firstName": "Anna",
+        "lastName": "Weber",
+        "displayName": "Anna Weber (Demo — Developer)",
+        "password": "${LLDAP_ANNA_PASSWORD}",
+        "groups": ["developers"]
+      },
+      {
+        "id": "ben",
+        "email": "ben@timourhomelab.org",
+        "firstName": "Ben",
+        "lastName": "Fischer",
+        "displayName": "Ben Fischer (Demo — Viewer)",
+        "password": "${LLDAP_BEN_PASSWORD}",
+        "groups": ["viewers"]
+      },
+      {
+        "id": "clara",
+        "email": "clara@timourhomelab.org",
+        "firstName": "Clara",
+        "lastName": "Schmidt",
+        "displayName": "Clara Schmidt (Demo — Drova-Admin)",
+        "password": "${LLDAP_CLARA_PASSWORD}",
         "groups": ["drova-admins"]
       }
     ]
@@ -88,10 +102,8 @@ data:
   groups.json: |
     [
       {"name": "cluster-admins"},
-      {"name": "argocd-admins"},
       {"name": "developers"},
-      {"name": "operators"},
+      {"name": "deployers"},
       {"name": "viewers"},
-      {"name": "drova-admins"},
-      {"name": "drova-developers"}
+      {"name": "drova-admins"}
     ]
