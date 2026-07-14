@@ -76,9 +76,10 @@ spec:
           # working set / memory limit — the pre-OOM warning (ContainerOOMKilled only fires
           # AFTER the kill). 95%: cilium + cert-manager-webhook measured ~0.91 near their
           # (tight) limits by design → 90% would chronically fire on them; 95%/30m is the
-          # clean floor (0 chronic occupants). JVM/cache apps carry their own alerts too.
+          # clean floor (0 chronic occupants). memcached excluded: caches fill to their
+          # limit BY DESIGN (evict, don't OOM) — loki-chunks-cache false-fired 2026-07-14.
           expr: |
-            sum by (namespace, pod, container) (container_memory_working_set_bytes{container!=""})
+            sum by (namespace, pod, container) (container_memory_working_set_bytes{container!="",container!="memcached"})
               /
             sum by (namespace, pod, container) (kube_pod_container_resource_limits{resource="memory"})
               > 0.95
@@ -98,10 +99,13 @@ spec:
           # within 6h — AND is it already >60% of that limit? JVM-immune (healthy GC = flat/
           # sawtooth slope → no fire); the >60% floor drops benign slow-growers far from
           # danger (cut 3 false candidates → 0). for:1h kills startup/cache-fill ramps.
+          # memcached excluded: a cache filling toward its limit is its JOB (evicts at the
+          # top, never OOMs) — the predict sees the fill-ramp and cries wolf
+          # (loki-chunks-cache, 2026-07-14).
           expr: |
             (
               sum by (namespace, pod, container) (
-                predict_linear(container_memory_working_set_bytes{container!=""}[6h], 6 * 3600)
+                predict_linear(container_memory_working_set_bytes{container!="",container!="memcached"}[6h], 6 * 3600)
               )
                 >
               sum by (namespace, pod, container) (
@@ -109,7 +113,7 @@ spec:
               )
             )
             and
-            sum by (namespace, pod, container) (container_memory_working_set_bytes{container!=""})
+            sum by (namespace, pod, container) (container_memory_working_set_bytes{container!="",container!="memcached"})
               / sum by (namespace, pod, container) (kube_pod_container_resource_limits{resource="memory"})
               > 0.60
           for: 1h
