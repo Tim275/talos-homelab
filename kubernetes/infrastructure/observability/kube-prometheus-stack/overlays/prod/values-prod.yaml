@@ -147,15 +147,33 @@ grafana:
 
 defaultRules:
   create: true
-  # Disable specific upstream alerts that have known math bugs (their PromQL gives
-  # nonsense values like "300%" or "+Inf%"). We replace them with corrected rules
-  # in base/alerts/observability/alertmanager-fixed.yaml.
+  # Upstream default-rules run DELIBERATELY alongside the curated base/alerts/ tree — but
+  # de-duped (audit 2026-07-14): any upstream alert that duplicates a tree alert is disabled
+  # below (the tree version is canonical: tuned thresholds, action-runbooks, promtool unit
+  # tests). Upstream gems we do NOT have ourselves stay active: KubeDeploymentReplicasMismatch,
+  # KubeStatefulSet*/KubeDaemonSet*, KubeJobFailed (the DR-verify CronJobs alert through it!),
+  # KubePersistentVolumeInodesFillingUp, Watchdog (→ healthchecks.io dead-man — NEVER disable).
   disabled:
+    # Upstream math bugs — replaced by corrected rules in
+    # base/alerts/observability/alertmanager.yaml (ex alertmanager-fixed.yaml).
     AlertmanagerFailedToSendAlerts: true
     AlertmanagerClusterFailedToSendAlerts: true
     # Noisy on a Ceph cluster — rbd/OSD disks are IO-busy by design (aqu-sq>10 false-fires).
     # Replaced by the service-level CephSlowOps alert (base/alerts/storage/rook-ceph.yaml).
     NodeDiskIOSaturation: true
+    # ── Dedup vs curated tree (2026-07-14) ──
+    TargetDown: true                    # = PrometheusTargetDown
+    KubeAPIDown: true                   # = ClusterAPIServerDown
+    KubeNodeNotReady: true              # SAME alertname as the tree rule → double-fire
+    KubeNodePressure: true              # = NodeMemoryPressure + NodeDiskPressure
+    KubePodCrashLooping: true           # = PodCrashLooping
+    KubePodNotReady: true               # = PodNotReady
+    KubePersistentVolumeFillingUp: true # = PVCFillingUp/PVCCriticallyFull (cnpg-partitioned)
+    PrometheusRuleFailures: true        # = tree version (unit-tested, action-annotated)
+    # ── Noise cuts (2026-07-14) ──
+    CPUThrottlingHigh: true             # upstream fires at 25% — ContainerCPUThrottlingHigh@75% is the tuned one
+    KubeCPUOvercommit: true             # homelab is deliberately overcommitted (nipogi)
+    KubeMemoryOvercommit: true
   rules:
     alertmanager: true
     configReloaders: true
@@ -394,117 +412,95 @@ alertmanager:
           repeat_interval: 12h
           continue: false
 
-    # INHIBITION RULES - Suppress lower priority when higher is firing
-    # Based on: https://www.neteye-blog.com/2025/06/alertmanager-alert-filtering-rules/
+    # INHIBITION — Alert-Storm-Schutz. REWRITTEN 2026-07-14: der alte Block referenzierte
+    # Geister-Alertnames (NodeDown, KubeAPIServerDown, KubeletDown, PodOOMKilled,
+    # PostgreSQLReplicationLag, ElasticsearchIndexUnassigned, …) und die Priority-Ladder
+    # (equal: [job, namespace]) über-suppresste still: FEHLENDE Labels zählen in
+    # Alertmanager als GLEICH → ein P1 ohne job/namespace hätte JEDES label-lose P2
+    # unterdrückt. Jede Regel unten nutzt NUR real existierende Alertnames (Inventar:
+    # CLAUDE.md 🔔) und dokumentiert ihren Blast-Radius. Pages (critical) werden nie
+    # von warnings unterdrückt — nur andersrum.
 
     inhibit_rules:
-      # Critical suppresses Warning for same alert
+      # Severity-Leiter: critical unterdrückt warning/info DERSELBEN Alert-Familie.
       - source_matchers:
           - severity="critical"
         target_matchers:
           - severity="warning"
         equal: ['alertname', 'namespace']
-
-      # Critical suppresses Info
       - source_matchers:
           - severity="critical"
         target_matchers:
           - severity="info"
         equal: ['alertname', 'namespace']
 
-      # Warning suppresses Info
+      # VOLL-AUSFALL: API-Server/Control-Plane down → jedes Ticket ist Kollateral-Noise
+      # (die criticals pagen weiter). Bewusst OHNE equal = global während des Events.
       - source_matchers:
+          - alertname=~"ClusterAPIServerDown|ControlPlaneNodeDown"
+        target_matchers:
           - severity="warning"
-        target_matchers:
-          - severity="info"
-        equal: ['alertname', 'namespace']
 
-      # P0 suppresses P1/P2/P3/P4
+      # HOST-AUSFALL (msa2 = worker-3/4/5, nipogi = ctrl-0/1/2): der klassische Storm.
+      # Kein equal möglich — Host-instance (IP) und k8s-node-Label korrelieren nicht;
+      # im 2-Host-Lab ist global korrekt: ein toter Host macht das halbe Warning-
+      # Grundrauschen zu Kollateral. Criticals (CephHealthError, PVCCriticallyFull, …)
+      # pagen weiter.
       - source_matchers:
-          - priority=~"p0|P0"
+          - alertname="ProxmoxHostDown"
         target_matchers:
-          - priority=~"p1|P1|p2|P2|p3|P3|p4|P4"
-        equal: ['job', 'namespace']
+          - alertname=~"KubeNodeNotReady|CiliumNodeUnreachable|PodNotReady|PodCrashLooping|ImagePullBackoff|ContainerOOMKilled|PrometheusTargetDown|VectorPipelineDown|GatusEndpointDown|GatusEndpointSlow|TalosNodeRebootedRecently|NodeMemoryPressure|NodeDiskPressure|CephOSDDown|CephOSDFlapping|CephSlowOps|CephPGsNotActive|EnvoyGatewayNoEndpoints"
 
-      # P1 suppresses P2/P3/P4
+      # Internet weg → alles Externe ist Folge (auch das critical CloudflaredAllDown —
+      # ein Page reicht, der Root-Cause).
       - source_matchers:
-          - priority=~"p1|P1"
+          - alertname="InternetConnectivityLost"
         target_matchers:
-          - priority=~"p2|P2|p3|P3|p4|P4"
-        equal: ['job', 'namespace']
+          - alertname=~"CloudflaredAllDown|ExternalDNSResolutionFailed"
 
-      # Node down suppresses all pod alerts on that node
+      # Ceph-Kaskade: HealthError/QuorumLost (P) → Einzelsymptome derselben Störung.
       - source_matchers:
-          - alertname="NodeDown"
+          - alertname=~"CephHealthError|CephQuorumLost"
         target_matchers:
-          - alertname=~"Pod.*|Container.*|Kube.*"
-        equal: ['node']
+          - alertname=~"CephOSDDown|CephOSDNearFull|CephPGsNotActive|CephSlowOps|CephMonClockSkew|CephOSDFlapping"
 
-      # Cluster down suppresses node alerts
+      # Edge-SLO: FastBurn (Page) → SlowBurn + 5xx-Ticket sind dasselbe Ereignis.
       - source_matchers:
-          - alertname=~".*ClusterDown|.*ClusterUnhealthy"
+          - alertname="EnvoyEdgeSLOFastBurn"
         target_matchers:
-          - alertname=~".*NodeDown|.*OSDDown"
-        equal: ['cluster']
+          - alertname=~"EnvoyEdgeSLOSlowBurn|EnvoyGateway5xxRateHigh"
 
-      # API Server down suppresses controller alerts
+      # SSO down → der 5xx-Ticket derselben Instanz ist Folge.
       - source_matchers:
-          - alertname="KubeAPIServerDown"
+          - alertname="KeycloakDown"
         target_matchers:
-          - alertname=~"KubeController.*|KubeScheduler.*|ArgoCD.*"
+          - alertname="KeycloakHttp5xxRateHigh"
+        equal: ['namespace']
 
-      # Upstream KubeNodeNotReady → suppress all pod/container alerts on that node
-      - source_matchers:
-          - alertname="KubeNodeNotReady"
-        target_matchers:
-          - alertname=~"KubePod.*|KubeContainer.*|PodNotReady|PodOOMKilled|DrovaPodNotReady|ContainerWaiting"
-        equal: ['node']
-
-      - source_matchers:
-          - alertname="KubeletDown"
-        target_matchers:
-          - alertname=~"KubePod.*|KubeContainer.*|PodNotReady|PodOOMKilled|DrovaPodNotReady|ContainerWaiting|KubeDaemonSet.*"
-        equal: ['node']
-
+      # CNPG: Primary weg → Replication-Lag ist Folge (namespace = gleiches DB-Cluster).
       - source_matchers:
           - alertname="CnpgPrimaryDown"
         target_matchers:
-          - alertname=~"CnpgReplicationLagHigh|DrovaPostgresReplicationLag|PostgreSQLReplicationLag"
+          - alertname="CnpgReplicationLagHigh"
+        equal: ['namespace']
 
+      # Kafka: Quorum weg → ISR/Lag sind Folge.
       - source_matchers:
-          - alertname=~"CephHealthError|CephClusterError"
+          - alertname="KafkaQuorumLeaderless"
         target_matchers:
-          - alertname=~"CephOSDDown|CephOSDSlowOps|CephOSDNearfull|CephPGNotActive"
+          - alertname=~"KafkaUnderMinISR|KafkaConsumerLagCritical"
 
+      # Velero down → Backup-Symptome sind Folge.
       - source_matchers:
-          - alertname=~"VeleroDown|VeleroBackupNotRunning"
+          - alertname="VeleroDown"
         target_matchers:
-          - alertname=~"VeleroNoRecentBackup|VeleroNoRecentBackupExtended|VeleroBackupPartialFailure|VeleroBackupFailure"
+          - alertname=~"VeleroNoRecentBackup|VeleroNoRecentWeeklyBackup|VeleroBackupPartialFailure"
 
+      # CoreDNS down → SERVFAIL/Forward/extern-DNS sind Folge.
       - source_matchers:
-          - alertname="OtelCollectorQueueFull"
+          - alertname="CoreDNSDown"
         target_matchers:
-          - alertname=~"OtelCollectorExportFailing|TempoIngesterDown"
-
-      - source_matchers:
-          - alertname=~"ArgoCDControllerDown|ArgoCDRepoServerDown"
-        target_matchers:
-          - alertname=~"ArgoCDApplicationSyncFailed|ArgoCDApplicationOutOfSync"
-
-      - source_matchers:
-          - alertname=~"KafkaBrokerDown|KafkaQuorumLeaderless"
-        target_matchers:
-          - alertname=~"KafkaConsumerLagHigh|KafkaControllerEventSlow|KafkaTopicUnderReplicated"
-
-      - source_matchers:
-          - alertname=~"CoreDNSDown|KubeDNSDown"
-        target_matchers:
-          - alertname=~"CoreDNSErrorsHigh|DNSLatencyHigh|FQDNResolutionFailing"
-
-      - source_matchers:
-          - alertname="ElasticsearchClusterRed"
-        target_matchers:
-          - alertname=~"ElasticsearchClusterYellow|ElasticsearchIndexUnassigned"
+          - alertname=~"CoreDNSHighSERVFAIL|CoreDNSForwardUnhealthy|ExternalDNSResolutionFailed"
 
     receivers:
 
