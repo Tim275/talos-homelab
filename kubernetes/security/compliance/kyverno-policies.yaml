@@ -54,6 +54,38 @@ spec:
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
+  name: audit-require-limits
+spec:
+  failurePolicy: Ignore
+  background: true
+  rules:
+    - name: require-memory-limits
+      # Memory is incompressible → a container without a memory limit can OOM the whole node,
+      # and it is invisible to ContainerMemoryHigh/ContainerMemoryLeakSuspected (both divide
+      # by the limit). Audit-only: reports via PolicyReport, blocks nothing. CPU limits are
+      # deliberately NOT required — CPU is compressible; a blanket cpu-limit causes harmful
+      # throttling. Runaway CPU is caught by ContainerCPUThrottlingHigh on capped workloads.
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+      exclude:
+        any:
+          - resources:
+              namespaces: ["kube-system", "kyverno", "argocd"]
+      validate:
+        failureAction: Audit
+        message: "A memory limit should be set (prevents node OOM + enables the memory alerts)."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  limits:
+                    memory: "?*"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
   name: audit-verify-drova-signatures
 spec:
   failurePolicy: Ignore

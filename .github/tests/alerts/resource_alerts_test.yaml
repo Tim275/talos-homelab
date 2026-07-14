@@ -1,0 +1,112 @@
+# promtool unit tests — synthetic series prove the resource/edge/node alerts fire (and
+# don't false-fire), and assert the rendered summary/description templates. Run:
+#   python3 .github/scripts/test-alerts.py
+# (extracts every PrometheusRule .spec.groups → .rules.generated.yaml, then promtool test).
+rule_files:
+  - .rules.generated.yaml
+evaluation_interval: 1m
+tests:
+  # ── ContainerCPUThrottlingHigh: FIRES when a container is throttled >75% (83%) ──
+  - interval: 1m
+    input_series:
+      - series: 'container_cpu_cfs_throttled_periods_total{namespace="argocd",pod="argocd-redis-ha-server-1",container="sentinel"}'
+        values: '0+50x20'
+      - series: 'container_cpu_cfs_periods_total{namespace="argocd",pod="argocd-redis-ha-server-1",container="sentinel"}'
+        values: '0+60x20'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: ContainerCPUThrottlingHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              component: application
+              priority: P2
+              namespace: argocd
+              pod: argocd-redis-ha-server-1
+              container: sentinel
+            exp_annotations:
+              dashboard_url: "/d/k8s-pod-overview"
+              summary: "argocd/argocd-redis-ha-server-1/sentinel throttled 83.33%"
+              description: "Container throttled >75% of CFS periods for 15min — busy-loop or under-sized CPU limit."
+              action: "kubectl top pod -n argocd argocd-redis-ha-server-1 --containers; busy-loop → fix root cause, else raise the cpu limit."
+
+  # ── ContainerCPUThrottlingHigh: does NOT fire below 75% (67%) ──
+  - interval: 1m
+    input_series:
+      - series: 'container_cpu_cfs_throttled_periods_total{namespace="drova",pod="api-gateway-1",container="app"}'
+        values: '0+40x20'
+      - series: 'container_cpu_cfs_periods_total{namespace="drova",pod="api-gateway-1",container="app"}'
+        values: '0+60x20'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: ContainerCPUThrottlingHigh
+        exp_alerts: []
+
+  # ── ContainerMemoryHigh: FIRES when working set >95% of limit (96%) ──
+  - interval: 1m
+    input_series:
+      - series: 'container_memory_working_set_bytes{namespace="keycloak",pod="keycloak-0",container="keycloak"}'
+        values: '960+0x40'
+      - series: 'kube_pod_container_resource_limits{namespace="keycloak",pod="keycloak-0",container="keycloak",resource="memory"}'
+        values: '1000+0x40'
+    alert_rule_test:
+      - eval_time: 31m
+        alertname: ContainerMemoryHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              component: application
+              priority: P2
+              namespace: keycloak
+              pod: keycloak-0
+              container: keycloak
+            exp_annotations:
+              dashboard_url: "/d/k8s-pod-overview"
+              summary: "keycloak/keycloak-0/keycloak memory at 96% of limit"
+              description: "Container working set >95% of its memory limit for 30min — OOM-kill risk."
+              action: "kubectl top pod -n keycloak keycloak-0 --containers; raise the memory limit or fix the leak."
+
+  # ── TalosNodeDiskFillingUp: FIRES when /var <15% free (10%) ──
+  - interval: 1m
+    input_series:
+      - series: 'node_filesystem_avail_bytes{job="node-exporter",mountpoint="/var",instance="192.168.0.103:9100"}'
+        values: '10+0x20'
+      - series: 'node_filesystem_size_bytes{job="node-exporter",mountpoint="/var",instance="192.168.0.103:9100"}'
+        values: '100+0x20'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: TalosNodeDiskFillingUp
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              component: hardware
+              priority: P2
+              job: node-exporter
+              mountpoint: /var
+              instance: 192.168.0.103:9100
+            exp_annotations:
+              dashboard_url: "/d/k8s-node-overview"
+              summary: "192.168.0.103:9100 /var 10% free"
+              description: "Talos node writable partition (/var: etcd, containerd, logs) filling — evictions/CrashLoops loom before kubelet DiskPressure."
+              action: "talosctl -n 192.168.0.103:9100 df; prune unused images (crictl rmi --prune via debug); check log growth."
+
+  # ── EnvoyEdgeSLOFastBurn: FIRES at 10% 5xx sustained across both windows ──
+  - interval: 1m
+    input_series:
+      - series: 'envoy_cluster_upstream_rq_total'
+        values: '0+100x70'
+      - series: 'envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}'
+        values: '0+10x70'
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: EnvoyEdgeSLOFastBurn
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              component: network
+              priority: P1
+            exp_annotations:
+              dashboard_url: "/d/envoy-global"
+              summary: "Edge SLO fast-burn: 10% 5xx (budget 0.5%)"
+              description: "The ingress edge is burning its availability error budget 14.4× — a month's budget in ~2 days. Every exposed app is affected."
+              action: "envoy-global dashboard → which upstream is 5xx'ing; check that backend + recent deploys. Pages because the whole front door is degraded."
