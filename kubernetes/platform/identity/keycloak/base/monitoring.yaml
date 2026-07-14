@@ -1,14 +1,12 @@
-# Keycloak Monitoring — ServiceMonitor + PrometheusRule
-# Captures KC HTTP errors + Infinispan cluster degradation early.
+# Keycloak ServiceMonitor — scrapes /metrics on management port 9000.
 #
-# Why: Today's outage showed:
-#   - 504 Gateway Timeout from CF (intermittent)
-#   - Infinispan ISPN000427 cluster-sync timeouts in logs
-#   - No alerts fired → user reported instead of monitoring
-#
-# This file adds:
-#   - ServiceMonitor: scrapes /metrics on management port 9000
-#   - PrometheusRule: 4 alerts (Down, Cluster-Degraded, Cache-Timeouts, HTTP-Errors)
+# The 4 PrometheusRule alerts that lived here were consolidated 2026-07-14 into
+# kube-prometheus-stack/base/alerts/apps/keycloak.yaml (single alert inventory):
+#   - KeycloakDown            → duplicate of the tree's page alert (and its kube_pod_labels
+#                               join was dead — KSM exposes pod labels only via allowlist)
+#   - KeycloakClusterDegraded → dead join + KC runs 1 replica (no degraded state to detect)
+#   - InfinispanCacheTimeouts → migrated as KeycloakHttp5xxRateHigh (metric verified live)
+#   - KeycloakLoginErrorsHigh → keycloak_failed_login_attempts needs the metrics-spi (0 series)
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -30,94 +28,3 @@ spec:
       path: /metrics
       interval: 30s
       scrapeTimeout: 10s
----
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: keycloak-alerts
-  namespace: keycloak
-  labels:
-    app.kubernetes.io/name: keycloak
-    release: kube-prometheus-stack
-spec:
-  groups:
-    - name: keycloak.rules
-      interval: 30s
-      rules:
-        - alert: KeycloakDown
-          expr: |
-            sum by (namespace) (
-              kube_pod_status_ready{namespace="keycloak",condition="true"}
-              * on(pod,namespace) kube_pod_labels{label_app="keycloak"}
-            ) < 2
-          for: 5m
-          labels:
-            severity: critical
-            priority: P1
-            tier: platform
-            component: keycloak
-          annotations:
-            summary: "Keycloak HA broken — only {{ $value }} pods ready (min 2 required for HA)"
-            description: |
-              Keycloak ist HA mit 3 Replicas. Weniger als 2 ready = OIDC-Login
-              kompromittiert. Check: kubectl get pods -n keycloak
-            dashboard_url: "/d/keycloak-health"
-            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/notes/CLAUDE-RUNBOOK.md#keycloak-down"
-
-        - alert: KeycloakClusterDegraded
-          expr: |
-            count by (namespace) (
-              kube_pod_status_ready{namespace="keycloak",condition="true"}
-              * on(pod,namespace) kube_pod_labels{label_app="keycloak"}
-            ) != 3
-          for: 10m
-          labels:
-            severity: warning
-            priority: P2
-            tier: platform
-            component: keycloak
-          annotations:
-            summary: "Keycloak Cluster running {{ $value }}/3 pods (Infinispan cache sync incomplete)"
-            description: |
-              KC sollte 3 Pods haben für Infinispan-Cluster. Cluster-Sync funktioniert nur
-              wenn ALLE 3 Pods JGroups peers haben. Login-Flows könnten schleichen.
-            dashboard_url: "/d/keycloak-health"
-
-        - alert: KeycloakInfinispanCacheTimeouts
-          # Match log lines via log-rate via Loki, fallback: HTTP 5xx burst
-          # NOTE: requires loki-recording-rules OR use http_server_requests_seconds_count
-          expr: |
-            sum by (namespace) (
-              rate(http_server_requests_seconds_count{namespace="keycloak",status=~"5.."}[5m])
-            ) > 0.5
-          for: 3m
-          labels:
-            severity: warning
-            priority: P2
-            tier: platform
-            component: keycloak
-          annotations:
-            summary: "Keycloak HTTP 5xx-Rate > 0.5/s — possible Infinispan timeout"
-            description: |
-              Wenn Infinispan-Sync zwischen KC-Pods kaputt ist, schlagen Login-Flows
-              mit ISPN000427 fehl → HTTP 500. Check: kubectl logs -n keycloak -l app=keycloak
-              | grep ISPN000427
-            dashboard_url: "/d/keycloak-health"
-
-        - alert: KeycloakLoginErrorsHigh
-          # Keycloak emit LOGIN_ERROR events via jboss-logging at WARN level (see CR additionalOptions)
-          # Via vector/loki this should populate keycloak_failed_login_attempts metric if exporter exists
-          expr: |
-            rate(keycloak_failed_login_attempts[5m]) > 1
-          for: 5m
-          labels:
-            severity: info
-            priority: P3
-            tier: platform
-            component: keycloak
-          annotations:
-            summary: "Keycloak failed logins {{ $value }}/s (last 5min)"
-            description: |
-              Spike in failed logins. Could be brute-force, broken OIDC client, or
-              Infinispan-token-cache failing → users see "expired_code".
-            dashboard_url: "/d/keycloak-health"
