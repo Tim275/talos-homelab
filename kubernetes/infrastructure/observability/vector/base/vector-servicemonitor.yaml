@@ -1,0 +1,23 @@
+# ServiceMonitor for Vector metrics (agents + aggregator) — the ONLY vector scrape source.
+#
+# Lived in logging-alerts.yaml until 2026-07-14; that file's 14 PrometheusRule alerts were
+# consolidated: 8 referenced non-existent metrics (vector_logs_total / vector_events_in_total
+# with a service label / up{job="vector-agent"} — all 0 series, could never fire), 5 duplicated
+# the curated tree (ES-Red, ES-DiskSpace, CephOSDDown, Vector*Down, EventDropRate), ES-Yellow
+# was re-parked commented-out in alerts/data/elasticsearch.yaml (single-node = always yellow).
+# Sole survivor VectorBufferUtilizationHigh → alerts/observability/health.yaml.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: vector-logging-metrics
+  namespace: elastic-system
+  labels:
+    prometheus: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vector
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics

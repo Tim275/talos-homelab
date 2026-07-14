@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
-"""Lint PrometheusRule CRDs: promtool syntax + required annotations/labels.
+"""Lint PrometheusRule CRDs: promtool syntax + required annotations/labels + location guard.
 
 Required per alert rule:
 - annotations.summary
 - labels.severity
+
+Location guard: every PrometheusRule must live under ALERTS_TREE. A second rule-world
+outside the curated tree accumulated 24 stray alerts (dead metrics, duplicates, a pruned
+zombie) before the 2026-07-14 consolidation — this check keeps the inventory single-source.
+Deliberate exceptions go into LOCATION_WHITELIST (repo-relative path prefixes).
 """
 import os
 import subprocess
@@ -16,6 +21,8 @@ import yaml
 REQUIRED_ANNOTATIONS = ["summary"]
 REQUIRED_LABELS = ["severity"]
 VALID_SEVERITIES = {"critical", "warning", "info"}
+ALERTS_TREE = "kubernetes/infrastructure/observability/kube-prometheus-stack/base/alerts/"
+LOCATION_WHITELIST: tuple[str, ...] = ()
 
 
 def iter_prometheus_rules(root: Path):
@@ -77,14 +84,29 @@ def check_annotations(rule_doc: dict) -> list[str]:
     return violations
 
 
+def check_location(path: Path) -> bool:
+    posix = path.as_posix()
+    if ALERTS_TREE in posix:
+        return True
+    return any(w in posix for w in LOCATION_WHITELIST)
+
+
 def main(root: str) -> int:
     root_path = Path(root)
     syntax_failures = 0
     annotation_failures = 0
+    location_failures = 0
     files_checked = 0
 
     for path, doc in iter_prometheus_rules(root_path):
         files_checked += 1
+
+        if not check_location(path):
+            print(
+                f"::error file={path}::PrometheusRule outside the curated alerts tree "
+                f"({ALERTS_TREE}) — move it there or whitelist it deliberately"
+            )
+            location_failures += 1
 
         ok, output = check_promtool_syntax(doc)
         if not ok:
@@ -102,8 +124,9 @@ def main(root: str) -> int:
     print(f"\nSummary: {files_checked} PrometheusRule files checked")
     print(f"  syntax failures: {syntax_failures}")
     print(f"  annotation failures: {annotation_failures}")
+    print(f"  location failures: {location_failures}")
 
-    if syntax_failures or annotation_failures:
+    if syntax_failures or annotation_failures or location_failures:
         return 1
     return 0
 
