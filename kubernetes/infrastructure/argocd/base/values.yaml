@@ -635,6 +635,21 @@ redis-ha:
   sentinel:
     quorum: 2  # Need 2 out of 3 sentinels to agree on failover
 
+    # PRODUCTION NOTE (2026-07-14): the sentinel container busy-looped at ~1 FULL CORE
+    # each on server-1/-2 (both scheduled on msa2) → host CPU hit 95°C, near thermal
+    # shutdown. redis itself was fine (~7m); the sentinel container had NO cpu limit.
+    # Diagnosed via: kubectl top nodes → worker-4/5 hot; then per-container raw metrics
+    # (/apis/metrics.k8s.io/.../pods/argocd-redis-ha-server-1) → sentinel=999m.
+    # A healthy sentinel needs <10m, so 100m is 10x headroom AND kills the busy-loop heat.
+    # HA stays intact (3 replicas + sentinel), only the runaway CPU is capped.
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
   # redis-ha resources
   redis:
     resources:
