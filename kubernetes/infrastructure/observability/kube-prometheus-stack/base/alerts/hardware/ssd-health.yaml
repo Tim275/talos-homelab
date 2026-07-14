@@ -36,6 +36,21 @@ spec:
             summary: "SSD {{ $labels.device }} media errors ({{ $value }} new in 1h)"
             description: "Uncorrectable NAND errors — the drive is failing. Back up + replace (Ceph replicas on the other node protect cluster data)."
 
+        - alert: SSDSmartHealthFailed
+          # Overall SMART self-assessment = FAILED (distinct from the NVMe critical-warning
+          # bitfield above — this is the drive's own pass/fail verdict). Moved here 2026-07-14
+          # from proxmox.yaml to co-locate all smartctl_exporter alerts; label fixed disk→device.
+          expr: smartctl_device_smart_status == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: storage
+          annotations:
+            dashboard_url: "/d/smartctl-exporter"
+            summary: "SMART health FAILED: {{ $labels.device }} on {{ $labels.instance }}"
+            description: "Drive's overall SMART self-assessment = FAILED — replace soon (data-loss risk; Ceph replicas on the other node protect cluster data)."
+            action: "SSH the host; 'smartctl -a /dev/{{ $labels.device }}'; plan a disk replacement."
+
     # ── TICKET — wearing out / blind spot ──
     - name: ssd-ticket
       interval: 5m

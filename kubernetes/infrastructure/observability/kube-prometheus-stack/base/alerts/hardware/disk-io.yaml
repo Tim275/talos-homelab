@@ -7,7 +7,8 @@ metadata:
 spec:
   # Disk IO-saturation + read/write-latency → Grafana "Node Exporter / Disk" dashboard
   # (rates/latencies are debug signals, not pages — and they flap under Ceph load).
-  # Kept the node root-filesystem fill (covers Talos VM roots; proxmox.yaml covers hosts).
+  # Root-fs fill: node-exporter only reports mountpoint="/" on the Proxmox HOSTS (Talos
+  # roots aren't exposed) → this is the <5% PAGE tier; ProxmoxRootDiskFull is the <15% warn.
   groups:
     # ── PAGE ──
     - name: disk-io-page
@@ -26,22 +27,3 @@ spec:
             summary: "{{ $labels.instance }} root filesystem critically full ({{ $value | humanizePercentage }})"
             description: "Node out of disk space imminent — write failures, stuck services."
             action: "SSH host; 'journalctl --vacuum-size=200M'; 'du -sh /var/*' to find the offender; prune images/logs."
-
-    # ── TICKET ──
-    - name: disk-io-ticket
-      interval: 1m
-      rules:
-        - alert: HostRootFilesystemAlmostFull
-          expr: |
-            node_filesystem_avail_bytes{mountpoint="/",fstype!="rootfs"}
-            / node_filesystem_size_bytes{mountpoint="/",fstype!="rootfs"} < 0.10
-          for: 15m
-          labels:
-            severity: warning
-            component: hardware
-            priority: P2
-          annotations:
-            dashboard_url: "/d/k8s-node-overview"
-            summary: "{{ $labels.instance }} root filesystem {{ $value | humanizePercentage }} free"
-            description: "Node root nearly full — clean up or expand before it hits critical."
-            action: "SSH host; 'journalctl --vacuum-size=200M' + prune old images/logs before it hits critical."
