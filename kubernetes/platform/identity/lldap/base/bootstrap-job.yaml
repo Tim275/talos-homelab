@@ -200,6 +200,26 @@ spec:
                     echo "WARN: $FAILED users hit dual-store-bug — continuing (idempotent retry next hour)"
                   fi
 
+                  # --- Cleanup: delete LLDAP users NOT in config (declarative reconcile) ---
+                  # Makes Git the source of truth. Guards: never touch 'admin', skip if config
+                  # somehow empty (prevents wiping everyone on a bad mount).
+                  echo ""
+                  echo "--- Cleanup (drift removal) ---"
+                  CONFIG_IDS=$(echo "$USERS_JSON" | jq -r '.[].id')
+                  if [ "$(echo "$CONFIG_IDS" | grep -c .)" -lt 1 ]; then
+                    echo "  SAFETY: config lists 0 users → skip cleanup (won't wipe)"
+                  else
+                    LIVE_IDS=$(gql '{"query":"{ users { id } }"}' | jq -r '.data.users[].id')
+                    for uid in $LIVE_IDS; do
+                      [ "$uid" = "admin" ] && continue
+                      if ! echo "$CONFIG_IDS" | grep -qx "$uid"; then
+                        echo "  DELETING drift user: $uid (not in config)"
+                        gql "{\"query\": \"mutation { deleteUser(userId: \\\"$uid\\\") { ok } }\"}" > /dev/null 2>&1 \
+                          || echo "    (delete failed for $uid)"
+                      fi
+                    done
+                  fi
+
                   echo ""
                   echo "============================================"
                   echo "Bootstrap Complete!"
