@@ -142,6 +142,22 @@ spec:
             description: "Vector agent/aggregator down >10min — pod logs not shipped to Loki/Elasticsearch."
             action: "kubectl -n elastic-system get pod -l app.kubernetes.io/name=vector + logs; restart the agent/aggregator."
 
+        - alert: VectorBufferUtilizationHigh
+          # Consolidated 2026-07-14 from vector/logging-alerts.yaml (the only survivor of its
+          # 14 rules — 8 referenced non-existent metrics, 5 duplicated this tree). Buffer >80%
+          # sustained = sink (ES/Loki) can't keep up → next stop is dropped events.
+          expr: vector_buffer_byte_size / vector_buffer_max_byte_size > 0.8
+          for: 15m
+          labels:
+            severity: warning
+            component: observability
+            priority: P2
+          annotations:
+            dashboard_url: "/d/vector-throughput"
+            summary: "Vector buffer {{ $labels.component_id }} at {{ $value | humanizePercentage }}"
+            description: "Vector buffer >80% full for 15min — the sink is falling behind; events will drop next."
+            action: "Check ES/Loki ingest health + vector-throughput dashboard; scale the sink or raise buffer size."
+
         - alert: VectorSinkDroppingEvents
           expr: |
             sum by (component_id) (rate(vector_component_discarded_events_total{component_kind="sink"}[10m])) > 0

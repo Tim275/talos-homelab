@@ -1,15 +1,14 @@
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: renovate-self-monitoring
-  namespace: renovate-operator
+  name: platform-renovate
   labels:
-    app.kubernetes.io/name: renovate-operator
-    app.kubernetes.io/part-of: devops-platform
     release: kube-prometheus-stack
 spec:
+  # Consolidated 2026-07-14 from platform/gitops/renovate/base/prometheusrule.yaml —
+  # rules unchanged, moved into the curated alerts tree (single inventory source).
   groups:
-    - name: renovate.health
+    - name: renovate-health
       interval: 60s
       rules:
         - alert: RenovateOperatorDown
@@ -18,9 +17,10 @@ spec:
           for: 10m
           labels:
             severity: warning
+            component: platform
             priority: P2
-            component: renovate
           annotations:
+            dashboard_url: "/d/argocd-overview"
             summary: "Renovate Operator down >10min — dependency updates frozen"
             description: "Operator unreachable. No RenovateJob can be reconciled. Falls langfristig: PAT-Expiry, OOM, RBAC-Issue."
             action: "kubectl logs -n renovate-operator deploy/renovate-operator-renovate-operator --tail=50"
@@ -35,13 +35,15 @@ spec:
           for: 30m
           labels:
             severity: warning
+            component: platform
             priority: P3
-            component: renovate
           annotations:
+            dashboard_url: "/d/argocd-overview"
             summary: "orphan-pr-opener kein erfolgreicher Run in >1h"
             description: "v43-Quirk-Workaround broken. Renovate PRs hängen ggf. als orphan branches ohne PR."
+            action: "kubectl get cronjob,jobs -n renovate-operator | grep orphan; letzten Job-Pod loggen."
 
-    - name: renovate.runs
+    - name: renovate-runs
       interval: 5m
       rules:
         - alert: RenovateNoSuccessfulRunIn13h
@@ -50,12 +52,13 @@ spec:
           for: 30m
           labels:
             severity: warning
+            component: platform
             priority: P2
-            component: renovate
           annotations:
-            summary: "Renovate hat kein erfolgreichen Run in >13h für RenovateJob {{ $labels.renovatejob }} (2 Läufe verpasst bei 6h-Schedule)"
-            description: "PAT-Expiry, GitHub-Rate-Limit, Repo-Unreachable möglich. Dashboard-Issue checken."
-            action: "kubectl get jobs -n renovate-operator | grep renovate ; kubectl logs -n renovate-operator <last-job-pod>"
+            dashboard_url: "/d/argocd-overview"
+            summary: "Renovate: kein erfolgreicher Run in >13h für {{ $labels.renovatejob }} (2 Läufe verpasst bei 6h-Schedule)"
+            description: "PAT-Expiry, GitHub-Rate-Limit oder Repo-Unreachable möglich."
+            action: "kubectl get jobs -n renovate-operator | grep renovate; kubectl logs -n renovate-operator <last-job-pod>"
 
         - alert: RenovateJobFailureRateHigh
           expr: |
@@ -63,8 +66,10 @@ spec:
           for: 15m
           labels:
             severity: warning
+            component: platform
             priority: P3
-            component: renovate
           annotations:
+            dashboard_url: "/d/argocd-overview"
             summary: "RenovateJob {{ $labels.job_name }} fails >50% der Zeit"
             description: "Job-Pod stirbt repeatedly. Häufige Ursachen: OOMKilled, Image-Pull, PAT-Auth-403."
+            action: "kubectl -n renovate-operator describe job {{ $labels.job_name }}; Pod-Logs auf OOM/403 prüfen."

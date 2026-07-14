@@ -33,3 +33,28 @@ spec:
     # KeycloakLoginFailureSpike removed: keycloak_failed_login_attempts needs the 3rd-party
     # keycloak-metrics-spi (not deployed) → was permanently blind. Re-add via that SPI, OR a
     # Vector log_to_metric over keycloak login-failure events (like waf_coraza_detections_total).
+
+    # ── TICKET ──
+    - name: keycloak-ticket
+      interval: 60s
+      rules:
+        - alert: KeycloakHttp5xxRateHigh
+          # Consolidated 2026-07-14 from keycloak/base/monitoring.yaml (ex "InfinispanCacheTimeouts",
+          # born from the ISPN000427 outage). Renamed: at 1 replica there is no Infinispan cluster —
+          # but a sustained 5xx burst on the auth provider is a real ticket regardless of cause.
+          # The stray file's other rules were dead (kube_pod_labels join needs a KSM allowlist,
+          # keycloak_failed_login_attempts needs the metrics-spi) and were dropped.
+          expr: |
+            sum by (namespace) (
+              rate(http_server_requests_seconds_count{namespace="keycloak",status=~"5.."}[5m])
+            ) > 0.5
+          for: 3m
+          labels:
+            severity: warning
+            component: apps
+            priority: P2
+          annotations:
+            dashboard_url: "/d/keycloak-health"
+            summary: "Keycloak HTTP 5xx rate {{ $value | humanize }}/s"
+            description: "Sustained 5xx burst on the auth provider — login flows may be failing (DB, cache, or upstream issue)."
+            action: "kubectl -n keycloak logs -l app=keycloak --tail=100 | grep -iE 'error|ISPN'; check the CNPG keycloak-db."
