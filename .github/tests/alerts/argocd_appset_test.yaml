@@ -1,0 +1,89 @@
+# promtool unit tests — ArgoCD ApplicationSet-Blindspot-Alerts (Fire + Negativ).
+# Run: python3 .github/scripts/test-alerts.py
+rule_files:
+  - .rules.generated.yaml
+evaluation_interval: 1m
+tests:
+  # ── ArgoCDApplicationSetControllerDown: FIRES wenn BEIDE Replicas weg ──
+  - interval: 1m
+    input_series:
+      - series: 'up{job="argocd-applicationset-controller-metrics",pod="appset-a"}'
+        values: '1 1 1 0 0 0 0 0 0 0 0 0'
+      - series: 'up{job="argocd-applicationset-controller-metrics",pod="appset-b"}'
+        values: '1 1 1 0 0 0 0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ArgoCDApplicationSetControllerDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              component: platform
+              priority: P2
+            exp_annotations:
+              dashboard_url: "/d/argocd-overview"
+              summary: "ArgoCD applicationset-controller down (beide Replicas)"
+              description: "AppSet-Generierung steht >5min — neue/geänderte List-Einträge erzeugen keine Applications, Fehler nur im Controller-Log sichtbar."
+              action: "kubectl -n argocd rollout restart deployment/argocd-applicationset-controller; kubectl -n argocd logs deploy/argocd-applicationset-controller | tail."
+
+  # ── ArgoCDApplicationSetControllerDown: NICHT bei nur 1 toter Replica ──
+  - interval: 1m
+    input_series:
+      - series: 'up{job="argocd-applicationset-controller-metrics",pod="appset-a"}'
+        values: '1 1 1 1 1 1 1 1 1 1 1 1'
+      - series: 'up{job="argocd-applicationset-controller-metrics",pod="appset-b"}'
+        values: '1 1 1 0 0 0 0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ArgoCDApplicationSetControllerDown
+        exp_alerts: []
+
+  # ── ArgoCDAppsMassDeletion: FIRES — 10 Apps → 5 Apps (50% übrig < 80%) ──
+  - interval: 1m
+    input_series:
+      - series: 'argocd_app_info{name="app-1"}'
+        values: '1x45'
+      - series: 'argocd_app_info{name="app-2"}'
+        values: '1x45'
+      - series: 'argocd_app_info{name="app-3"}'
+        values: '1x45'
+      - series: 'argocd_app_info{name="app-4"}'
+        values: '1x45'
+      - series: 'argocd_app_info{name="app-5"}'
+        values: '1x45'
+      - series: 'argocd_app_info{name="del-1"}'
+        values: '1x10 stale'
+      - series: 'argocd_app_info{name="del-2"}'
+        values: '1x10 stale'
+      - series: 'argocd_app_info{name="del-3"}'
+        values: '1x10 stale'
+      - series: 'argocd_app_info{name="del-4"}'
+        values: '1x10 stale'
+      - series: 'argocd_app_info{name="del-5"}'
+        values: '1x10 stale'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: ArgoCDAppsMassDeletion
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              component: platform
+              priority: P1
+            exp_annotations:
+              dashboard_url: "/d/argocd-overview"
+              summary: "ArgoCD Apps massenhaft verschwunden (50% der Vor-30min-Zahl übrig)"
+              description: "App-Anzahl fiel in 30min um >20% — AppSet gelöscht / Generator leer / Kaskaden-Prune läuft. Sofort prüfen."
+              action: "kubectl get applicationsets -n argocd; kubectl -n argocd logs deploy/argocd-applicationset-controller | tail -50; letzter Merge auf kubernetes/applicationsets/?"
+
+  # ── ArgoCDAppsMassDeletion: NICHT bei stabiler App-Zahl ──
+  - interval: 1m
+    input_series:
+      - series: 'argocd_app_info{name="app-1"}'
+        values: '1x45'
+      - series: 'argocd_app_info{name="app-2"}'
+        values: '1x45'
+      - series: 'argocd_app_info{name="app-3"}'
+        values: '1x45'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: ArgoCDAppsMassDeletion
+        exp_alerts: []
