@@ -26,6 +26,42 @@ spec:
             description: "GitOps reconciliation halted >5min — no auto-deploy/self-heal until restored."
             action: "kubectl -n argocd rollout restart statefulset/argocd-application-controller; check its logs + resource limits."
 
+        # 2 Replicas leader-elected → erst BEIDE weg = Ausfall. Quellen-Warnung
+        # (appset-Docs): Generator-Fehler landen NUR im Controller-Log, nicht in
+        # der UI — ohne Controller fehlen neue Apps still.
+        - alert: ArgoCDApplicationSetControllerDown
+          expr: sum(up{job="argocd-applicationset-controller-metrics"}) == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: platform
+            priority: P2
+          annotations:
+            dashboard_url: "/d/argocd-overview"
+            summary: "ArgoCD applicationset-controller down (beide Replicas)"
+            description: "AppSet-Generierung steht >5min — neue/geänderte List-Einträge erzeugen keine Applications, Fehler nur im Controller-Log sichtbar."
+            action: "kubectl -n argocd rollout restart deployment/argocd-applicationset-controller; kubectl -n argocd logs deploy/argocd-applicationset-controller | tail."
+
+        # Massen-Verschwinden von Apps (>20% in 30min, Baseline ~68) = AppSet-GAU
+        # (AppSet geloescht/Generator leer -> Kaskaden-Delete). preserve-
+        # ResourcesOnDeletion schuetzt die Workloads, DAS hier macht es sichtbar.
+        - alert: ArgoCDAppsMassDeletion
+          expr: |
+            count(argocd_app_info)
+              /
+            (count(argocd_app_info offset 30m) > 0)
+              < 0.8
+          for: 5m
+          labels:
+            severity: warning
+            component: platform
+            priority: P1
+          annotations:
+            dashboard_url: "/d/argocd-overview"
+            summary: "ArgoCD Apps massenhaft verschwunden ({{ $value | humanizePercentage }} der Vor-30min-Zahl übrig)"
+            description: "App-Anzahl fiel in 30min um >20% — AppSet gelöscht / Generator leer / Kaskaden-Prune läuft. Sofort prüfen."
+            action: "kubectl get applicationsets -n argocd; kubectl -n argocd logs deploy/argocd-applicationset-controller | tail -50; letzter Merge auf kubernetes/applicationsets/?"
+
         # lldap excluded: its hourly bootstrap CronJob churns app-health (job exits 1 on
         # ≥3 dual-store-bug users → app Degraded across hours) — already covered by the
         # dedicated LLDAPBootstrapCronJobFailing below, and an lldap-service outage surfaces
