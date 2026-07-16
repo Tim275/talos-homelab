@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postfix-relay
+  namespace: mail
+  labels:
+    app: postfix-relay
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postfix-relay
+  template:
+    metadata:
+      labels:
+        app: postfix-relay
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postfix
+          image: boky/postfix:v5.1.0-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: submission
+              containerPort: 587
+          env:
+            # In-built Postfix-Spamschutz: nur Mails VON diesen Domains werden relayed
+            - name: ALLOWED_SENDER_DOMAINS
+              value: "timourhomelab.org"
+            - name: POSTFIX_myhostname
+              value: "mail.timourhomelab.org"
+            # Cluster-Pods duerfen ohne Auth relayen (interner Relay, NICHT exponiert)
+            - name: POSTFIX_mynetworks
+              value: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+            # ---- DELIVERABILITY-UPGRADE (spaeter, swappable - Apps merken NICHTS) ----
+            # Direct-Send (jetzt): Homelab-IP hat keine Reputation -> Gmail/Outlook
+            # rejecten evtl. Fuer zuverlaessige Zustellung Free-Upstream setzen;
+            # n8n/Keycloak/Grafana bleiben unveraendert (kennen nur diesen Relay):
+            # - name: RELAYHOST
+            #   value: "smtp-relay.brevo.com:587"
+            # - name: RELAYHOST_USERNAME
+            #   valueFrom: { secretKeyRef: { name: postfix-upstream, key: username } }
+            # - name: RELAYHOST_PASSWORD
+            #   valueFrom: { secretKeyRef: { name: postfix-upstream, key: password } }
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          livenessProbe:
+            tcpSocket:
+              port: 587
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: 587
+            initialDelaySeconds: 10
+            periodSeconds: 15
