@@ -84,24 +84,21 @@ talos_nodes = {
   }
 
   # ─── FUTURE NODES (vorbereitet, einkommentieren sobald neue Hardware da) ───
-  # IP/MAC/vm_id sind Platzhalter (frei: .102/.106/.109+, vm 1006+) — vor Aktivierung setzen.
-  # Reihenfolge: erst host3 in Proxmox, dann ctrl-1+ctrl-2 (etcd 1→3 = SPOF weg),
-  # dann worker-6 als ai-Pool (Taint hält Alltagslast fern, MLOps-Roadmap).
 
   # "ctrl-1" = {
-  #   host_node      = "msa2proxmox"   # CP-Spread: nipogi + msa2 + host3
+  #   host_node      = "msa2proxmox"
   #   machine_type   = "controlplane"
   #   ip             = "192.168.0.102"
   #   mac_address    = "BC:24:11:2E:C8:B1"
   #   vm_id          = 1006
   #   cpu            = 4
   #   ram_dedicated  = 12288
-  #   datastore_id   = "local-zfs"     # etcd-fsync: beste Disk des Hosts nehmen!
+  #   datastore_id   = "local-zfs"
   #   os_disk_size   = 50
   #   ceph_disk_size = 0
   # }
   # "ctrl-2" = {
-  #   host_node      = "host3"         # erst mit 3. Host ueberlebt etcd einen HOST-Ausfall
+  #   host_node      = "host3"
   #   machine_type   = "controlplane"
   #   ip             = "192.168.0.106"
   #   mac_address    = "BC:24:11:2E:C8:B2"
@@ -122,7 +119,7 @@ talos_nodes = {
   #   ram_dedicated  = 32768
   #   datastore_id   = "local-zfs"
   #   os_disk_size   = 50
-  #   ceph_disk_size = 250             # host3-OSDs => Ceph 3. Zone => size-3-Pools moeglich
-  #   # pool         = "ai"            # + Taint dedicated=ai:NoSchedule (GPU/ML exklusiv)
+  #   ceph_disk_size = 250
+  #   # pool         = "ai"
   # }
 }
