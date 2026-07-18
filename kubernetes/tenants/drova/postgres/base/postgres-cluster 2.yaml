@@ -11,6 +11,9 @@ metadata:
 spec:
   instances: 3
   imageName: ghcr.io/cloudnative-pg/postgresql:16.1
+  # Preemption + Eviction-Reihenfolge: DB wird zuletzt verdraengt
+  # (Klasse aus tenants/drova/kafka/base — Requests bewusst schlank gelassen)
+  priorityClassName: platform-critical
   resources:
     requests:
       memory: 256Mi
@@ -22,9 +25,13 @@ spec:
     size: 10Gi
     storageClass: rook-ceph-block-enterprise-retain
   postgresql:
+    shared_preload_libraries:
+      - pgaudit
     parameters:
       max_connections: '100'
       shared_buffers: 128MB
+      pgaudit.log: "ddl,write,role"
+      pgaudit.log_parameter: "on"
   plugins:
   - name: barman-cloud.cloudnative-pg.io
     parameters:
@@ -48,6 +55,19 @@ spec:
     # 8 worker nodes — plenty of capacity. preferred was a homelab-shortcut.
     podAntiAffinityType: required
     topologyKey: kubernetes.io/hostname
+    # node-pool prep (inaktiv): nodeSelector: {node-pool: stateful}
+  # Zone-Spread HART: nie alle 3 Instanzen auf einem Proxmox-Host.
+  # ScheduleAnyway verlor gegen das RAM-Scoring (alle 3 landeten auf msa2 = Totalausfall-Risiko).
+  # Trade-off: bei echtem Zonen-Ausfall kann die 3. Instanz Pending bleiben — akzeptiert,
+  # dafür überlebt garantiert eine Instanz in der anderen Zone.
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: DoNotSchedule
+      labelSelector:
+        matchLabels:
+          cnpg.io/cluster: drova-postgres
+          cnpg.io/podRole: instance
   # Rook-Ceph disk I/O is slow — replicas need more time for WAL replay on startup
   probes:
     startup:
