@@ -46,21 +46,24 @@ if err == null {
 '''
 
 # Filter out noisy logs
+# Tetragon runs in kube-system but its runtime-security events must pass (SIEM).
 [transforms.filter_noise]
 type = "filter"
 inputs = ["parse_json"]
 condition = '''
-!contains(to_string(.message) ?? "", "GET /healthz") &&
+(!contains(to_string(.message) ?? "", "GET /healthz") &&
 !contains(to_string(.message) ?? "", "GET /readyz") &&
-!contains(to_string(.kubernetes.namespace) ?? "", "kube-system") ||
+!contains(to_string(.kubernetes.namespace) ?? "", "kube-system")) ||
 contains(to_string(.level) ?? "", "error") ||
-contains(to_string(.level) ?? "", "warn")
+contains(to_string(.level) ?? "", "warn") ||
+starts_with(to_string(.kubernetes.pod_name) ?? "", "tetragon") ||
+starts_with(to_string(.kubernetes.pod_name) ?? "", "coredns")
 '''
 
 # Kubernetes API server audit logs (control plane nodes only)
 [sources.kube_audit_logs]
 type = "file"
-include = ["/var/log/audit/kube/audit.log"]
+include = ["/var/log/audit/kube/kube-apiserver*.log"]
 read_from = "end"
 
 [transforms.parse_kube_audit]
@@ -68,6 +71,10 @@ type = "remap"
 inputs = ["kube_audit_logs"]
 source = '''
 . = parse_json!(string!(.message))
+# Drop raw request/response bodies + annotations — full K8s objects explode the ES mapping
+del(.requestObject)
+del(.responseObject)
+del(.annotations)
 .source = "kubernetes-audit"
 .cluster = "talos-homelab"
 .environment = "production"
@@ -81,10 +88,13 @@ source = '''
 ."event.outcome" = if exists(.responseStatus.code) && to_int!(.responseStatus.code) < 400 { "success" } else { "failure" }
 ."user.name" = string(.user.username) ?? "unknown"
 ."user.id" = string(.user.uid) ?? ""
-."source.ip" = if exists(.sourceIPs) && length!(.sourceIPs) > 0 { string!(.sourceIPs[0]) } else { "" }
+."source_ip" = if exists(.sourceIPs) && length!(.sourceIPs) > 0 { string!(.sourceIPs[0]) } else { "" }
 ."kubernetes.namespace" = string(.objectRef.namespace) ?? ""
 ."kubernetes.resource" = string(.objectRef.resource) ?? ""
 ."kubernetes.name" = string(.objectRef.name) ?? ""
+del(.user)
+del(.objectRef)
+del(.responseStatus)
 '''
 
 [sources.hubble_flows]
@@ -102,10 +112,20 @@ source = '''
 .cluster = "talos-homelab"
 '''
 
+# Security-relevant flows only. FORWARDED/TRACED flooded the pipeline
+# (every TCP packet event) and starved the sampler — Hubble UI/metrics
+# already cover healthy traffic; logs only need verdicts that matter.
+[transforms.filter_hubble_security]
+type = "filter"
+inputs = ["parse_hubble"]
+condition = '''
+includes(["DROPPED", "ERROR", "AUDIT", "POLICY_DENIED"], to_string(.flow.verdict) ?? to_string(.verdict) ?? "")
+'''
+
 # Forward to Vector Aggregator
 [sinks.vector_aggregator]
 type = "vector"
-inputs = ["filter_noise", "parse_kube_audit", "parse_hubble"]
+inputs = ["filter_noise", "parse_kube_audit", "filter_hubble_security"]
 address = "vector-aggregator.elastic-system.svc.cluster.local:6000"
 version = "2"
 

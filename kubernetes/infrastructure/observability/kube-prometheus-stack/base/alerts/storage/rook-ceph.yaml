@@ -21,18 +21,22 @@ spec:
             severity: critical
             component: storage
           annotations:
+            dashboard_url: "/d/ceph-cluster"
             summary: "Ceph cluster HEALTH_ERR"
             description: "Rook-Ceph reports HEALTH_ERR — data integrity at risk."
+            action: "Toolbox: 'ceph health detail' → root cause; often full OSD or inconsistent PG ('ceph pg repair <id>')."
 
         - alert: CephQuorumLost
-          expr: (ceph_osd_up + ceph_osd_in) / (ceph_osd_up + ceph_osd_down) < 0.5
+          expr: sum(ceph_osd_up) / count(ceph_osd_up) < 0.5
           for: 1m
           labels:
             severity: critical
             component: storage
           annotations:
+            dashboard_url: "/d/ceph-cluster"
             summary: "Ceph lost quorum — majority of OSDs down"
             description: "More than 50% of OSDs down — DATA LOSS RISK, storage unavailable."
+            action: "kubectl -n rook-ceph get pod -l app=rook-ceph-osd; check node/disk of down OSDs; do NOT restart all OSDs at once."
 
     # ── TICKET ──
     - name: ceph-ticket
@@ -46,8 +50,10 @@ spec:
             component: storage
             priority: P2
           annotations:
+            dashboard_url: "/d/ceph-cluster"
             summary: "Ceph OSD {{ $labels.ceph_daemon }} down"
             description: "OSD down >10min — replication degraded (replica=2, msa2 still holds copies)."
+            action: "kubectl -n rook-ceph logs -l app=rook-ceph-osd; check host SSD SMART (smartctl); reschedule OSD pod if node-local."
 
         - alert: CephPGsNotActive
           # Targeted replacement for the dropped (noisy) blanket HEALTH_WARN: fires ONLY when
@@ -61,19 +67,23 @@ spec:
             component: storage
             priority: P2
           annotations:
+            dashboard_url: "/d/ceph-cluster"
             summary: "Ceph {{ $value }} PGs not active for 15m — data availability degraded"
             description: "PGs stuck inactive/peering — clients on them block (slow-ops cascade → RGW/CNPG timeouts). Check 'ceph pg dump_stuck inactive' + cross-node OSD heartbeats / Cilium NodeEncryption."
+            action: "Toolbox: 'ceph pg dump_stuck inactive'; check cross-node OSD heartbeats + Cilium NodeEncryption (encrypt-node deadlock 2026-05-24)."
 
         - alert: CephOSDNearFull
-          expr: ceph_osd_stat_bytes_used / ceph_osd_stat_bytes > 0.75
+          expr: ceph_osd_stat_bytes_used / ceph_osd_stat_bytes > 0.82
           for: 30m
           labels:
             severity: warning
             component: storage
             priority: P2
           annotations:
-            summary: "Ceph OSD {{ $labels.ceph_daemon }} >75% full"
-            description: "OSD at {{ $value | humanizePercentage }} — add capacity before it blocks writes."
+            dashboard_url: "/d/ceph-cluster"
+            summary: "Ceph OSD {{ $labels.ceph_daemon }} >82% full"
+            description: "OSD at {{ $value | humanizePercentage }} — Ceph nearfull at 85%, blocks writes at 95%. Add capacity."
+            action: "Toolbox 'ceph osd df'. Balancer is upmap (already optimal) — reweight won't help on same-disk OSDs; grow/add OSD capacity."
 
         - alert: RookCephOperatorDown
           expr: up{job="rook-ceph-operator"} == 0
@@ -83,18 +93,41 @@ spec:
             component: storage
             priority: P2
           annotations:
+            dashboard_url: "/d/ceph-cluster"
             summary: "Rook-Ceph operator down"
             description: "Operator unreachable >5min — Ceph reconcile/management operations blocked."
+            action: "kubectl -n rook-ceph rollout restart deploy/rook-ceph-operator; check operator logs."
 
-        - alert: RGWBucketQuotaWarning
-          expr: |
-            (ceph_rgw_bucket_used_bytes / ceph_rgw_bucket_quota_bytes) > 0.85
-            and ceph_rgw_bucket_quota_bytes > 0
-          for: 30m
+        # RGWBucketQuotaWarning removed: the Ceph mgr prometheus module doesn't export
+        # ceph_rgw_bucket_* (no per-bucket quota metrics) → was a permanently-blind alert.
+
+        - alert: CephSlowOps
+          # Service-level signal for BlueStore slow-ops (HEALTH_WARN). Replaces the noisy
+          # upstream NodeDiskIOSaturation (disabled in values-prod) which false-fires on
+          # Ceph disks. Ticket-tier: slow-ops = degraded performance, not an outage.
+          expr: ceph_health_detail{name="BLUESTORE_SLOW_OP_ALERT"} > 0
+          for: 15m
           labels:
             severity: warning
             component: storage
             priority: P2
           annotations:
-            summary: "RGW bucket {{ $labels.bucket }} >85% of quota"
-            description: "Bucket fills soon — Velero/CNPG/Loki/Tempo writes will fail at 100%."
+            dashboard_url: "/d/ceph-cluster"
+            summary: "Ceph BlueStore slow operations on OSDs"
+            description: "Slow-ops sustained >15min — OSDs can't keep up (usually consumer-SSD write pressure, e.g. msa2 Crucial running 3 OSDs). Degraded, not failure."
+            action: "Toolbox: 'ceph health detail' (which OSDs) + 'ceph osd perf' (latency); check disk SMART + the heaviest write-load on that node."
+
+        - alert: CephMonClockSkew
+          # mon clock skew → quorum instability + cert/SVID/SA-token auth risk (same NTP root
+          # as TalosNodeClockSkew / SPIRE). Service-level via ceph_health_detail.
+          expr: ceph_health_detail{name="MON_CLOCK_SKEW"} > 0
+          for: 10m
+          labels:
+            severity: warning
+            component: storage
+            priority: P2
+          annotations:
+            dashboard_url: "/d/ceph-cluster"
+            summary: "Ceph mon clock skew detected"
+            description: "A Ceph mon's clock drifted — risks quorum instability + cert/token auth. Same NTP root cause as TalosNodeClockSkew."
+            action: "Toolbox: 'ceph time-sync-status'; check NTP on the Proxmox hosts + Talos nodes ('talosctl time')."

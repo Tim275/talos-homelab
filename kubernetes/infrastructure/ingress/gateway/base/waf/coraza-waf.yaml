@@ -1,0 +1,50 @@
+# Coraza WAF (OWASP CRS 4.14) — gateway-wide Envoy WASM filter, DetectionOnly.
+# Rollout + tuning playbook: CLAUDE.md → "Envoy Gateway + Coraza WAF".
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyExtensionPolicy
+metadata:
+  name: coraza-waf
+  namespace: gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: envoy-gateway
+  wasm:
+    - name: coraza
+      rootID: coraza
+      failOpen: true
+      code:
+        type: Image
+        image:
+          url: ghcr.io/corazawaf/coraza-proxy-wasm:0.6.0
+      config:
+        # config must be a structured object, not a |-string (string → "no default WAF").
+        directives_map:
+          default:
+            - "Include @recommended-conf"
+            - "Include @crs-setup-conf"
+            # - 'SecAction "id:9000001,phase:1,nolog,pass,t:none,setvar:tx.blocking_paranoia_level=2"'  # PL2 — activate after FP-soak
+            - "SecRuleEngine On"  # enforcing — revert to DetectionOnly if legit traffic gets 403'd
+            - "SecResponseBodyAccess Off"  # drova SPA > 512KB → empty 520; Off keeps request-side protection
+            - 'SecRule REQUEST_HEADERS:Upgrade "@streq websocket" "id:1000,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - 'SecRule REQUEST_HEADERS:Content-Type "@beginsWith application/grpc" "id:1001,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            # Kibana false-positive exclusions (complex KQL/bsearch trips 942xxx SQLi → 949110 block)
+            - 'SecRule REQUEST_URI "@beginsWith /internal/bsearch" "id:1100010,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - 'SecRule REQUEST_URI "@beginsWith /api/saved_objects" "id:1100011,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            # Grafana false-positive exclusion (PromQL in /api/ds/query trips 942xxx SQLi → 949110 block)
+            - 'SecRule REQUEST_URI "@beginsWith /api/ds/" "id:1100012,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            # Keycloak OIDC-Login false-positive: CRS 934110 (SSRF) flaggt redirect_uri=http://localhost:18000
+            # (kubelogins lokaler Callback) als "Cloud-Metadata-URL" → anomaly score 5 → 949111 blockt (403).
+            # Blockt kubectl-OIDC + SSO. Verifiziert via Envoy-Coraza-Log 2026-06-17. login-actions = Login-Form-POST.
+            - 'SecRule REQUEST_URI "@beginsWith /realms/kubernetes/protocol/openid-connect" "id:1100013,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - 'SecRule REQUEST_URI "@beginsWith /realms/kubernetes/login-actions" "id:1100014,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            # n8n false-positive: REST-API nutzt PATCH/PUT/DELETE + text/plain-Telemetrie.
+            # CRS 911100 (Method-Enforcement) blockt PATCH /rest/me/password -> 403 beim Passwort-
+            # Aendern; 920420 blockt /rest/ph/ (text/plain). Verifiziert Envoy-Coraza-Log 2026-07-15.
+            # n8n = public, haengt hinter Cloudflare-Edge-WAF + App-Login -> Engine fuer den Host aus.
+            - 'SecRule REQUEST_HEADERS:Host "@streq n8n.timourhomelab.org" "id:1100015,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - "Include @owasp_crs/*.conf"
+        default_directives: "default"

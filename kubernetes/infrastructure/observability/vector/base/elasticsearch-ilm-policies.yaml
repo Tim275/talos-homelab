@@ -17,7 +17,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: create-ilm-policies
-          image: curlimages/curl:8.20.0@sha256:b3f1fb2a51d923260350d21b8654bbc607164a987e2f7c84a0ac199a67df812a
+          image: curlimages/curl:8.21.0@sha256:7c12af72ceb38b7432ab85e1a265cff6ae58e06f95539d539b654f2cfa64bb13
           env:
             - name: ES_URL
               value: "https://production-cluster-es-http.elastic-system.svc.cluster.local:9200"
@@ -212,12 +212,53 @@ spec:
                 }'
 
               # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              # POLICY 5: AUDIT LOGS (90 days — security forensics / compliance)
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              echo " Creating ILM Policy: logs-audit-policy"
+
+              curl -k -X PUT "${ES_URL}/_ilm/policy/logs-audit-policy" \
+                -u "elastic:${ELASTIC_PASSWORD}" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "policy": {
+                    "phases": {
+                      "hot": {
+                        "min_age": "0ms",
+                        "actions": {
+                          "rollover": {
+                            "max_primary_shard_size": "20gb",
+                            "max_age": "7d"
+                          },
+                          "set_priority": {
+                            "priority": 100
+                          }
+                        }
+                      },
+                      "warm": {
+                        "min_age": "7d",
+                        "actions": {
+                          "set_priority": {
+                            "priority": 50
+                          }
+                        }
+                      },
+                      "delete": {
+                        "min_age": "90d",
+                        "actions": {
+                          "delete": {}
+                        }
+                      }
+                    }
+                  }
+                }'
+
+              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
               # APPLY ILM POLICIES TO DATA STREAMS
               # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
               echo " Applying ILM Policies to Data Streams..."
 
               # Apply to CRITICAL logs
-              curl -k -X PUT "${ES_URL}/_data_stream/logs-*.critical-*/_settings" \
+              curl -k -X PUT "${ES_URL}/logs-*.critical-*/_settings" \
                 -u "elastic:${ELASTIC_PASSWORD}" \
                 -H 'Content-Type: application/json' \
                 -d '{
@@ -225,7 +266,7 @@ spec:
                 }'
 
               # Apply to WARN logs
-              curl -k -X PUT "${ES_URL}/_data_stream/logs-*.warn-*/_settings" \
+              curl -k -X PUT "${ES_URL}/logs-*.warn-*/_settings" \
                 -u "elastic:${ELASTIC_PASSWORD}" \
                 -H 'Content-Type: application/json' \
                 -d '{
@@ -233,7 +274,7 @@ spec:
                 }'
 
               # Apply to INFO logs
-              curl -k -X PUT "${ES_URL}/_data_stream/logs-*.info-*/_settings" \
+              curl -k -X PUT "${ES_URL}/logs-*.info-*/_settings" \
                 -u "elastic:${ELASTIC_PASSWORD}" \
                 -H 'Content-Type: application/json' \
                 -d '{
@@ -241,11 +282,19 @@ spec:
                 }'
 
               # Apply to DEBUG logs
-              curl -k -X PUT "${ES_URL}/_data_stream/logs-*.debug-*/_settings" \
+              curl -k -X PUT "${ES_URL}/logs-*.debug-*/_settings" \
                 -u "elastic:${ELASTIC_PASSWORD}" \
                 -H 'Content-Type: application/json' \
                 -d '{
                   "index.lifecycle.name": "logs-debug-policy"
+                }'
+
+              # Apply to AUDIT logs (overrides the severity-based binding above → 90d)
+              curl -k -X PUT "${ES_URL}/logs-kube-audit.*-*/_settings" \
+                -u "elastic:${ELASTIC_PASSWORD}" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "index.lifecycle.name": "logs-audit-policy"
                 }'
 
               echo " All ILM Policies created and applied!"

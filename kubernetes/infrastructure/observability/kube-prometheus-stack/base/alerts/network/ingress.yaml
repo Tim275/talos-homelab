@@ -8,6 +8,40 @@ spec:
   # Two 5xx alerts deduped to one (the %-based EnvoyGateway5xxRateHigh). Down+Info merged.
   # Upstream-connection-failure → dashboard. CloudflaredAllDown = the external-access page.
   groups:
+    # ── RECORDING — edge SLO ratios (single source for the burn alerts below AND the
+    # edge-slo Grafana dashboard; availability = 1 - 5xx-ratio at the Envoy front door) ──
+    - name: edge-slo-recording
+      interval: 30s
+      rules:
+        - record: slo:edge_availability:ratio_rate5m
+          expr: |
+            1 - (
+              sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[5m]))
+              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total[5m])), 0.001)
+            )
+        - record: slo:edge_availability:ratio_rate30m
+          expr: |
+            1 - (
+              sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[30m]))
+              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total[30m])), 0.001)
+            )
+        - record: slo:edge_availability:ratio_rate1h
+          expr: |
+            1 - (
+              sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[1h]))
+              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total[1h])), 0.001)
+            )
+        - record: slo:edge_availability:ratio_rate6h
+          expr: |
+            1 - (
+              sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[6h]))
+              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total[6h])), 0.001)
+            )
+        - record: slo:edge_requests:rate5m
+          expr: sum(rate(envoy_cluster_upstream_rq_total[5m]))
+        - record: slo:edge_requests:rate30m
+          expr: sum(rate(envoy_cluster_upstream_rq_total[30m]))
+
     # ── PAGE ──
     - name: ingress-page
       interval: 60s
@@ -19,8 +53,10 @@ spec:
             severity: critical
             component: network
           annotations:
+            dashboard_url: "/d/envoy-global"
             summary: "All Cloudflared tunnels down"
             description: "External access via Cloudflare Tunnel completely down — all public services unreachable."
+            action: "kubectl -n cloudflared get pod -l app=cloudflared + logs; check the tunnel token secret + Cloudflare dashboard tunnel status."
 
     # ── TICKET ──
     - name: ingress-ticket
@@ -34,8 +70,10 @@ spec:
             component: network
             priority: P2
           annotations:
+            dashboard_url: "/d/envoy-global"
             summary: "Envoy Gateway controller down"
             description: "Gateway config updates blocked >3min (existing routes keep serving)."
+            action: "kubectl -n envoy-gateway-system rollout restart deploy/envoy-gateway; existing routes keep serving meanwhile."
 
         - alert: EnvoyGateway5xxRateHigh
           expr: |
@@ -49,8 +87,53 @@ spec:
             component: network
             priority: P2
           annotations:
+            dashboard_url: "/d/envoy-global"
             summary: "Envoy Gateway 5xx rate >5% ({{ $value | humanize }}%)"
             description: "Edge proxy seeing high upstream errors — backend services degraded, users see failures."
+            action: "Find the failing upstream in the envoy-global dashboard; check that backend's pods/health + any recent deploy."
+
+        - alert: EnvoyEdgeSLOFastBurn
+          # Edge availability SLO 99.5% (error budget 0.5%). Multi-window burn: 5m AND 1h
+          # 5xx-ratio both >14.4× budget (7.2%) = a month's budget gone in ~2 days → PAGE.
+          # Front-door SLO for EVERY exposed app (n8n, grafana, drova, …) — n8n has no internal
+          # error-SLI, so its user-facing availability is captured here. Traffic-floor kills
+          # low-traffic night false-pages.
+          expr: |
+            ((1 - slo:edge_availability:ratio_rate1h) > 0.072)
+            and
+            ((1 - slo:edge_availability:ratio_rate5m) > 0.072)
+            and
+            slo:edge_requests:rate5m > 0.05
+          for: 2m
+          labels:
+            severity: critical
+            component: network
+            priority: P1
+          annotations:
+            dashboard_url: "/d/envoy-global"
+            summary: "Edge SLO fast-burn: {{ $value | humanizePercentage }} 5xx (budget 0.5%)"
+            description: "The ingress edge is burning its availability error budget 14.4× — a month's budget in ~2 days. Every exposed app is affected."
+            action: "envoy-global dashboard → which upstream is 5xx'ing; check that backend + recent deploys. Pages because the whole front door is degraded."
+
+        - alert: EnvoyEdgeSLOSlowBurn
+          # Slow window: 30m AND 6h 5xx-ratio both >6× budget (3%) → catches a grinding
+          # degradation the fast-burn misses. Ticket.
+          expr: |
+            ((1 - slo:edge_availability:ratio_rate6h) > 0.03)
+            and
+            ((1 - slo:edge_availability:ratio_rate30m) > 0.03)
+            and
+            slo:edge_requests:rate30m > 0.05
+          for: 15m
+          labels:
+            severity: warning
+            component: network
+            priority: P2
+          annotations:
+            dashboard_url: "/d/envoy-global"
+            summary: "Edge SLO slow-burn: {{ $value | humanizePercentage }} 5xx (budget 0.5%)"
+            description: "The ingress edge has burned availability budget at 6× for hours — a persistent low-grade failure across the front door."
+            action: "envoy-global dashboard → the chronically-failing upstream; likely one backend flapping. Fix before it erodes the month's budget."
 
         - alert: EnvoyGatewayNoEndpoints
           expr: |
@@ -68,5 +151,7 @@ spec:
             component: network
             priority: P2
           annotations:
+            dashboard_url: "/d/envoy-global"
             summary: "Envoy Gateway: no healthy endpoints for {{ $labels.envoy_cluster_name }}"
             description: "User-facing upstream has 0 healthy endpoints >10min — traffic dropped."
+            action: "kubectl get endpoints -n {{ $labels.namespace }} {{ $labels.envoy_cluster_name }} — backend has 0 ready pods; check the deployment + readiness probe."

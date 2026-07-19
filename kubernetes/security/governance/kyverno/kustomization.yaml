@@ -4,7 +4,7 @@ kind: Kustomization
 helmCharts:
   - name: kyverno
     repo: https://kyverno.github.io/kyverno
-    version: "3.8.1"
+    version: "3.8.2"
     releaseName: kyverno
     namespace: kyverno
     includeCRDs: true
@@ -17,3 +17,18 @@ helmCharts:
         replicas: 1
       reportsController:
         replicas: 1
+        # 2026-07-14: ContainerMemoryLeakSuspected fing den Controller bei 111Mi/128Mi
+        # (87%, steigend) — Chart-Default 128Mi ist für 700+ PolicyReports zu klein.
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            memory: 512Mi
+      # Kyverno TUF — Sigstore-Trust-Root (Fulcio/Rekor) für keyless cosign-Verify.
+      # Ohne TUF meldete audit-verify-drova-signatures alle Images "unverified"
+      # (fehlender Trust-Root, Egress war OK). Aktiviert 2026-07-15 — platform-weit,
+      # betrifft alle verifyImages; Policies sind Audit-only, kein Blocking-Risiko.
+      features:
+        tuf:
+          enabled: true

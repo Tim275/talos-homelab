@@ -52,3 +52,9 @@ variable "nodes" {
     ceph_disk_datastore = optional(string)
   }))
 }
+
+variable "skip_cluster_health" {
+  description = "Skip the live talos_cluster_health data source — set true in CI where the cluster API is unreachable"
+  type        = bool
+  default     = false
+}

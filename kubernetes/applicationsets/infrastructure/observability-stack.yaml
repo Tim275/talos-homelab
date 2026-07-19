@@ -15,6 +15,10 @@ metadata:
 spec:
   goTemplate: true
   goTemplateOptions: ["missingkey=error"]
+  # AppSet weg (z.B. PR-Zeile verloren) => Apps ueberleben als Orphans
+  # statt Kaskaden-Delete+prune aller Layer-Workloads.
+  syncPolicy:
+    preserveResourcesOnDeletion: true
   generators:
     - matrix:
         generators:
@@ -29,7 +33,10 @@ spec:
                 - { component: prometheus,             appName: kube-prometheus-stack-in-cluster, path: kubernetes/infrastructure/observability/kube-prometheus-stack/overlays/prod, namespace: monitoring,   wave: "40" }
                 - { component: metrics-server,         appName: metrics-server,                   path: kubernetes/infrastructure/observability/metrics-server/overlays/prod,         namespace: kube-system,  wave: "0" }
                 - { component: blackbox-exporter,      appName: blackbox-exporter,                path: kubernetes/infrastructure/observability/blackbox-exporter/overlays/prod,      namespace: monitoring,   wave: "70" }
+                - { component: gatus,                  appName: gatus,                            path: kubernetes/infrastructure/observability/gatus/overlays/prod,                  namespace: monitoring,   wave: "70" }
                 - { component: pve-exporter,           appName: pve-exporter,                     path: kubernetes/infrastructure/observability/pve-exporter/overlays/prod,           namespace: monitoring,   wave: "70" }
+                - { component: netbird-exporter,       appName: netbird-exporter,                 path: kubernetes/infrastructure/observability/netbird-exporter/overlays/prod,       namespace: monitoring,   wave: "70" }
+                - { component: kiali,                  appName: kiali,                            path: kubernetes/infrastructure/observability/dashboards/kiali,                     namespace: istio-system, wave: "70" }
                 # LOGS — Backends @ 40, shippers @ 70 (after apps exist)
                 - { component: elasticsearch,          appName: elasticsearch,                    path: kubernetes/infrastructure/observability/elasticsearch/overlays/prod,             namespace: elastic-system, wave: "40" }
                 - { component: loki,                   appName: loki,                             path: kubernetes/infrastructure/observability/loki/overlays/prod,                     namespace: monitoring,   wave: "40" }
@@ -39,9 +46,10 @@ spec:
                 - { component: tempo,                  appName: tempo,                            path: kubernetes/infrastructure/observability/tempo/overlays/prod,                  namespace: monitoring,   wave: "40" }
                 - { component: jaeger,                 appName: jaeger,                           path: kubernetes/infrastructure/observability/jaeger/overlays/prod,                 namespace: jaeger,       wave: "40" }
                 - { component: opentelemetry,          appName: opentelemetry-collector,          path: kubernetes/infrastructure/observability/opentelemetry/overlays/prod,          namespace: opentelemetry, wave: "70" }
-                # DASHBOARDS / UI — Grafana backend @ 40, dashboards-CRs @ 70 (after Grafana)
+                # DASHBOARDS / UI — Grafana backend + ALLE Dashboard-CRs in einer App @ 40
+                # (separate "dashboards"-App entfernt 2026-07-14 — configs/ konsolidiert nach
+                #  grafana/base/custom-dashboards/: ein Ort, ein Namespace)
                 - { component: grafana,                appName: grafana,                          path: kubernetes/infrastructure/observability/dashboards/grafana/overlays/prod,            namespace: grafana,      wave: "40" }
-                - { component: dashboards,             appName: dashboards,                       path: kubernetes/infrastructure/observability/dashboards/configs/overlays/prod,            namespace: grafana,      wave: "70" }
                 - { component: hubble,                 appName: hubble,                           path: kubernetes/infrastructure/observability/dashboards/hubble/overlays/prod,             namespace: kube-system,  wave: "70" }
                 # ALERTING — PrometheusRules @ 70 (Prom CRDs available since wave 40)
                 - { component: infrastructure-alerts,  appName: infrastructure-alerts,            path: kubernetes/infrastructure/observability/alerting/alerts/overlays/prod,               namespace: monitoring,   wave: "70" }
@@ -59,7 +67,7 @@ spec:
       project: infrastructure
       source:
         repoURL: https://github.com/Tim275/talos-homelab
-        targetRevision: HEAD
+        targetRevision: main
         path: '{{.path}}'
       destination:
         server: '{{.server}}'

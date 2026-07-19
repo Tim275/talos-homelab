@@ -1,0 +1,88 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaMirrorMaker2
+metadata:
+  name: drova-mm2
+  namespace: drova
+spec:
+  # Same-Cluster-Demo (active-passive-Mechanik lernen, kein NodePort/2. Cluster):
+  # primary + mirror zeigen auf DENSELBEN Broker — Topics werden mit
+  # "primary."-Praefix gespiegelt (DefaultReplicationPolicy), Offset-Translation
+  # via checkpoints. Bei echtem DR: mirror-bootstrap auf den 2. Cluster drehen.
+  version: 4.1.1
+  replicas: 1
+  connectCluster: mirror
+  clusters:
+    - alias: primary
+      bootstrapServers: drova-kafka-kafka-bootstrap.drova.svc.cluster.local:9095
+      tls:
+        trustedCertificates:
+          - secretName: drova-kafka-cluster-ca-cert
+            certificate: ca.crt
+      authentication:
+        type: scram-sha-512
+        username: mm2
+        passwordSecret:
+          secretName: mm2
+          password: password
+    - alias: mirror
+      bootstrapServers: drova-kafka-kafka-bootstrap.drova.svc.cluster.local:9095
+      tls:
+        trustedCertificates:
+          - secretName: drova-kafka-cluster-ca-cert
+            certificate: ca.crt
+      authentication:
+        type: scram-sha-512
+        username: mm2
+        passwordSecret:
+          secretName: mm2
+          password: password
+      config:
+        # Connect-interne Topics: Cluster hat 3 Broker → RF 3 wie ueberall
+        config.storage.replication.factor: 3
+        offset.storage.replication.factor: 3
+        status.storage.replication.factor: 3
+  mirrors:
+    - sourceCluster: primary
+      targetCluster: mirror
+      topicsPattern: "trip-event-completed"
+      groupsPattern: ".*"
+      sourceConnector:
+        tasksMax: 1
+        config:
+          replication.factor: 3
+          offset-syncs.topic.replication.factor: 3
+          sync.topic.acls.enabled: "false"
+      checkpointConnector:
+        tasksMax: 1
+        config:
+          checkpoints.topic.replication.factor: 3
+          sync.group.offsets.enabled: "true"
+      heartbeatConnector:
+        config:
+          heartbeats.topic.replication.factor: 3
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      # drova-LimitRange injiziert sonst default cpu-limit 200m < request → Pod invalid
+      cpu: "1"
+      memory: 1Gi
+  # Connect-Boot (Plugin-Scan + JVM) braucht hier >60s — Default-Liveness killte
+  # den Start im Loop ("failed liveness probe, will be restarted", exit 0).
+  livenessProbe:
+    initialDelaySeconds: 180
+    timeoutSeconds: 10
+    periodSeconds: 15
+    failureThreshold: 6
+  readinessProbe:
+    initialDelaySeconds: 60
+    timeoutSeconds: 10
+    periodSeconds: 10
+    failureThreshold: 12
+  template:
+    pod:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault

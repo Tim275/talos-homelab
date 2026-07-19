@@ -1,6 +1,6 @@
-# Drova Kafka — Production-Grade KRaft with Dedicated Controllers + Brokers
+# Drova Kafka — KRaft with dedicated controllers + brokers
 #
-# Architecture: Industry-best-practice split (Strimzi docs recommend this for HA).
+# Split architecture (Strimzi docs recommend this for HA).
 # - 3 dedicated controllers (light pods, hold metadata quorum)
 # - 3 dedicated brokers (heavy pods, handle data + replication)
 # - Dual-role 3pods previously caused KRaft quorum deadlock in Strimzi 0.51 + Kafka 4.1.1
@@ -46,6 +46,15 @@ spec:
     "-Xmx": "768m"
   template:
     pod:
+      priorityClassName: platform-critical
+      # node-pool prep (inaktiv bis neue Hardware, Design: tofu/talos_nodes.auto.tfvars):
+      # affinity:
+      #   nodeAffinity:
+      #     preferredDuringSchedulingIgnoredDuringExecution:
+      #       - weight: 100
+      #         preference:
+      #           matchExpressions:
+      #             - { key: node-pool, operator: In, values: [stateful] }
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -98,6 +107,15 @@ spec:
     "-Xmx": "1g"
   template:
     pod:
+      priorityClassName: platform-critical
+      # node-pool prep (inaktiv bis neue Hardware, Design: tofu/talos_nodes.auto.tfvars):
+      # affinity:
+      #   nodeAffinity:
+      #     preferredDuringSchedulingIgnoredDuringExecution:
+      #       - weight: 100
+      #         preference:
+      #           matchExpressions:
+      #             - { key: node-pool, operator: In, values: [stateful] }
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -176,6 +194,25 @@ spec:
       num.io.threads: 16
       socket.send.buffer.bytes: 1048576
       socket.receive.buffer.bytes: 1048576
+  kafkaExporter:
+    topicRegex: ".*"
+    groupRegex: ".*"
+    # Kyverno require-limits/require-requests: mem-Limit + cpu/mem-Requests
+    # (kein CPU-Limit → kein CFS-Throttle, wie die App via automaxprocs).
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "64Mi"
+      limits:
+        memory: "256Mi"
+    template:
+      pod:
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          fsGroup: 1000
+          seccompProfile:
+            type: RuntimeDefault
   entityOperator:
     template:
       pod:

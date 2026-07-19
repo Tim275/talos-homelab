@@ -1,5 +1,12 @@
 # ARGOCD CONFIGURATION
 
+global:
+  priorityClassName: platform-critical
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+
 configs:
   # CRITICAL: Secret Management
   # ArgoCD Helm chart auto-generates these secrets on first install:
@@ -37,7 +44,7 @@ configs:
           essential: true
       # RP-Initiated Logout: ArgoCD "Log out" → KC end_session_endpoint
       # → KC kills its session too → next login requires re-authentication.
-      logoutURL: https://iam.timourhomelab.org/realms/kubernetes/protocol/openid-connect/logout?post_logout_redirect_uri={{returnURL}}&client_id=argocd
+      logoutURL: https://iam.timourhomelab.org/realms/kubernetes/protocol/openid-connect/logout?id_token_hint={{token}}&post_logout_redirect_uri={{logoutRedirectURL}}
     # PERFORMANCE: Optimized timeout and reconciliation settings
     timeout.reconciliation: "360s"        # Extended from 180s default
     timeout.reconciliation.jitter: "30s"   # Add jitter to prevent thundering herd
@@ -599,13 +606,13 @@ dex:
     limits:
       memory: 128Mi
 
-# DISABLE INTERNAL REDIS - USE REDIS-HA INSTEAD FOR BULLETPROOF CACHE
+# internal redis disabled — redis-ha with sentinel instead
 
 # Single Redis = single point of failure. Redis-HA = 3 replicas + Sentinel
 redis:
   enabled: false  # Disable single Redis - using redis-ha chart below
 
-#  REDIS-HA: BULLETPROOF 3-NODE SETUP WITH SENTINEL AUTO-FAILOVER
+#  redis-ha: 3 nodes + sentinel auto-failover
 
 # Never cache freeze, never hang - automatic failover in seconds
 redis-ha:
@@ -628,7 +635,22 @@ redis-ha:
   sentinel:
     quorum: 2  # Need 2 out of 3 sentinels to agree on failover
 
-  # REDIS-HA RESOURCES - Enterprise sizing for homelab
+    # PRODUCTION NOTE (2026-07-14): the sentinel container busy-looped at ~1 FULL CORE
+    # each on server-1/-2 (both scheduled on msa2) → host CPU hit 95°C, near thermal
+    # shutdown. redis itself was fine (~7m); the sentinel container had NO cpu limit.
+    # Diagnosed via: kubectl top nodes → worker-4/5 hot; then per-container raw metrics
+    # (/apis/metrics.k8s.io/.../pods/argocd-redis-ha-server-1) → sentinel=999m.
+    # A healthy sentinel needs <10m, so 100m is 10x headroom AND kills the busy-loop heat.
+    # HA stays intact (3 replicas + sentinel), only the runaway CPU is capped.
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+  # redis-ha resources
   redis:
     resources:
       requests:
@@ -746,6 +768,13 @@ repoServer:
   # REPO SERVER - ULTRA PERFORMANCE CONFIG
   # 2 replicas → parallel manifest-generation für 65+ apps.
   replicas: 2
+
+  # kustomize --enable-helm on the kube-prometheus-stack overlay renders >90s under
+  # evening Ceph-IO load → default 90s exec timeout produced ComparisonError/Unknown
+  # (2026-07-14, also hit blackbox-exporter). 3m gives the biggest chart headroom.
+  env:
+    - name: ARGOCD_EXEC_TIMEOUT
+      value: "3m"
 
   pdb:
     enabled: true
@@ -934,7 +963,7 @@ applicationSet:
       memory: 256Mi  # Higher baseline
     limits:
       cpu: 1000m     # Allow burst processing
-      memory: 2Gi    # Enterprise memory allocation
+      memory: 2Gi
 
   # APPLICATIONSET PERFORMANCE TUNING
   metrics:
@@ -991,7 +1020,7 @@ notifications:
         - name: Content-Type
           value: application/json
 
-  #  SLACK TEMPLATES - Enterprise Rich Notifications with Slack Blocks
+  #  slack templates (block kit)
   # Uses Webhook service with Slack Attachments API for colored sidebars
   # Reference: https://argo-cd.readthedocs.io/en/stable/operator-manual/notifications/services/webhook/
   templates:
@@ -1001,6 +1030,7 @@ notifications:
           method: POST
           body: |
             {
+              "channel": "#argocd-deployments",
               "attachments": [{
                 "title": " Application Deployed",
                 "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
@@ -1097,7 +1127,7 @@ notifications:
               }]
             }
 
-  # TRIGGERS - Production-grade with deduplication and null-safety
+  # triggers with deduplication and null-safety
   triggers:
     # PRODUCTION: Deployed = Sync succeeded AND healthy (not just sync)
     trigger.on-deployed: |
@@ -1160,7 +1190,6 @@ notifications:
   subscriptions:
     - recipients: ["slack"]
       triggers:
-        - on-deployed
         - on-health-degraded
         - on-sync-failed
         - on-sync-failed-degraded

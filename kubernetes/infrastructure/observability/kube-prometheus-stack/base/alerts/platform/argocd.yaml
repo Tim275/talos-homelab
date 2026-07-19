@@ -21,19 +21,66 @@ spec:
             component: platform
             priority: P2
           annotations:
+            dashboard_url: "/d/argocd-overview"
             summary: "ArgoCD application-controller down"
             description: "GitOps reconciliation halted >5min — no auto-deploy/self-heal until restored."
+            action: "kubectl -n argocd rollout restart statefulset/argocd-application-controller; check its logs + resource limits."
 
+        # 2 Replicas leader-elected → erst BEIDE weg = Ausfall. Quellen-Warnung
+        # (appset-Docs): Generator-Fehler landen NUR im Controller-Log, nicht in
+        # der UI — ohne Controller fehlen neue Apps still.
+        - alert: ArgoCDApplicationSetControllerDown
+          expr: sum(up{job="argocd-applicationset-controller-metrics"}) == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: platform
+            priority: P2
+          annotations:
+            dashboard_url: "/d/argocd-overview"
+            summary: "ArgoCD applicationset-controller down (beide Replicas)"
+            description: "AppSet-Generierung steht >5min — neue/geänderte List-Einträge erzeugen keine Applications, Fehler nur im Controller-Log sichtbar."
+            action: "kubectl -n argocd rollout restart deployment/argocd-applicationset-controller; kubectl -n argocd logs deploy/argocd-applicationset-controller | tail."
+
+        # Massen-Verschwinden von Apps (>20% in 30min, Baseline ~68) = AppSet-GAU
+        # (AppSet geloescht/Generator leer -> Kaskaden-Delete). preserve-
+        # ResourcesOnDeletion schuetzt die Workloads, DAS hier macht es sichtbar.
+        - alert: ArgoCDAppsMassDeletion
+          expr: |
+            count(argocd_app_info)
+              /
+            (count(argocd_app_info offset 30m) > 0)
+              < 0.8
+          for: 5m
+          labels:
+            severity: warning
+            component: platform
+            priority: P1
+          annotations:
+            dashboard_url: "/d/argocd-overview"
+            summary: "ArgoCD Apps massenhaft verschwunden ({{ $value | humanizePercentage }} der Vor-30min-Zahl übrig)"
+            description: "App-Anzahl fiel in 30min um >20% — AppSet gelöscht / Generator leer / Kaskaden-Prune läuft. Sofort prüfen."
+            action: "kubectl get applicationsets -n argocd; kubectl -n argocd logs deploy/argocd-applicationset-controller | tail -50; letzter Merge auf kubernetes/applicationsets/?"
+
+        # lldap excluded: its hourly bootstrap CronJob churns app-health (job exits 1 on
+        # ≥3 dual-store-bug users → app Degraded across hours) — already covered by the
+        # dedicated LLDAPBootstrapCronJobFailing below, and an lldap-service outage surfaces
+        # via the Keycloak SSO alerts. Generic app-health flapping on it = pure noise.
+        # drova-postgres excluded too: confirmed stale ArgoCD-health false-positive — the CNPG
+        # Cluster reports "healthy state" 3/3, no resource is actually Degraded (survives refresh/
+        # sync/controller-restart/recreate). Real DB issues surface via CnpgPrimaryDown / CNPGBackupStale.
         - alert: ArgoCDAppUnhealthy
-          expr: argocd_app_info{health_status=~"Degraded|Missing"} == 1
+          expr: argocd_app_info{health_status=~"Degraded|Missing", name!~"lldap|drova-postgres"} == 1
           for: 30m
           labels:
             severity: warning
             component: platform
             priority: P2
           annotations:
+            dashboard_url: "/d/argocd-overview"
             summary: "ArgoCD app unhealthy: {{ $labels.name }} ({{ $labels.health_status }})"
             description: "App resources Degraded/Missing >30min — distinct from expected manual-sync drift. Check the app."
+            action: "argocd app get {{ $labels.name }} (or kubectl describe app -n argocd {{ $labels.name }}); check the failing resource."
 
         - alert: LLDAPBootstrapCronJobFailing
           expr: |
@@ -45,6 +92,22 @@ spec:
             component: identity
             priority: P2
           annotations:
+            dashboard_url: "/d/argocd-overview"
             summary: "LLDAP bootstrap CronJob hasn't succeeded in 3h"
             description: "User reconciliation broken — Keycloak login may fail."
             action: "kubectl get cronjob -n lldap; kubectl logs -n lldap -l cronjob=lldap-bootstrap"
+
+        # Restores lldap-SERVICE coverage after lldap was excluded from the generic
+        # ArgoCDAppUnhealthy above — this watches the DEPLOYMENT, not the noisy bootstrap job.
+        - alert: LLDAPDown
+          expr: kube_deployment_status_replicas_available{namespace="lldap",deployment="lldap"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: identity
+            priority: P2
+          annotations:
+            dashboard_url: "/d/argocd-overview"
+            summary: "LLDAP directory down — Keycloak LDAP federation will fail"
+            description: "lldap Deployment has 0 available replicas >5min → LDAP-backed Keycloak logins start failing (SSO impact)."
+            action: "kubectl -n lldap get pod,deploy; kubectl -n lldap logs deploy/lldap; check its PVC/SQLite + the node."

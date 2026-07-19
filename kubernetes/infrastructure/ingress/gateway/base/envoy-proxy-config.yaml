@@ -23,5 +23,20 @@ spec:
                       matchLabels:
                         gateway.envoyproxy.io/owning-gateway-name: envoy-gateway
                     topologyKey: kubernetes.io/hostname
+          topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: topology.kubernetes.io/zone
+              whenUnsatisfiable: DoNotSchedule
+              nodeTaintsPolicy: Honor
+              matchLabelKeys:
+                - pod-template-hash
+              labelSelector:
+                matchLabels:
+                  gateway.envoyproxy.io/owning-gateway-name: envoy-gateway
       envoyService:
-        externalTrafficPolicy: Local  # preserve client-IP
+        # MUSS Cluster sein: mit Local announced Cilium-L2 die LB-IP (192.168.0.152) auf
+        # einem Node OHNE Envoy-Pod (Pods laufen nur auf Workern, IP landete auf ctrl-0)
+        # → externer Zugriff (LAN/VPN) läuft ins Leere (Timeout, kein Drop). Cluster macht
+        # cross-node-LB → LB-IP von überall erreichbar. Client-IP nur für den direkten
+        # LB-Zugang (LAN/VPN-Admin) nicht erhalten; Public-Traffic via cloudflared nutzt XFF.
+        externalTrafficPolicy: Cluster

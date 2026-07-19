@@ -16,7 +16,8 @@ spec:
           - resources:
               namespaces: ["kube-system", "kyverno", "argocd"]
       validate:
-        failureAction: Audit
+        # Enforce seit 2026-07-19 — PolicyReports zeigten 0 Violations nach Soak.
+        failureAction: Enforce
         message: "Using a mutable image tag like ':latest' is not allowed; pin a version."
         pattern:
           spec:
@@ -50,3 +51,65 @@ spec:
                   requests:
                     cpu: "?*"
                     memory: "?*"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: audit-require-limits
+spec:
+  failurePolicy: Ignore
+  background: true
+  rules:
+    - name: require-memory-limits
+      # Memory is incompressible → a container without a memory limit can OOM the whole node,
+      # and it is invisible to ContainerMemoryHigh/ContainerMemoryLeakSuspected (both divide
+      # by the limit). Audit-only: reports via PolicyReport, blocks nothing. CPU limits are
+      # deliberately NOT required — CPU is compressible; a blanket cpu-limit causes harmful
+      # throttling. Runaway CPU is caught by ContainerCPUThrottlingHigh on capped workloads.
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+      exclude:
+        any:
+          - resources:
+              namespaces: ["kube-system", "kyverno", "argocd"]
+      validate:
+        failureAction: Audit
+        message: "A memory limit should be set (prevents node OOM + enables the memory alerts)."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  limits:
+                    memory: "?*"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: audit-verify-drova-signatures
+spec:
+  failurePolicy: Ignore
+  webhookTimeoutSeconds: 30
+  background: false
+  rules:
+    - name: verify-cosign-keyless
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+              namespaces: ["drova"]
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/tim275/drova/*"
+          failureAction: Audit
+          mutateDigest: false
+          verifyDigest: false
+          required: true
+          attestors:
+            - entries:
+                - keyless:
+                    subject: "https://github.com/Tim275/drova/.github/workflows/docker-build-push.yaml@*"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev

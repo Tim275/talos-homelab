@@ -12,6 +12,10 @@ metadata:
 spec:
   goTemplate: true
   goTemplateOptions: ["missingkey=error"]
+  # AppSet weg (z.B. PR-Zeile verloren) => Apps ueberleben als Orphans
+  # statt Kaskaden-Delete+prune aller Layer-Workloads.
+  syncPolicy:
+    preserveResourcesOnDeletion: true
   generators:
     - matrix:
         generators:
@@ -23,9 +27,13 @@ spec:
           - list:
               elements:
                 - { component: cilium,        appName: cilium,        path: kubernetes/infrastructure/network/cilium/overlays/prod,        namespace: kube-system,  wave: "0" }
+                - { component: coredns,       appName: coredns,       path: kubernetes/infrastructure/network/coredns/base,                namespace: kube-system,  wave: "0" }
+                - { component: istio,         appName: istio-control-plane, path: kubernetes/infrastructure/network/istio-control-plane,   namespace: istio-system, wave: "5" }
                 - { component: gateway,       appName: gateway,       path: kubernetes/infrastructure/ingress/gateway/overlays/prod,       namespace: gateway,      wave: "70" }
                 - { component: cloudflared,   appName: cloudflared,   path: kubernetes/infrastructure/ingress/cloudflared/overlays/prod,   namespace: cloudflared,  wave: "70" }
                 - { component: redis-gateway, appName: redis-gateway, path: kubernetes/infrastructure/ingress/redis-gateway,               namespace: gateway,      wave: "70" }
+                - { component: netbird-operator, appName: netbird-operator, path: kubernetes/infrastructure/network/netbird-operator/overlays/prod, namespace: netbird, wave: "70" }
+                - { component: external-dns,  appName: external-dns,  path: kubernetes/infrastructure/ingress/external-dns/overlays/prod,  namespace: external-dns, wave: "71" }
   template:
     metadata:
       name: '{{.appName}}'
@@ -40,7 +48,7 @@ spec:
       project: infrastructure
       source:
         repoURL: https://github.com/Tim275/talos-homelab
-        targetRevision: HEAD
+        targetRevision: main
         path: '{{.path}}'
       destination:
         server: '{{.server}}'
