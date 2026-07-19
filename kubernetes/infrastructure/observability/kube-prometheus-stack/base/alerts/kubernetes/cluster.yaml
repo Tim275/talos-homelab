@@ -21,18 +21,43 @@ spec:
             severity: critical
             component: kubernetes
           annotations:
+            dashboard_url: "/d/k8s-cluster-overview"
             summary: "Kubernetes API server is down"
             description: "API server unreachable for >2 minutes. All cluster operations halted."
+            action: "Check ctrl-0 (SPOF): 'talosctl health' + etcd/kubelet on the control plane; verify the Proxmox VM is up."
 
+        # DORMANT: the kube-etcd scrape target is disabled (unscrapable on Talos — see
+        # kube-prometheus-stack values), so this never fires. Real single-node etcd failure
+        # surfaces as ClusterAPIServerDown (above). Re-enable etcd scraping to reactivate.
         - alert: EtcdQuorumLoss
-          expr: sum(up{job=~"kube-etcd|etcd"}) < ((count(up{job=~"kube-etcd|etcd"}) / 2) + 1)
-          for: 1m
+          expr: sum(up{job=~"kube-etcd|etcd"}) == 0
+          for: 10m
           labels:
             severity: critical
             component: kubernetes
           annotations:
-            summary: "etcd quorum lost"
-            description: "etcd has lost quorum — cluster state at risk of corruption."
+            dashboard_url: "/d/k8s-cluster-overview"
+            summary: "etcd unreachable on ctrl-0 (single-node)"
+            description: "Single-node etcd on ctrl-0 reports down for >10m. This is the known single-CP SPOF — there is no Raft quorum to lose on one node. A clean etcd restart does NOT corrupt data; only act if it stays down or ctrl-0 rebooted dirty."
+            action: "talosctl -n 192.168.0.101 etcd status / etcd members; if persistently down and corrupt, restore from snapshot ('talosctl etcd snapshot')."
+
+        - alert: EtcdRequestLatencyHigh
+          # apiserver→etcd call latency (p99) — scrapeable via the apiserver even though the
+          # kube-etcd target is disabled. Baseline ~25ms; >500ms sustained = etcd disk/fsync
+          # degrading, the leading signal for the API-latency cascade (ctrl-0 on a slow disk).
+          # Warn now → check the etcd VM disk BEFORE it becomes ClusterAPIServerDown.
+          expr: |
+            histogram_quantile(0.99, sum by (le) (rate(etcd_request_duration_seconds_bucket[5m]))) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            component: kubernetes
+            priority: P2
+          annotations:
+            dashboard_url: "/d/k8s-cluster-overview"
+            summary: "etcd request p99 {{ $value | humanizeDuration }} (baseline ~25ms)"
+            description: "apiserver→etcd p99 >500ms for 10min — etcd disk/fsync is degrading. Unchecked this cascades to API-server slowness + outage (ctrl-0 on a slow disk)."
+            action: "'talosctl -n ctrl-0 etcd status'; ensure ctrl-0's etcd VM disk is on the fast SSD (Samsung, not HOGE); check I/O contention on that host."
 
         - alert: ControlPlaneNodeDown
           expr: kube_node_status_condition{condition="Ready",status="true",node="ctrl-0"} == 0
@@ -41,8 +66,10 @@ spec:
             severity: critical
             component: control-plane
           annotations:
+            dashboard_url: "/d/k8s-cluster-overview"
             summary: "Control plane node {{ $labels.node }} is down"
             description: "Single control-plane node (ctrl-0 = SPOF) offline — complete cluster outage."
+            action: "{{ $labels.node }} offline = full outage (known SPOF); check the Proxmox VM + 'talosctl health'."
 
         - alert: CoreDNSDown
           expr: |
@@ -53,6 +80,7 @@ spec:
             severity: critical
             component: dns
           annotations:
+            dashboard_url: "/d/k8s-cluster-overview"
             summary: "CoreDNS has no healthy replicas"
             description: "CoreDNS down >2min — cluster DNS resolution broken, expect cascade failures."
             action: "kubectl get pods -n kube-system -l k8s-app=kube-dns + restart"
@@ -61,6 +89,72 @@ spec:
     - name: kubernetes-ticket
       interval: 60s
       rules:
+        - alert: CoreDNSForwardUnhealthy
+          expr: rate(coredns_forward_healthcheck_broken_total[5m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+            component: dns
+            priority: P2
+          annotations:
+            dashboard_url: "/d/k8s-cluster-overview"
+            summary: "CoreDNS upstream-forward unhealthy"
+            description: "CoreDNS erreicht seine Upstream-DNS (forward zum Gateway) nicht → EXTERNE Auflösung bricht (interne svc-DNS evtl. noch ok). Das SERVFAIL-extern-Szenario nach Netz/upgrade-k8s-Changes."
+            action: "kubectl logs -n kube-system -l k8s-app=kube-dns ; Node resolv.conf/Gateway prüfen"
+
+        - alert: CoreDNSHighSERVFAIL
+          expr: |
+            sum(rate(coredns_dns_responses_total{rcode="SERVFAIL"}[5m]))
+            / clamp_min(sum(rate(coredns_dns_responses_total[5m])), 1) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+            component: dns
+            priority: P2
+          annotations:
+            dashboard_url: "/d/k8s-cluster-overview"
+            summary: "CoreDNS SERVFAIL-Rate hoch ({{ $value | humanizePercentage }})"
+            description: ">5% der DNS-Antworten sind SERVFAIL — Auflösung schlägt fehl (Upstream tot, Policy-Drop Pod→CoreDNS, oder Misconfig)."
+            action: "kubectl logs -n kube-system -l k8s-app=kube-dns; check upstream/Gateway + Cilium policy Pod→CoreDNS."
+
+        - alert: CoreDNSPanics
+          expr: increase(coredns_panics_total[10m]) > 0
+          labels:
+            severity: warning
+            component: dns
+            priority: P2
+          annotations:
+            dashboard_url: "/d/k8s-cluster-overview"
+            summary: "CoreDNS plugin panic ({{ $value }})"
+            description: "CoreDNS-Plugin gepanict — DNS instabil. kubectl logs -n kube-system -l k8s-app=kube-dns"
+            action: "kubectl logs -n kube-system -l k8s-app=kube-dns --previous; identify the panicking plugin; restart CoreDNS."
+
+        - alert: KubeStateMetricsDown
+          expr: absent(kube_node_status_condition{condition="Ready"})
+          for: 10m
+          labels:
+            severity: warning
+            component: observability
+            priority: P2
+          annotations:
+            dashboard_url: "/d/k8s-cluster-overview"
+            summary: "kube-state-metrics liefert keine Metriken — kube_*-Alerts blind"
+            description: "KSM down → ~die Hälfte der Alerts (Pods/Nodes/Deployments/Jobs/PVCs auf kube_*-Basis) feuern STILL nicht mehr = Meta-Blindheit. Check: kubectl get pods -n monitoring -l app.kubernetes.io/name=kube-state-metrics"
+            action: "kubectl -n monitoring rollout restart deploy/kube-state-metrics; ~half the alerts are blind until it's back."
+
+        - alert: KubeNodeNotReady
+          expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: kubernetes
+            priority: P2
+          annotations:
+            dashboard_url: "/d/k8s-cluster-overview"
+            summary: "Node {{ $labels.node }} NotReady (>5m)"
+            description: "Kubelet meldet Node nicht Ready — Pods werden evicted/rescheduled, Kapazität weg. (ControlPlaneNodeDown deckt nur ctrl-0.) Check: kubectl describe node {{ $labels.node }}"
+            action: "kubectl describe node {{ $labels.node }}; check kubelet (talosctl logs kubelet) + the node's Proxmox VM."
+
         - alert: ImagePullBackoff
           expr: kube_pod_container_status_waiting_reason{reason=~"ImagePullBackOff|ErrImagePull"} == 1
           for: 5m
@@ -69,8 +163,10 @@ spec:
             component: kubernetes
             priority: P2
           annotations:
+            dashboard_url: "/d/k8s-cluster-overview"
             summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} cannot pull image"
             description: "Container {{ $labels.container }} in {{ $labels.reason }} state for >5 minutes."
+            action: "kubectl describe pod -n {{ $labels.namespace }} {{ $labels.pod }}; check image name/registry/pull-secret (quay/ghcr outages bite)."
 
         - alert: NodeMemoryPressure
           expr: kube_node_status_condition{condition="MemoryPressure",status="true"} == 1
@@ -80,8 +176,10 @@ spec:
             component: kubernetes
             priority: P2
           annotations:
+            dashboard_url: "/d/k8s-cluster-overview"
             summary: "Node {{ $labels.node }} has memory pressure"
             description: "Node {{ $labels.node }} under memory pressure — pods may be evicted."
+            action: "kubectl describe node {{ $labels.node }}; find memory-heavy pods ('kubectl top pods -A'); evict/reschedule."
 
         - alert: NodeDiskPressure
           expr: kube_node_status_condition{condition="DiskPressure",status="true"} == 1
@@ -91,8 +189,10 @@ spec:
             component: kubernetes
             priority: P2
           annotations:
+            dashboard_url: "/d/k8s-cluster-overview"
             summary: "Node {{ $labels.node }} has disk pressure"
             description: "Node {{ $labels.node }} under disk pressure — pods may be evicted."
+            action: "kubectl describe node {{ $labels.node }}; clean node disk (images/logs) + check ephemeral-storage hogs."
 
         - alert: APIServerErrorRateHigh
           expr: |
@@ -104,8 +204,10 @@ spec:
             component: control-plane
             priority: P2
           annotations:
+            dashboard_url: "/d/k8s-cluster-overview"
             summary: "kube-apiserver 5xx-rate >5%"
             description: "Many requests returning 5xx — check etcd, controller-manager, webhook-availability."
+            action: "Check etcd health + controller-manager + webhook availability (a slow/failing webhook spikes apiserver 5xx)."
 
         - alert: WebhookFailing
           expr: |
@@ -118,6 +220,7 @@ spec:
             component: webhooks
             priority: P2
           annotations:
+            dashboard_url: "/d/k8s-cluster-overview"
             summary: "Admission webhook {{ $labels.name }} failing"
             description: "Webhook rejecting requests AND not responding — investigate cert-manager-webhook, cnpg-webhook, kyverno."
             action: "kubectl delete secret <webhook-cert> -n <ns>; kubectl rollout restart deploy/<webhook>"
@@ -133,5 +236,7 @@ spec:
             component: jobs
             priority: P2
           annotations:
+            dashboard_url: "/d/k8s-cluster-overview"
             summary: "CronJob {{ $labels.namespace }}/{{ $labels.cronjob }} failure-rate high"
             description: ">50% of last-hour jobs failed for >2h — check job logs."
+            action: "kubectl -n {{ $labels.namespace }} get job | grep {{ $labels.cronjob }}; logs the last failed job for the root cause."

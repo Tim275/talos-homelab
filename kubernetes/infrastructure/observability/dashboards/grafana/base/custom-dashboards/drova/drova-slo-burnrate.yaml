@@ -1,0 +1,93 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: drova-slo-burnrate
+  namespace: grafana
+spec:
+  uid: drova-slo-burnrate
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  allowCrossNamespaceImport: true
+  folder: Drova
+  json: |
+    {
+      "title": "Drova — SLO Multi-Window Burn-Rate (Google SRE)",
+      "uid": "drova-slo-burnrate",
+      "tags": ["drova","sre","slo","burnrate"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "refresh": "30s",
+      "time": {"from": "now-6h", "to": "now"},
+      "templating": {"list":[]},
+      "panels": [
+        {"id":1,"type":"stat","title":"30d SLO compliance","gridPos":{"x":0,"y":0,"w":6,"h":5},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"100 * (1 - (sum(rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|user-service|chat-service|trip-service|driver-service|payment-service\",http_response_status_code=~\"5..\"}[30d])) / clamp_min(sum(rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|user-service|chat-service|trip-service|driver-service|payment-service\"}[30d])), 0.001)))"}],
+         "fieldConfig":{"defaults":{"unit":"percent","decimals":4,"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"yellow","value":99},{"color":"green","value":99.5}]}}}},
+        {"id":2,"type":"stat","title":"Error budget remaining","gridPos":{"x":6,"y":0,"w":6,"h":5},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"100 * (1 - ((sum(rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|user-service|chat-service|trip-service|driver-service|payment-service\",http_response_status_code=~\"5..\"}[30d])) / clamp_min(sum(rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|user-service|chat-service|trip-service|driver-service|payment-service\"}[30d])), 0.001)) / 0.005))"}],
+         "fieldConfig":{"defaults":{"unit":"percent","decimals":1,"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"yellow","value":50},{"color":"green","value":80}]}}}},
+        {"id":3,"type":"stat","title":"Fast burn (1h)","gridPos":{"x":12,"y":0,"w":6,"h":5},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"(sum(rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|user-service|chat-service|trip-service|driver-service|payment-service\",http_response_status_code=~\"5..\"}[1h])) / clamp_min(sum(rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|user-service|chat-service|trip-service|driver-service|payment-service\"}[1h])), 0.001)) / 0.005"}],
+         "fieldConfig":{"defaults":{"decimals":2,"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":6},{"color":"red","value":14.4}]}}}},
+        {"id":4,"type":"stat","title":"Slow burn (6h)","gridPos":{"x":18,"y":0,"w":6,"h":5},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"(sum(rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|user-service|chat-service|trip-service|driver-service|payment-service\",http_response_status_code=~\"5..\"}[6h])) / clamp_min(sum(rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|user-service|chat-service|trip-service|driver-service|payment-service\"}[6h])), 0.001)) / 0.005"}],
+         "fieldConfig":{"defaults":{"decimals":2,"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":1},{"color":"red","value":6}]}}}},
+        {"id":10,"type":"row","title":"Multi-Window Multi-Burn-Rate (Table 5-8 SRE Workbook)","gridPos":{"x":0,"y":5,"w":24,"h":1}},
+        {"id":11,"type":"timeseries","title":"Burn rate: 1h (alert threshold = 14.4)","gridPos":{"x":0,"y":6,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"(sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|user-service|chat-service|trip-service|driver-service|payment-service\",http_response_status_code=~\"5..\"}[1h])) / clamp_min(sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|user-service|chat-service|trip-service|driver-service|payment-service\"}[1h])), 0.001)) / 0.005","legendFormat":"{{service_name}}"}],
+         "fieldConfig":{"defaults":{"custom":{"axisLabel":"× SLO threshold"},"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":14.4}]}}}},
+        {"id":12,"type":"timeseries","title":"Burn rate: 6h (alert threshold = 6.0)","gridPos":{"x":12,"y":6,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"(sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|user-service|chat-service|trip-service|driver-service|payment-service\",http_response_status_code=~\"5..\"}[6h])) / clamp_min(sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|user-service|chat-service|trip-service|driver-service|payment-service\"}[6h])), 0.001)) / 0.005","legendFormat":"{{service_name}}"}],
+         "fieldConfig":{"defaults":{"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":6}]}}}},
+        {"id":13,"type":"timeseries","title":"Burn rate: 24h (alert threshold = 3.0)","gridPos":{"x":0,"y":13,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"(sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|user-service|chat-service|trip-service|driver-service|payment-service\",http_response_status_code=~\"5..\"}[24h])) / clamp_min(sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|user-service|chat-service|trip-service|driver-service|payment-service\"}[24h])), 0.001)) / 0.005","legendFormat":"{{service_name}}"}],
+         "fieldConfig":{"defaults":{"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":3}]}}}},
+        {"id":14,"type":"timeseries","title":"Burn rate: 3d (alert threshold = 1.0)","gridPos":{"x":12,"y":13,"w":12,"h":7},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"(sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|user-service|chat-service|trip-service|driver-service|payment-service\",http_response_status_code=~\"5..\"}[3d])) / clamp_min(sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|user-service|chat-service|trip-service|driver-service|payment-service\"}[3d])), 0.001)) / 0.005","legendFormat":"{{service_name}}"}],
+         "fieldConfig":{"defaults":{"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":1}]}}}},
+        {"id":20,"type":"row","title":"Error rate timeline","gridPos":{"x":0,"y":20,"w":24,"h":1}},
+        {"id":21,"type":"timeseries","title":"5xx rate per service","gridPos":{"x":0,"y":21,"w":24,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~\"api-gateway|user-service|chat-service|trip-service|driver-service|payment-service\",http_response_status_code=~\"5..\"}[5m]))","legendFormat":"{{service_name}}"}],
+         "fieldConfig":{"defaults":{"unit":"reqps"}}},
+        {"id":30,"type":"row","title":"Error budget per service (30d — availability 99.5% / latency 99%)","gridPos":{"x":0,"y":29,"w":24,"h":1}},
+        {"id":31,"type":"bargauge","title":"Budget remaining — availability (30d)","gridPos":{"x":0,"y":30,"w":8,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"100 * clamp_min(1 - ((1 - avg_over_time(slo:drova_chat_service_availability:ratio_rate1h[30d])) / 0.005), 0)","legendFormat":"chat","instant":true},
+           {"expr":"100 * clamp_min(1 - ((1 - avg_over_time(slo:drova_api_gateway_availability:ratio_rate1h[30d])) / 0.005), 0)","legendFormat":"api-gateway","instant":true},
+           {"expr":"100 * clamp_min(1 - ((1 - avg_over_time(slo:drova_user_service_availability:ratio_rate1h[30d])) / 0.005), 0)","legendFormat":"user","instant":true},
+           {"expr":"100 * clamp_min(1 - ((1 - avg_over_time(slo:drova_trip_service_availability:ratio_rate1h[30d])) / 0.005), 0)","legendFormat":"trip","instant":true},
+           {"expr":"100 * clamp_min(1 - ((1 - avg_over_time(slo:drova_driver_service_availability:ratio_rate1h[30d])) / 0.005), 0)","legendFormat":"driver","instant":true}],
+         "options":{"displayMode":"gradient","orientation":"horizontal"},
+         "fieldConfig":{"defaults":{"unit":"percent","min":0,"max":100,"decimals":1,"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"yellow","value":50},{"color":"green","value":80}]}}}},
+        {"id":32,"type":"bargauge","title":"Budget remaining — latency (30d)","gridPos":{"x":8,"y":30,"w":8,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"100 * clamp_min(1 - ((1 - avg_over_time(slo:drova_chat_service_latency:ratio_rate1h[30d])) / 0.01), 0)","legendFormat":"chat","instant":true},
+           {"expr":"100 * clamp_min(1 - ((1 - avg_over_time(slo:drova_api_gateway_latency:ratio_rate1h[30d])) / 0.01), 0)","legendFormat":"api-gateway","instant":true},
+           {"expr":"100 * clamp_min(1 - ((1 - avg_over_time(slo:drova_user_service_latency:ratio_rate1h[30d])) / 0.01), 0)","legendFormat":"user","instant":true},
+           {"expr":"100 * clamp_min(1 - ((1 - avg_over_time(slo:drova_trip_service_latency:ratio_rate1h[30d])) / 0.01), 0)","legendFormat":"trip","instant":true},
+           {"expr":"100 * clamp_min(1 - ((1 - avg_over_time(slo:drova_driver_service_latency:ratio_rate1h[30d])) / 0.01), 0)","legendFormat":"driver","instant":true}],
+         "options":{"displayMode":"gradient","orientation":"horizontal"},
+         "fieldConfig":{"defaults":{"unit":"percent","min":0,"max":100,"decimals":1,"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"yellow","value":50},{"color":"green","value":80}]}}}},
+        {"id":33,"type":"timeseries","title":"Budget burndown per service — availability (rolling 30d)","gridPos":{"x":16,"y":30,"w":8,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"100 * clamp_min(1 - ((1 - avg_over_time(slo:drova_chat_service_availability:ratio_rate1h[30d])) / 0.005), 0)","legendFormat":"chat"},
+           {"expr":"100 * clamp_min(1 - ((1 - avg_over_time(slo:drova_api_gateway_availability:ratio_rate1h[30d])) / 0.005), 0)","legendFormat":"api-gateway"},
+           {"expr":"100 * clamp_min(1 - ((1 - avg_over_time(slo:drova_user_service_availability:ratio_rate1h[30d])) / 0.005), 0)","legendFormat":"user"},
+           {"expr":"100 * clamp_min(1 - ((1 - avg_over_time(slo:drova_trip_service_availability:ratio_rate1h[30d])) / 0.005), 0)","legendFormat":"trip"},
+           {"expr":"100 * clamp_min(1 - ((1 - avg_over_time(slo:drova_driver_service_availability:ratio_rate1h[30d])) / 0.005), 0)","legendFormat":"driver"}],
+         "fieldConfig":{"defaults":{"unit":"percent","min":0,"max":100,"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"yellow","value":50},{"color":"green","value":80}]}}}}
+      ]
+    }

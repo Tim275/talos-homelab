@@ -1,13 +1,14 @@
 talos_nodes = {
   "ctrl-0" = {
-    host_node      = "nipogi"
-    machine_type   = "controlplane"
-    ip             = "192.168.0.101"
-    mac_address    = "BC:24:11:2E:C8:A0"
-    vm_id          = 1000
-    cpu            = 6
-    ram_dedicated  = 14336
-    datastore_id   = "local-zfs"
+    host_node     = "nipogi"
+    machine_type  = "controlplane"
+    ip            = "192.168.0.101"
+    mac_address   = "BC:24:11:2E:C8:A0"
+    vm_id         = 1000
+    cpu           = 6
+    ram_dedicated = 14336
+    # etcd-fsync: ctrl-0 OS-Disk auf Samsung (cephpool), nicht HOGE (local-zfs)
+    datastore_id   = "cephpool"
     os_disk_size   = 50
     ceph_disk_size = 0
   }
@@ -23,6 +24,10 @@ talos_nodes = {
     os_disk_size        = 50
     ceph_disk_size      = 170
     ceph_disk_datastore = "cephpool"
+    # node-pool prep (inaktiv bis neue Hardware): stateful=w1/w4/w5, stateless=w2/w3.
+    # Beide Pools spannen BEIDE Zonen — zone-Spread von drova-pg/kafka bricht sonst.
+    # Aktivierung OHNE tofu apply (Drift!): talosctl patch machineconfig nodeLabels + hier einkommentieren.
+    # pool              = "stateful"
   }
   "worker-2" = {
     host_node           = "nipogi"
@@ -36,6 +41,7 @@ talos_nodes = {
     os_disk_size        = 50
     ceph_disk_size      = 170
     ceph_disk_datastore = "cephpool"
+    # pool              = "stateless"
   }
   "worker-3" = {
     host_node      = "msa2proxmox"
@@ -44,10 +50,11 @@ talos_nodes = {
     mac_address    = "BC:24:11:2E:C8:A3"
     vm_id          = 1003
     cpu            = 12
-    ram_dedicated  = 28672
+    ram_dedicated  = 26624
     datastore_id   = "local-zfs"
     os_disk_size   = 50
     ceph_disk_size = 250
+    # pool         = "stateless"
   }
   "worker-4" = {
     host_node      = "msa2proxmox"
@@ -56,10 +63,11 @@ talos_nodes = {
     mac_address    = "BC:24:11:2E:C8:A4"
     vm_id          = 1004
     cpu            = 12
-    ram_dedicated  = 28672
+    ram_dedicated  = 26624
     datastore_id   = "local-zfs"
     os_disk_size   = 50
     ceph_disk_size = 250
+    # pool         = "stateful"
   }
   "worker-5" = {
     host_node      = "msa2proxmox"
@@ -68,9 +76,50 @@ talos_nodes = {
     mac_address    = "BC:24:11:2E:C8:A5"
     vm_id          = 1005
     cpu            = 12
-    ram_dedicated  = 28672
+    ram_dedicated  = 26624
     datastore_id   = "local-zfs"
     os_disk_size   = 50
     ceph_disk_size = 250
+    # pool         = "stateful"
   }
+
+  # ─── FUTURE NODES (vorbereitet, einkommentieren sobald neue Hardware da) ───
+
+  # "ctrl-1" = {
+  #   host_node      = "msa2proxmox"
+  #   machine_type   = "controlplane"
+  #   ip             = "192.168.0.102"
+  #   mac_address    = "BC:24:11:2E:C8:B1"
+  #   vm_id          = 1006
+  #   cpu            = 4
+  #   ram_dedicated  = 12288
+  #   datastore_id   = "local-zfs"
+  #   os_disk_size   = 50
+  #   ceph_disk_size = 0
+  # }
+  # "ctrl-2" = {
+  #   host_node      = "host3"
+  #   machine_type   = "controlplane"
+  #   ip             = "192.168.0.106"
+  #   mac_address    = "BC:24:11:2E:C8:B2"
+  #   vm_id          = 1007
+  #   cpu            = 4
+  #   ram_dedicated  = 12288
+  #   datastore_id   = "local-zfs"
+  #   os_disk_size   = 50
+  #   ceph_disk_size = 0
+  # }
+  # "worker-6" = {
+  #   host_node      = "host3"
+  #   machine_type   = "worker"
+  #   ip             = "192.168.0.109"
+  #   mac_address    = "BC:24:11:2E:C8:B3"
+  #   vm_id          = 1008
+  #   cpu            = 12
+  #   ram_dedicated  = 32768
+  #   datastore_id   = "local-zfs"
+  #   os_disk_size   = 50
+  #   ceph_disk_size = 250
+  #   # pool         = "ai"
+  # }
 }

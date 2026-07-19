@@ -15,18 +15,18 @@ resources:
 helmCharts:
   - name: velero
     repo: https://vmware-tanzu.github.io/helm-charts
-    version: 11.2.0
+    version: 11.4.0
     releaseName: velero
     namespace: velero
     includeCRDs: true
     valuesInline:
       # DISABLED 2026-05-15: bitnamilegacy/kubectl:1.36 returns 404 (Bitnami deprecation Oct 2025)
-      # CRDs already installed manually — no upgrade-job needed.
+      # CRD-Upgrades laufen via includeCRDs + ArgoCD-SSA — kein upgrade-Job nötig.
       upgradeCRDs: false
-      image:
-        repository: velero/velero
-        tag: v1.15.0
-      replicas: 2
+      # Image-Pin entfernt 2026-07-15: tag folgt der Chart-appVersion (11.4.0 = v1.17.1).
+      # Vorher divergierte v1.15.0-Pin vom Chart → EINE Versions-Quelle, Renovate
+      # managt nur noch die Chart-Version. Kein replicas-Value: Chart 11.x hardcodet
+      # replicas=1 — Velero-Server ist Singleton by design (kein active-active).
       credentials:
         useSecret: true
         existingSecret: velero-s3-credentials
@@ -45,6 +45,7 @@ helmCharts:
               s3ForcePathStyle: "true"
               s3Url: http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
               insecureSkipTLSVerify: "true"
+              checksumAlgorithm: ""  # Ceph RGW rejects SDK-v2 CRC32 checksums
           - name: pv-backups
             provider: aws
             bucket: velero-pv-backups
@@ -53,6 +54,7 @@ helmCharts:
               s3ForcePathStyle: "true"
               s3Url: http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
               insecureSkipTLSVerify: "true"
+              checksumAlgorithm: ""  # Ceph RGW rejects SDK-v2 CRC32 checksums
           # OPTIONAL: AWS S3 Offsite Backup (Disaster Recovery)
           # ACTIVATION STEPS:
           # 1. Create AWS S3 bucket: timour-homelab-velero-dr
@@ -71,6 +73,18 @@ helmCharts:
           #     key: cloud
           #   config:
           #     region: eu-central-1  # Frankfurt (closest to Germany)
+        # kopia repo-maintain-jobs liefen ohne requests/limits → Kyverno
+        # audit-require-limits/-requests Violation-Flut alle ~5min (2026-07-15)
+        repositoryMaintenanceJob:
+          repositoryConfigData:
+            name: velero-repo-maintenance
+            global:
+              keepLatestMaintenanceJobs: 3
+              podResources:
+                cpuRequest: 100m
+                cpuLimit: 500m
+                memoryRequest: 128Mi
+                memoryLimit: 512Mi
       snapshotsEnabled: false  # Disable CSI snapshots - use Restic FS backup only
       resources:
         limits:
@@ -123,13 +137,23 @@ helmCharts:
             - ALL
         # readOnlyRootFilesystem: true  # Disabled - Velero/Kopia needs write access to /udmrepo
         runAsNonRoot: true
+      extraVolumes:
+        - name: udmrepo-cache
+          emptyDir: {}
+        - name: kopia-cache
+          emptyDir: {}
+      extraVolumeMounts:
+        - name: udmrepo-cache
+          mountPath: /udmrepo
+        - name: kopia-cache
+          mountPath: /.cache
       serviceAccount:
         server:
           create: true
           name: velero
       initContainers:
         - name: velero-plugin-for-aws
-          image: velero/velero-plugin-for-aws:v1.13.2@sha256:25c3a0a043fc396a0593a3da0aa16ed1f39df74883bda42c4588fc8877b72bde
+          image: velero/velero-plugin-for-aws:v1.14.2@sha256:0751144c1c8e52d52c48717fbd13ad5a3061e612ae4d7ad744a946cd5b139d1a
           imagePullPolicy: IfNotPresent
           resources:
             requests:

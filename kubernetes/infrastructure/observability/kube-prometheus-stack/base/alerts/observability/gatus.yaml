@@ -1,0 +1,39 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: observability-gatus
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # Consolidated 2026-07-14 from observability/gatus/base/prometheusrule.yaml —
+  # rules unchanged, moved into the curated alerts tree (single inventory source).
+  # Gatus = in-cluster status page (24 endpoints); external dead-man = healthchecks.io.
+  groups:
+    - name: gatus-endpoints
+      interval: 60s
+      rules:
+        - alert: GatusEndpointDown
+          expr: gatus_results_endpoint_success == 0
+          for: 3m
+          labels:
+            severity: warning
+            component: observability
+            priority: P2
+          annotations:
+            dashboard_url: "/d/prometheus-stats"
+            summary: "Endpoint {{ $labels.name }} ({{ $labels.group }}) is DOWN"
+            description: "Gatus health check '{{ $labels.key }}' failing for 3+ minutes. Check the service and its dependencies."
+            action: "status.timourhomelab.org öffnen; betroffenen Service + seine Deps (DB/Redis) prüfen."
+
+        - alert: GatusEndpointSlow
+          expr: gatus_results_duration_seconds > 1
+          for: 5m
+          labels:
+            severity: warning
+            component: observability
+            priority: P2
+          annotations:
+            dashboard_url: "/d/prometheus-stats"
+            summary: "Endpoint {{ $labels.name }} ({{ $labels.group }}) is SLOW"
+            description: "Gatus check '{{ $labels.key }}' response time above 1s for 5+ minutes (normal ~10ms) — latency degradation, service still up."
+            action: "Service-Latenz prüfen (Dashboard des Dienstes); Node-Last + Ceph-Slow-Ops als übliche Verdächtige."

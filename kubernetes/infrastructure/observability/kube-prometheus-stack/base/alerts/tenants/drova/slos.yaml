@@ -202,7 +202,7 @@ spec:
           annotations:
             summary: "Drova chat-service: SLO fast burn (14.4× — 2d to budget exhaustion)"
             description: "Error rate exceeds 7.2% (14.4 × 0.5%) on both 5m AND 1h windows."
-            dashboard_url: "/d/drova-slo"
+            dashboard_url: "/d/drova-slo-burnrate"
         - alert: DrovaChatServiceBurnRateSlow
           expr: |
             (1 - slo:drova_chat_service_availability:ratio_rate30m) > (6 * (1 - 0.995))
@@ -217,7 +217,7 @@ spec:
           annotations:
             summary: "Drova chat-service: SLO slow burn (6× — 5d to budget exhaustion)"
             description: "Sustained error rate >3% on both 30m AND 6h windows."
-            dashboard_url: "/d/drova-slo"
+            dashboard_url: "/d/drova-slo-burnrate"
 
         # api-gateway (HTTP, customer-facing)
         - alert: DrovaApiGatewayBurnRateFast
@@ -234,7 +234,7 @@ spec:
           annotations:
             summary: "Drova api-gateway: SLO fast burn (14.4× — 2d to budget exhaustion)"
             description: "Customer-facing HTTP errors exceed 7.2% (14.4 × 0.5%) on both 5m AND 1h windows."
-            dashboard_url: "/d/drova-slo"
+            dashboard_url: "/d/drova-slo-burnrate"
         - alert: DrovaApiGatewayBurnRateSlow
           expr: |
             (1 - slo:drova_api_gateway_availability:ratio_rate30m) > (6 * (1 - 0.995))
@@ -249,7 +249,7 @@ spec:
           annotations:
             summary: "Drova api-gateway: SLO slow burn (6× — 5d to budget exhaustion)"
             description: "Sustained customer-facing error rate >3% on both 30m AND 6h windows."
-            dashboard_url: "/d/drova-slo"
+            dashboard_url: "/d/drova-slo-burnrate"
 
         # user-service
         - alert: DrovaUserServiceBurnRateFast
@@ -266,7 +266,7 @@ spec:
           annotations:
             summary: "Drova user-service: SLO fast burn (14.4× — 2d to budget exhaustion)"
             description: "Error rate exceeds 7.2% (14.4 × 0.5%) on both 5m AND 1h windows."
-            dashboard_url: "/d/drova-slo"
+            dashboard_url: "/d/drova-slo-burnrate"
         - alert: DrovaUserServiceBurnRateSlow
           expr: |
             (1 - slo:drova_user_service_availability:ratio_rate30m) > (6 * (1 - 0.995))
@@ -281,7 +281,7 @@ spec:
           annotations:
             summary: "Drova user-service: SLO slow burn (6× — 5d to budget exhaustion)"
             description: "Sustained error rate >3% on both 30m AND 6h windows."
-            dashboard_url: "/d/drova-slo"
+            dashboard_url: "/d/drova-slo-burnrate"
 
         # trip-service (gRPC)
         - alert: DrovaTripServiceBurnRateFast
@@ -298,7 +298,7 @@ spec:
           annotations:
             summary: "Drova trip-service: SLO fast burn (14.4× — 2d to budget exhaustion)"
             description: "gRPC non-OK rate exceeds 7.2% on both 5m AND 1h windows."
-            dashboard_url: "/d/drova-slo"
+            dashboard_url: "/d/drova-slo-burnrate"
         - alert: DrovaTripServiceBurnRateSlow
           expr: |
             (1 - slo:drova_trip_service_availability:ratio_rate30m) > (6 * (1 - 0.995))
@@ -313,7 +313,7 @@ spec:
           annotations:
             summary: "Drova trip-service: SLO slow burn (6× — 5d to budget exhaustion)"
             description: "Sustained gRPC error rate >3% on both 30m AND 6h windows."
-            dashboard_url: "/d/drova-slo"
+            dashboard_url: "/d/drova-slo-burnrate"
 
         # driver-service (gRPC)
         - alert: DrovaDriverServiceBurnRateFast
@@ -330,7 +330,7 @@ spec:
           annotations:
             summary: "Drova driver-service: SLO fast burn (14.4× — 2d to budget exhaustion)"
             description: "gRPC non-OK rate exceeds 7.2% on both 5m AND 1h windows."
-            dashboard_url: "/d/drova-slo"
+            dashboard_url: "/d/drova-slo-burnrate"
         - alert: DrovaDriverServiceBurnRateSlow
           expr: |
             (1 - slo:drova_driver_service_availability:ratio_rate30m) > (6 * (1 - 0.995))
@@ -345,4 +345,327 @@ spec:
           annotations:
             summary: "Drova driver-service: SLO slow burn (6× — 5d to budget exhaustion)"
             description: "Sustained gRPC error rate >3% on both 30m AND 6h windows."
-            dashboard_url: "/d/drova-slo"
+            dashboard_url: "/d/drova-slo-burnrate"
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Drova LATENCY SLO — per-service "fast enough" via Multi-Window Burn-Rate
+    # SLI = fraction of requests faster than 500ms (le="0.5" bucket / total count).
+    # Target: 99% < 500ms over 30d. (1 - ratio) = fraction slower = budget burn.
+    # le="0.5" matches a real OTel bucket boundary (250ms/500ms/1s are the valid ones).
+    # Complements the availability family: catches slow-but-200 ("cold pizza") that
+    # 5xx-ratio never sees. `or vector(1)` → 100% fast at idle, no false burn.
+    # ─────────────────────────────────────────────────────────────────────
+    - name: drova.slo.recording.latency
+      interval: 60s
+      rules:
+        # chat-service — HTTP latency
+        - record: slo:drova_chat_service_latency:ratio_rate5m
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_bucket{service_name="chat-service",le="0.5"}[5m]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="chat-service"}[5m]))
+            ) or vector(1)
+        - record: slo:drova_chat_service_latency:ratio_rate30m
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_bucket{service_name="chat-service",le="0.5"}[30m]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="chat-service"}[30m]))
+            ) or vector(1)
+        - record: slo:drova_chat_service_latency:ratio_rate1h
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_bucket{service_name="chat-service",le="0.5"}[1h]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="chat-service"}[1h]))
+            ) or vector(1)
+        - record: slo:drova_chat_service_latency:ratio_rate6h
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_bucket{service_name="chat-service",le="0.5"}[6h]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="chat-service"}[6h]))
+            ) or vector(1)
+
+        # api-gateway — HTTP latency (customer-facing!)
+        - record: slo:drova_api_gateway_latency:ratio_rate5m
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_bucket{service_name="api-gateway",le="0.5"}[5m]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[5m]))
+            ) or vector(1)
+        - record: slo:drova_api_gateway_latency:ratio_rate30m
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_bucket{service_name="api-gateway",le="0.5"}[30m]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[30m]))
+            ) or vector(1)
+        - record: slo:drova_api_gateway_latency:ratio_rate1h
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_bucket{service_name="api-gateway",le="0.5"}[1h]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[1h]))
+            ) or vector(1)
+        - record: slo:drova_api_gateway_latency:ratio_rate6h
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_bucket{service_name="api-gateway",le="0.5"}[6h]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[6h]))
+            ) or vector(1)
+
+        # user-service — HTTP latency
+        - record: slo:drova_user_service_latency:ratio_rate5m
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_bucket{service_name="user-service",le="0.5"}[5m]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="user-service"}[5m]))
+            ) or vector(1)
+        - record: slo:drova_user_service_latency:ratio_rate30m
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_bucket{service_name="user-service",le="0.5"}[30m]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="user-service"}[30m]))
+            ) or vector(1)
+        - record: slo:drova_user_service_latency:ratio_rate1h
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_bucket{service_name="user-service",le="0.5"}[1h]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="user-service"}[1h]))
+            ) or vector(1)
+        - record: slo:drova_user_service_latency:ratio_rate6h
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_bucket{service_name="user-service",le="0.5"}[6h]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{service_name="user-service"}[6h]))
+            ) or vector(1)
+
+        # trip-service — gRPC latency
+        - record: slo:drova_trip_service_latency:ratio_rate5m
+          expr: |
+            (
+              sum(rate(rpc_server_call_duration_seconds_bucket{service_name="trip-service",le="0.5"}[5m]))
+              /
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="trip-service"}[5m]))
+            ) or vector(1)
+        - record: slo:drova_trip_service_latency:ratio_rate30m
+          expr: |
+            (
+              sum(rate(rpc_server_call_duration_seconds_bucket{service_name="trip-service",le="0.5"}[30m]))
+              /
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="trip-service"}[30m]))
+            ) or vector(1)
+        - record: slo:drova_trip_service_latency:ratio_rate1h
+          expr: |
+            (
+              sum(rate(rpc_server_call_duration_seconds_bucket{service_name="trip-service",le="0.5"}[1h]))
+              /
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="trip-service"}[1h]))
+            ) or vector(1)
+        - record: slo:drova_trip_service_latency:ratio_rate6h
+          expr: |
+            (
+              sum(rate(rpc_server_call_duration_seconds_bucket{service_name="trip-service",le="0.5"}[6h]))
+              /
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="trip-service"}[6h]))
+            ) or vector(1)
+
+        # driver-service — gRPC latency
+        - record: slo:drova_driver_service_latency:ratio_rate5m
+          expr: |
+            (
+              sum(rate(rpc_server_call_duration_seconds_bucket{service_name="driver-service",le="0.5"}[5m]))
+              /
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="driver-service"}[5m]))
+            ) or vector(1)
+        - record: slo:drova_driver_service_latency:ratio_rate30m
+          expr: |
+            (
+              sum(rate(rpc_server_call_duration_seconds_bucket{service_name="driver-service",le="0.5"}[30m]))
+              /
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="driver-service"}[30m]))
+            ) or vector(1)
+        - record: slo:drova_driver_service_latency:ratio_rate1h
+          expr: |
+            (
+              sum(rate(rpc_server_call_duration_seconds_bucket{service_name="driver-service",le="0.5"}[1h]))
+              /
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="driver-service"}[1h]))
+            ) or vector(1)
+        - record: slo:drova_driver_service_latency:ratio_rate6h
+          expr: |
+            (
+              sum(rate(rpc_server_call_duration_seconds_bucket{service_name="driver-service",le="0.5"}[6h]))
+              /
+              sum(rate(rpc_server_call_duration_seconds_count{service_name="driver-service"}[6h]))
+            ) or vector(1)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Latency burn-rate alerts — Multi-Window (Target 99% < 500ms → budget 1%)
+    # Fast (14.4×): >14.4% slower-than-500ms on 5m AND 1h. Slow (6×): >6% on 30m AND 6h.
+    # ─────────────────────────────────────────────────────────────────────
+    - name: drova.slo.alerts.latency
+      interval: 1m
+      rules:
+        - alert: DrovaChatServiceLatencyBurnRateFast
+          expr: |
+            (1 - slo:drova_chat_service_latency:ratio_rate5m) > (14.4 * (1 - 0.99))
+            and
+            (1 - slo:drova_chat_service_latency:ratio_rate1h) > (14.4 * (1 - 0.99))
+          for: 2m
+          labels:
+            severity: warning
+            priority: P2
+            tenant: drova
+            slo: chat-service-latency
+          annotations:
+            summary: "Drova chat-service: latency SLO fast burn (>14.4% slower than 500ms)"
+            description: "Over 14.4% of requests breach the 500ms target on both 5m AND 1h windows — slow-but-200 'cold pizza'."
+            dashboard_url: "/d/drova-slo-burnrate"
+        - alert: DrovaChatServiceLatencyBurnRateSlow
+          expr: |
+            (1 - slo:drova_chat_service_latency:ratio_rate30m) > (6 * (1 - 0.99))
+            and
+            (1 - slo:drova_chat_service_latency:ratio_rate6h) > (6 * (1 - 0.99))
+          for: 15m
+          labels:
+            severity: warning
+            priority: P2
+            tenant: drova
+            slo: chat-service-latency
+          annotations:
+            summary: "Drova chat-service: latency SLO slow burn (>6% slower than 500ms)"
+            description: "Sustained >6% of requests over 500ms on both 30m AND 6h windows."
+            dashboard_url: "/d/drova-slo-burnrate"
+
+        - alert: DrovaApiGatewayLatencyBurnRateFast
+          expr: |
+            (1 - slo:drova_api_gateway_latency:ratio_rate5m) > (14.4 * (1 - 0.99))
+            and
+            (1 - slo:drova_api_gateway_latency:ratio_rate1h) > (14.4 * (1 - 0.99))
+          for: 2m
+          labels:
+            severity: warning
+            priority: P2
+            tenant: drova
+            slo: api-gateway-latency
+          annotations:
+            summary: "Drova api-gateway: latency SLO fast burn (>14.4% slower than 500ms)"
+            description: "Customer-facing: over 14.4% of requests breach 500ms on both 5m AND 1h windows."
+            dashboard_url: "/d/drova-slo-burnrate"
+        - alert: DrovaApiGatewayLatencyBurnRateSlow
+          expr: |
+            (1 - slo:drova_api_gateway_latency:ratio_rate30m) > (6 * (1 - 0.99))
+            and
+            (1 - slo:drova_api_gateway_latency:ratio_rate6h) > (6 * (1 - 0.99))
+          for: 15m
+          labels:
+            severity: warning
+            priority: P2
+            tenant: drova
+            slo: api-gateway-latency
+          annotations:
+            summary: "Drova api-gateway: latency SLO slow burn (>6% slower than 500ms)"
+            description: "Sustained customer-facing latency: >6% of requests over 500ms on both 30m AND 6h windows."
+            dashboard_url: "/d/drova-slo-burnrate"
+
+        - alert: DrovaUserServiceLatencyBurnRateFast
+          expr: |
+            (1 - slo:drova_user_service_latency:ratio_rate5m) > (14.4 * (1 - 0.99))
+            and
+            (1 - slo:drova_user_service_latency:ratio_rate1h) > (14.4 * (1 - 0.99))
+          for: 2m
+          labels:
+            severity: warning
+            priority: P2
+            tenant: drova
+            slo: user-service-latency
+          annotations:
+            summary: "Drova user-service: latency SLO fast burn (>14.4% slower than 500ms)"
+            description: "Over 14.4% of requests breach the 500ms target on both 5m AND 1h windows."
+            dashboard_url: "/d/drova-slo-burnrate"
+        - alert: DrovaUserServiceLatencyBurnRateSlow
+          expr: |
+            (1 - slo:drova_user_service_latency:ratio_rate30m) > (6 * (1 - 0.99))
+            and
+            (1 - slo:drova_user_service_latency:ratio_rate6h) > (6 * (1 - 0.99))
+          for: 15m
+          labels:
+            severity: warning
+            priority: P2
+            tenant: drova
+            slo: user-service-latency
+          annotations:
+            summary: "Drova user-service: latency SLO slow burn (>6% slower than 500ms)"
+            description: "Sustained >6% of requests over 500ms on both 30m AND 6h windows."
+            dashboard_url: "/d/drova-slo-burnrate"
+
+        - alert: DrovaTripServiceLatencyBurnRateFast
+          expr: |
+            (1 - slo:drova_trip_service_latency:ratio_rate5m) > (14.4 * (1 - 0.99))
+            and
+            (1 - slo:drova_trip_service_latency:ratio_rate1h) > (14.4 * (1 - 0.99))
+          for: 2m
+          labels:
+            severity: warning
+            priority: P2
+            tenant: drova
+            slo: trip-service-latency
+          annotations:
+            summary: "Drova trip-service: latency SLO fast burn (>14.4% slower than 500ms)"
+            description: "Over 14.4% of gRPC calls breach the 500ms target on both 5m AND 1h windows."
+            dashboard_url: "/d/drova-slo-burnrate"
+        - alert: DrovaTripServiceLatencyBurnRateSlow
+          expr: |
+            (1 - slo:drova_trip_service_latency:ratio_rate30m) > (6 * (1 - 0.99))
+            and
+            (1 - slo:drova_trip_service_latency:ratio_rate6h) > (6 * (1 - 0.99))
+          for: 15m
+          labels:
+            severity: warning
+            priority: P2
+            tenant: drova
+            slo: trip-service-latency
+          annotations:
+            summary: "Drova trip-service: latency SLO slow burn (>6% slower than 500ms)"
+            description: "Sustained >6% of gRPC calls over 500ms on both 30m AND 6h windows."
+            dashboard_url: "/d/drova-slo-burnrate"
+
+        - alert: DrovaDriverServiceLatencyBurnRateFast
+          expr: |
+            (1 - slo:drova_driver_service_latency:ratio_rate5m) > (14.4 * (1 - 0.99))
+            and
+            (1 - slo:drova_driver_service_latency:ratio_rate1h) > (14.4 * (1 - 0.99))
+          for: 2m
+          labels:
+            severity: warning
+            priority: P2
+            tenant: drova
+            slo: driver-service-latency
+          annotations:
+            summary: "Drova driver-service: latency SLO fast burn (>14.4% slower than 500ms)"
+            description: "Over 14.4% of gRPC calls breach the 500ms target on both 5m AND 1h windows."
+            dashboard_url: "/d/drova-slo-burnrate"
+        - alert: DrovaDriverServiceLatencyBurnRateSlow
+          expr: |
+            (1 - slo:drova_driver_service_latency:ratio_rate30m) > (6 * (1 - 0.99))
+            and
+            (1 - slo:drova_driver_service_latency:ratio_rate6h) > (6 * (1 - 0.99))
+          for: 15m
+          labels:
+            severity: warning
+            priority: P2
+            tenant: drova
+            slo: driver-service-latency
+          annotations:
+            summary: "Drova driver-service: latency SLO slow burn (>6% slower than 500ms)"
+            description: "Sustained >6% of gRPC calls over 500ms on both 30m AND 6h windows."
+            dashboard_url: "/d/drova-slo-burnrate"

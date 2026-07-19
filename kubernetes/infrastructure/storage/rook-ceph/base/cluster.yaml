@@ -39,7 +39,7 @@ spec:
       osd_pool_default_pg_autoscale_mode: "off"
 
       # CRITICAL: Explicit memory target (SUSE recommends minimum 4GB)
-      osd_memory_target: "4294967296"     # 4GB in bytes - never go below this!
+      osd_memory_target: "3221225472"     # 3GB - right-sized (~2Gi real + Recovery-Headroom). War 4GB (überreserviert).
       osd_memory_target_autotune: "true"  # Auto-adjust based on available memory
       bluestore_cache_autotune: "true"    # Auto-tune BlueStore cache
 
@@ -47,6 +47,7 @@ spec:
       osd_heartbeat_grace: "120"          # Default: 20s, increased for VM I/O latency
       osd_heartbeat_interval: "15"        # Default: 6s
       mon_osd_down_out_interval: "600"    # Wait 10 min before marking OSD out
+      mon_clock_drift_allowed: "0.1"      # Default: 0.05s — homelab NTP jitter (Proxmox, no PTP)
 
       # VM/Proxmox BlueStore tuning (prevents SLOW_OPS warnings)
       # CRITICAL: Aggressive VM tuning for Proxmox shared storage
@@ -101,18 +102,18 @@ spec:
       dataSource: zero  # zero|random
       iteration: 1
 
-  # Google SRE practices: Conservative upgrade settings
+  # Conservative upgrade settings
   upgradeOSDRequiresHealthyPGs: true
   skipUpgradeChecks: false
   continueUpgradeAfterChecksEvenIfNotHealthy: false
   waitTimeoutForHealthyOSDInMinutes: 10
 
-  # Google pattern: Odd number for consensus, minimal viable cluster
+  # Odd number for consensus, minimal viable cluster
   mon:
     count: 3
     allowMultiplePerNode: false
 
-  # Google pattern: Active-standby for management
+  # Active-standby for management
   mgr:
     count: 2
     allowMultiplePerNode: false
@@ -126,7 +127,7 @@ spec:
       - name: telemetry
         enabled: true  # Advanced cluster insights and health analytics
 
-  # Production-grade dashboard with SSL (end-to-end encryption)
+  # Dashboard with SSL
   dashboard:
     enabled: true
     ssl: false  # HTTP backend - Envoy Gateway handles TLS at edge (like ArgoCD, Grafana, etc.)
@@ -135,7 +136,7 @@ spec:
   monitoring:
     enabled: true
 
-  # Google pattern: Simple, reliable networking
+  # Simple, reliable networking
   network:
     provider: host
     # SECURITY - Wire Encryption enabled for Production
@@ -171,10 +172,10 @@ spec:
       # Request MUST be osd_memory_target + ~25% overhead (threads/processes)
       requests:
         cpu: "500m"
-        memory: "5Gi"
+        memory: "2560Mi"  # 2Gi target + 25%; war 3840Mi/3Gi-target (ns real 15Gi)
     prepareosd:
       requests:
-        cpu: "100m"   # Reduced from 250m - worker-1 CPU saturated, prepare jobs are light
+        cpu: "50m"    # 250m → 100m → 50m: light disk-scan, schedules even on saturated nipogi-workers
         memory: "64Mi"   # Reduced from 256Mi - fits packed msa2 worker headroom, prepare only scans disks
     crashcollector:
       requests:
@@ -193,8 +194,8 @@ spec:
       # Encryption at rest: OSDs are LUKS-encrypted, keys in k8s secrets (no KMS).
       # Applies to OSDs at provision time → takes effect on a fresh cluster/rebuild.
       encryptedDevice: "true"
-      osd_memory_target: "4294967296"
-      bluestore_cache_size: "2147483648"
+      osd_memory_target: "3221225472"
+      bluestore_cache_size: "1073741824"
       bluestore_min_alloc_size_hdd: "65536"
       bluestore_rocksdb_options: "compression=kNoCompression,max_write_buffer_number=4,min_write_buffer_number_to_merge=1,recycle_log_file_num=4"
     nodes:
@@ -224,7 +225,7 @@ spec:
         devices:
           - name: "/dev/sdb"  # 50GB dedicated storage disk (scsi1)
 
-  # Google pattern: Simple health checks
+  # Simple health checks
   healthCheck:
     daemonHealth:
       mon:

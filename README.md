@@ -5,10 +5,16 @@ Repository for home infrastructure and Kubernetes cluster using GitOps practices
 Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and copious amounts of YAML — with some help from Renovate.
 
 [![Talos](https://img.shields.io/badge/OS-Talos%20Linux-FF7300?style=for-the-badge&logo=linux&logoColor=white)](https://www.talos.dev/)
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-v1.33-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)](https://kubernetes.io/)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)](https://kubernetes.io/)
 [![OpenTofu](https://img.shields.io/badge/IaC-OpenTofu-844FBA?style=for-the-badge&logo=opentofu&logoColor=white)](https://opentofu.org/)
 [![ArgoCD](https://img.shields.io/badge/GitOps-ArgoCD-00D4AA?style=for-the-badge&logo=argo&logoColor=white)](https://argo-cd.readthedocs.io/)
-[![Renovate](https://img.shields.io/badge/Deps-Renovate-1F8FFF?style=for-the-badge&logo=renovatebot&logoColor=white)](https://docs.renovatebot.com/)
+
+
+## Architecture Diagram
+
+[![Architecture Diagram](docs/homelabarchitecture.svg)](https://raw.githubusercontent.com/Tim275/talos-homelab/main/docs/homelabarchitecture.svg)
+
+<sub>click the diagram for full resolution</sub>
 
 ## 📦 Applications
 
@@ -25,11 +31,6 @@ End-user applications deployed via Argo CD across dev / staging / production ove
         <td>🚗</td>
         <td><a href="https://github.com/Tim275/drova-gitops">Drova</a></td>
         <td>Ride-sharing microservices showcase — api-gateway, user, trip, driver, chat, payment services with Kafka, CNPG Postgres, Redis, OpenTelemetry tracing, Cilium-SPIRE mTLS, tiered backups</td>
-    </tr>
-    <tr>
-        <td><img width="32" src="https://www.vectorlogo.zone/logos/apache_kafka/apache_kafka-icon.svg"></td>
-        <td><a href="https://strimzi.io/">Kafka (Strimzi)</a></td>
-        <td>Event streaming clusters — KafkaCluster CR, Topics, Users, Schema-Registry. Used by Drova services</td>
     </tr>
     <tr>
         <td><img width="32" src="https://dbeaver.io/wp-content/uploads/2015/09/beaver-head.png"></td>
@@ -100,14 +101,9 @@ Lifecycle, scaling, and HA management for stateful workloads:
         <td>Redis Standalone / Replication / Sentinel / Cluster</td>
     </tr>
     <tr>
-        <td><img width="32" src="https://tailscale.com/files/press/tailscale-symbol-color.svg"></td>
-        <td><a href="https://tailscale.com/kb/1236/kubernetes-operator">Tailscale Operator</a></td>
-        <td>SaaS-coordinated Mesh-VPN for kubectl + cluster-internal access</td>
-    </tr>
-    <tr>
         <td><img width="32" src="https://raw.githubusercontent.com/netbirdio/netbird/main/docs/media/logo-full.png"></td>
-        <td><a href="https://docs.netbird.io/selfhosted/selfhosted-quickstart">NetBird</a></td>
-        <td>Self-hosted Mesh-VPN — coordination in cluster, OIDC via Keycloak</td>
+        <td><a href="https://github.com/netbirdio/kubernetes-operator">NetBird Operator</a></td>
+        <td>Cloud-coordinated Mesh-VPN for internal infrastructure access</td>
     </tr>
     <tr>
         <td><img width="32" src="https://raw.githubusercontent.com/argoproj/argo-cd/master/docs/assets/argo.png"></td>
@@ -150,7 +146,7 @@ GitOps, networking, storage, backup and observability core services:
     <tr>
         <td><img width="32" src="https://www.vectorlogo.zone/logos/cloudflare/cloudflare-icon.svg"></td>
         <td><a href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/">Cloudflare Tunnel</a></td>
-        <td>Zero-trust secure tunnel for external access — no port forwarding required</td>
+        <td>Zero-trust tunnel for public app ingress — no port forwarding required</td>
     </tr>
     <tr>
         <td><img width="32" src="https://cdn.jsdelivr.net/gh/cilium/cilium/Documentation/images/logo-solo.svg"></td>

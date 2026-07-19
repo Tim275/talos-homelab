@@ -13,6 +13,27 @@ spec:
     name: drova-postgres
   instances: 2
   type: ro
+  template:
+    spec:
+      containers:
+        # Kyverno require-limits/require-requests: mem-Limit + cpu/mem-Requests
+        # (kein CPU-Limit → kein CFS-Throttle).
+        - name: pgbouncer
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              memory: "128Mi"
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    cnpg.io/poolerName: drova-postgres-pooler-ro
   pgbouncer:
     poolMode: transaction
     parameters:

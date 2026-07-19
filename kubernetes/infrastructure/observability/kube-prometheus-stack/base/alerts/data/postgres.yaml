@@ -20,20 +20,25 @@ spec:
             severity: critical
             component: data
           annotations:
+            dashboard_url: "/d/cnpg-postgres"
             summary: "CNPG primary down: {{ $labels.namespace }}/{{ $labels.cluster }}"
             description: "PostgreSQL primary not serving traffic for >2min."
+            action: "kubectl cnpg status {{ $labels.cluster }} -n {{ $labels.namespace }}; check pods; 'kubectl cnpg promote' a healthy replica if the primary is lost."
 
+        # Source: cnpg_backup_stopped_at_timestamp_seconds (kube-state-metrics custom-resource-
+        # state over the Backup CR) — the plugin doesn't feed the legacy collector metric.
         - alert: CNPGBackupStale
           expr: |
-            (time() - max by (namespace, cluster) (cnpg_collector_last_available_backup_timestamp{cluster!=""})) > 86400
+            (time() - max by (namespace, cluster) (cnpg_backup_stopped_at_timestamp_seconds)) > 90000
           for: 30m
           labels:
             severity: critical
             component: cnpg
           annotations:
+            dashboard_url: "/d/cnpg-postgres"
             summary: "CNPG {{ $labels.namespace }}/{{ $labels.cluster }} no successful backup in 24h"
             description: "Last backup older than 24h — RPO exceeded, data-loss risk on failure."
-            action: "kubectl get backup -n <ns> | grep <cluster> ; check ScheduledBackup + barman plugin pod"
+            action: "kubectl get backup -n {{ $labels.namespace }} | grep {{ $labels.cluster }} ; check ScheduledBackup + barman plugin pod"
 
     # ── TICKET ──
     - name: postgres-ticket
@@ -47,8 +52,10 @@ spec:
             component: data
             priority: P2
           annotations:
+            dashboard_url: "/d/cnpg-postgres"
             summary: "CNPG replication lag >30s: {{ $labels.namespace }}/{{ $labels.cluster }}"
             description: "Replica lagging primary by {{ $value }}s — failover would lose recent writes."
+            action: "kubectl cnpg status {{ $labels.cluster }} -n {{ $labels.namespace }}; check replica WAL apply + Ceph IO pressure on the replica's PVC."
 
         - alert: CnpgStorageNearFull
           expr: (kubelet_volume_stats_used_bytes{persistentvolumeclaim=~".*-postgres-.*|.*-cnpg-.*"} / kubelet_volume_stats_capacity_bytes{persistentvolumeclaim=~".*-postgres-.*|.*-cnpg-.*"}) > 0.85
@@ -58,18 +65,21 @@ spec:
             component: data
             priority: P2
           annotations:
+            dashboard_url: "/d/cnpg-postgres"
             summary: "PostgreSQL PVC >85% full: {{ $labels.persistentvolumeclaim }}"
             description: "Storage at {{ $value | humanizePercentage }} — disk full = DB crash. Expand PVC."
+            action: "Expand the CNPG PVC online (raise cluster.spec.storage.size) before disk-full crashes the DB."
 
         - alert: CNPGBackupNeverRan
           expr: |
-            absent_over_time(cnpg_collector_last_available_backup_timestamp[7d])
-            and on() count(kube_customresource_count{customresource_kind="Cluster",customresource_group="postgresql.cnpg.io"} > 0) > 0
+            absent_over_time(cnpg_backup_stopped_at_timestamp_seconds[3h])
           for: 1h
           labels:
             severity: warning
             component: cnpg
             priority: P2
           annotations:
+            dashboard_url: "/d/cnpg-postgres"
             summary: "CNPG backup-timestamp metric absent — backups likely not running"
             description: "No backup metric for 7d while CNPG clusters exist — verify ScheduledBackup + object-store creds."
+            action: "kubectl get scheduledbackup -A; verify the barman ObjectStore secret/creds + the backup plugin pod."

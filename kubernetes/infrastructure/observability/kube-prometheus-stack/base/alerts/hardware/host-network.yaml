@@ -19,8 +19,10 @@ spec:
             severity: critical
             component: hardware
           annotations:
+            dashboard_url: "/d/k8s-node-overview"
             summary: "{{ $labels.instance }} bridge {{ $labels.device }} is DOWN"
             description: "Proxmox bridge down — all VM/host traffic on this bridge is cut (Ceph/cluster link affected)."
+            action: "SSH host; 'ip link show vmbr*'; 'ifreload -a' or restart networking; verify the Proxmox bridge config."
 
     # ── TICKET ──
     - name: host-network-ticket
@@ -28,21 +30,23 @@ spec:
       rules:
         - alert: HostNetworkErrors
           expr: |
-            rate(node_network_receive_errs_total{device!~"lo|veth.*|cni.*|tap.*|fwbr.*|fwln.*|fwpr.*|cilium.*|lxc.*"}[5m]) > 0
+            rate(node_network_receive_errs_total{device!~"lo|veth.*|cni.*|tap.*|fwbr.*|fwln.*|fwpr.*|cilium.*|lxc.*|wt.*|wg.*|tailscale.*|nb-.*"}[5m]) > 0
             or
-            rate(node_network_transmit_errs_total{device!~"lo|veth.*|cni.*|tap.*|fwbr.*|fwln.*|fwpr.*|cilium.*|lxc.*"}[5m]) > 0
+            rate(node_network_transmit_errs_total{device!~"lo|veth.*|cni.*|tap.*|fwbr.*|fwln.*|fwpr.*|cilium.*|lxc.*|wt.*|wg.*|tailscale.*|nb-.*"}[5m]) > 0
           for: 5m
           labels:
             severity: warning
             component: hardware
             priority: P2
           annotations:
+            dashboard_url: "/d/k8s-node-overview"
             summary: "{{ $labels.instance }} NIC {{ $labels.device }} reporting errors"
             description: "Hardware/link errors on physical NIC — check cable, port, driver. Ceph replication runs over this link."
+            action: "SSH host; 'ethtool -S {{ $labels.device }}' for error counters; check cable/port/driver (this carries Ceph replication)."
 
         - alert: HostActiveLinkLost
           expr: |
-            node_network_up{device!~"lo|veth.*|cni.*|tap.*|fwbr.*|fwln.*|fwpr.*|cilium.*|lxc.*|vmbr.*"} == 0
+            node_network_up{device!~"lo|veth.*|cni.*|tap.*|fwbr.*|fwln.*|fwpr.*|cilium.*|lxc.*|wt.*|wg.*|tailscale.*|nb-.*|vmbr.*"} == 0
             and on (instance, device) (node_network_receive_bytes_total offset 1h > 0)
           for: 5m
           labels:
@@ -50,5 +54,7 @@ spec:
             component: hardware
             priority: P2
           annotations:
+            dashboard_url: "/d/k8s-node-overview"
             summary: "{{ $labels.instance }} NIC {{ $labels.device }} lost link (was active)"
             description: "A physical NIC that carried traffic in the last hour is now down."
+            action: "SSH host; 'ethtool {{ $labels.device }}' (link detected?); check cable/switch port; 'ip link set {{ $labels.device }} up'."

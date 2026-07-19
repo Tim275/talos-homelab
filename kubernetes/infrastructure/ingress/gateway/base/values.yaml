@@ -9,10 +9,14 @@ config:
       controllerName: gateway.envoyproxy.io/gatewayclass-controller
     provider:
       type: Kubernetes
+      kubernetes:
+        # Global-RL-Service auf 2 Replicas (war 1 = SPOF fürs Global-Rate-Limiting)
+        rateLimitDeployment:
+          replicas: 2
     logging:
       level:
         default: info
-    # Backend API: production-grade TLS to backends (e.g. Ceph dashboard).
+    # Backend API: TLS to backends (e.g. Ceph dashboard).
     extensionApis:
       enableBackend: true
     # Global rate limiting via the redis-gateway instance.
@@ -21,6 +25,11 @@ config:
         type: Redis
         redis:
           url: redis://redis-gateway.gateway.svc.cluster.local:6379
+
+# Controller-HA: 2 Replicas mit Leader-Election (war 1 = SPOF für xDS-Übersetzung;
+# Data-Plane served bei Controller-Ausfall zwar last-good config, aber keine Updates).
+deployment:
+  replicas: 2
 
 # Topology injector webhook is disabled: its MutatingWebhookConfiguration does
 # not exist on a fresh install, which made the certgen job fail when it tried to

@@ -25,7 +25,7 @@ spec:
           restartPolicy: OnFailure
           initContainers:
             - name: wait-for-lldap
-              image: busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+              image: busybox:1.38@sha256:fd8d9aa63ba2f0982b5304e1ee8d3b90a210bc1ffb5314d980eb6962f1a9715d
               command:
                 - sh
                 - -c
@@ -50,13 +50,13 @@ spec:
                   memory: 32Mi
           containers:
             - name: bootstrap
-              image: alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
+              image: alpine:3.24@sha256:f5064d3e5f88c467c714509f491853ab2d951932c5cad699c0cb969dcec6f3b4
               command:
                 - /bin/sh
                 - -c
                 - |
                   set -e
-                  apk add --no-cache curl jq
+                  apk add --no-cache curl jq gettext
 
                   echo "============================================"
                   echo "LLDAP Bootstrap - Creating Users and Groups"
@@ -108,7 +108,7 @@ spec:
                   # Create users from ConfigMap
                   echo ""
                   echo "--- Creating Users ---"
-                  USERS_JSON=$(sed "s|\${LLDAP_USER_PASSWORD}|$LLDAP_USER_PASSWORD|g" /config/users.json)
+                  USERS_JSON=$(envsubst '$LLDAP_USER_PASSWORD $LLDAP_ANNA_PASSWORD $LLDAP_BEN_PASSWORD $LLDAP_CLARA_PASSWORD' < /config/users.json)
                   echo "$USERS_JSON" | jq -c '.[]' | while read user; do
                     ID=$(echo "$user" | jq -r '.id')
                     EMAIL=$(echo "$user" | jq -r '.email')
@@ -144,10 +144,13 @@ spec:
                   echo "--- Setting Passwords via LDAP ---"
                   apk add --no-cache openldap-clients
 
-                  USERS_JSON=$(sed "s|\${LLDAP_USER_PASSWORD}|$LLDAP_USER_PASSWORD|g" /config/users.json)
+                  USERS_JSON=$(envsubst '$LLDAP_USER_PASSWORD $LLDAP_ANNA_PASSWORD $LLDAP_BEN_PASSWORD $LLDAP_CLARA_PASSWORD' < /config/users.json)
+                  echo "$USERS_JSON" | jq -c '.[]' > /tmp/users.txt
 
+                  # Redirect from a file (not a pipe) so FAILED survives the loop —
+                  # a "echo | while" runs in a subshell and loses the counter.
                   FAILED=0
-                  echo "$USERS_JSON" | jq -c '.[]' | while read user; do
+                  while read user; do
                     ID=$(echo "$user" | jq -r '.id')
                     PASSWORD=$(echo "$user" | jq -r '.password // empty')
 
@@ -162,41 +165,78 @@ spec:
                         continue
                       fi
 
-                      # 2. Set password (don't suppress errors — see them)
-                      ldappasswd -x -H ldap://lldap-ldap:389 \
-                        -D "uid=$LLDAP_ADMIN_USERNAME,ou=people,dc=homelab,dc=local" \
-                        -w "$LLDAP_ADMIN_PASSWORD" \
-                        -s "$PASSWORD" \
-                        "uid=$ID,ou=people,dc=homelab,dc=local"
-                      RC=$?
-                      if [ $RC -ne 0 ]; then
-                        echo "  ✗ ldappasswd FAILED (rc=$RC) for $ID"
-                        FAILED=$((FAILED+1))
-                        continue
-                      fi
-
-                      # 3. Verify the new password actually works (catches dual-store-bug)
-                      if ldapwhoami -x -H ldap://lldap-ldap:389 \
-                          -D "uid=$ID,ou=people,dc=homelab,dc=local" \
-                          -w "$PASSWORD" >/dev/null 2>&1; then
-                        echo "  ✓ password verified"
+                      # 2. Set password — if-form so a hard error (LDAP unreachable)
+                      #    does not trip set -e and kill the whole job.
+                      if ldappasswd -x -H ldap://lldap-ldap:389 \
+                          -D "uid=$LLDAP_ADMIN_USERNAME,ou=people,dc=homelab,dc=local" \
+                          -w "$LLDAP_ADMIN_PASSWORD" \
+                          -s "$PASSWORD" \
+                          "uid=$ID,ou=people,dc=homelab,dc=local"; then
+                        # 3. Verify the new password actually works (catches dual-store-bug)
+                        if ldapwhoami -x -H ldap://lldap-ldap:389 \
+                            -D "uid=$ID,ou=people,dc=homelab,dc=local" \
+                            -w "$PASSWORD" >/dev/null 2>&1; then
+                          echo "  ✓ password verified"
+                        else
+                          echo "  ✗ ldappasswd reported OK but ldap-bind STILL fails (LLDAP dual-store bug?)"
+                          FAILED=$((FAILED+1))
+                        fi
                       else
-                        echo "  ✗ ldappasswd reported OK but ldap-bind STILL fails (LLDAP dual-store bug?)"
+                        echo "  ✗ ldappasswd FAILED for $ID (LDAP unreachable/error)"
                         FAILED=$((FAILED+1))
                       fi
                     fi
-                  done
+                  done < /tmp/users.txt
 
                   # 2026-05-16: Don't fail the whole CronJob run if 1-2 users have
                   # dual-store-bug. Bootstrap is idempotent reconcile — admins should
                   # be alerted but recurring CronJob-failure-alerts are noise.
                   # Failed users keep getting retried hourly. WHEN ALL users start
                   # failing → real auth-issue, then alert via lldap-bootstrap-script.
-                  if [ ${FAILED:-0} -ge 3 ]; then
+                  if [ "${FAILED:-0}" -ge 3 ]; then
                     echo "ERROR: $FAILED password operations failed — job marked failed (≥3 fails = real issue)"
                     exit 1
-                  elif [ ${FAILED:-0} -gt 0 ]; then
+                  elif [ "${FAILED:-0}" -gt 0 ]; then
                     echo "WARN: $FAILED users hit dual-store-bug — continuing (idempotent retry next hour)"
+                  fi
+
+                  # --- Cleanup: delete LLDAP users NOT in config (declarative reconcile) ---
+                  # Makes Git the source of truth. Guards: never touch 'admin', skip if config
+                  # somehow empty (prevents wiping everyone on a bad mount).
+                  echo ""
+                  echo "--- Cleanup (drift removal) ---"
+                  CONFIG_IDS=$(echo "$USERS_JSON" | jq -r '.[].id')
+                  if [ "$(echo "$CONFIG_IDS" | grep -c .)" -lt 1 ]; then
+                    echo "  SAFETY: config lists 0 users → skip cleanup (won't wipe)"
+                  else
+                    LIVE_IDS=$(gql '{"query":"{ users { id } }"}' | jq -r '.data.users[].id')
+                    for uid in $LIVE_IDS; do
+                      [ "$uid" = "admin" ] && continue
+                      if ! echo "$CONFIG_IDS" | grep -qx "$uid"; then
+                        echo "  DELETING drift user: $uid (not in config)"
+                        gql "{\"query\": \"mutation { deleteUser(userId: \\\"$uid\\\") { ok } }\"}" > /dev/null 2>&1 \
+                          || echo "    (delete failed for $uid)"
+                      fi
+                    done
+                  fi
+
+                  # --- Cleanup: delete LLDAP groups NOT in config (declarative) ---
+                  # Protect LLDAP built-in groups. Skip if config somehow empty.
+                  echo ""
+                  echo "--- Group cleanup (drift removal) ---"
+                  CFG_GROUPS=$(cat /config/groups.json | jq -r '.[].name')
+                  if [ "$(echo "$CFG_GROUPS" | grep -c .)" -lt 1 ]; then
+                    echo "  SAFETY: config lists 0 groups → skip"
+                  else
+                    gql '{"query":"{ groups { id displayName } }"}' \
+                      | jq -r '.data.groups[] | "\(.id)|\(.displayName)"' | while IFS='|' read gid gname; do
+                      case "$gname" in lldap_admin|lldap_password_manager|lldap_strict_readonly) continue;; esac
+                      if ! echo "$CFG_GROUPS" | grep -qx "$gname"; then
+                        echo "  DELETING drift group: $gname (id $gid)"
+                        gql "{\"query\": \"mutation { deleteGroup(groupId: $gid) { ok } }\"}" > /dev/null 2>&1 \
+                          || echo "    (delete failed for $gname)"
+                      fi
+                    done
                   fi
 
                   echo ""
@@ -216,6 +256,21 @@ spec:
                     secretKeyRef:
                       name: lldap-secrets
                       key: user-password
+                - name: LLDAP_ANNA_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: lldap-secrets
+                      key: anna-password
+                - name: LLDAP_BEN_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: lldap-secrets
+                      key: ben-password
+                - name: LLDAP_CLARA_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: lldap-secrets
+                      key: clara-password
               volumeMounts:
                 - name: config
                   mountPath: /config

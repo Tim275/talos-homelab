@@ -1,0 +1,61 @@
+---
+# Self-healing Atlas-Allowlist: prüft alle 15 min die Egress-IP und trägt sie
+# bei Wechsel selbst in die MongoDB-Atlas-Access-List ein (Admin API v2).
+# AKTIVIEREN: SealedSecret "atlas-admin-api" anlegen (PUBLIC_KEY, PRIVATE_KEY,
+# PROJECT_ID) und suspend auf false setzen.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: atlas-allowlist-sync
+spec:
+  schedule: "*/15 * * * *"
+  suspend: true
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 3600
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: sync
+              image: curlimages/curl:8.21.0@sha256:7c12af72ceb38b7432ab85e1a265cff6ae58e06f95539d539b654f2cfa64bb13
+              envFrom:
+                - secretRef:
+                    name: atlas-admin-api
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  cpu: 100m
+                  memory: 128Mi
+              command: ["/bin/sh", "-ec"]
+              args:
+                - |
+                  IP=$(curl -s --max-time 10 https://ifconfig.me)
+                  echo "egress ip: $IP"
+                  CODE=$(curl -s -o /dev/null -w '%{http_code}' --digest -u "$PUBLIC_KEY:$PRIVATE_KEY" \
+                    -H 'Accept: application/vnd.atlas.2023-01-01+json' \
+                    "https://cloud.mongodb.com/api/atlas/v2/groups/$PROJECT_ID/accessList/$IP%2F32")
+                  if [ "$CODE" = "200" ]; then echo "already allowlisted"; exit 0; fi
+                  echo "adding $IP to allowlist"
+                  curl -sf --digest -u "$PUBLIC_KEY:$PRIVATE_KEY" \
+                    -H 'Content-Type: application/json' \
+                    -H 'Accept: application/vnd.atlas.2023-01-01+json' \
+                    -X POST "https://cloud.mongodb.com/api/atlas/v2/groups/$PROJECT_ID/accessList" \
+                    -d "[{\"ipAddress\":\"$IP\",\"comment\":\"homelab-auto\"}]"
+                  echo "done"

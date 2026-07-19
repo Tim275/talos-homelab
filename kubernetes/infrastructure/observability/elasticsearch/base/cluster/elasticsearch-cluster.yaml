@@ -33,7 +33,7 @@ spec:
   # - downstream consumers (jaeger, vector, loki) reconnect automatically
   nodeSets:
     - name: master-data
-      count: 3
+      count: 1
       config:
         # Master + Data + Ingest roles
         node.roles: ["master", "data", "ingest"]
@@ -77,11 +77,7 @@ spec:
           labels:
             app.kubernetes.io/component: elasticsearch
         spec:
-          # ENTERPRISE: Critical priority to survive node pressure
-          priorityClassName: system-cluster-critical
-          # CEPH STORAGE OPTIMIZATION: Set proper ownership for ES data directory
-          # Elasticsearch runs as UID 1000, GID 1000 - fsGroup ensures volume ownership
-          # OnRootMismatch: Only change ownership if root dir doesn't match fsGroup (faster on Ceph)
+          priorityClassName: platform-critical
           securityContext:
             fsGroup: 1000
             runAsUser: 1000
@@ -116,6 +112,8 @@ spec:
                   # Heap 1g (50% of 2Gi limit) — homelab right-size, Loki carries most logs.
                   value: "-Xms1g -Xmx1g"
           # Affinity - schedule on large memory nodes (worker-1, worker-2 have 28GB)
+          # node-pool prep: bei Pool-Aktivierung hostname-Pinning ersetzen durch
+          #   - { key: node-pool, operator: In, values: [stateful] }
           affinity:
             nodeAffinity:
               requiredDuringSchedulingIgnoredDuringExecution:
@@ -140,12 +138,12 @@ spec:
           spec:
             accessModes:
               - ReadWriteOnce
-            # ENTERPRISE: Use Retain StorageClass to prevent data loss on PVC deletion
+            # Retain StorageClass to prevent data loss on PVC deletion
             # This prevents accidental data loss during recovery operations
             storageClassName: rook-ceph-block-enterprise-retain
             resources:
               requests:
-                storage: 50Gi
+                storage: 100Gi
   # HTTP service configuration
   http:
     service:

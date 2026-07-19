@@ -21,8 +21,10 @@ spec:
             component: application
             priority: P2
           annotations:
+            dashboard_url: "/d/k8s-pod-overview"
             summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
             description: "Container {{ $labels.container }} in CrashLoopBackOff >5min."
+            action: "kubectl logs -n {{ $labels.namespace }} {{ $labels.pod }} --previous; describe for the crash reason; fix config/image/resources."
 
         - alert: ContainerOOMKilled
           expr: increase(kube_pod_container_status_terminated_reason{reason="OOMKilled"}[15m]) > 0
@@ -31,8 +33,10 @@ spec:
             component: application
             priority: P2
           annotations:
+            dashboard_url: "/d/k8s-pod-overview"
             summary: "OOM kill: {{ $labels.namespace }}/{{ $labels.pod }}/{{ $labels.container }}"
             description: "Container OOM-killed in last 15min — raise memory limit or fix a leak."
+            action: "Raise {{ $labels.container }}'s memory limit or fix the leak; kubectl describe pod -n {{ $labels.namespace }} {{ $labels.pod }}."
 
         - alert: PodNotReady
           expr: kube_pod_status_phase{phase!~"Running|Succeeded|Failed"} == 1
@@ -42,5 +46,83 @@ spec:
             component: application
             priority: P2
           annotations:
+            dashboard_url: "/d/k8s-pod-overview"
             summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} not ready"
             description: "Pod stuck in {{ $labels.phase }} for 15+ min — scheduling failure or PVC unbound."
+            action: "kubectl describe pod -n {{ $labels.namespace }} {{ $labels.pod }}; check events — scheduling, PVC-unbound, or failing readiness."
+
+        - alert: ContainerCPUThrottlingHigh
+          # A container pinned against its CPU limit >75% of CFS periods = busy-loop or under-
+          # sized limit. Blind spot before: the argocd redis-ha sentinel busy-looped at ~1 core
+          # UNCAPPED (no limit → no throttling → no signal) and cooked msa2 to 95°C. Now that
+          # runaways carry a limit, a recurrence surfaces here with the pod name before it heats.
+          expr: |
+            sum by (namespace, pod, container) (rate(container_cpu_cfs_throttled_periods_total{container!=""}[5m]))
+              /
+            sum by (namespace, pod, container) (rate(container_cpu_cfs_periods_total{container!=""}[5m]))
+              > 0.75
+          for: 15m
+          labels:
+            severity: warning
+            component: application
+            priority: P2
+          annotations:
+            dashboard_url: "/d/k8s-pod-overview"
+            summary: "{{ $labels.namespace }}/{{ $labels.pod }}/{{ $labels.container }} throttled {{ $value | humanizePercentage }}"
+            description: "Container throttled >75% of CFS periods for 15min — busy-loop or under-sized CPU limit."
+            action: "kubectl top pod -n {{ $labels.namespace }} {{ $labels.pod }} --containers; busy-loop → fix root cause, else raise the cpu limit."
+
+        - alert: ContainerMemoryHigh
+          # working set / memory limit — the pre-OOM warning (ContainerOOMKilled only fires
+          # AFTER the kill). 95%: cilium + cert-manager-webhook measured ~0.91 near their
+          # (tight) limits by design → 90% would chronically fire on them; 95%/30m is the
+          # clean floor (0 chronic occupants). memcached excluded: caches fill to their
+          # limit BY DESIGN (evict, don't OOM) — loki-chunks-cache false-fired 2026-07-14.
+          expr: |
+            sum by (namespace, pod, container) (container_memory_working_set_bytes{container!="",container!="memcached"})
+              /
+            sum by (namespace, pod, container) (kube_pod_container_resource_limits{resource="memory"})
+              > 0.95
+          for: 30m
+          labels:
+            severity: warning
+            component: application
+            priority: P2
+          annotations:
+            dashboard_url: "/d/k8s-pod-overview"
+            summary: "{{ $labels.namespace }}/{{ $labels.pod }}/{{ $labels.container }} memory at {{ $value | humanizePercentage }} of limit"
+            description: "Container working set >95% of its memory limit for 30min — OOM-kill risk."
+            action: "kubectl top pod -n {{ $labels.namespace }} {{ $labels.pod }} --containers; raise the memory limit or fix the leak."
+
+        - alert: ContainerMemoryLeakSuspected
+          # predict_linear over the 6h trend: will the working set cross the memory limit
+          # within 6h — AND is it already >60% of that limit? JVM-immune (healthy GC = flat/
+          # sawtooth slope → no fire); the >60% floor drops benign slow-growers far from
+          # danger (cut 3 false candidates → 0). for:1h kills startup/cache-fill ramps.
+          # memcached excluded: a cache filling toward its limit is its JOB (evicts at the
+          # top, never OOMs) — the predict sees the fill-ramp and cries wolf
+          # (loki-chunks-cache, 2026-07-14).
+          expr: |
+            (
+              sum by (namespace, pod, container) (
+                predict_linear(container_memory_working_set_bytes{container!="",container!="memcached"}[6h], 6 * 3600)
+              )
+                >
+              sum by (namespace, pod, container) (
+                kube_pod_container_resource_limits{resource="memory"}
+              )
+            )
+            and
+            sum by (namespace, pod, container) (container_memory_working_set_bytes{container!="",container!="memcached"})
+              / sum by (namespace, pod, container) (kube_pod_container_resource_limits{resource="memory"})
+              > 0.60
+          for: 1h
+          labels:
+            severity: warning
+            component: application
+            priority: P2
+          annotations:
+            dashboard_url: "/d/k8s-pod-overview"
+            summary: "{{ $labels.namespace }}/{{ $labels.pod }}/{{ $labels.container }} memory trending to OOM"
+            description: "Working set is climbing; at the current 6h trend it exceeds the memory limit within ~24h — likely a leak."
+            action: "Check the pod's 24h memory graph; steady ramp (not sawtooth) = leak → restart to mitigate, then fix the root cause."

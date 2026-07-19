@@ -16,8 +16,10 @@ spec:
             severity: critical
             component: hypervisor
           annotations:
+            dashboard_url: "/d/proxmox-cluster"
             summary: "External connectivity lost: {{ $labels.target }}"
             description: "Blackbox probe to {{ $labels.target }} failing >5min. ISP/router/firewall issue."
+            action: "Check ISP/router/modem; ping {{ $labels.target }} from a host; this is upstream of the cluster."
 
         - alert: ExternalDNSResolutionFailed
           expr: probe_dns_lookup_time_seconds{job="blackbox-dns"} > 5 or probe_success{job="blackbox-dns"} == 0
@@ -26,7 +28,9 @@ spec:
             severity: warning
             component: hypervisor
           annotations:
+            dashboard_url: "/d/proxmox-cluster"
             summary: "External DNS slow/failing: {{ $labels.target }}"
+            action: "kubectl logs -n kube-system -l k8s-app=kube-dns; the probe tests CoreDNS resolving externally — check upstream/Gateway."
 
         - alert: TLSCertificateExpiringSoonExternal
           expr: probe_ssl_earliest_cert_expiry{job=~"blackbox-.*"} - time() < 14 * 24 * 3600
@@ -35,4 +39,6 @@ spec:
             severity: warning
             component: hypervisor
           annotations:
+            dashboard_url: "/d/proxmox-cluster"
             summary: "External TLS cert expires <14d: {{ $labels.target }}"
+            action: "Check the cert for {{ $labels.target }}; cert-manager (internal) or the external CA; <14d to expiry."

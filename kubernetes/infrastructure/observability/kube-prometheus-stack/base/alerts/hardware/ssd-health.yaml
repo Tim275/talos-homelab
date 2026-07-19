@@ -20,6 +20,7 @@ spec:
             severity: critical
             component: storage
           annotations:
+            dashboard_url: "/d/smartctl-exporter"
             summary: "SSD {{ $labels.device }} CRITICAL WARNING flag set (value {{ $value }})"
             description: "NVMe critical-warning bitfield non-zero (spare/temp/reliability/read-only). Replace soon."
             action: "nvme smart-log /dev/{{ $labels.device }} on the host to decode the warning bits."
@@ -31,8 +32,24 @@ spec:
             severity: critical
             component: storage
           annotations:
+            dashboard_url: "/d/smartctl-exporter"
             summary: "SSD {{ $labels.device }} media errors ({{ $value }} new in 1h)"
             description: "Uncorrectable NAND errors — the drive is failing. Back up + replace (Ceph replicas on the other node protect cluster data)."
+
+        - alert: SSDSmartHealthFailed
+          # Overall SMART self-assessment = FAILED (distinct from the NVMe critical-warning
+          # bitfield above — this is the drive's own pass/fail verdict). Moved here 2026-07-14
+          # from proxmox.yaml to co-locate all smartctl_exporter alerts; label fixed disk→device.
+          expr: smartctl_device_smart_status == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: storage
+          annotations:
+            dashboard_url: "/d/smartctl-exporter"
+            summary: "SMART health FAILED: {{ $labels.device }} on {{ $labels.instance }}"
+            description: "Drive's overall SMART self-assessment = FAILED — replace soon (data-loss risk; Ceph replicas on the other node protect cluster data)."
+            action: "SSH the host; 'smartctl -a /dev/{{ $labels.device }}'; plan a disk replacement."
 
     # ── TICKET — wearing out / blind spot ──
     - name: ssd-ticket
@@ -46,6 +63,7 @@ spec:
             component: storage
             priority: P2
           annotations:
+            dashboard_url: "/d/smartctl-exporter"
             summary: "SSD {{ $labels.device }} spare blocks low ({{ $value }}%)"
             description: "NVMe available-spare <10% — controller will soon enter read-only mode. Migrate Ceph OSD off (ceph osd out) + replace."
 
@@ -57,6 +75,7 @@ spec:
             component: storage
             priority: P2
           annotations:
+            dashboard_url: "/d/smartctl-exporter"
             summary: "SSD {{ $labels.device }} at {{ $value }}% wear — near end-of-life"
             description: "Past 95% of rated TBW. Order replacement; failure risk rising."
 
@@ -68,6 +87,7 @@ spec:
             component: storage
             priority: P2
           annotations:
+            dashboard_url: "/d/smartctl-exporter"
             summary: "smartctl_exporter on {{ $labels.instance }} is down"
             description: "No SMART data from this Proxmox host — SSD health is unmonitored (blind spot)."
             action: "systemctl status smartctl_exporter on the host. Restart if needed."
