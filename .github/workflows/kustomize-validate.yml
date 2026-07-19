@@ -51,14 +51,17 @@ jobs:
 
           while IFS= read -r kfile; do
             DIR=$(dirname "$kfile")
-            # Retry to survive transient helm-repo errors (external chart pulls, e.g. 503)
-            for attempt in 1 2 3; do
+            # Retry to survive transient helm-repo errors on external chart pulls:
+            # 5xx, docker.io anonymous pull rate-limits (429/toomanyrequests — the
+            # usual culprit), TLS handshake / EOF / connection-reset. 5 attempts,
+            # linear backoff up to 40s so a throttling window has time to clear.
+            for attempt in 1 2 3 4 5; do
               OUTPUT=$(kustomize build "$DIR" --enable-helm --load-restrictor=LoadRestrictionsNone 2>&1)
               STATUS=$?
               [ $STATUS -eq 0 ] && break
-              echo "$OUTPUT" | grep -qiE 'cannot be reached|503|Service Unavailable|timeout|temporarily|connection refused|no such host|TLS handshake|i/o timeout' || break
-              echo "::warning::transient build failure in $DIR (attempt $attempt/3), retrying"
-              sleep $((attempt * 5))
+              echo "$OUTPUT" | grep -qiE 'cannot be reached|429|too.?many.?requests|toomanyrequests|50[0234]|Service Unavailable|timeout|temporarily|connection refused|connection reset|reset by peer|no such host|TLS handshake|i/o timeout|unexpected EOF|deadline exceeded|dial tcp' || break
+              echo "::warning::transient build failure in $DIR (attempt $attempt/5), retrying"
+              sleep $((attempt * 10))
             done
 
             if [ $STATUS -ne 0 ]; then
