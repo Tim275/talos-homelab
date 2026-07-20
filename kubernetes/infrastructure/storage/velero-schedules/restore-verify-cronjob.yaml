@@ -46,7 +46,11 @@ metadata:
     app.kubernetes.io/name: velero-restore-verify
     app.kubernetes.io/part-of: backup-validation
 spec:
-  schedule: "0 4 * * *"          # täglich 04:00 UTC (nach 03:00 Daily-Backup)
+  # 07:30 UTC — war 04:00 und lief damit exakt zeitgleich mit cnpg-dr-verify (jetzt 04:30).
+  # Beide zusammen mit dem 03:00-Backup-Nachlauf = I/O-Sturm auf cephpool/Samsung, wo auch
+  # etcd liegt → fsync-Spikes → leader-election-Verluste clusterweit (2026-07-20).
+  # 07:30 liegt frei zwischen der 06:00- und 12:00-tier0-Welle.
+  schedule: "30 7 * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 7      # 7 days history für DR-Drill-Tracking
@@ -125,8 +129,8 @@ spec:
                   EOF
 
                   ERROR_REASON=""
-                  # 4. Wait for restore to complete (max 10min)
-                  for i in $(seq 1 60); do
+                  # 4. Wait for restore to complete (max 15min)
+                  for i in $(seq 1 90); do
                     PHASE=$(kubectl get restores.velero.io -n velero "$RESTORE" -o jsonpath='{.status.phase}' 2>/dev/null)
                     if [ "$PHASE" = "Completed" ]; then
                       echo "✓ Restore Completed"
@@ -143,7 +147,9 @@ spec:
 
                   # 5. Cleanup
                   kubectl delete restores.velero.io -n velero "$RESTORE" --ignore-not-found=true >/dev/null 2>&1
-                  kubectl delete ns "$TEST_NS" --ignore-not-found=true >/dev/null 2>&1
+                  # --wait=false: sonst blockiert der Delete bis der NS finalisiert ist und
+                  # der Job stirbt mit "timed out waiting for the condition" (2026-07-20).
+                  kubectl delete ns "$TEST_NS" --ignore-not-found=true --wait=false >/dev/null 2>&1
 
                   # 6. Final verdict — exit code triggers KubeJobFailed Prometheus alert
                   if [ "$PHASE" = "Completed" ]; then

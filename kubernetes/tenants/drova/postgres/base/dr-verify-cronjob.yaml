@@ -6,12 +6,15 @@
 #   2. Create test-namespace dr-verify-<ts>
 #   3. Copy backup-secret + ObjectStore CR
 #   4. Apply Cluster CR mit bootstrap.recovery
-#   5. Wait for "Cluster in healthy state" (max 10min)
+#   5. Wait for "Cluster in healthy state" (max 25min, fail-fast bei Fehler-Phase)
 #   6. Verify databases via psql
 #   7. Cleanup test-NS
 #   8. Notify Telegram (success/fail)
 #
-# Schedule: 04:00 UTC daily (off-peak)
+# Schedule: 04:30 UTC daily. War 04:00 und lief damit zeitgleich mit velero-restore-verify
+# plus dem 03:00-Backup-Nachlauf — alles I/O auf cephpool/Samsung, wo auch etcd + Ceph-OSDs
+# liegen. Ergebnis 2026-07-20: etcd-fsync-Spikes → "leader election lost" → CNPG-Operator
+# restartet mitten im Restore → "Unable to create required cluster objects".
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -53,7 +56,7 @@ metadata:
   name: cnpg-dr-verify
   namespace: drova
 spec:
-  schedule: "0 4 * * *"
+  schedule: "30 4 * * *"
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 5
   concurrencyPolicy: Forbid
@@ -139,20 +142,45 @@ spec:
                             serverName: drova-postgres
                   EOF
 
-                  # 6. Wait for "Cluster in healthy state" (max 15min)
-                  echo "→ Waiting for restore (max 15min)..."
-                  for i in $(seq 1 90); do
-                    PHASE=$(kubectl get cluster -n $TEST_NS $CLUSTER_NAME -o jsonpath='{.status.phase}' 2>/dev/null)
-                    echo "  [$(date +%H:%M:%S)] phase: $PHASE"
-                    if [ "$PHASE" = "Cluster in healthy state" ]; then
-                      break
+                  # 6. Wait for "Cluster in healthy state" (max 25min)
+                  # Bricht sofort ab statt blind weiterzupollen, wenn der Cluster in eine
+                  # Fehler-Phase geht ODER die CR verschwindet (= Operator hat sich
+                  # weggeschossen, z.B. "leader election lost" bei etcd-Latenz).
+                  echo "→ Waiting for restore (max 25min)..."
+                  PHASE=""
+                  GONE=0
+                  for i in $(seq 1 150); do
+                    if kubectl get cluster -n $TEST_NS $CLUSTER_NAME >/dev/null 2>&1; then
+                      GONE=0
+                      PHASE=$(kubectl get cluster -n $TEST_NS $CLUSTER_NAME -o jsonpath='{.status.phase}' 2>/dev/null)
+                      echo "  [$(date +%H:%M:%S)] phase: ${PHASE:-<leer>}"
+                      if [ "$PHASE" = "Cluster in healthy state" ]; then
+                        break
+                      fi
+                      case "$PHASE" in
+                        *"Unable to create"*|*Failed*)
+                          echo "✗ ABBRUCH: Cluster in Fehler-Phase"
+                          break
+                          ;;
+                      esac
+                    else
+                      GONE=$((GONE + 1))
+                      echo "  [$(date +%H:%M:%S)] Cluster-CR nicht abfragbar ($GONE/3)"
+                      if [ $GONE -ge 3 ]; then
+                        echo "✗ ABBRUCH: Restore-Cluster verschwunden (Operator-Restart?)"
+                        break
+                      fi
                     fi
                     sleep 10
                   done
 
                   if [ "$PHASE" != "Cluster in healthy state" ]; then
-                    echo "✗ FAIL: Restore did not reach healthy state after 15min"
-                    kubectl get events -n $TEST_NS --sort-by=.metadata.creationTimestamp | tail -10
+                    echo "✗ FAIL: Restore nicht healthy (letzte phase: ${PHASE:-<leer>})"
+                    echo "→ CNPG-Operator (Restarts = häufigste Ursache):"
+                    kubectl get pods -n cnpg-system 2>/dev/null | head -5
+                    echo "→ Events im Test-NS:"
+                    kubectl get events -n $TEST_NS --sort-by=.metadata.creationTimestamp 2>/dev/null | tail -15
+                    kubectl describe cluster -n $TEST_NS $CLUSTER_NAME 2>/dev/null | tail -25
                     exit 1
                   fi
 
