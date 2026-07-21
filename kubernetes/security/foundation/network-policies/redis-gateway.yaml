@@ -1,0 +1,38 @@
+---
+# Lock the rate-limit Redis (redis-gateway): only the envoy-ratelimit pods (client), the
+# OpsTree redis-operator (manager) and monitoring (exporter) may reach it. The store runs
+# `protected-mode no` with no AUTH, so without this policy ANY pod in the cluster could read
+# or poison the rate-limit counters. Probes are exec (redis-cli ping, in-container) so they
+# bypass the policy — no host rule needed.
+# Selectors verified live 2026-07-21.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: redis-gateway-ingress-lock
+  namespace: gateway
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: redis-gateway
+  ingress:
+    # rate-limit service → Redis counter store
+    - fromEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: envoy-ratelimit
+      toPorts:
+        - ports:
+            - { port: "6379", protocol: TCP }
+    # OpsTree redis-operator manages this instance
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: redis-operator-system
+      toPorts:
+        - ports:
+            - { port: "6379", protocol: TCP }
+    # redis-exporter scrape (aktiv sobald redisExporter aktiviert wird)
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - { port: "9121", protocol: TCP }
