@@ -1,0 +1,58 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: ml-stack
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    platform.homelab/layer: ml-platform
+    team: timour
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  # AppSet weg (z.B. PR-Zeile verloren) => Apps ueberleben als Orphans
+  # statt Kaskaden-Delete+prune aller Layer-Workloads.
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  argocd.argoproj.io/secret-type: cluster
+                  environment: prod
+          - list:
+              elements:
+                - { component: mlflow, appName: mlflow, namespace: ml, wave: "20" }
+  template:
+    metadata:
+      name: '{{.appName}}'
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        platform.homelab/layer: ml-platform
+        platform.homelab/component: '{{.component}}'
+        team: timour
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{.wave}}'
+    spec:
+      project: ml
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: main
+        path: 'kubernetes/platform/ml/{{.component}}/overlays/prod'
+      destination:
+        server: '{{.server}}'
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        # manual sync = DAX-Gate (Workload-Layer, wie Tenants)
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+          - ApplyOutOfSyncOnly=true
+        retry:
+          limit: 5
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }
