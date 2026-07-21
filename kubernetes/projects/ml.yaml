@@ -1,0 +1,57 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: ml
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/part-of: timour-homelab
+    app.kubernetes.io/layer: ml
+    team: timour
+spec:
+  description: "ML Department - Training, Serving, Experiment-Tracking"
+
+  # Nacht-Freeze 02-05 Uhr (Backup-Fenster, niemand wach): kein Auto-Sync/selfHeal,
+  # manueller Sync bleibt als Break-Glass erlaubt
+  syncWindows:
+    - kind: deny
+      schedule: '0 2 * * *'
+      duration: 3h
+      timeZone: Europe/Berlin
+      applications:
+        - '*'
+      manualSync: true
+
+  sourceRepos:
+    - 'https://github.com/Tim275/talos-homelab'
+
+  destinations:
+    - namespace: ml
+      server: https://kubernetes.default.svc
+
+  # Cluster-scoped: nur was der Tenant LIVE nutzt (Namespace via tenant-kustomization).
+  # Neues Kind -> Sync-Fehler "not permitted in project" -> hier nachtragen.
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+
+  roles:
+    - name: ml-admin
+      description: "Full access to ml workloads"
+      policies:
+        - p, proj:ml:ml-admin, applications, *, ml/*, allow
+        - p, proj:ml:ml-admin, exec, *, ml/*, allow
+      groups:
+        - timour:ml-admins
+
+    - name: ml-operator
+      description: "Operational access to ml workloads"
+      policies:
+        - p, proj:ml:ml-operator, applications, get, ml/*, allow
+        - p, proj:ml:ml-operator, applications, sync, ml/*, allow
+      groups:
+        - timour:ml-operators
