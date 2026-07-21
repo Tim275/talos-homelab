@@ -42,3 +42,18 @@ spec:
             dashboard_url: "/d/proxmox-cluster"
             summary: "External TLS cert expires <14d: {{ $labels.target }}"
             action: "Check the cert for {{ $labels.target }}; cert-manager (internal) or the external CA; <14d to expiry."
+
+    - name: homelab-services
+      interval: 1m
+      rules:
+        - alert: HomelabPublicServiceDown
+          expr: probe_success{job="blackbox-homelab"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: ingress
+          annotations:
+            dashboard_url: "/d/blackbox-exporter"
+            summary: "Homelab service unreachable: {{ $labels.target }}"
+            description: "Blackbox probe to {{ $labels.target }} returned no valid HTTP response for >5min (refused/timeout/5xx)."
+            action: "curl --resolve HOST:443:192.168.0.152 https://HOST/ ; check app pod + HTTPRoute + Envoy filter-chain."
