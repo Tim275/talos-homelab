@@ -24,7 +24,21 @@ spec:
     connectionLimit:
       value: 10000
       closeDelay: 5s
+  # Reap dead/abandoned downstream sockets fast so their connection slots free up
+  # (anti connection-exhaustion). Probes after 60s idle, every 10s, drop after 6 misses.
+  tcpKeepalive:
+    idleTime: 60s
+    interval: 10s
+    probes: 6
+  # HTTP/2 flood + Rapid-Reset (CVE-2023-44487) mitigation: cap concurrent streams per
+  # connection. One HTTP/2 conn opening thousands of streams is the classic amplification
+  # vector; 100 is generous for real browsers (~6-100).
+  http2:
+    maxConcurrentStreams: 100
   timeout:
     http:
+      # Slowloris: full request headers must arrive within 10s.
       requestReceivedTimeout: 10s
       idleTimeout: 300s
+      # BEWUSST kein streamIdleTimeout: drova nutzt WebSockets (Chat) + Live-Streams —
+      # ein aggressiver Stream-Timeout würde die abwürgen. Long-lived Streams erlaubt.
