@@ -1,8 +1,7 @@
-# ML Platform — GEPARKT (wartet auf Hardware)
+# ML Platform
 
-**Status: Platzhalter, deployt NICHTS.** Dieser Ordner ist von keiner kustomization und
-keinem AppSet referenziert — er dokumentiert nur, wo die ML-Platform-Tools hinkommen,
-sobald neue Hardware (GPU-Node) da ist.
+**Status: Phase 1 LIVE (MLflow).** Deployed über die `ml-stack` AppSet (project `ml`,
+manual-sync/DAX-Gate). GPU-gebundene Tools (Training-Workloads) warten weiter auf Hardware.
 
 ## Das Zwei-Hälften-Muster
 
@@ -17,9 +16,11 @@ Analog zum Rest des Repos: Strimzi-Operator (`infrastructure/operators/strimzi/`
 ## Geplanter Stack (CPU-first, siehe notes/CLAUDE-MLOPS.md)
 
 ```
-platform/ml/mlflow/                      → Experiment-Tracking (zentraler Server)
-infrastructure/operators/kserve/         → Model-Serving-Operator
-infrastructure/operators/argo-workflows/ → Pipeline-Engine
+platform/ml/mlflow/                      → ✅ LIVE: Tracking+Registry, sqlite auf Ceph-PVC,
+                                           Artefakte → Ceph-RGW S3 (OBC mlflow-artifacts),
+                                           https://mlflow.timourhomelab.org (VPN-only)
+infrastructure/operators/kserve/         → ⏸️ kommt mit dem ERSTEN Modell (keine leere Hülle)
+infrastructure/operators/argo-workflows/ → ⏸️ kommt mit der ERSTEN Pipeline
 ```
 
 **Bewusst KEIN Full-Kubeflow:** 10+ Komponenten, RAM-Fresser, eigener Istio-Zwang —
