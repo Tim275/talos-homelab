@@ -29,6 +29,12 @@ jobs:
         run: tofu fmt -check -recursive
 
       - name: tofu validate
+        # root-Modul liest providers.tofu: file(pathexpand("~/.ssh/id_rsa_proxmox"))
+        # fuer den Proxmox-SSH-Provisioner -> file() wird SCHON bei "validate"
+        # ausgewertet, der Key existiert nur lokal (darf NIE als CI-Secret hochgeladen
+        # werden - direkter root-SSH-Zugriff auf die Proxmox-Hosts). validate faellt
+        # fuer root deshalb bewusst aus; fmt deckt root weiterhin ab.
+        if: matrix.module != '.'
         working-directory: tofu/${{ matrix.module }}
         # -backend=false: kein Azure-Login noetig, nur Syntax/Schema-Check.
         # Kein Provider-Token noetig (kein plan/apply) -> keine Secrets in CI.
