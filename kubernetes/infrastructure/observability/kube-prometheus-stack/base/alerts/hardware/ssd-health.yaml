@@ -14,7 +14,9 @@ spec:
       interval: 5m
       rules:
         - alert: SSDCriticalWarning
-          expr: smartctl_device_critical_warning > 0
+          # value 2 = temperature-only bit → gehört zu HostNVMeTemperatureCritical (Kühlung),
+          # NICHT "Disk stirbt". Nur bits spare/reliability/read-only/backup pagen hier.
+          expr: smartctl_device_critical_warning > 0 and smartctl_device_critical_warning != 2
           for: 5m
           labels:
             severity: critical
@@ -22,7 +24,7 @@ spec:
           annotations:
             dashboard_url: "/d/smartctl-exporter"
             summary: "SSD {{ $labels.device }} CRITICAL WARNING flag set (value {{ $value }})"
-            description: "NVMe critical-warning bitfield non-zero (spare/temp/reliability/read-only). Replace soon."
+            description: "NVMe critical-warning bitfield: spare/reliability/read-only/backup (Temp separat). Replace soon."
             action: "nvme smart-log /dev/{{ $labels.device }} on the host to decode the warning bits."
 
         - alert: SSDMediaErrors
@@ -40,7 +42,9 @@ spec:
           # Overall SMART self-assessment = FAILED (distinct from the NVMe critical-warning
           # bitfield above — this is the drive's own pass/fail verdict). Moved here 2026-07-14
           # from proxmox.yaml to co-locate all smartctl_exporter alerts; label fixed disk→device.
-          expr: smartctl_device_smart_status == 0
+          # NVMe smart_status=FAILED wird aus critical_warning abgeleitet → bei reinem
+          # Temp-Bit (value 2) ist das ein Fehlalarm (Disk ok, nur heiss). Temp-Bit ausschliessen.
+          expr: smartctl_device_smart_status == 0 and on(instance, device) smartctl_device_critical_warning != 2
           for: 5m
           labels:
             severity: critical
@@ -48,7 +52,7 @@ spec:
           annotations:
             dashboard_url: "/d/smartctl-exporter"
             summary: "SMART health FAILED: {{ $labels.device }} on {{ $labels.instance }}"
-            description: "Drive's overall SMART self-assessment = FAILED — replace soon (data-loss risk; Ceph replicas on the other node protect cluster data)."
+            description: "Drive's overall SMART self-assessment = FAILED (nicht nur Temp) — replace soon (data-loss risk; Ceph replicas on the other node protect cluster data)."
             action: "SSH the host; 'smartctl -a /dev/{{ $labels.device }}'; plan a disk replacement."
 
     # ── TICKET — wearing out / blind spot ──
