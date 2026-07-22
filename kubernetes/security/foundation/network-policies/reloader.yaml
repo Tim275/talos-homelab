@@ -1,0 +1,29 @@
+---
+# Lock reloader controller ingress: only monitoring (metrics) + host/apiserver
+# (kubelet probe on :9090). reloader is reconcile-driven (watches ConfigMaps/
+# Secrets, triggers rollouts — pure egress to apiserver); it has no legitimate
+# in-cluster ingress beyond probes/metrics. Blocks lateral movement.
+#
+# Allow-list derived from live state 2026-07-22:
+#   - container port 9090 serves both /healthz probe AND /metrics
+#   - no ServiceMonitor currently scrapes it; monitoring allowed defensively
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: reloader-ingress-lock
+  namespace: reloader
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: reloader
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - { port: "9090", protocol: TCP }
+    - fromEntities: [host, kube-apiserver]
+      toPorts:
+        - ports:
+            - { port: "9090", protocol: TCP }

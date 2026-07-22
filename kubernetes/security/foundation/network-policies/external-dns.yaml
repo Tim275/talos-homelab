@@ -1,0 +1,29 @@
+---
+# Lock external-dns controller ingress: only monitoring (metrics scrape on :7979)
+# + host/apiserver (kubelet probe). external-dns is reconcile-driven (watches
+# Ingress/Service, egress to Cloudflare API); no legitimate in-cluster ingress
+# beyond probes/metrics. Blocks lateral movement.
+#
+# Allow-list derived from live state 2026-07-22:
+#   - ServiceMonitor external-dns (ns monitoring) scrapes port "http" (7979)
+#   - liveness/readiness probe → :7979 (from host/kubelet)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: external-dns-ingress-lock
+  namespace: external-dns
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: external-dns
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - { port: "7979", protocol: TCP }
+    - fromEntities: [host, kube-apiserver]
+      toPorts:
+        - ports:
+            - { port: "7979", protocol: TCP }
