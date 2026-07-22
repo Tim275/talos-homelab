@@ -21,3 +21,22 @@ resource "kubernetes_secret_v1" "sealed-secrets-key" {
     "tls.key" = file("${path.root}/${var.cert.certificate_key_path}")
   }
 }
+
+# rotated 2026-07-23 (old cert expired 2026-07-21); old key stays for decrypting existing sealed secrets
+resource "kubernetes_secret_v1" "sealed-secrets-key-2026" {
+  depends_on = [kubernetes_namespace_v1.sealed-secrets]
+  type       = "kubernetes.io/tls"
+
+  metadata {
+    name      = "sealed-secrets-bootstrap-key-2026"
+    namespace = "sealed-secrets"
+    labels = {
+      "sealedsecrets.bitnami.com/sealed-secrets-key" = "active"
+    }
+  }
+
+  data = {
+    "tls.crt" = file("${path.root}/bootstrap/sealed-secrets/certificate/sealed-secrets-2026.crt")
+    "tls.key" = file("${path.root}/bootstrap/sealed-secrets/certificate/sealed-secrets-2026.key")
+  }
+}
