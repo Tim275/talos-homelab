@@ -27,6 +27,35 @@ spec:
             description: "KRaft cannot elect a leader — all metadata ops blocked, producers/consumers cannot connect."
             action: "kubectl -n {{ $labels.namespace }} get pod -l strimzi.io/controller-role=true + logs; do NOT delete all controllers (KRaft quorum)."
 
+        # Die zwei "MUSS 0"-Fruehwarner (Datenverlust-Vorstufe):
+        # UnderReplicated feuert BEVOR UnderMinISR (Producer laufen noch,
+        # aber ein weiterer Broker-Ausfall = Verlustgefahr).
+        - alert: KafkaUnderReplicatedPartitions
+          expr: sum(kafka_server_replicamanager_underreplicatedpartitions) > 0
+          for: 5m
+          labels:
+            severity: warning
+            component: data
+            priority: P2
+          annotations:
+            dashboard_url: "/d/kafka-exporter"
+            summary: "Kafka: {{ $value }} under-replicated partitions"
+            description: "Replikation hinkt — noch kein Producer-Fehler, aber der naechste Broker-Ausfall riskiert Datenverlust. Fruehwarner vor UnderMinISR."
+            action: "kubectl -n drova get pod -l strimzi.io/broker-role=true; kubectl -n drova logs <lagging-broker>; Disk/Netz des Brokers pruefen."
+
+        - alert: KafkaOfflinePartitions
+          expr: sum(kafka_controller_kafkacontroller_offlinepartitionscount) > 0
+          for: 1m
+          labels:
+            severity: critical
+            component: data
+            priority: P1
+          annotations:
+            dashboard_url: "/d/kafka-exporter"
+            summary: "Kafka: {{ $value }} partitions OFFLINE (kein Leader!)"
+            description: "Partition(en) ohne Leader — nicht lesbar/schreibbar. Sofortiger Handlungsbedarf."
+            action: "kubectl -n drova get kafka drova-kafka -o yaml | grep -A5 status; Broker-Pods + KRaft-Quorum pruefen (controller-Pods)."
+
         - alert: KafkaUnderMinISR
           expr: kafka_cluster_partition_underminisr{pod=~".*kafka.*"} > 0
           for: 3m
