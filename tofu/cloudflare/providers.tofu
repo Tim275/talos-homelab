@@ -6,6 +6,7 @@ terraform {
     container_name       = "tfstate"
     key                  = "cloudflare.tfstate"
     use_azuread_auth     = true
+    use_oidc             = true
     subscription_id      = "72c89487-4bc9-4c91-a0f7-0cc51fc89336"
   }
 
