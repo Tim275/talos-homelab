@@ -45,6 +45,24 @@ resource "netbird_network_router" "lan" {
 # Split-DNS aus tofu ENTFERNT (2026-06-09) — der NetBird-Operator macht jetzt DNS
 # (Zone k8s.timourhomelab.org, Records pro exposed Service). Dieses Modul = nur noch LAN-Routing.
 
+# ── Account-Settings: Zero-Trust-Hardening (2026-07-22) ───────────────────────
+# "continuously authenticating" (NIST SP 800-207) — peer_approval + periodische
+# Re-Auth statt einmal verbinden und für immer vertrauen.
+resource "netbird_account_settings" "hardening" {
+  peer_approval_enabled         = true # neue Peers brauchen manuelle Freigabe
+  peer_login_expiration_enabled = true # User-Peers re-authen alle 24h
+  peer_login_expiration         = 86400
+  # unverändert gelassen (Live-Defaults, keine Absicht dahinter zu ändern):
+  peer_inactivity_expiration_enabled  = false
+  peer_inactivity_expiration          = 0
+  regular_users_view_blocked          = false
+  groups_propagation_enabled          = false
+  jwt_groups_enabled                  = false
+  jwt_groups_claim_name               = ""
+  jwt_allow_groups                    = []
+  routing_peer_dns_resolution_enabled = false
+}
+
 # ── Access-Policy: users → LAN-Resource (Least-Privilege) ────────────────────
 resource "netbird_policy" "users_to_lan" {
   name        = "homelab-users-to-lan"
@@ -55,9 +73,13 @@ resource "netbird_policy" "users_to_lan" {
     name          = "users-to-lan"
     action        = "accept"
     bidirectional = true
-    protocol      = "all"
-    sources       = [netbird_group.users.id]
-    destinations  = [netbird_group.lan_resource.id]
+    # tcp statt all (Hardening 2026-07-22): entfernt ungeprüften ICMP/UDP-Raw-Zugriff.
+    # Alle Homelab-Apps laufen über Envoy-Gateway (TCP/443) — bleibt voll funktionsfähig.
+    # Port-Scope (nur 443/22 etc.) bewusst NICHT verengt — fehlende Traffic-Telemetrie,
+    # Risiko ungeprüft etwas zu sperren > Nutzen; Folge-Schritt für einen ruhigen Tag.
+    protocol     = "tcp"
+    sources      = [netbird_group.users.id]
+    destinations = [netbird_group.lan_resource.id]
   }
 }
 
@@ -67,4 +89,8 @@ resource "netbird_setup_key" "routers" {
   type        = "reusable"
   usage_limit = 0 # unlimited
   auto_groups = [netbird_group.routers.id]
+  # Ablauf 2026-07-22 hinzugefügt (Hardening): Key selbst läuft ab, bereits
+  # verbundene Peers (msa2/nipogi) bleiben unberührt — Ablauf wirkt nur auf
+  # NEUE Verbindungsversuche mit dem Key (NetBird-Doku bestätigt).
+  expiry_seconds = 7776000 # 90 Tage
 }
