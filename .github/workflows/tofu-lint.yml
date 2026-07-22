@@ -1,0 +1,37 @@
+name: tofu-lint
+
+on:
+  pull_request:
+    paths:
+      - "tofu/**/*.tofu"
+      - "tofu/**/*.tf"
+
+permissions:
+  contents: read
+
+jobs:
+  fmt-validate:
+    name: fmt + validate
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: [".", "cloudflare", "netbird"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.12.3"
+
+      - name: tofu fmt -check
+        working-directory: tofu/${{ matrix.module }}
+        run: tofu fmt -check -recursive
+
+      - name: tofu validate
+        working-directory: tofu/${{ matrix.module }}
+        # -backend=false: kein Azure-Login noetig, nur Syntax/Schema-Check.
+        # Kein Provider-Token noetig (kein plan/apply) -> keine Secrets in CI.
+        run: |
+          tofu init -backend=false -input=false
+          tofu validate
