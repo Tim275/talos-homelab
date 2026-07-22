@@ -1,0 +1,28 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: mail-drova
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # Mailer-Fehler waren beim Tiago-Incident (2026-07-21) nur warn-Logs — drei
+  # gestapelte Ursachen (Egress, Credentials, Provider-Block) blieben tagelang
+  # unbemerkt, Registrierung gab trotzdem 201. Metrik: mail_send_total{status}
+  # aus services/user-service/internal/mailer (OTEL, ab v0.22.16).
+  groups:
+    - name: drova-mail
+      interval: 1m
+      rules:
+        - alert: DrovaMailSendErrors
+          expr: sum(rate(mail_send_total{status="error"}[10m])) > 0
+          for: 5m
+          labels:
+            severity: warning
+            priority: P2
+            component: mailer
+            tenant: drova
+          annotations:
+            summary: "Drova activation emails failing"
+            description: "mail_send_total{status=error} steigt seit >5min — User registrieren sich, bekommen aber keine Aktivierungsmail (Registrierung liefert trotzdem 201!). Ursachen-Kandidaten: SMTP-Egress-Policy, Brevo-Credentials/Secret-Drift, Provider-Block."
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-overview"
+            action: "kubectl -n drova logs -l app=user-service | grep -i smtp; Brevo-Logs checken; Secret drova-app-secrets (SMTP_*) gegen Drift pruefen (siehe drova-mailer-incident Memory)."
