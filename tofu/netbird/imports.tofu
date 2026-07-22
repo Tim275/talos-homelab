@@ -39,7 +39,11 @@ import {
   id = "d8k09pafadhs73dapu70"
 }
 
+# netbird_setup_key.routers: KEIN Import-Block mehr — durch das expiry_seconds-
+# Hardening (2026-07-22) destroy+recreated, State trägt bereits die neue ID
+# (Apply lief bereits, kein Re-Import nötig).
+
 import {
-  to = netbird_setup_key.routers
-  id = "d8k09pbl0ubs73cdokh0"
+  to = netbird_account_settings.hardening
+  id = "d8jsbeafadhs73c5f6dg"
 }
