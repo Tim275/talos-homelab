@@ -63,11 +63,29 @@ resource "netbird_account_settings" "hardening" {
   routing_peer_dns_resolution_enabled = false
 }
 
-# ── Access-Policy: users → LAN-Resource (Least-Privilege) ────────────────────
+# ── Device-Posture: Mindest-NetBird-Client-Version (Zero-Trust KP3b) ─────────
+# Erzwingt, dass User-Geräte einen aktuellen NetBird-Client fahren, bevor sie
+# aufs LAN dürfen — veralteter Client = ungepatchte Angriffsfläche.
+# Schwelle 0.72.0 bewusst konservativ: homelab-users = aktuell NUR der MacBook
+# (live 2026-07-22: netbird 0.72.2 → besteht). Infra-Peers (msa2/nipogi/
+# clusterproxy) sind NICHT in homelab-users → unberührt. Neue User-Geräte mit
+# älterem Client würden geblockt (= gewollter Posture-Gate).
+resource "netbird_posture_check" "min_client" {
+  name        = "homelab-min-netbird-version"
+  description = "User-Geräte müssen NetBird-Client >= 0.72.0 fahren (Device-Health)"
+
+  netbird_version_check {
+    min_version = "0.72.0"
+  }
+}
+
+# ── Access-Policy: users → LAN-Resource (Least-Privilege + Posture) ───────────
 resource "netbird_policy" "users_to_lan" {
   name        = "homelab-users-to-lan"
   description = "Erlaubt homelab-users den Zugriff auf das LAN-Subnet"
   enabled     = true
+  # Posture-Gate: nur Geräte die den Version-Check bestehen kommen durch.
+  source_posture_checks = [netbird_posture_check.min_client.id]
 
   rule {
     name          = "users-to-lan"
