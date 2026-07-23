@@ -1,6 +1,6 @@
 talos_cluster_config = {
   name                         = "homelab-k8s"
-  vip                          = "192.168.0.100" # VIP managed by kube-vip
+  vip                          = "192.168.0.100" # Talos native VIP (etcd leader-elected)
   gateway                      = "192.168.0.1"
   subnet_mask                  = "24"
   talos_machine_config_version = "v1.13.2"
