@@ -15,6 +15,11 @@ on:
     paths:
       - "tofu/cloudflare/**"
       - "tofu/netbird/**"
+  push:
+    branches: [main]
+    paths:
+      - "tofu/cloudflare/**"
+      - "tofu/netbird/**"
 
 permissions:
   contents: read
@@ -74,3 +79,35 @@ jobs:
             } else {
               await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body });
             }
+
+  apply:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    name: apply (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    environment: tofu-apply # Required-Reviewer-Gate, nur main
+    concurrency:
+      group: tofu-apply-${{ matrix.module }}
+      cancel-in-progress: false # laufenden apply nie abbrechen
+    strategy:
+      matrix:
+        module: [cloudflare, netbird]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.12.3"
+
+      - name: tofu init
+        working-directory: tofu/${{ matrix.module }}
+        run: tofu init -input=false
+
+      - name: tofu apply
+        working-directory: tofu/${{ matrix.module }}
+        env:
+          TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TF_VAR_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          TF_VAR_publish_apex: true
+          TF_VAR_netbird_api_token: ${{ secrets.NETBIRD_API_TOKEN }}
+        run: tofu apply -input=false -auto-approve -no-color
