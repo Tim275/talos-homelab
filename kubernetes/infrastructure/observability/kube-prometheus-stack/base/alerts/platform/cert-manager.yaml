@@ -29,18 +29,23 @@ spec:
     - name: cert-manager-ticket
       interval: 5m
       rules:
-        - alert: CertExpiringIn30Days
-          expr: certmanager_certificate_expiration_timestamp_seconds - time() < 30 * 24 * 3600
-          for: 12h
+        - alert: CertRenewalStuck
+          # cert-manager auto-renews at renewalTime (~2/3 of lifetime). Fire only when that time
+          # has passed and the cert still isn't renewed — i.e. renewal is genuinely stuck (Issuer
+          # down, ACME failing). The old "expires <30d" alert just spammed during the normal
+          # renew window (cert-manager renewBefore < 30d), never actionable. CertExpiringIn7Days
+          # stays as the hard expiry backstop.
+          expr: certmanager_certificate_renewal_timestamp_seconds - time() < 0
+          for: 1h
           labels:
             severity: warning
             component: platform
             priority: P2
           annotations:
             dashboard_url: "/d/cert-manager"
-            summary: "TLS cert expires in <30d: {{ $labels.name }}"
-            description: "Renewal should happen automatically — verify cert-manager is healthy."
-            action: "Renewal is automatic — verify cert-manager pods healthy + the (Cluster)Issuer is Ready."
+            summary: "cert-manager renewal overdue: {{ $labels.name }}"
+            description: "Renewal time passed >1h ago but {{ $labels.name }} in {{ $labels.namespace }} still isn't renewed — cert-manager isn't handling it."
+            action: "kubectl describe certificate {{ $labels.name }} -n {{ $labels.namespace }}; check the Issuer is Ready + cert-manager logs."
 
         - alert: CertManagerDown
           expr: up{job="cert-manager"} == 0
