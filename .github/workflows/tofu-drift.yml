@@ -1,0 +1,58 @@
+name: tofu-drift
+
+# Nightly plan gegen cloudflare/netbird — faengt manuelle Dashboard-Aenderungen
+# ausserhalb Git (Drift). Exit 2 = Drift -> Job faellt (sichtbar/notifiziert).
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_USE_AZUREAD: true
+  ARM_USE_OIDC: true
+
+jobs:
+  drift:
+    name: drift (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [cloudflare, netbird]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.12.3"
+
+      - name: tofu init
+        working-directory: tofu/${{ matrix.module }}
+        run: tofu init -input=false
+
+      - name: tofu plan (detect drift)
+        working-directory: tofu/${{ matrix.module }}
+        env:
+          TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TF_VAR_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          TF_VAR_publish_apex: true
+          TF_VAR_netbird_api_token: ${{ secrets.NETBIRD_API_TOKEN }}
+        run: |
+          set +e
+          tofu plan -input=false -detailed-exitcode -no-color | tee plan.txt
+          code=${PIPESTATUS[0]}
+          set -e
+          if [ "$code" = "2" ]; then
+            { echo "### Drift in \`${{ matrix.module }}\`"; echo '```'; tail -60 plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          [ "$code" = "0" ] && echo "no drift" || { echo "plan error"; exit 1; }
