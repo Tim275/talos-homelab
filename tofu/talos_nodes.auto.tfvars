@@ -22,7 +22,7 @@ talos_nodes = {
     ram_dedicated       = 28672
     datastore_id        = "local-zfs"
     os_disk_size        = 50
-    ceph_disk_size      = 170
+    ceph_disk_size      = 280
     ceph_disk_datastore = "cephpool"
     # node-pool prep (inaktiv bis neue Hardware): stateful=w1/w4/w5, stateless=w2/w3.
     # Beide Pools spannen BEIDE Zonen — zone-Spread von drova-pg/kafka bricht sonst.
@@ -39,7 +39,7 @@ talos_nodes = {
     ram_dedicated       = 28672
     datastore_id        = "local-zfs"
     os_disk_size        = 50
-    ceph_disk_size      = 170
+    ceph_disk_size      = 280
     ceph_disk_datastore = "cephpool"
     # pool              = "stateless"
   }
