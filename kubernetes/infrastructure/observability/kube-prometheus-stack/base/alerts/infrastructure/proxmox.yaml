@@ -5,9 +5,10 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
-  # ProxmoxClusterQuorumLost removed — msa2 + nipogi are 2 standalone hosts, not a PVE
-  # cluster (quorum N/A). High-load / disk-temp / near-full(85%) / pve-storage → Grafana
-  # "Proxmox" dashboard. ProxmoxNodeOffline stays disabled (pve-exporter has no API token).
+  # msa2 + nipogi ARE a 2-node PVE cluster (corosync, verified via pvecm) — but node-exporter
+  # exports no corosync/quorum metric, so ProxmoxClusterQuorumLost has no signal to fire on
+  # (would need a corosync exporter). High-load / disk-temp / near-full(85%) → Grafana "Proxmox".
+  # ProxmoxNodeOffline stays disabled (pve-exporter has no API token).
   groups:
     # ── PAGE ──
     - name: proxmox-page
@@ -108,3 +109,16 @@ spec:
             summary: "Proxmox VM-backup on {{ $labels.host }} is stale"
             description: "Newest vzdump archive on {{ $labels.host }} older than 26h — nightly job (02:00) missed or failed."
             action: "SSH {{ $labels.host }}; check the vzdump cron (02:00) + 'pvesm status'; is the backup storage reachable?"
+
+        - alert: ProxmoxHostRebooted
+          expr: (time() - node_boot_time_seconds{job="proxmox-host-node"}) < 600
+          for: 1m
+          labels:
+            severity: warning
+            component: hypervisor
+            priority: P2
+          annotations:
+            dashboard_url: "/d/proxmox-cluster"
+            summary: "Proxmox host {{ $labels.instance }} rebooted recently"
+            description: "Host uptime <10min — its Talos VMs went NotReady with it. A hard power-loss/hang leaves NO shutdown log (last journal line just stops), unlike a clean reboot."
+            action: "SSH the host; 'journalctl -b -1 --no-pager | tail' (clean shutdown vs hard death) + 'last -x'; if hard: check BIOS AC-power-on + UPS + PSU/CMOS."
