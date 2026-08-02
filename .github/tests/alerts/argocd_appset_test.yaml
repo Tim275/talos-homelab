@@ -87,3 +87,34 @@ tests:
       - eval_time: 40m
         alertname: ArgoCDAppsMassDeletion
         exp_alerts: []
+
+  # ── ArgoCDRepoServerRestartsHigh: FIRES — 3 Restarts in 15min (2026-08-02-Vorfall) ──
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="argocd", pod="argocd-repo-server-abc"}'
+        values: '0 0 0 1 1 1 1 1 2 2 2 3 3 3 3 3 3 3 3 3'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: ArgoCDRepoServerRestartsHigh
+        exp_alerts:
+          - exp_labels:
+              namespace: argocd
+              pod: argocd-repo-server-abc
+              severity: warning
+              component: platform
+              priority: P2
+            exp_annotations:
+              dashboard_url: "/d/argocd-overview"
+              summary: "argocd-repo-server restartet ungewöhnlich oft (argocd-repo-server-abc)"
+              description: "Der lokale git-Cache liegt auf emptyDir — ein Restart mitten im Schreiben kann ihn korrumpieren ('index file smaller than expected') und ArgoCD für alle Apps blind für Drift machen, ohne dass es sonst auffällt."
+              action: "kubectl get applications -n argocd -o json | jq -r '.items[] | select(.status.conditions[]?.type==\"ComparisonError\") | .metadata.name'; bei Treffern: kubectl rollout restart deployment/argocd-repo-server -n argocd (emptyDir-Cache wird dabei frisch geklont)."
+
+  # ── ArgoCDRepoServerRestartsHigh: NICHT bei nur 1 normalem Restart ──
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="argocd", pod="argocd-repo-server-abc"}'
+        values: '0 0 0 0 0 0 0 0 0 0 1 1 1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: ArgoCDRepoServerRestartsHigh
+        exp_alerts: []
