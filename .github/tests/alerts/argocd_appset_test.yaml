@@ -87,3 +87,38 @@ tests:
       - eval_time: 40m
         alertname: ArgoCDAppsMassDeletion
         exp_alerts: []
+
+  # ── ArgoCDRepoServerRestartsHigh: FIRES — 5 Restarts in 15min (2026-08-02-Vorfall) ──
+  # Sprung 0->5 bei t=3m, danach flach gehalten bis t=24m (weit über eval_time hinaus —
+  # NIE am Rand der Testdaten auswerten, promtool 2.x extrapoliert an der Kante anders
+  # als 3.x, s. Session-Fund). eval_time=15m liegt mittig im Fenster [3+5m, 3+15m]=[8,18],
+  # also lange genug im "for: 5m" drin UND weit weg vom Datenrand.
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="argocd", pod="argocd-repo-server-abc"}'
+        values: '0 0 0 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: ArgoCDRepoServerRestartsHigh
+        exp_alerts:
+          - exp_labels:
+              namespace: argocd
+              pod: argocd-repo-server-abc
+              severity: warning
+              component: platform
+              priority: P2
+            exp_annotations:
+              dashboard_url: "/d/argocd-overview"
+              summary: "argocd-repo-server restartet ungewöhnlich oft (argocd-repo-server-abc)"
+              description: "Der lokale git-Cache liegt auf emptyDir — ein Restart mitten im Schreiben kann ihn korrumpieren ('index file smaller than expected') und ArgoCD für alle Apps blind für Drift machen, ohne dass es sonst auffällt."
+              action: "kubectl get applications -n argocd -o json | jq -r '.items[] | select(.status.conditions[]?.type==\"ComparisonError\") | .metadata.name'; bei Treffern: kubectl rollout restart deployment/argocd-repo-server -n argocd (emptyDir-Cache wird dabei frisch geklont)."
+
+  # ── ArgoCDRepoServerRestartsHigh: NICHT bei nur 1 normalem Restart ──
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="argocd", pod="argocd-repo-server-abc"}'
+        values: '0 0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: ArgoCDRepoServerRestartsHigh
+        exp_alerts: []
