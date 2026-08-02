@@ -937,6 +937,18 @@ repoServer:
         - mountPath: /tmp
           name: cmp-tmp
   # Also avoid i5 server nodes
+  # NOTE 2026-08-02: "work-00"/"work-02" matchen KEINEN aktuellen Node-Namen
+  # (Cluster heißt ctrl-0/worker-1..5) — vermutlich stiller Rest von vor einer
+  # Node-Umbenennung, aktuell ein No-Op. Absichtlich unangetastet gelassen (Scope).
+  #
+  # podAntiAffinity NEU (2026-08-02): beide repo-server-Replicas liefen auf
+  # DEMSELBEN Node (worker-4) — der PDB (oben) schützt nur vor freiwilligen
+  # Drains, nicht davor, dass ein Node-Event BEIDE Pods gleichzeitig killt. Genau
+  # das passierte: beide restarteten zeitgleich, der lokale git-Cache (emptyDir)
+  # wurde dabei korrupt ("index file smaller than expected") -> ComparisonError
+  # auf 70/73 Apps, ArgoCD blind für Drift, bis manuell entdeckt. "preferred"
+  # statt "required": bei nur 5 Workern soll ein Node-Ausfall nicht 1 Replica
+  # unschedulable machen — im Normalfall verteilt der Scheduler sie jetzt trotzdem.
   affinity:
     nodeAffinity:
       preferredDuringSchedulingIgnoredDuringExecution:
@@ -948,6 +960,14 @@ repoServer:
                 values:
                   - work-00
                   - work-02
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: argocd-repo-server
+            topologyKey: kubernetes.io/hostname
 
 applicationSet:
 

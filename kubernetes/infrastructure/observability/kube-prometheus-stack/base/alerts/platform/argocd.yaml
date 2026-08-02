@@ -13,6 +13,30 @@ spec:
     - name: argocd-ticket
       interval: 60s
       rules:
+        # 2026-08-02: beide repo-server-Replicas restarteten zeitgleich (co-located auf
+        # 1 Node, kein CrashLoopBackOff — "Completed, exit 0", also von der generischen
+        # PodCrashLooping-Rule NICHT erfasst). Der lokale git-Cache (emptyDir) wurde dabei
+        # korrupt ("index file smaller than expected") -> ComparisonError auf 70/73 Apps,
+        # ArgoCD blind für Drift, bis manuell entdeckt. Geprüft + verworfen: sync_status
+        # bleibt auf dem letzten guten Wert eingefroren (reagiert NICHT auf ComparisonError,
+        # empirisch belegt) und argocd_git_fetch_fail_total hatte während des Vorfalls gar
+        # keine Serie (dieser Fehlertyp zählt intern nicht als "fetch fail"). Also: Restarts
+        # direkt beobachten, nicht auf eine ArgoCD-Metrik hoffen, die für DIESEN Fehler nicht
+        # reagiert. Strukturell verhindert die neue podAntiAffinity (values.yaml) die
+        # Ursache (gleichzeitiger Verlust beider Caches); dieser Alert ist die Absicherung.
+        - alert: ArgoCDRepoServerRestartsHigh
+          expr: increase(kube_pod_container_status_restarts_total{namespace="argocd", pod=~"argocd-repo-server-.*"}[15m]) > 2
+          for: 5m
+          labels:
+            severity: warning
+            component: platform
+            priority: P2
+          annotations:
+            dashboard_url: "/d/argocd-overview"
+            summary: "argocd-repo-server restartet ungewöhnlich oft ({{ $labels.pod }})"
+            description: "Der lokale git-Cache liegt auf emptyDir — ein Restart mitten im Schreiben kann ihn korrumpieren ('index file smaller than expected') und ArgoCD für alle Apps blind für Drift machen, ohne dass es sonst auffällt."
+            action: "kubectl get applications -n argocd -o json | jq -r '.items[] | select(.status.conditions[]?.type==\"ComparisonError\") | .metadata.name'; bei Treffern: kubectl rollout restart deployment/argocd-repo-server -n argocd (emptyDir-Cache wird dabei frisch geklont)."
+
         - alert: ArgoCDControllerDown
           expr: up{job="argocd-application-controller"} == 0
           for: 5m
