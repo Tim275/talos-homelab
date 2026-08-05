@@ -108,13 +108,17 @@ talos_nodes = {
   #   ceph_disk_size = 0
   # }
   "worker-6" = {
-    host_node     = "pve"
-    machine_type  = "worker"
-    ip            = "192.168.0.109"
-    mac_address   = "BC:24:11:2E:C8:B3"
-    vm_id         = 1008
-    cpu           = 6
-    ram_dedicated = 40960
+    host_node    = "pve"
+    machine_type = "worker"
+    ip           = "192.168.0.109"
+    mac_address  = "BC:24:11:2E:C8:B3"
+    vm_id        = 1008
+    cpu          = 6
+    # 36G statt 40G: 87% Host-RAM verletzte die 85%-Regel (msa2/nipogi-Lektion).
+    # Der Ausfall 2026-08-05 war allerdings die NIC, nicht RAM: e1000e/I219
+    # "Hardware Unit Hang" unter ES/RBD-Last -> ethtool tso/gso/gro off,
+    # persistiert in /etc/network/interfaces auf dem Host.
+    ram_dedicated = 36864
     # hpdesk: LVM-thin statt ZFS; 300G OS-Disk = Talos EPHEMERAL waechst mit,
     # ~250G davon fuer local-path (AI-Cache/Scratch). Kein Ceph-OSD (eine geteilte
     # DRAM-lose OEM-SSD, 26% wear).
