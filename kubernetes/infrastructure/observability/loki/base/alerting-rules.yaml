@@ -1,6 +1,13 @@
 # LogQL-Alerts: was NUR in Logs sichtbar ist und in keiner Metrik auftaucht.
 # Bewusst schmal gehalten (Lean-Alerting): kein Alert-on-everything, jeder Eintrag
 # hat eine Handlung. Gehen an denselben Alertmanager wie die Prometheus-Alerts.
+#
+# ZWEI Fallen, beide 2026-08-05 live gefunden:
+# 1) Es gibt KEIN job-Label — Vector schickt namespace/pod/container/service/level/
+#    stream. {job=~".+"} matcht nichts -> Query-Fehler 500 (Regel laeuft ins Leere).
+# 2) pod!~"loki.*" ist PFLICHT bei Regex-Suchen: Loki loggt jede ausgefuehrte Query
+#    inklusive Query-String — eine Regel auf "panic:" findet sonst ihre EIGENEN
+#    Ruler-Logs und feuert dauerhaft (gemessen: 10 Selbst-Treffer/15min).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -14,7 +21,7 @@ data:
         rules:
           # OOM-Kills stehen im Kernel-Log, BEVOR ein Pod-Restart sichtbar wird.
           - alert: LogsOOMKillBurst
-            expr: 'sum(count_over_time({job=~".+"} |~ "(?i)out of memory: killed process" [10m])) > 3'
+            expr: 'sum(count_over_time({namespace=~".+", pod!~"loki.*"} |~ "(?i)out of memory: killed process" [10m])) > 3'
             for: 5m
             labels:
               severity: warning
@@ -43,7 +50,7 @@ data:
         rules:
           # Panics/Fatals verschwinden im Restart-Rauschen, wenn der Pod danach laeuft.
           - alert: LogsPanicDetected
-            expr: 'sum by (namespace) (count_over_time({job=~".+"} |~ "(?i)(panic:|fatal error:|runtime error:)" [15m])) > 5'
+            expr: 'sum by (namespace) (count_over_time({namespace=~".+", pod!~"loki.*"} |~ "(?i)(panic:|fatal error:|runtime error:)" [15m])) > 5'
             for: 10m
             labels:
               severity: warning
