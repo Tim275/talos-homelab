@@ -109,17 +109,20 @@ talos_nodes = {
   #   os_disk_size   = 50
   #   ceph_disk_size = 0
   # }
-  # "worker-6" = {
-  #   host_node      = "host3"
-  #   machine_type   = "worker"
-  #   ip             = "192.168.0.109"
-  #   mac_address    = "BC:24:11:2E:C8:B3"
-  #   vm_id          = 1008
-  #   cpu            = 12
-  #   ram_dedicated  = 32768
-  #   datastore_id   = "local-zfs"
-  #   os_disk_size   = 50
-  #   ceph_disk_size = 250
-  #   # pool         = "ai"
-  # }
+  "worker-6" = {
+    host_node     = "pve"
+    machine_type  = "worker"
+    ip            = "192.168.0.109"
+    mac_address   = "BC:24:11:2E:C8:B3"
+    vm_id         = 1008
+    cpu           = 6
+    ram_dedicated = 40960
+    # hpdesk: LVM-thin statt ZFS; 300G OS-Disk = Talos EPHEMERAL waechst mit,
+    # ~250G davon fuer local-path (AI-Cache/Scratch). Kein Ceph-OSD (eine geteilte
+    # DRAM-lose OEM-SSD, 26% wear).
+    datastore_id   = "local-lvm"
+    os_disk_size   = 300
+    ceph_disk_size = 0
+    # pool         = "stateful"
+  }
 }
