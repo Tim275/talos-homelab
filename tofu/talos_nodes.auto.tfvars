@@ -24,10 +24,8 @@ talos_nodes = {
     os_disk_size        = 50
     ceph_disk_size      = 280
     ceph_disk_datastore = "cephpool"
-    # node-pool prep (inaktiv bis neue Hardware): stateful=w1/w4/w5, stateless=w2/w3.
-    # Beide Pools spannen BEIDE Zonen — zone-Spread von drova-pg/kafka bricht sonst.
-    # Aktivierung OHNE tofu apply (Drift!): talosctl patch machineconfig nodeLabels + hier einkommentieren.
-    # pool              = "stateful"
+    # Pools spannen mehrere Zonen — sonst bricht der zone-Spread von drova-pg/kafka.
+    pool = "stateful"
   }
   "worker-2" = {
     host_node           = "nipogi"
@@ -41,7 +39,7 @@ talos_nodes = {
     os_disk_size        = 50
     ceph_disk_size      = 280
     ceph_disk_datastore = "cephpool"
-    # pool              = "stateless"
+    pool                = "stateless"
   }
   "worker-3" = {
     host_node      = "msa2proxmox"
@@ -54,7 +52,7 @@ talos_nodes = {
     datastore_id   = "local-zfs"
     os_disk_size   = 50
     ceph_disk_size = 250
-    # pool         = "stateless"
+    pool           = "stateless"
   }
   "worker-4" = {
     host_node      = "msa2proxmox"
@@ -67,7 +65,7 @@ talos_nodes = {
     datastore_id   = "local-zfs"
     os_disk_size   = 50
     ceph_disk_size = 250
-    # pool         = "stateful"
+    pool           = "stateful"
   }
   "worker-5" = {
     host_node      = "msa2proxmox"
@@ -80,7 +78,7 @@ talos_nodes = {
     datastore_id   = "local-zfs"
     os_disk_size   = 50
     ceph_disk_size = 250
-    # pool         = "stateful"
+    pool           = "stateful"
   }
 
   # ─── FUTURE NODES (vorbereitet, einkommentieren sobald neue Hardware da) ───
@@ -123,6 +121,6 @@ talos_nodes = {
     datastore_id   = "local-lvm"
     os_disk_size   = 300
     ceph_disk_size = 0
-    # pool         = "stateful"
+    pool           = "stateful"
   }
 }

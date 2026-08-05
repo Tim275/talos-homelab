@@ -59,6 +59,7 @@ data "talos_machine_configuration" "this" {
       cluster_name       = var.cluster.proxmox_cluster
       node_name          = each.value.host_node
       kubernetes_version = var.cluster.kubernetes_version
+      pool               = each.value.pool
     }),
     each.value.machine_type == "controlplane" ?
     templatefile("${path.module}/machine-config/control-plane.yaml.tftpl", {
