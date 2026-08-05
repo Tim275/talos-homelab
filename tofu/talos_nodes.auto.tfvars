@@ -108,13 +108,16 @@ talos_nodes = {
   #   ceph_disk_size = 0
   # }
   "worker-6" = {
-    host_node     = "pve"
-    machine_type  = "worker"
-    ip            = "192.168.0.109"
-    mac_address   = "BC:24:11:2E:C8:B3"
-    vm_id         = 1008
-    cpu           = 6
-    ram_dedicated = 40960
+    host_node    = "pve"
+    machine_type = "worker"
+    ip           = "192.168.0.109"
+    mac_address  = "BC:24:11:2E:C8:B3"
+    vm_id        = 1008
+    cpu          = 6
+    # 40G auf 46G Host = 87% -> Host-Freeze 2026-08-05 als ES die VM real fuellte
+    # (Swap-Sturm auf DRAM-loser SSD). 36G = Host behaelt ~10G, gleiche 85%-Regel
+    # wie msa2 (26G-Lektion) und nipogi.
+    ram_dedicated = 36864
     # hpdesk: LVM-thin statt ZFS; 300G OS-Disk = Talos EPHEMERAL waechst mit,
     # ~250G davon fuer local-path (AI-Cache/Scratch). Kein Ceph-OSD (eine geteilte
     # DRAM-lose OEM-SSD, 26% wear).
