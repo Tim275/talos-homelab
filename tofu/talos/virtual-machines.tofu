@@ -102,6 +102,7 @@ locals {
   proxmox_host_ips = {
     "nipogi"      = "192.168.0.57"
     "msa2proxmox" = "192.168.0.50"
+    "pve"         = "192.168.0.58"
   }
 }
 
