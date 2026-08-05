@@ -45,6 +45,25 @@ spec:
             description: "NVMe running hot — thermal-throttles and degrades Ceph performance."
             action: "PHYSICAL: add/reseat heatsink, improve airflow/dust; reduce write load."
 
+        # 2026-08-05: nipogi hatte 91% Swap (6,8GB GAST-RAM ausgelagert, IO-delay 21%) und
+        # HostSwapUsageHigh unten blieb still — MemAvailable lag bei 22%, weil Page-Cache
+        # mitzaehlt. Auf einem HYPERVISOR ist ausgelagertes Gast-RAM aber immer schaedlich,
+        # egal was MemAvailable sagt → eigene Regel ohne die MemAvailable-Klausel.
+        - alert: HypervisorSwapInUse
+          expr: |
+            (node_memory_SwapTotal_bytes{job="proxmox-host-node"} - node_memory_SwapFree_bytes{job="proxmox-host-node"})
+              / clamp_min(node_memory_SwapTotal_bytes{job="proxmox-host-node"}, 1) > 0.3
+          for: 15m
+          labels:
+            severity: warning
+            component: hardware
+            priority: P2
+          annotations:
+            dashboard_url: "/d/k8s-node-overview"
+            summary: "Hypervisor {{ $labels.instance }}: {{ $value | humanizePercentage }} Swap belegt"
+            description: "Auf einem Virtualisierungs-Host bedeutet Swap fast immer ausgelagertes Gast-RAM → IO-Delay in den VMs, auch wenn der Host 'genug' RAM meldet. Ursache ist meist RAM-Ueberbuchung (VMs > ~85% Host-RAM)."
+            action: "ssh <host> 'swapoff -a && swapon -a' als Akut-Fix (nur wenn genug RAM frei); dauerhaft: VM-RAM right-sizen (qm set), Ziel <=85% Host-RAM."
+
         - alert: HostSwapUsageHigh
           # Feuert nur bei ECHTEM Thrashing: Swap voll UND wenig RAM frei.
           # (Swap>50% allein ist ein nachlaufender Wert — bleibt nach einem

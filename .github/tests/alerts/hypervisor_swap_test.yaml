@@ -1,0 +1,41 @@
+# promtool unit tests — HypervisorSwapInUse (Fire + Negativ).
+# Run: python3 .github/scripts/test-alerts.py
+rule_files:
+  - .rules.generated.yaml
+evaluation_interval: 1m
+tests:
+  # ── HypervisorSwapInUse: FIRES bei 50% Swap auf einem Hypervisor ──
+  # (nipogi-Fall 2026-08-05: 91% Swap, alte Regel blieb wegen MemAvailable-Klausel still)
+  - interval: 1m
+    input_series:
+      - series: 'node_memory_SwapTotal_bytes{job="proxmox-host-node",instance="192.168.0.57"}'
+        values: '8589934592x25'
+      - series: 'node_memory_SwapFree_bytes{job="proxmox-host-node",instance="192.168.0.57"}'
+        values: '4294967296x25'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: HypervisorSwapInUse
+        exp_alerts:
+          - exp_labels:
+              job: proxmox-host-node
+              instance: 192.168.0.57
+              severity: warning
+              component: hardware
+              priority: P2
+            exp_annotations:
+              dashboard_url: "/d/k8s-node-overview"
+              summary: "Hypervisor 192.168.0.57: 50% Swap belegt"
+              description: "Auf einem Virtualisierungs-Host bedeutet Swap fast immer ausgelagertes Gast-RAM → IO-Delay in den VMs, auch wenn der Host 'genug' RAM meldet. Ursache ist meist RAM-Ueberbuchung (VMs > ~85% Host-RAM)."
+              action: "ssh <host> 'swapoff -a && swapon -a' als Akut-Fix (nur wenn genug RAM frei); dauerhaft: VM-RAM right-sizen (qm set), Ziel <=85% Host-RAM."
+
+  # ── HypervisorSwapInUse: NICHT bei 10% Swap ──
+  - interval: 1m
+    input_series:
+      - series: 'node_memory_SwapTotal_bytes{job="proxmox-host-node",instance="192.168.0.57"}'
+        values: '8589934592x25'
+      - series: 'node_memory_SwapFree_bytes{job="proxmox-host-node",instance="192.168.0.57"}'
+        values: '7730941133x25'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: HypervisorSwapInUse
+        exp_alerts: []
