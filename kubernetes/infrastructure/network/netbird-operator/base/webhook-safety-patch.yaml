@@ -1,0 +1,18 @@
+# 2026-08-05: der Chart-Default (failurePolicy Fail, kein namespaceSelector) hat den
+# Cluster verklemmt — ctrl-0 verlor kurz seinen cilium-Agent, dadurch erreichte der
+# apiserver keine Pod-IP mehr, dadurch schlug JEDER Webhook-Aufruf fehl, dadurch liess
+# sich kein Pod mehr erzeugen: auch nicht der cilium-Pod, der ctrl-0 geheilt haette.
+# kube-system raus + fail-open bricht den Zirkel.
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: netbird-operator-mpod-webhook
+webhooks:
+  - name: mpod-v1.netbird.io
+    failurePolicy: Ignore
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-system
