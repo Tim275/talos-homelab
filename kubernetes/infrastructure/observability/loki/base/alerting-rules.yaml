@@ -1,0 +1,55 @@
+# LogQL-Alerts: was NUR in Logs sichtbar ist und in keiner Metrik auftaucht.
+# Bewusst schmal gehalten (Lean-Alerting): kein Alert-on-everything, jeder Eintrag
+# hat eine Handlung. Gehen an denselben Alertmanager wie die Prometheus-Alerts.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-alerting-rules
+  namespace: monitoring
+data:
+  homelab-logs.yaml: |
+    groups:
+      - name: logs-security
+        interval: 1m
+        rules:
+          # OOM-Kills stehen im Kernel-Log, BEVOR ein Pod-Restart sichtbar wird.
+          - alert: LogsOOMKillBurst
+            expr: 'sum(count_over_time({job=~".+"} |~ "(?i)out of memory: killed process" [10m])) > 3'
+            for: 5m
+            labels:
+              severity: warning
+              component: observability
+              priority: P2
+            annotations:
+              summary: "Mehrere OOM-Kills in 10min ({{ $value }})"
+              description: "Der Kernel killt Prozesse wegen Speichermangel — sichtbar nur im Log, nicht in Pod-Restarts."
+              action: "kubectl top pods -A --sort-by=memory; Limits der Top-Verbraucher pruefen."
+
+          # Wiederholte Auth-Fehler an der Identity-Ebene = Brute-Force-Signal.
+          - alert: LogsAuthFailureSpike
+            expr: 'sum(count_over_time({namespace=~"keycloak|lldap"} |~ "(?i)(invalid_user_credentials|authentication failed|invalid password)" [10m])) > 20'
+            for: 5m
+            labels:
+              severity: warning
+              component: security
+              priority: P2
+            annotations:
+              summary: "{{ $value }} fehlgeschlagene Logins in 10min (keycloak/lldap)"
+              description: "Auffaellig viele Auth-Fehler — Brute-Force oder ein kaputter Client, der in Schleife laeuft."
+              action: "kubectl logs -n keycloak keycloak-0 | grep -i invalid; Quell-IPs im Kibana/Loki gruppieren."
+
+      - name: logs-platform
+        interval: 1m
+        rules:
+          # Panics/Fatals verschwinden im Restart-Rauschen, wenn der Pod danach laeuft.
+          - alert: LogsPanicDetected
+            expr: 'sum by (namespace) (count_over_time({job=~".+"} |~ "(?i)(panic:|fatal error:|runtime error:)" [15m])) > 5'
+            for: 10m
+            labels:
+              severity: warning
+              component: observability
+              priority: P2
+            annotations:
+              summary: "Panics/Fatals in {{ $labels.namespace }} ({{ $value }} in 15min)"
+              description: "Wiederholte Abstuerze auf Code-Ebene — auch wenn der Pod danach wieder laeuft."
+              action: "stern -n {{ $labels.namespace }} . -i 'panic|fatal' --since 15m"
