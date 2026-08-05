@@ -114,9 +114,10 @@ talos_nodes = {
     mac_address  = "BC:24:11:2E:C8:B3"
     vm_id        = 1008
     cpu          = 6
-    # 40G auf 46G Host = 87% -> Host-Freeze 2026-08-05 als ES die VM real fuellte
-    # (Swap-Sturm auf DRAM-loser SSD). 36G = Host behaelt ~10G, gleiche 85%-Regel
-    # wie msa2 (26G-Lektion) und nipogi.
+    # 36G statt 40G: 87% Host-RAM verletzte die 85%-Regel (msa2/nipogi-Lektion).
+    # Der Ausfall 2026-08-05 war allerdings die NIC, nicht RAM: e1000e/I219
+    # "Hardware Unit Hang" unter ES/RBD-Last -> ethtool tso/gso/gro off,
+    # persistiert in /etc/network/interfaces auf dem Host.
     ram_dedicated = 36864
     # hpdesk: LVM-thin statt ZFS; 300G OS-Disk = Talos EPHEMERAL waechst mit,
     # ~250G davon fuer local-path (AI-Cache/Scratch). Kein Ceph-OSD (eine geteilte
