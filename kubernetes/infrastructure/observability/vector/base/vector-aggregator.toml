@@ -137,12 +137,15 @@ if !exists(.timestamp) {
   .timestamp = now()
 }
 
-# Standardize log level
+# Standardize log level.
+# Frueher ein Substring-Test auf "ERROR" — dadurch galt CoreDNS' NOERROR-Rcode als
+# Fehler und produzierte 39k falsche error-Zeilen/h. Jetzt nur explizite
+# Level-Marker: [ERROR], level=error, "level":"error", klog E0806.
 if exists(.level) {
   .level = downcase(to_string(.level) ?? "info")
-} else if contains(to_string(.message) ?? "", "ERROR") || contains(to_string(.message) ?? "", "error") {
+} else if match(to_string(.message) ?? "", r'(?i)(\[(error|fatal)\]|\blevel="?(error|fatal)\b|"level"\s*:\s*"(error|fatal)"|^E[0-9]{4} )') {
   .level = "error"
-} else if contains(to_string(.message) ?? "", "WARN") || contains(to_string(.message) ?? "", "warn") {
+} else if match(to_string(.message) ?? "", r'(?i)(\[warn(ing)?\]|\blevel="?warn(ing)?\b|"level"\s*:\s*"warn(ing)?"|^W[0-9]{4} )') {
   .level = "warn"
 } else {
   .level = "info"
