@@ -1,0 +1,52 @@
+# promtool unit tests — Tempo metrics-generator Watchdog (Fire + Negativ).
+# Run: python3 .github/scripts/test-alerts.py
+rule_files:
+  - .rules.generated.yaml
+evaluation_interval: 1m
+tests:
+  # ── FIRES: Spans kommen an, active_series bleibt 0 (Zustand vom 2026-08-06) ──
+  # Counter linear steigend => rate()>0 durchgehend. active_series flach auf 0.
+  # eval_time=25m liegt weit im "for: 15m" und weg vom Datenrand.
+  - interval: 1m
+    input_series:
+      - series: 'tempo_metrics_generator_registry_active_series{pod="tempo-metrics-generator-a"}'
+        values: '0x40'
+      - series: 'tempo_metrics_generator_spans_received_total{tenant="single-tenant"}'
+        values: '0+90x40'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: TempoMetricsGeneratorNotProcessing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              component: tempo
+              priority: P2
+            exp_annotations:
+              dashboard_url: "/d/tempo-service-graph"
+              summary: "Tempo metrics-generator bekommt Spans, erzeugt aber keine Serien"
+              description: "active_series=0 bei laufendem Span-Eingang — span-metrics/service-graphs/local-blocks liefern nichts. TraceQL-Metrics geben leere Serien zurueck, Traces Drilldown bleibt leer. Trace-SUCHE funktioniert weiter, deshalb faellt es sonst nicht auf."
+              action: "kubectl -n monitoring logs deploy/tempo-metrics-generator | grep -i 'type mismatch'; kubectl -n monitoring get --raw /status/overrides/single-tenant (processors darf nicht leer sein); Schema in tempo/base/values.yaml pruefen — overrides.defaults und per_tenant_overrides muessen BEIDE verschachtelt sein."
+
+  # ── NICHT: Prozessoren arbeiten (active_series > 0) ──
+  - interval: 1m
+    input_series:
+      - series: 'tempo_metrics_generator_registry_active_series{pod="tempo-metrics-generator-a"}'
+        values: '1200x40'
+      - series: 'tempo_metrics_generator_spans_received_total{tenant="single-tenant"}'
+        values: '0+90x40'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: TempoMetricsGeneratorNotProcessing
+        exp_alerts: []
+
+  # ── NICHT: keine Spans (idle) — 0 Serien sind dann korrekt, kein Defekt ──
+  - interval: 1m
+    input_series:
+      - series: 'tempo_metrics_generator_registry_active_series{pod="tempo-metrics-generator-a"}'
+        values: '0x40'
+      - series: 'tempo_metrics_generator_spans_received_total{tenant="single-tenant"}'
+        values: '500x40'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: TempoMetricsGeneratorNotProcessing
+        exp_alerts: []
