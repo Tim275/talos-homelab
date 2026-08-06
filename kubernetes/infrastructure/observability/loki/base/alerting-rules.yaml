@@ -30,6 +30,43 @@ data:
               description: "Tetragon meldet Zugriff auf shadow/sudoers/authorized_keys — passiert im Normalbetrieb nie."
               action: "kubectl logs -n kube-system -l app.kubernetes.io/name=tetragon --since=15m | grep -E 'shadow|sudoers'"
 
+          # kube-audit liegt als eigener Stream in Loki (service_name), 233k Events/h.
+          # Baselines gegen 1h Live gemessen: exec 0, anonym 0, RBAC-durch-Menschen 0,
+          # Secret-Zugriff ohne ServiceAccount ~41/h.
+          - alert: LogsAuditPodExec
+            expr: 'sum(count_over_time({service_name="kube-audit"} |~ "pods/exec" [10m])) > 0'
+            labels: {severity: warning, component: security, priority: P2, source: loki}
+            annotations:
+              summary: "Shell in einem Pod geoeffnet ({{ $value }} in 10min)"
+              description: "kubectl exec umgeht GitOps und hinterlaesst keine Spur im Repo. Im Normalbetrieb passiert das nie."
+              action: "Loki: {service_name=\"kube-audit\"} |~ \"pods/exec\" | json — user.name und kubernetes.namespace pruefen."
+
+          - alert: LogsAuditAnonymousAccess
+            expr: 'sum(count_over_time({service_name="kube-audit"} |~ "system:anonymous" [10m])) > 0'
+            labels: {severity: critical, component: security, priority: P1, source: loki}
+            annotations:
+              summary: "Nicht authentifizierter API-Zugriff ({{ $value }} in 10min)"
+              description: "Jemand spricht den apiserver ohne Identitaet an. Baseline ist exakt null."
+              action: "Loki: {service_name=\"kube-audit\"} |~ \"system:anonymous\" | json — sourceIPs und requestURI pruefen."
+
+          - alert: LogsAuditRBACChange
+            expr: 'sum(count_over_time({service_name="kube-audit"} |~ "clusterrolebindings|rolebindings" !~ "system:serviceaccount|system:node" !~ "\"verb\":\"(get|list|watch)\"" [15m])) > 0'
+            for: 2m
+            labels: {severity: warning, component: security, priority: P2, source: loki}
+            annotations:
+              summary: "Rechte-Vergabe ausserhalb von GitOps ({{ $value }} in 15min)"
+              description: "Ein Mensch hat ein RoleBinding geaendert. Reconciler-Aenderungen sind ausgefiltert, Baseline ist null."
+              action: "Loki: {service_name=\"kube-audit\"} |~ \"rolebindings\" | json — user.name und verb pruefen."
+
+          - alert: LogsAuditHumanSecretAccess
+            expr: 'sum(count_over_time({service_name="kube-audit"} |~ "\"kubernetes.resource\":\"secrets\"" !~ "system:serviceaccount|system:node" [10m])) > 25'
+            for: 5m
+            labels: {severity: warning, component: security, priority: P2, source: loki}
+            annotations:
+              summary: "Auffaellig viele Secret-Zugriffe durch Nutzer ({{ $value }} in 10min)"
+              description: "ServiceAccounts sind ausgefiltert. Baseline liegt bei ~7 pro 10min — ein Vielfaches davon sieht nach Absammeln aus."
+              action: "Loki: {service_name=\"kube-audit\"} |~ \"secrets\" !~ \"serviceaccount\" | json — user.name gruppieren."
+
           - alert: LogsSealedSecretsDecryptFailure
             expr: 'sum(count_over_time({namespace="sealed-secrets"} |~ "(?i)(no key could decrypt|cannot decrypt|unsealing failed)" [15m])) > 0'
             for: 5m
@@ -98,6 +135,42 @@ data:
               summary: "Velero meldet Backup-Fehler ({{ $value }} in 1h)"
               description: "Ein 'completed' Backup kann trotzdem unvollstaendig sein — die Metrik zeigt nur, wann zuletzt gelaufen wurde."
               action: "velero backup get; velero backup logs $(velero backup get -o name | tail -1 | cut -d/ -f2)"
+
+          - alert: LogsDiskIOError
+            expr: 'sum by (pod) (count_over_time({namespace="rook-ceph"} |~ "I/O error|EXT4-fs error|Buffer I/O error|blk_update_request" [15m])) > 0'
+            for: 5m
+            labels: {severity: critical, component: storage, priority: P1, source: loki}
+            annotations:
+              summary: "Disk-I/O-Fehler auf {{ $labels.pod }} ({{ $value }} in 15min)"
+              description: "Die OSD meldet Lese-/Schreibfehler von der Platte. Ceph-Health kann noch OK sein, waehrend die SSD schon stirbt."
+              action: "kubectl logs -n rook-ceph {{ $labels.pod }} --since=15m | grep -i 'i/o error'; smartctl-Dashboard fuer den Host pruefen."
+
+          - alert: LogsCSIMountFailure
+            expr: 'sum(count_over_time({namespace="rook-ceph"} |~ "(?i)(failed to mount|rbd image.*still being used|MountVolume.*failed)" [15m])) > 3'
+            for: 10m
+            labels: {severity: warning, component: storage, priority: P2, source: loki}
+            annotations:
+              summary: "CSI kann Volumes nicht mounten ({{ $value }} in 15min)"
+              description: "Stuck RBD-Lock oder haengender Mount — Pods bleiben Pending, ohne dass ein PVC-Alert greift."
+              action: "kubectl get pods -A --field-selector status.phase=Pending; kubectl get volumeattachments | grep false"
+
+          - alert: LogsVeleroRestoreFailure
+            expr: 'sum(count_over_time({namespace="velero"} |~ "(?i)(restore failed|error restoring|restore.*PartiallyFailed)" [1h])) > 0'
+            for: 10m
+            labels: {severity: warning, component: data, priority: P2, source: loki}
+            annotations:
+              summary: "Velero-Restore fehlgeschlagen ({{ $value }} in 1h)"
+              description: "Betrifft auch die restore-verify-CronJobs — ein Backup ist erst dann eins, wenn der Restore laeuft."
+              action: "velero restore get; velero restore logs $(velero restore get -o name | tail -1 | cut -d/ -f2)"
+
+          - alert: LogsDatabaseFailover
+            expr: 'sum by (namespace) (count_over_time({namespace=~"cnpg-system|drova|n8n-prod|keycloak"} |~ "(?i)(promoted to primary|switchover|new primary)" [15m])) > 0'
+            for: 0m
+            labels: {severity: warning, component: data, priority: P2, source: loki}
+            annotations:
+              summary: "Postgres-Failover in {{ $labels.namespace }}"
+              description: "Ein Replica wurde zum Primary befoerdert. Geplant beim Update, ungeplant heisst: der alte Primary ist gestorben."
+              action: "kubectl get cluster -n {{ $labels.namespace }}; kubectl cnpg status <cluster> -n {{ $labels.namespace }}"
 
           - alert: LogsElasticsearchClusterBlock
             expr: 'sum(count_over_time({namespace="elastic-system", pod=~"production-cluster.*"} |~ "(?i)(cluster_block_exception|circuit_breaking_exception|index_not_found)" [15m])) > 0'
