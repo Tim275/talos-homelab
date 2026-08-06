@@ -357,9 +357,6 @@ alertmanager:
           repeat_interval: 12h
           continue: false
 
-        # Dringlichkeit zuerst (Google SRE: page vs ticket), danach Ownership.
-        # continue: true, damit ein kritischer Security-Alert BEIDES erreicht:
-        # Page via Telegram und den Security-Channel.
         - matchers:
             - severity="critical"
             - priority=~"p0|P0"
@@ -386,10 +383,6 @@ alertmanager:
           repeat_interval: 1h
           continue: true
 
-        # Ownership-Achse: Security braucht eine andere Reaktion als Betrieb
-        # (forensisch nachsehen statt neustarten). Metrik- und Log-Alerts gemeinsam.
-        # Regex, weil die component-Taxonomie historisch gewachsen ist —
-        # Cert-/SealedSecrets-Alerts bleiben bewusst bei platform (Reliability, kein Incident).
         - matchers:
             - component=~"security|kyverno|trivy|identity"
           receiver: 'slack-security'
@@ -537,7 +530,6 @@ alertmanager:
             max_alerts: 1
 
       # ── PAGE tier (critical) → Slack #alerts-critical + Telegram (phone) ──
-      # Der einzige Receiver, der das Telefon weckt.
       - name: 'slack-critical'
         slack_configs:
           - channel: '#alerts-critical'
@@ -713,9 +705,6 @@ alertmanager:
       {{ if gt (len .Alerts) 5 }}…and more alerts in this group (see Slack){{ end }}
       {{ end }}
 
-      {{/* .ExternalURL ist die cluster-interne Adresse und im Browser tot —
-           Alertmanager hat keine HTTPRoute. Silences laufen deshalb ueber
-           Grafana (VPN-only + SSO) gegen die Alertmanager-Datasource. */}}
       {{ define "slack.silenceURL" -}}
       https://grafana.timourhomelab.org/alerting/silence/new?alertmanager=Alertmanager
       {{- range $k, $v := .CommonLabels }}&matcher={{ $k }}%3D{{ $v | urlquery }}{{ end -}}
