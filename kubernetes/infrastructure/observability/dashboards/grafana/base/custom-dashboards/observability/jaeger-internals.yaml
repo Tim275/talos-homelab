@@ -1,3 +1,6 @@
+# Jaeger v2 laeuft auf dem OTel-Collector -> Metriken heissen otelcol_* (ohne _total),
+# nicht jaeger_collector_*/jaeger_query_* wie in v1. Nur jaeger_storage_* blieb erhalten.
+# Tail-Sampling passiert im Gateway, nicht in Jaeger -> eigener job.
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
@@ -12,7 +15,7 @@ spec:
   folder: Observability
   json: |
     {
-      "title": "Jaeger v2 — Query, Sampling, Storage",
+      "title": "Jaeger v2 — Ingest, Storage, Sampling",
       "uid": "jaeger-internals",
       "tags": ["observability","jaeger","tracing"],
       "timezone": "browser",
@@ -21,41 +24,79 @@ spec:
       "time": {"from": "now-3h", "to": "now"},
       "templating": {"list": []},
       "panels": [
-        {"id":1,"type":"stat","title":"Spans received (rate)","gridPos":{"x":0,"y":0,"w":6,"h":4},
+        {"id":1,"type":"stat","title":"Spans empfangen","gridPos":{"x":0,"y":0,"w":6,"h":4},
          "datasource":{"type":"prometheus","uid":"prometheus"},
-         "targets":[{"expr":"sum(rate(jaeger_collector_spans_received_total[5m]))"}],
+         "targets":[{"expr":"sum(rate(otelcol_receiver_accepted_spans{job=\"jaeger-collector-monitoring\"}[5m]))"}],
          "fieldConfig":{"defaults":{"unit":"reqps"}}},
-        {"id":2,"type":"stat","title":"Spans rejected","gridPos":{"x":6,"y":0,"w":6,"h":4},
+        {"id":2,"type":"stat","title":"Spans abgewiesen","gridPos":{"x":6,"y":0,"w":6,"h":4},
          "datasource":{"type":"prometheus","uid":"prometheus"},
-         "targets":[{"expr":"sum(rate(jaeger_collector_spans_rejected_total[5m]))"}],
+         "targets":[{"expr":"sum(rate(otelcol_receiver_refused_spans{job=\"jaeger-collector-monitoring\"}[5m]))"}],
          "fieldConfig":{"defaults":{"unit":"reqps","thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":0.1}]}}}},
-        {"id":3,"type":"stat","title":"Query requests (5m rate)","gridPos":{"x":12,"y":0,"w":6,"h":4},
+        {"id":3,"type":"stat","title":"Export-Fehler (Storage)","gridPos":{"x":12,"y":0,"w":6,"h":4},
          "datasource":{"type":"prometheus","uid":"prometheus"},
-         "targets":[{"expr":"sum(rate(jaeger_query_requests_total[5m]))"}],
+         "targets":[{"expr":"sum(rate(otelcol_exporter_send_failed_spans{job=\"jaeger-collector-monitoring\"}[5m])) or vector(0)"}],
+         "fieldConfig":{"defaults":{"unit":"reqps","thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":0.1}]}}}},
+        {"id":4,"type":"stat","title":"Spans → Elasticsearch","gridPos":{"x":18,"y":0,"w":6,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(rate(otelcol_exporter_sent_spans{job=\"jaeger-collector-monitoring\"}[5m]))"}],
          "fieldConfig":{"defaults":{"unit":"reqps"}}},
-        {"id":4,"type":"stat","title":"Query latency p99","gridPos":{"x":18,"y":0,"w":6,"h":4},
+
+        {"id":10,"type":"timeseries","title":"Span-Fluss: Eingang vs. Export","gridPos":{"x":0,"y":4,"w":12,"h":8},
          "datasource":{"type":"prometheus","uid":"prometheus"},
-         "targets":[{"expr":"histogram_quantile(0.99, sum by (le) (rate(jaeger_query_latency_bucket[5m])))"}],
+         "targets":[
+           {"expr":"sum(rate(otelcol_receiver_accepted_spans{job=\"jaeger-collector-monitoring\"}[5m]))","legendFormat":"empfangen"},
+           {"expr":"sum(rate(otelcol_exporter_sent_spans{job=\"jaeger-collector-monitoring\"}[5m]))","legendFormat":"nach ES exportiert"},
+           {"expr":"sum(rate(otelcol_receiver_refused_spans{job=\"jaeger-collector-monitoring\"}[5m]))","legendFormat":"abgewiesen"}],
+         "fieldConfig":{"defaults":{"unit":"reqps"}}},
+        {"id":11,"type":"timeseries","title":"Laufende Export-Requests","gridPos":{"x":12,"y":4,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum by (exporter) (otelcol_exporter_in_flight_requests{job=\"jaeger-collector-monitoring\"})","legendFormat":"{{exporter}}"}]},
+
+        {"id":19,"type":"row","title":"Elasticsearch-Storage","gridPos":{"x":0,"y":12,"w":24,"h":1}},
+        {"id":20,"type":"timeseries","title":"ES Bulk-Index Latenz","gridPos":{"x":0,"y":13,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"histogram_quantile(0.99, sum by (le) (rate(jaeger_storage_bulk_index_latency_ok_bucket[5m])))","legendFormat":"p99"},
+           {"expr":"histogram_quantile(0.50, sum by (le) (rate(jaeger_storage_bulk_index_latency_ok_bucket[5m])))","legendFormat":"p50"}],
          "fieldConfig":{"defaults":{"unit":"s"}}},
-        {"id":10,"type":"timeseries","title":"Span receive rate per service","gridPos":{"x":0,"y":4,"w":12,"h":8},
+        {"id":21,"type":"timeseries","title":"ES Inserts vs. Fehler","gridPos":{"x":12,"y":13,"w":12,"h":8},
          "datasource":{"type":"prometheus","uid":"prometheus"},
-         "targets":[{"expr":"sum by (svc) (rate(jaeger_collector_spans_received_total[5m]))","legendFormat":"{{svc}}"}],
+         "targets":[
+           {"expr":"sum(rate(jaeger_storage_bulk_index_inserts[5m]))","legendFormat":"inserts"},
+           {"expr":"sum(rate(jaeger_storage_bulk_index_errors[5m]))","legendFormat":"errors"}],
          "fieldConfig":{"defaults":{"unit":"reqps"}}},
-        {"id":11,"type":"timeseries","title":"Storage write latency p99 (ES)","gridPos":{"x":12,"y":4,"w":12,"h":8},
+
+        {"id":29,"type":"row","title":"Tail-Sampling (OTel-Gateway)","gridPos":{"x":0,"y":21,"w":24,"h":1}},
+        {"id":30,"type":"timeseries","title":"Behaltene Traces je Policy","gridPos":{"x":0,"y":22,"w":12,"h":8},
          "datasource":{"type":"prometheus","uid":"prometheus"},
-         "targets":[{"expr":"histogram_quantile(0.99, sum by (le) (rate(jaeger_collector_save_latency_bucket[5m])))","legendFormat":"p99"}],
-         "fieldConfig":{"defaults":{"unit":"s"}}},
-        {"id":20,"type":"timeseries","title":"Spans queued in collector","gridPos":{"x":0,"y":12,"w":12,"h":8},
-         "datasource":{"type":"prometheus","uid":"prometheus"},
-         "targets":[{"expr":"sum(jaeger_collector_queue_length)","legendFormat":"queue depth"}]},
-        {"id":21,"type":"timeseries","title":"Query errors (rate)","gridPos":{"x":12,"y":12,"w":12,"h":8},
-         "datasource":{"type":"prometheus","uid":"prometheus"},
-         "targets":[{"expr":"sum by (operation) (rate(jaeger_query_requests_total{result=\"err\"}[5m]))","legendFormat":"{{operation}}"}],
+         "targets":[{"expr":"sum by (policy) (rate(otelcol_processor_tail_sampling_count_traces_sampled{sampled=\"true\"}[5m]))","legendFormat":"{{policy}}"}],
          "fieldConfig":{"defaults":{"unit":"reqps"}}},
-        {"id":30,"type":"row","title":"Sampling effectiveness","gridPos":{"x":0,"y":20,"w":24,"h":1}},
-        {"id":31,"type":"timeseries","title":"Spans dropped by sampling (rate)","gridPos":{"x":0,"y":21,"w":24,"h":8},
+        {"id":31,"type":"timeseries","title":"Verworfene Traces je Policy","gridPos":{"x":12,"y":22,"w":12,"h":8},
          "datasource":{"type":"prometheus","uid":"prometheus"},
-         "targets":[{"expr":"sum by (svc) (rate(jaeger_sampler_spans_total{outcome=\"dropped\"}[5m]))","legendFormat":"{{svc}} dropped"}],
-         "fieldConfig":{"defaults":{"unit":"reqps"}}}
+         "targets":[{"expr":"sum by (policy) (rate(otelcol_processor_tail_sampling_count_traces_sampled{sampled=\"false\"}[5m]))","legendFormat":"{{policy}}"}],
+         "fieldConfig":{"defaults":{"unit":"reqps"}}},
+        {"id":32,"type":"stat","title":"Traces im Sampling-Puffer","gridPos":{"x":0,"y":30,"w":8,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"max(otelcol_processor_tail_sampling_sampling_traces_on_memory)"}],
+         "fieldConfig":{"defaults":{"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"orange","value":45000},{"color":"red","value":50000}]}}}},
+        {"id":33,"type":"stat","title":"Neue Trace-IDs","gridPos":{"x":8,"y":30,"w":8,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(rate(otelcol_processor_tail_sampling_new_trace_id_received[5m]))"}],
+         "fieldConfig":{"defaults":{"unit":"reqps"}}},
+        {"id":34,"type":"stat","title":"Zu frueh verworfen","gridPos":{"x":16,"y":30,"w":8,"h":4},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"sum(rate(otelcol_processor_tail_sampling_sampling_trace_dropped_too_early[5m]))"}],
+         "fieldConfig":{"defaults":{"unit":"reqps","thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":0.1}]}}}},
+
+        {"id":39,"type":"row","title":"Collector-Runtime","gridPos":{"x":0,"y":34,"w":24,"h":1}},
+        {"id":40,"type":"timeseries","title":"Speicher (RSS / Heap)","gridPos":{"x":0,"y":35,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[
+           {"expr":"otelcol_process_memory_rss{job=\"jaeger-collector-monitoring\"}","legendFormat":"RSS"},
+           {"expr":"otelcol_process_runtime_heap_alloc_bytes{job=\"jaeger-collector-monitoring\"}","legendFormat":"heap"}],
+         "fieldConfig":{"defaults":{"unit":"bytes"}}},
+        {"id":41,"type":"timeseries","title":"Batch-Groesse p99","gridPos":{"x":12,"y":35,"w":12,"h":8},
+         "datasource":{"type":"prometheus","uid":"prometheus"},
+         "targets":[{"expr":"histogram_quantile(0.99, sum by (le) (rate(otelcol_processor_batch_batch_send_size_bucket{job=\"jaeger-collector-monitoring\"}[5m])))","legendFormat":"p99 spans/batch"}]}
       ]
     }
