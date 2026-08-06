@@ -67,6 +67,24 @@ data:
               description: "ServiceAccounts sind ausgefiltert. Baseline liegt bei ~7 pro 10min — ein Vielfaches davon sieht nach Absammeln aus."
               action: "Loki: {service_name=\"kube-audit\"} |~ \"secrets\" !~ \"serviceaccount\" | json — user.name gruppieren."
 
+          # NetBird-Audit kommt per CronJob aus der Cloud-API (alle 15min, source=netbird-audit).
+          # Events sind selten (5 in 7 Tagen) — genau deshalb ist jedes eines.
+          - alert: LogsNetBirdAccessChange
+            expr: 'sum(count_over_time({namespace="netbird", pod=~"netbird-audit-export.*"} |~ "\"activity_code\":\"(rule|policy|route|group|nameserver)\\." [20m])) > 0'
+            labels: {severity: warning, component: security, priority: P2, source: loki}
+            annotations:
+              summary: "VPN-Zugriffsregeln geaendert ({{ $value }} Events)"
+              description: "Policy, Route oder Gruppe in NetBird veraendert — das steuert, wer aus dem VPN ins LAN darf. Gehoert nach tofu/netbird, nicht in die UI."
+              action: "Loki: {namespace=\"netbird\", pod=~\"netbird-audit-export.*\"} | json — activity und initiator_email pruefen; gegen tofu/netbird abgleichen."
+
+          - alert: LogsNetBirdPeerEnrollment
+            expr: 'sum(count_over_time({namespace="netbird", pod=~"netbird-audit-export.*"} |~ "\"activity_code\":\"(peer\\.setupkey\\.add|setupkey\\.add|user\\.invite|user\\.join|user\\.role\\.update)\"" [20m])) > 0'
+            labels: {severity: warning, component: security, priority: P2, source: loki}
+            annotations:
+              summary: "Neues Geraet oder neuer Nutzer im VPN ({{ $value }} Events)"
+              description: "Ein Peer wurde per Setup-Key angemeldet oder ein Nutzer eingeladen. Jeder neue Peer erreicht das LAN."
+              action: "Loki: {namespace=\"netbird\", pod=~\"netbird-audit-export.*\"} | json — target_id und initiator_email pruefen."
+
           - alert: LogsSealedSecretsDecryptFailure
             expr: 'sum(count_over_time({namespace="sealed-secrets"} |~ "(?i)(no key could decrypt|cannot decrypt|unsealing failed)" [15m])) > 0'
             for: 5m
