@@ -1,7 +1,3 @@
-# Zwei Fallen, beide live gefunden: es gibt KEIN job-Label (Vector schickt
-# namespace/pod/container/service/level/stream), und pod!~"loki.*" ist Pflicht bei
-# Regex ueber alle Namespaces — Loki loggt jede Query samt Query-String und findet
-# sonst seine eigenen Ruler-Logs.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -30,9 +26,6 @@ data:
               description: "Tetragon meldet Zugriff auf shadow/sudoers/authorized_keys — passiert im Normalbetrieb nie."
               action: "kubectl logs -n kube-system -l app.kubernetes.io/name=tetragon --since=15m | grep -E 'shadow|sudoers'"
 
-          # kube-audit liegt als eigener Stream in Loki (service_name), 233k Events/h.
-          # Baselines gegen 1h Live gemessen: exec 0, anonym 0, RBAC-durch-Menschen 0,
-          # Secret-Zugriff ohne ServiceAccount ~41/h.
           - alert: LogsAuditPodExec
             expr: 'sum(count_over_time({service_name="kube-audit"} |~ "pods/exec" [10m])) > 0'
             labels: {severity: warning, component: security, priority: P2, source: loki}
@@ -67,8 +60,6 @@ data:
               description: "ServiceAccounts sind ausgefiltert. Baseline liegt bei ~7 pro 10min — ein Vielfaches davon sieht nach Absammeln aus."
               action: "Loki: {service_name=\"kube-audit\"} |~ \"secrets\" !~ \"serviceaccount\" | json — user.name gruppieren."
 
-          # NetBird-Audit kommt per CronJob aus der Cloud-API (alle 15min, source=netbird-audit).
-          # Events sind selten (5 in 7 Tagen) — genau deshalb ist jedes eines.
           - alert: LogsNetBirdAccessChange
             expr: 'sum(count_over_time({namespace="netbird", pod=~"netbird-audit-export.*"} |~ "\"activity_code\":\"(rule|policy|route|group|nameserver)\\." [20m])) > 0'
             labels: {severity: warning, component: security, priority: P2, source: loki}

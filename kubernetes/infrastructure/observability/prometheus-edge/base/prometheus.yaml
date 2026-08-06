@@ -1,0 +1,116 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus-edge
+  namespace: monitoring
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: edge-scrape-configs
+  namespace: monitoring
+type: Opaque
+stringData:
+  prometheus-additional.yaml: |
+    - job_name: proxmox-host-node
+      static_configs:
+        - targets:
+            - 192.168.0.50:9100
+            - 192.168.0.57:9100
+            - 192.168.0.58:9100
+          labels:
+            role: hypervisor
+      metric_relabel_configs:
+        - source_labels: [__address__]
+          regex: '([^:]+):.*'
+          target_label: instance
+          replacement: '$1'
+    - job_name: proxmox-smart
+      static_configs:
+        - targets:
+            - 192.168.0.50:9633
+            - 192.168.0.57:9633
+            - 192.168.0.58:9633
+          labels:
+            role: hypervisor
+      metric_relabel_configs:
+        - source_labels: [__address__]
+          regex: '([^:]+):.*'
+          target_label: instance
+          replacement: '$1'
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: edge
+  namespace: monitoring
+spec:
+  serviceAccountName: prometheus-edge
+  replicas: 1
+  # Edge haelt bewusst wenig lokal — die Aggregate holt sich der zentrale per Federation.
+  retention: 24h
+  retentionSize: 2GB
+  scrapeInterval: 30s
+  evaluationInterval: 30s
+  externalLabels:
+    tier: edge
+    cluster: prod-talos
+  additionalScrapeConfigs:
+    name: edge-scrape-configs
+    key: prometheus-additional.yaml
+  ruleSelector:
+    matchLabels:
+      prometheus: edge
+  ruleNamespaceSelector: {}
+  # Kein Kubernetes-Discovery: der Edge scrapet ausschliesslich die Hypervisor-Ziele.
+  # Die Selektoren matchen absichtlich nichts.
+  serviceMonitorSelector:
+    matchLabels:
+      prometheus: edge
+  podMonitorSelector:
+    matchLabels:
+      prometheus: edge
+  probeSelector:
+    matchLabels:
+      prometheus: edge
+  scrapeConfigSelector:
+    matchLabels:
+      prometheus: edge
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 2000
+  storage:
+    volumeClaimTemplate:
+      spec:
+        storageClassName: rook-ceph-block-enterprise
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-edge
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus-edge
+spec:
+  # Eigener Service — prometheus-operated selektiert ALLE Prometheus-Pods im
+  # Namespace und wuerde beim Federieren zufaellig den zentralen treffen.
+  selector:
+    app.kubernetes.io/instance: edge
+    app.kubernetes.io/name: prometheus
+  ports:
+    - name: http-web
+      port: 9090
+      targetPort: 9090
