@@ -332,16 +332,6 @@ alertmanager:
 
       routes:
 
-        # continue: true → Log-Alerts landen IMMER in #logs-alerts und laufen danach
-        # weiter durch die severity-Routen, damit critical zusaetzlich Telegram paged.
-        - matchers:
-            - source="loki"
-          receiver: 'slack-logs'
-          group_wait: 30s
-          group_interval: 5m
-          repeat_interval: 4h
-          continue: true
-
         # Watchdog → healthchecks.io Dead-Mans-Switch (2026-05-17 enabled)
         # InfoInhibitor stays silent-dropped via 'null'.
         # Separate routes: Watchdog matched alone (NOT regex with InfoInhibitor)
@@ -365,6 +355,9 @@ alertmanager:
           repeat_interval: 12h
           continue: false
 
+        # Dringlichkeit zuerst (Google SRE: page vs ticket), danach Ownership.
+        # continue: true, damit ein kritischer Security-Alert BEIDES erreicht:
+        # Page via Telegram und den Security-Channel.
         - matchers:
             - severity="critical"
             - priority=~"p0|P0"
@@ -372,7 +365,7 @@ alertmanager:
           group_wait: 10s
           group_interval: 1m
           repeat_interval: 30m
-          continue: false
+          continue: true
 
         # Major degradation, users actively impacted
         - matchers:
@@ -381,7 +374,7 @@ alertmanager:
           group_wait: 10s
           group_interval: 2m
           repeat_interval: 1h
-          continue: false
+          continue: true
 
         - matchers:
             - priority=~"p1|P1"
@@ -389,6 +382,18 @@ alertmanager:
           group_wait: 15s
           group_interval: 3m
           repeat_interval: 1h
+          continue: true
+
+        # Ownership-Achse: Security braucht eine andere Reaktion als Betrieb
+        # (forensisch nachsehen statt neustarten). Metrik- und Log-Alerts gemeinsam.
+        # Regex, weil die component-Taxonomie historisch gewachsen ist —
+        # Cert-/SealedSecrets-Alerts bleiben bewusst bei platform (Reliability, kein Incident).
+        - matchers:
+            - component=~"security|kyverno|trivy|identity"
+          receiver: 'slack-security'
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 4h
           continue: false
 
         # Partial issues, workaround available
@@ -574,9 +579,9 @@ alertmanager:
             color: '{{ template "slack.color" . }}'
             actions: *critical-actions
 
-      - name: 'slack-logs'
+      - name: 'slack-security'
         slack_configs:
-          - channel: '#logs-alerts'
+          - channel: '#alerts-security'
             send_resolved: true
             title: '{{ template "slack.title" . }}'
             text: '{{ template "slack.body" . }}'
