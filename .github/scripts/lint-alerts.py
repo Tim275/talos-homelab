@@ -22,7 +22,11 @@ REQUIRED_ANNOTATIONS = ["summary"]
 REQUIRED_LABELS = ["severity"]
 VALID_SEVERITIES = {"critical", "warning", "info"}
 ALERTS_TREE = "kubernetes/infrastructure/observability/kube-prometheus-stack/base/alerts/"
-LOCATION_WHITELIST: tuple[str, ...] = ()
+LOCATION_WHITELIST: tuple[str, ...] = (
+    # Recording-Rules des Edge-Prometheus — gehoeren zu einer eigenen Instanz,
+    # nicht in den zentralen Alert-Baum. Enthalten keine Alerts.
+    "kubernetes/infrastructure/observability/prometheus-edge/",
+)
 
 
 def iter_prometheus_rules(root: Path):

@@ -73,6 +73,8 @@ roles:
 groups:
   - name: cluster-admins
     path: /cluster-admins
+    realmRoles:
+      - grafana-admin
   - name: argocd-admins
     path: /argocd-admins
 # Default-roles attached to every user (not modified)
@@ -334,6 +336,20 @@ clients:
       - email
       - roles
       - groups
+    # Der geteilte roles-Scope schreibt nach realm_access.roles und nur ins
+    # Access-Token. Grafanas role_attribute_path liest roles[*] aus ID-Token
+    # und userinfo — dieser Mapper legt es dort ab.
+    protocolMappers:
+      - name: grafana-realm-roles
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-realm-role-mapper
+        config:
+          claim.name: "roles"
+          jsonType.label: "String"
+          multivalued: "true"
+          id.token.claim: "true"
+          access.token.claim: "true"
+          userinfo.token.claim: "true"
   - clientId: kubernetes
     enabled: true
     protocol: openid-connect
