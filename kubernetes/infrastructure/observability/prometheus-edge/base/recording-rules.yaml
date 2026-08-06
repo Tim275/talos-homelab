@@ -1,0 +1,48 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: edge-aggregates
+  namespace: monitoring
+  labels:
+    # NICHT release: kube-prometheus-stack — sonst wertet der zentrale Prometheus
+    # dieselben Regeln nochmal aus.
+    prometheus: edge
+spec:
+  groups:
+    - name: edge-hypervisor
+      interval: 60s
+      rules:
+        # Was der zentrale per Federation holt. 432 rohe CPU-Serien werden hier
+        # zu 3 — das ist der Sinn der Uebung, nicht rohe Metriken durchreichen.
+        - record: edge:node_cpu_busy_ratio
+          expr: 1 - avg by (instance) (rate(node_cpu_seconds_total{role="hypervisor",mode="idle"}[5m]))
+
+        - record: edge:node_memory_used_ratio
+          expr: |
+            1 - (
+              node_memory_MemAvailable_bytes{role="hypervisor"}
+              / node_memory_MemTotal_bytes{role="hypervisor"}
+            )
+
+        - record: edge:node_swap_used_ratio
+          expr: |
+            (node_memory_SwapTotal_bytes{role="hypervisor"} - node_memory_SwapFree_bytes{role="hypervisor"})
+            / clamp_min(node_memory_SwapTotal_bytes{role="hypervisor"}, 1)
+
+        - record: edge:node_filesystem_used_ratio:max
+          expr: |
+            max by (instance) (
+              1 - (
+                node_filesystem_avail_bytes{role="hypervisor",fstype!~"tmpfs|overlay|squashfs"}
+                / node_filesystem_size_bytes{role="hypervisor",fstype!~"tmpfs|overlay|squashfs"}
+              )
+            )
+
+        - record: edge:smartctl_wear_ratio:max
+          expr: max by (instance) (smartctl_device_percentage_used{role="hypervisor"}) / 100
+
+        - record: edge:smartctl_temperature:max
+          expr: max by (instance) (smartctl_device_temperature{role="hypervisor",temperature_type="current"})
+
+        - record: edge:target_up
+          expr: min by (instance, job) (up{role="hypervisor"})
