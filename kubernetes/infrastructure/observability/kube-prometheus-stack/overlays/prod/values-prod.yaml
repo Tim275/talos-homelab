@@ -355,6 +355,9 @@ alertmanager:
           repeat_interval: 12h
           continue: false
 
+        # Dringlichkeit zuerst (Google SRE: page vs ticket), danach Ownership.
+        # continue: true, damit ein kritischer Security-Alert BEIDES erreicht:
+        # Page via Telegram und den Security-Channel.
         - matchers:
             - severity="critical"
             - priority=~"p0|P0"
@@ -362,7 +365,7 @@ alertmanager:
           group_wait: 10s
           group_interval: 1m
           repeat_interval: 30m
-          continue: false
+          continue: true
 
         # Major degradation, users actively impacted
         - matchers:
@@ -371,7 +374,7 @@ alertmanager:
           group_wait: 10s
           group_interval: 2m
           repeat_interval: 1h
-          continue: false
+          continue: true
 
         - matchers:
             - priority=~"p1|P1"
@@ -379,6 +382,18 @@ alertmanager:
           group_wait: 15s
           group_interval: 3m
           repeat_interval: 1h
+          continue: true
+
+        # Ownership-Achse: Security braucht eine andere Reaktion als Betrieb
+        # (forensisch nachsehen statt neustarten). Metrik- und Log-Alerts gemeinsam.
+        # Regex, weil die component-Taxonomie historisch gewachsen ist —
+        # Cert-/SealedSecrets-Alerts bleiben bewusst bei platform (Reliability, kein Incident).
+        - matchers:
+            - component=~"security|kyverno|trivy|identity"
+          receiver: 'slack-security'
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 4h
           continue: false
 
         # Partial issues, workaround available
@@ -519,13 +534,11 @@ alertmanager:
             send_resolved: false
             max_alerts: 1
 
-      # ── PAGE tier (critical) → Slack #alerts + Telegram (phone) ──
-      # The ONLY receiver that buzzes the phone. Page + ticket SHARE #alerts on purpose
-      # (one channel is fine) — Telegram is what separates "act now" from "look later".
-      # To split Slack later: change channel to '#alerts-critical' (create it in Slack first).
+      # ── PAGE tier (critical) → Slack #alerts-critical + Telegram (phone) ──
+      # Der einzige Receiver, der das Telefon weckt.
       - name: 'slack-critical'
         slack_configs:
-          - channel: '#alerts'   # shared with warnings; Telegram (this receiver only) is the page separator
+          - channel: '#alerts-critical'
             send_resolved: true
             title: '{{ template "slack.title" . }}'
             text: '{{ template "slack.body" . }}'
@@ -560,6 +573,15 @@ alertmanager:
           - channel: '#alerts'
             send_resolved: true
             title: '{{ template "slack.title" . }}'
+            text: '{{ template "slack.body" . }}'
+            color: '{{ template "slack.color" . }}'
+            actions: *critical-actions
+
+      - name: 'slack-security'
+        slack_configs:
+          - channel: '#alerts-security'
+            send_resolved: true
+            title: ':lock: {{ template "slack.title" . }}'
             text: '{{ template "slack.body" . }}'
             color: '{{ template "slack.color" . }}'
             actions: *critical-actions
