@@ -1,0 +1,112 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaFolder
+metadata:
+  name: alerting-watchdog
+  namespace: grafana
+spec:
+  title: Watchdog
+  allowCrossNamespaceImport: true
+  instanceSelector:
+    matchLabels:
+      app: grafana
+---
+# Grafana wertet diese Regeln selbst aus, unabhaengig von Prometheus' Rule-Engine.
+# Ist Prometheus degradiert, sind seine eigenen Alerts ueber sich selbst unzuverlaessig.
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaAlertRuleGroup
+metadata:
+  name: stack-watchdog
+  namespace: grafana
+spec:
+  folderRef: alerting-watchdog
+  allowCrossNamespaceImport: true
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  interval: 2m
+  rules:
+    - uid: graf-prom-unreachable
+      title: GrafanaCannotQueryPrometheus
+      condition: C
+      for: 5m
+      execErrState: Alerting
+      noDataState: Alerting
+      labels:
+        severity: critical
+        component: observability
+        priority: P1
+        source: grafana
+      annotations:
+        summary: "Grafana erreicht Prometheus nicht"
+        description: "Unabhaengige Gegenprobe von ausserhalb der Prometheus-Rule-Engine. Feuert auch, wenn Prometheus seine eigenen Alerts nicht mehr auswerten kann."
+        action: "kubectl get pods -n monitoring -l app.kubernetes.io/name=prometheus; kubectl logs -n monitoring prometheus-kube-prometheus-stack-prometheus-0 -c prometheus --tail=50"
+      data:
+        - refId: A
+          datasourceUid: prometheus
+          relativeTimeRange:
+            from: 300
+            to: 0
+          model:
+            refId: A
+            expr: 'sum(up)'
+            instant: true
+        - refId: B
+          datasourceUid: __expr__
+          model:
+            refId: B
+            type: reduce
+            reducer: last
+            expression: A
+        - refId: C
+          datasourceUid: __expr__
+          model:
+            refId: C
+            type: threshold
+            expression: B
+            conditions:
+              - evaluator:
+                  type: lt
+                  params: [1]
+
+    - uid: graf-loki-stalled
+      title: GrafanaLokiIngestStalled
+      condition: C
+      for: 15m
+      execErrState: Alerting
+      noDataState: Alerting
+      labels:
+        severity: warning
+        component: observability
+        priority: P2
+        source: grafana
+      annotations:
+        summary: "Keine neuen Logs in Loki"
+        description: "kube-system produziert dauerhaft Logs. Bleibt der Zaehler bei null, steht die Vector-Loki-Pipeline — die Log-Alerts waeren dann still blind."
+        action: "kubectl get pods -n elastic-system -l app.kubernetes.io/name=vector; kubectl logs -n monitoring loki-0 -c loki --tail=50"
+      data:
+        - refId: A
+          datasourceUid: loki
+          relativeTimeRange:
+            from: 900
+            to: 0
+          model:
+            refId: A
+            expr: 'sum(count_over_time({namespace="kube-system"}[10m]))'
+            queryType: instant
+        - refId: B
+          datasourceUid: __expr__
+          model:
+            refId: B
+            type: reduce
+            reducer: last
+            expression: A
+        - refId: C
+          datasourceUid: __expr__
+          model:
+            refId: C
+            type: threshold
+            expression: B
+            conditions:
+              - evaluator:
+                  type: lt
+                  params: [1]
