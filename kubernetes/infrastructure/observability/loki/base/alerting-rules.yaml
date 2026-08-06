@@ -1,13 +1,7 @@
-# LogQL-Alerts: was NUR in Logs sichtbar ist und in keiner Metrik auftaucht.
-# Bewusst schmal gehalten (Lean-Alerting): kein Alert-on-everything, jeder Eintrag
-# hat eine Handlung. Gehen an denselben Alertmanager wie die Prometheus-Alerts.
-#
-# ZWEI Fallen, beide 2026-08-05 live gefunden:
-# 1) Es gibt KEIN job-Label — Vector schickt namespace/pod/container/service/level/
-#    stream. {job=~".+"} matcht nichts -> Query-Fehler 500 (Regel laeuft ins Leere).
-# 2) pod!~"loki.*" ist PFLICHT bei Regex-Suchen: Loki loggt jede ausgefuehrte Query
-#    inklusive Query-String — eine Regel auf "panic:" findet sonst ihre EIGENEN
-#    Ruler-Logs und feuert dauerhaft (gemessen: 10 Selbst-Treffer/15min).
+# Zwei Fallen, beide live gefunden: es gibt KEIN job-Label (Vector schickt
+# namespace/pod/container/service/level/stream), und pod!~"loki.*" ist Pflicht bei
+# Regex ueber alle Namespaces — Loki loggt jede Query samt Query-String und findet
+# sonst seine eigenen Ruler-Logs.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -19,44 +13,118 @@ data:
       - name: logs-security
         interval: 1m
         rules:
-          # OOM-Kills stehen im Kernel-Log, BEVOR ein Pod-Restart sichtbar wird.
-          - alert: LogsOOMKillBurst
-            expr: 'sum(count_over_time({namespace=~".+", pod!~"loki.*"} |~ "(?i)out of memory: killed process" [10m])) > 3'
-            for: 5m
-            labels:
-              severity: warning
-              component: observability
-              priority: P2
-            annotations:
-              summary: "Mehrere OOM-Kills in 10min ({{ $value }})"
-              description: "Der Kernel killt Prozesse wegen Speichermangel — sichtbar nur im Log, nicht in Pod-Restarts."
-              action: "kubectl top pods -A --sort-by=memory; Limits der Top-Verbraucher pruefen."
-
-          # Wiederholte Auth-Fehler an der Identity-Ebene = Brute-Force-Signal.
           - alert: LogsAuthFailureSpike
             expr: 'sum(count_over_time({namespace=~"keycloak|lldap"} |~ "(?i)(invalid_user_credentials|authentication failed|invalid password)" [10m])) > 20'
             for: 5m
-            labels:
-              severity: warning
-              component: security
-              priority: P2
+            labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
               summary: "{{ $value }} fehlgeschlagene Logins in 10min (keycloak/lldap)"
-              description: "Auffaellig viele Auth-Fehler — Brute-Force oder ein kaputter Client, der in Schleife laeuft."
-              action: "kubectl logs -n keycloak keycloak-0 | grep -i invalid; Quell-IPs im Kibana/Loki gruppieren."
+              description: "Brute-Force oder ein kaputter Client in Schleife."
+              action: "kubectl logs -n keycloak keycloak-0 | grep -i invalid; Quell-IPs gruppieren."
+
+          - alert: LogsSensitiveFileAccess
+            expr: 'sum by (pod) (count_over_time({namespace="kube-system"} |~ "/etc/shadow|/etc/sudoers|authorized_keys" [10m])) > 0'
+            labels: {severity: warning, component: security, priority: P2, source: loki}
+            annotations:
+              summary: "Zugriff auf Credential-Datei ({{ $labels.pod }})"
+              description: "Tetragon meldet Zugriff auf shadow/sudoers/authorized_keys — passiert im Normalbetrieb nie."
+              action: "kubectl logs -n kube-system -l app.kubernetes.io/name=tetragon --since=15m | grep -E 'shadow|sudoers'"
+
+          - alert: LogsSealedSecretsDecryptFailure
+            expr: 'sum(count_over_time({namespace="sealed-secrets"} |~ "(?i)(no key could decrypt|cannot decrypt|unsealing failed)" [15m])) > 0'
+            for: 5m
+            labels: {severity: critical, component: security, priority: P1, source: loki}
+            annotations:
+              summary: "Sealed-Secrets kann nicht entschluesseln ({{ $value }} in 15min)"
+              description: "Der Controller kommt nicht an den Key. Betrifft jedes Secret im Cluster — Single Point of Failure."
+              action: "kubectl logs -n sealed-secrets -l name=sealed-secrets-controller --since=15m; Key-Backup pruefen."
 
       - name: logs-platform
         interval: 1m
         rules:
-          # Panics/Fatals verschwinden im Restart-Rauschen, wenn der Pod danach laeuft.
+          - alert: LogsOOMKillBurst
+            expr: 'sum(count_over_time({namespace=~".+", pod!~"loki.*"} |~ "(?i)out of memory: killed process" [10m])) > 3'
+            for: 5m
+            labels: {severity: warning, component: platform, priority: P2, source: loki}
+            annotations:
+              summary: "Mehrere OOM-Kills in 10min ({{ $value }})"
+              description: "Der Kernel killt Prozesse wegen Speichermangel — steht im Log, bevor ein Restart sichtbar wird."
+              action: "kubectl top pods -A --sort-by=memory; Limits der Top-Verbraucher pruefen."
+
           - alert: LogsPanicDetected
             expr: 'sum by (namespace) (count_over_time({namespace=~".+", pod!~"loki.*"} |~ "(?i)(panic:|fatal error:|runtime error:)" [15m])) > 5'
             for: 10m
-            labels:
-              severity: warning
-              component: observability
-              priority: P2
+            labels: {severity: warning, component: platform, priority: P2, source: loki}
             annotations:
               summary: "Panics/Fatals in {{ $labels.namespace }} ({{ $value }} in 15min)"
-              description: "Wiederholte Abstuerze auf Code-Ebene — auch wenn der Pod danach wieder laeuft."
+              description: "Wiederholte Abstuerze auf Code-Ebene, auch wenn der Pod danach laeuft."
               action: "stern -n {{ $labels.namespace }} . -i 'panic|fatal' --since 15m"
+
+          - alert: LogsCertificateIssuanceFailure
+            expr: 'sum(count_over_time({namespace="cert-manager"} |~ "(?i)(failed to finalize order|error issuing certificate|acme: error)" [30m])) > 0'
+            for: 10m
+            labels: {severity: warning, component: platform, priority: P2, source: loki}
+            annotations:
+              summary: "cert-manager kann nicht ausstellen ({{ $value }} in 30min)"
+              description: "ACME schlaegt fehl. Wird erst in Wochen zum Ausfall — deshalb frueh melden."
+              action: "kubectl get certificate,certificaterequest,order -A | grep -v True"
+
+          - alert: LogsArgoCDSyncFailure
+            expr: 'sum(count_over_time({namespace="argocd"} |~ "(?i)(ComparisonError|failed to sync|rpc error.*repo)" [15m])) > 3'
+            for: 10m
+            labels: {severity: warning, component: platform, priority: P2, source: loki}
+            annotations:
+              summary: "ArgoCD kann nicht synchronisieren ({{ $value }} in 15min)"
+              description: "Repo-Server oder Sync gestoert — ArgoCD wird blind fuer Drift, ohne dass eine App unhealthy wird."
+              action: "kubectl logs -n argocd -l app.kubernetes.io/name=argocd-repo-server --since=15m"
+
+      - name: logs-data
+        interval: 1m
+        rules:
+          - alert: LogsDatabaseLoginFailure
+            expr: 'sum by (namespace) (count_over_time({namespace=~"drova|n8n-prod|keycloak|cnpg-system"} |~ "server login has been failing|password authentication failed" [10m])) > 20'
+            for: 2m
+            labels: {severity: warning, component: data, priority: P2, source: loki}
+            annotations:
+              summary: "Anwendung kommt nicht an ihre DB ({{ $labels.namespace }}, {{ $value }} in 10min)"
+              description: "Pooler oder App kann sich nicht an Postgres anmelden. Kurz bei Failover normal, dauerhaft trifft es Requests."
+              action: "kubectl get cluster,pooler -n {{ $labels.namespace }}; kubectl logs -n {{ $labels.namespace }} -l cnpg.io/poolerName --since=15m"
+
+          - alert: LogsVeleroBackupError
+            expr: 'sum(count_over_time({namespace="velero"} |~ "(?i)(backup failed|error backing up|failed to upload)" [1h])) > 2'
+            for: 10m
+            labels: {severity: warning, component: data, priority: P2, source: loki}
+            annotations:
+              summary: "Velero meldet Backup-Fehler ({{ $value }} in 1h)"
+              description: "Ein 'completed' Backup kann trotzdem unvollstaendig sein — die Metrik zeigt nur, wann zuletzt gelaufen wurde."
+              action: "velero backup get; velero backup logs $(velero backup get -o name | tail -1 | cut -d/ -f2)"
+
+          - alert: LogsElasticsearchClusterBlock
+            expr: 'sum(count_over_time({namespace="elastic-system", pod=~"production-cluster.*"} |~ "(?i)(cluster_block_exception|circuit_breaking_exception|index_not_found)" [15m])) > 0'
+            for: 5m
+            labels: {severity: warning, component: data, priority: P2, source: loki}
+            annotations:
+              summary: "Elasticsearch blockt Schreibzugriffe ({{ $value }} in 15min)"
+              description: "Read-only-Block oder Circuit-Breaker — Log- und Trace-Ingest laeuft ins Leere."
+              action: "kubectl exec -n elastic-system production-cluster-es-master-data-0 -- curl -s localhost:9200/_cluster/allocation/explain"
+
+      - name: logs-network
+        interval: 1m
+        rules:
+          - alert: LogsNoHealthyUpstream
+            expr: 'sum(count_over_time({namespace="gateway"} |~ "no_healthy_upstream|upstream_reset_before_response_started" [10m])) > 5'
+            for: 5m
+            labels: {severity: warning, component: network, priority: P2, source: loki}
+            annotations:
+              summary: "Envoy findet keinen gesunden Upstream ({{ $value }} in 10min)"
+              description: "Backend-Pods weg oder nicht ready — Nutzer sehen 503, bevor eine App-Metrik das zeigt."
+              action: "kubectl get httproute -A; kubectl get endpointslices -A | grep -v ' 1 '"
+
+          - alert: LogsCloudflaredTunnelFailure
+            expr: 'sum(count_over_time({namespace="cloudflared"} |~ "(?i)(failed to connect|unregistered tunnel|connection terminated)" [15m])) > 5'
+            for: 10m
+            labels: {severity: warning, component: network, priority: P2, source: loki}
+            annotations:
+              summary: "cloudflared verliert Tunnel-Verbindungen ({{ $value }} in 15min)"
+              description: "Betrifft die oeffentlich exponierten Dienste (drova, n8n) — VPN-only-Dienste bleiben erreichbar."
+              action: "kubectl logs -n cloudflared -l app=cloudflared --since=15m | grep -i 'connect'"
