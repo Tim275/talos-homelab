@@ -17,9 +17,9 @@ spec:
             component: hypervisor
           annotations:
             dashboard_url: "/d/proxmox-cluster"
-            summary: "External connectivity lost: {{ $labels.target }}"
-            description: "Blackbox probe to {{ $labels.target }} failing >5min. ISP/router/firewall issue."
-            action: "Check ISP/router/modem; ping {{ $labels.target }} from a host; this is upstream of the cluster."
+            summary: "External connectivity lost: {{ $labels.instance }}"
+            description: "Blackbox probe to {{ $labels.instance }} failing >5min. ISP/router/firewall issue."
+            action: "Check ISP/router/modem; ping {{ $labels.instance }} from a host; this is upstream of the cluster."
 
         - alert: ExternalDNSResolutionFailed
           expr: probe_dns_lookup_time_seconds{job="blackbox-dns"} > 5 or probe_success{job="blackbox-dns"} == 0
@@ -29,7 +29,7 @@ spec:
             component: hypervisor
           annotations:
             dashboard_url: "/d/proxmox-cluster"
-            summary: "External DNS slow/failing: {{ $labels.target }}"
+            summary: "External DNS slow/failing: {{ $labels.instance }}"
             action: "kubectl logs -n kube-system -l k8s-app=kube-dns; the probe tests CoreDNS resolving externally — check upstream/Gateway."
 
         - alert: TLSCertificateExpiringSoonExternal
@@ -40,8 +40,8 @@ spec:
             component: hypervisor
           annotations:
             dashboard_url: "/d/proxmox-cluster"
-            summary: "External TLS cert expires <14d: {{ $labels.target }}"
-            action: "Check the cert for {{ $labels.target }}; cert-manager (internal) or the external CA; <14d to expiry."
+            summary: "External TLS cert expires <14d: {{ $labels.instance }}"
+            action: "Check the cert for {{ $labels.instance }}; cert-manager (internal) or the external CA; <14d to expiry."
 
     - name: homelab-services
       interval: 1m
@@ -54,6 +54,9 @@ spec:
             component: ingress
           annotations:
             dashboard_url: "/d/blackbox-exporter"
-            summary: "Homelab service unreachable: {{ $labels.target }}"
-            description: "Blackbox probe to {{ $labels.target }} returned no valid HTTP response for >5min (refused/timeout/5xx)."
+            # blackbox-exporter labelt das Ziel als `instance`, nicht `target` —
+            # $labels.target rendert LEER statt zu failen (Slack zeigte
+            # "service unreachable: " ohne Hostname).
+            summary: "Homelab service unreachable: {{ $labels.instance }}"
+            description: "Blackbox probe to {{ $labels.instance }} returned no valid HTTP response for >5min (refused/timeout/5xx)."
             action: "curl --resolve HOST:443:192.168.0.152 https://HOST/ ; check app pod + HTTPRoute + Envoy filter-chain."
