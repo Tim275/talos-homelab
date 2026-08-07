@@ -112,16 +112,7 @@ prometheus:
 # surfaces as ClusterAPIServerDown + ControlPlaneNodeDown (symptom, not cause).
 # Re-enable needs proper Talos metrics-exposure (+ etcd client-cert for kubeEtcd).
 kubeControllerManager:
-  enabled: true
-  endpoints:
-    - 192.168.0.101
-  service:
-    enabled: true
-    port: 10257
-    targetPort: 10257
-  serviceMonitor:
-    https: true
-    insecureSkipVerify: true  # self-signed serving cert; authn via SA-Bearer-Token
+  enabled: false  # via additionalScrapeConfigs (job kube-controller-manager)
 
 # 2026-08-07: Direkt-Scrape AKTIV. Der alte Blocker (kein Client-Cert) ist
 # geloest: server.crt aus /system/secrets/etcd traegt die ClientAuth-EKU und
@@ -129,36 +120,15 @@ kubeControllerManager:
 # (mTLS bleibt erzwungen). serverName localhost: das Cert hat CN=ctrl-0, aber
 # SAN localhost — Prometheus validiert dagegen.
 kubeEtcd:
-  enabled: true
-  endpoints:
-    - 192.168.0.101
-  service:
-    enabled: true
-    port: 2379
-    targetPort: 2379
-  serviceMonitor:
-    scheme: https
-    insecureSkipVerify: false
-    serverName: localhost
-    caFile: /etc/prometheus/secrets/etcd-client-cert/ca.crt
-    certFile: /etc/prometheus/secrets/etcd-client-cert/server.crt
-    keyFile: /etc/prometheus/secrets/etcd-client-cert/server.key
+  enabled: false  # SM+Endpoints-Weg tot: ArgoCD excludiert Endpoints (siehe pve-exporter scrape-config: job kube-etcd)
 
 kubeProxy:
   # Cilium replaces Kube Proxy
   enabled: false
 
 kubeScheduler:
-  enabled: true
-  endpoints:
-    - 192.168.0.101
-  service:
-    enabled: true
-    port: 10259
-    targetPort: 10259
+  enabled: false  # via additionalScrapeConfigs (job kube-scheduler)
   serviceMonitor:
-    https: true
-    insecureSkipVerify: true
     relabelings:
       - sourceLabels: [ __meta_kubernetes_pod_node_name ]
         separator: ;
