@@ -1,0 +1,34 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: business-kpis
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # Schicht 7: Geschaefts-Signale statt Technik-Signale. Quelle sind die Kafka-
+  # Topic-Offsets (Offset-Wachstum = Events) und der Envoy-Edge. drova ist ohne
+  # Load-Generator idle — die Serien zeigen dann ehrlich 0. BEWUSST kein
+  # "flow stalled"-Alert: der wuerde auf einem idle Demo-System dauerfeuern.
+  # Topics existieren in zwei Namensschemata (trip-event-x und trip.event.x).
+  groups:
+    - name: business.kpis
+      interval: 60s
+      rules:
+        - record: business:trip_events:rate5m
+          expr: |
+            sum(rate(kafka_topic_partition_current_offset{topic=~"trip-event-.*|trip\\.event\\..*"}[5m]))
+        - record: business:trips_completed:rate1h
+          expr: |
+            sum(rate(kafka_topic_partition_current_offset{topic=~"trip-event-completed|trip\\.event\\.completed"}[1h]))
+        - record: business:trips_cancelled:rate1h
+          expr: |
+            sum(rate(kafka_topic_partition_current_offset{topic=~"trip-event-cancelled|trip\\.event\\.cancelled"}[1h]))
+        - record: business:payments_succeeded:rate1h
+          expr: |
+            sum(rate(kafka_topic_partition_current_offset{topic=~"payment-event-success|payment\\.event\\.success"}[1h]))
+        - record: business:edge_success_requests:rate5m
+          expr: |
+            sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="2"}[5m]))
+        - record: business:drova_api_requests:rate5m
+          expr: |
+            sum(rate(http_server_request_duration_seconds_count[5m]))
