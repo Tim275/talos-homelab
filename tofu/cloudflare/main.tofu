@@ -10,7 +10,7 @@ locals {
 }
 
 # ── Public Subdomains → Tunnel (proxied) ─────────────────────────────────────
-# drova · n8n · iam · status — der Rest existiert hier bewusst NICHT.
+# drova · n8n · homepage — der Rest existiert hier bewusst NICHT.
 resource "cloudflare_dns_record" "public" {
   for_each = toset(var.public_hosts)
 
