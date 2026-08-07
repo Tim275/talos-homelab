@@ -133,6 +133,34 @@ spec:
 
           echo "Creating velero-pv-backups bucket..."
           aws s3api create-bucket --bucket velero-pv-backups --endpoint-url=$ENDPOINT 2>&1 || echo "Bucket may already exist"
+          # WORM-Bucket: S3 Object Lock im COMPLIANCE-Modus.
+          # Velero besitzt Loeschrechte auf die anderen Buckets — ein uebernommener
+          # Cluster koennte Backup UND Produktion in einem Zug entfernen. Hier nicht:
+          # COMPLIANCE verweigert das Loeschen fuer die Retention-Dauer JEDEM, auch dem
+          # Bucket-Owner. GOVERNANCE waere per BypassGovernanceRetention umgehbar und
+          # schuetzt nur gegen Versehen.
+          # Object Lock ist NUR bei der Erstellung aktivierbar -> eigener Bucket.
+          echo "Creating velero-worm-backups bucket (Object Lock)..."
+          if aws s3api head-bucket --bucket velero-worm-backups --endpoint-url=$ENDPOINT 2>/dev/null; then
+            echo "velero-worm-backups exists"
+          else
+            aws s3api create-bucket --bucket velero-worm-backups --object-lock-enabled-for-bucket --endpoint-url=$ENDPOINT
+          fi
+          aws s3api put-object-lock-configuration --bucket velero-worm-backups --endpoint-url=$ENDPOINT \
+            --object-lock-configuration '{"ObjectLockEnabled":"Enabled","Rule":{"DefaultRetention":{"Mode":"COMPLIANCE","Days":14}}}'
+          aws s3api get-object-lock-configuration --bucket velero-worm-backups --endpoint-url=$ENDPOINT
+
+          # Selbsttest: schreiben, loeschen versuchen. Der Delete MUSS scheitern — sonst
+          # ist die Sperre wirkungslos und der Job soll rot werden, statt eine
+          # Immutability vorzutaeuschen, die es nicht gibt.
+          echo "worm-selftest" > /tmp/probe
+          aws s3 cp /tmp/probe s3://velero-worm-backups/.worm-selftest --endpoint-url=$ENDPOINT
+          VID=$(aws s3api list-object-versions --bucket velero-worm-backups --prefix .worm-selftest --endpoint-url=$ENDPOINT --query 'Versions[0].VersionId' --output text)
+          if aws s3api delete-object --bucket velero-worm-backups --key .worm-selftest --version-id "$VID" --endpoint-url=$ENDPOINT 2>/dev/null; then
+            echo "ERROR: WORM-Objekt liess sich loeschen - Object Lock wirkt NICHT"
+            exit 1
+          fi
+          echo " Object Lock verifiziert: Loeschen wurde verweigert"
 
           # Verify buckets
           echo "=== Verifying buckets ==="
@@ -141,6 +169,7 @@ spec:
           echo "=== Testing access to buckets ==="
           aws s3 ls s3://velero-cluster-backups --endpoint-url=$ENDPOINT && echo " velero-cluster-backups OK"
           aws s3 ls s3://velero-pv-backups --endpoint-url=$ENDPOINT && echo " velero-pv-backups OK"
+          aws s3 ls s3://velero-worm-backups --endpoint-url=$ENDPOINT && echo " velero-worm-backups OK"
 
           # Restart Velero to pick up new credentials
           echo "Restarting Velero deployment..."
