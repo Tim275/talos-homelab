@@ -56,10 +56,15 @@ spec:
             description: "{{ $value | humanizePercentage }} used. ES blocks writes at 95% (flood watermark)."
             action: "Free ES disk: delete old indices or lower ILM retention before the 95% flood watermark blocks writes."
 
+        # elasticsearch_slm_stats_last_success_timestamp_seconds gibt es in
+        # exporter v1.10 NICHT — der Alert war blind, auch nach dem 403-Fix.
+        # Vorhanden sind Zaehler je policy. Guard >0: frischer Cluster ohne je
+        # einen Snapshot soll nicht feuern; for:6h gibt dem Counter Historie.
         - alert: ElasticsearchSnapshotStale
           expr: |
-            (time() - elasticsearch_slm_stats_last_success_timestamp_seconds) > 86400 * 2
-          for: 1h
+            increase(elasticsearch_slm_stats_snapshots_taken_total[2d]) == 0
+            and elasticsearch_slm_stats_snapshots_taken_total > 0
+          for: 6h
           labels:
             severity: warning
             component: data
@@ -69,3 +74,29 @@ spec:
             summary: "Elasticsearch last successful snapshot >48h old"
             description: "SLM policy not running — check repository + cluster health."
             action: "'GET _slm/policy'; check the snapshot repo (Ceph-RGW); 'POST _slm/policy/<id>/_execute' to retry."
+
+        - alert: ElasticsearchSnapshotFailing
+          expr: increase(elasticsearch_slm_stats_snapshots_failed_total[6h]) > 0
+          for: 15m
+          labels:
+            severity: warning
+            component: data
+            priority: P2
+          annotations:
+            dashboard_url: "/d/elasticsearch"
+            summary: "SLM-Snapshot fehlgeschlagen (policy {{ $labels.policy }})"
+            description: "Ein Snapshot-Lauf ist fehlgeschlagen. Der Stale-Alert greift erst nach 2 Tagen — dieser sofort, damit ein kaputtes Repo nicht zwei Tage unbemerkt bleibt."
+            action: "GET _slm/stats; GET _snapshot/_status; Ceph-RGW-Bucket + S3-Credentials pruefen."
+
+        - alert: ElasticsearchSLMStopped
+          expr: elasticsearch_slm_stats_operation_mode{operation_mode="RUNNING"} == 0
+          for: 30m
+          labels:
+            severity: warning
+            component: data
+            priority: P2
+          annotations:
+            dashboard_url: "/d/elasticsearch"
+            summary: "SLM ist nicht im Modus RUNNING"
+            description: "Snapshot-Lifecycle-Management gestoppt — es entstehen keine neuen Snapshots, ohne dass ein einzelner Lauf fehlschlaegt."
+            action: "GET _slm/status; POST _slm/start."
