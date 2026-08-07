@@ -14,6 +14,11 @@ prometheus:
 
     # Bare-metal hypervisor scrape jobs (node_exporter :9100 + smartctl :9633 on
     # msa2/nipogi). Secret defined in pve-exporter/base/scrape-config.yaml.
+    # etcd-mTLS: Client-Cert aus /system/secrets/etcd (ctrl-0), gesealed in
+    # base/etcd-client-cert-sealed.yaml. Mount unter /etc/prometheus/secrets/<name>/.
+    secrets:
+      - etcd-client-cert
+
     additionalScrapeConfigsSecret:
       enabled: true
       name: additional-scrape-configs-proxmox
@@ -107,18 +112,53 @@ prometheus:
 # surfaces as ClusterAPIServerDown + ControlPlaneNodeDown (symptom, not cause).
 # Re-enable needs proper Talos metrics-exposure (+ etcd client-cert for kubeEtcd).
 kubeControllerManager:
-  enabled: false
+  enabled: true
+  endpoints:
+    - 192.168.0.101
+  service:
+    enabled: true
+    port: 10257
+    targetPort: 10257
+  serviceMonitor:
+    https: true
+    insecureSkipVerify: true  # self-signed serving cert; authn via SA-Bearer-Token
 
+# 2026-08-07: Direkt-Scrape AKTIV. Der alte Blocker (kein Client-Cert) ist
+# geloest: server.crt aus /system/secrets/etcd traegt die ClientAuth-EKU und
+# dient als Scrape-Identitaet. Host-Firewall gibt 2379 fuer cluster-Pods frei
+# (mTLS bleibt erzwungen). serverName localhost: das Cert hat CN=ctrl-0, aber
+# SAN localhost — Prometheus validiert dagegen.
 kubeEtcd:
-  enabled: false  # unscrapable on Talos w/o etcd client-cert → was the EtcdQuorumLoss false-source
+  enabled: true
+  endpoints:
+    - 192.168.0.101
+  service:
+    enabled: true
+    port: 2379
+    targetPort: 2379
+  serviceMonitor:
+    scheme: https
+    insecureSkipVerify: false
+    serverName: localhost
+    caFile: /etc/prometheus/secrets/etcd-client-cert/ca.crt
+    certFile: /etc/prometheus/secrets/etcd-client-cert/server.crt
+    keyFile: /etc/prometheus/secrets/etcd-client-cert/server.key
 
 kubeProxy:
   # Cilium replaces Kube Proxy
   enabled: false
 
 kubeScheduler:
-  enabled: false  # see kubeControllerManager note — unscrapable on Talos
+  enabled: true
+  endpoints:
+    - 192.168.0.101
+  service:
+    enabled: true
+    port: 10259
+    targetPort: 10259
   serviceMonitor:
+    https: true
+    insecureSkipVerify: true
     relabelings:
       - sourceLabels: [ __meta_kubernetes_pod_node_name ]
         separator: ;
