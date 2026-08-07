@@ -1,0 +1,63 @@
+# Prometheus + Alertmanager sichtbar machen: beide hatten keine HTTPRoute und
+# konnten damit weder auf der Homepage auftauchen noch im Browser geoeffnet
+# werden. VPN-only wie der Rest — die UIs selbst sind unauthentifiziert,
+# Zugriffsschutz ist die NetBird-Routing-Grenze (gleiches Modell wie lldap).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: prometheus
+  namespace: monitoring
+  annotations:
+    gethomepage.dev/enabled: "true"
+    gethomepage.dev/pod-selector: "app.kubernetes.io/name=prometheus"
+    gethomepage.dev/name: Prometheus
+    gethomepage.dev/description: Time-series Monitoring (VPN-only via NetBird)
+    gethomepage.dev/group: Observability
+    gethomepage.dev/icon: prometheus.png
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: envoy-gateway
+      namespace: gateway
+      sectionName: https
+  hostnames:
+    - prometheus.timourhomelab.org
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: kube-prometheus-stack-prometheus
+          port: 9090
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: alertmanager
+  namespace: monitoring
+  annotations:
+    gethomepage.dev/enabled: "true"
+    gethomepage.dev/pod-selector: "app.kubernetes.io/name=alertmanager"
+    gethomepage.dev/name: Alertmanager
+    gethomepage.dev/description: Alert Routing & Silences (VPN-only via NetBird)
+    gethomepage.dev/group: Observability
+    gethomepage.dev/icon: alertmanager.png
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: envoy-gateway
+      namespace: gateway
+      sectionName: https
+  hostnames:
+    - alertmanager.timourhomelab.org
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: kube-prometheus-stack-alertmanager
+          port: 9093
