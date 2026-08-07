@@ -1,0 +1,105 @@
+# Kreuzprobe: feuert jeder Alert-Rule auf Metriken, die es wirklich gibt?
+# Ein Alert auf einer nicht existierenden Metrik ist stiller als gar keiner — er
+# suggeriert Abdeckung. Am 2026-08-06 waren so 20 von 295 Rules tot, darunter
+# ElasticsearchSnapshotStale (403 auf _slm) und der Tempo-Generator-Blindspot.
+#
+# Laeuft nicht in CI, weil dort kein Prometheus mit Live-Metriknamen existiert.
+# Bei Fund exit 1 -> Job failed -> upstream KubeJobFailed alertet (gleiches Muster
+# wie die DR-Verify-CronJobs).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dead-alert-check
+data:
+  check.py: |
+    import json, re, sys, urllib.request
+
+    PROM = "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1"
+
+    def get(path):
+        with urllib.request.urlopen(PROM + path, timeout=60) as r:
+            return json.load(r)
+
+    known = set(get("/label/__name__/values")["data"])
+    rules = []
+    for g in get("/rules")["data"]["groups"]:
+        for r in g["rules"]:
+            if r.get("type") == "alerting":
+                rules.append((r["name"], r.get("query", "")))
+
+    # PromQL-Funktionen/Keywords rausfiltern, damit nur Metriknamen uebrig bleiben.
+    KW = {
+        "by","on","without","group_left","group_right","and","or","unless","offset","bool","ignoring",
+        "rate","irate","sum","avg","min","max","count","increase","absent","absent_over_time","delta",
+        "idelta","predict_linear","histogram_quantile","clamp_max","clamp_min","topk","bottomk","time",
+        "vector","scalar","count_over_time","avg_over_time","max_over_time","min_over_time","sum_over_time",
+        "stddev","stdvar","quantile","label_replace","label_join","changes","resets","deriv","floor",
+        "ceil","round","abs","sgn","last_over_time","present_over_time","quantile_over_time",
+        "stddev_over_time","group","le","e",
+    }
+    tok = re.compile(r"\b([a-zA-Z_:][a-zA-Z0-9_:]*)\s*(?:\{|\[|\)|\s|$)")
+
+    dead = []
+    for name, q in rules:
+        used = {m for m in tok.findall(q) if m not in KW and not m.isdigit()}
+        used = {m for m in used if "_" in m or m.startswith("up")}
+        missing = sorted(m for m in used if m not in known)
+        # nur melden wenn ALLE Metriken fehlen — sonst false-positives bei
+        # optionalen Joins (z.B. kube_pod_labels).
+        if used and len(missing) == len(used):
+            dead.append((name, missing))
+
+    print(f"{len(rules)} alert rules, {len(known)} metric names in Prometheus")
+    if not dead:
+        print("OK — jede Rule hat mindestens eine existierende Metrik")
+        sys.exit(0)
+    print(f"\n{len(dead)} tote Rule(s) — koennen nie feuern:")
+    for n, m in sorted(dead):
+        print(f"  {n}: {', '.join(m)}")
+    print("\nEntweder Metrikname korrigieren, Exporter installieren, oder Rule "
+          "bewusst deaktivieren/als DORMANT dokumentieren.")
+    sys.exit(1)
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dead-alert-check
+spec:
+  schedule: "17 6 * * 1"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: check
+              image: docker.io/library/python:3.14-alpine@sha256:5a824eb82cc75361f98611f3cfc5091ea33f10a6ccea4d4ebdabbc523b9a1614
+              command: ["python3", "/scripts/check.py"]
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  cpu: 200m
+                  memory: 128Mi
+          volumes:
+            - name: scripts
+              configMap:
+                name: dead-alert-check
