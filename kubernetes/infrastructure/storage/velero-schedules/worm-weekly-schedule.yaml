@@ -1,0 +1,36 @@
+# WORM-Wochenbackup der Tier-0-Daten in den Object-Lock-Bucket.
+#
+# Ergaenzt tier0-databases-6h, ersetzt es nicht: der 6h-Schedule deckt den
+# normalen RPO ab und darf rotieren. Dieser hier ist die Kopie, die auch ein
+# uebernommener Cluster nicht loeschen kann.
+#
+# ttl 336h == 14d == die COMPLIANCE-Retention des Buckets. Kuerzer waere
+# sinnlos (Velero darf ohnehin nicht loeschen), laenger wuerde Velero
+# aufraeumen wollen, waehrend S3 es verweigert — unnoetiges Fehlerrauschen.
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: worm-weekly
+  namespace: velero
+  labels:
+    backup.tier: tier0
+    backup.type: immutable
+  annotations:
+    description: "Unveraenderliches Wochenbackup (S3 Object Lock COMPLIANCE 14d)"
+    rpo: "7 days"
+spec:
+  # Sonntag 03:30 — ausserhalb des Backup-Fensters der AppProject-Sync-Windows
+  # (deny 02:00-05:00) liegt es bewusst NICHT: hier laeuft kein Deployment,
+  # sondern nur ein Lesevorgang, und die Nacht ist die lastaermste Zeit.
+  schedule: "30 3 * * 0"
+  template:
+    storageLocation: worm-backups
+    ttl: 336h
+    includedNamespaces:
+      - n8n-prod
+      - drova
+      - keycloak
+    includedResources:
+      - '*'
+    includeClusterResources: true
+    defaultVolumesToFsBackup: true
