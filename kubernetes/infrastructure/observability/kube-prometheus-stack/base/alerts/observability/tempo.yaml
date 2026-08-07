@@ -23,3 +23,23 @@ spec:
             summary: "Tempo distributor down — traces being dropped"
             description: "Apps cannot push traces; OTel-Collector queue grows. (Tracing only — no user impact.)"
             action: "kubectl -n tempo get pod -l app.kubernetes.io/component=distributor + logs; the OTel queue grows until restored (tracing only)."
+
+        # Spans kommen an, aber kein Prozessor erzeugt Serien. Genau der Zustand vom
+        # 2026-08-06: Overrides-Schema-Mismatch (legacy vs new) → Tempo verwarf die
+        # per-tenant-Overrides still, 0 Prozessoren, TraceQL-Metrics leer, Traces
+        # Drilldown blind. Sichtbar war das nur in einer warn-Zeile beim Generator-Start.
+        - alert: TempoMetricsGeneratorNotProcessing
+          expr: |
+            sum(tempo_metrics_generator_registry_active_series) == 0
+            and
+            sum(rate(tempo_metrics_generator_spans_received_total[15m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+            component: tempo
+            priority: P2
+          annotations:
+            dashboard_url: "/d/tempo-service-graph"
+            summary: "Tempo metrics-generator bekommt Spans, erzeugt aber keine Serien"
+            description: "active_series=0 bei laufendem Span-Eingang — span-metrics/service-graphs/local-blocks liefern nichts. TraceQL-Metrics geben leere Serien zurueck, Traces Drilldown bleibt leer. Trace-SUCHE funktioniert weiter, deshalb faellt es sonst nicht auf."
+            action: "kubectl -n monitoring logs deploy/tempo-metrics-generator | grep -i 'type mismatch'; kubectl -n monitoring get --raw /status/overrides/single-tenant (processors darf nicht leer sein); Schema in tempo/base/values.yaml pruefen — overrides.defaults und per_tenant_overrides muessen BEIDE verschachtelt sein."

@@ -57,14 +57,18 @@ spec:
             summary: "istiod stellt Workload-Certs nicht aus"
             description: "CSRs kommen an, aber Issuance schlaegt fehl — neue Pods kriegen keine mTLS-Identity, Rotation stockt."
             action: "kubectl -n istio-system logs deploy/istiod | grep -i csr; ztunnel↔istiod-Verbindung pruefen."
-        - alert: IstioXdsConfigRejected
-          expr: rate(pilot_total_xds_rejects[10m]) > 0
-          for: 10m
+        # War IstioXdsConfigRejected auf pilot_total_xds_rejects — die Metrik hat Istio
+        # entfernt (1.30 kennt sie nicht mehr), der Alert konnte nie feuern. Ersatz sind
+        # die Konflikt-Zaehler, die istiod heute wirklich exportiert: sie zeigen Config,
+        # die zu doppelten/kollidierenden Envoy-Ressourcen fuehrt. Baseline live = 0.
+        - alert: IstioConfigConflicts
+          expr: pilot_duplicate_envoy_clusters > 0 or pilot_conflict_inbound_listener > 0
+          for: 15m
           labels:
             severity: warning
             component: network
             priority: P2
           annotations:
-            summary: "Proxies lehnen istiod-Config ab (xDS reject)"
-            description: "Ausgerollte Mesh-Config ist fuer ztunnel/waypoints ungueltig — Daten-Ebene laeuft auf alter Config weiter."
-            action: "kubectl -n istio-system logs deploy/istiod | grep -i reject; letzte Istio-/mesh-Config-Aenderung pruefen."
+            summary: "istiod erzeugt kollidierende Envoy-Config"
+            description: "Doppelte Cluster oder kollidierende Inbound-Listener — Mesh-Routing wird unvorhersehbar, betroffene Proxies koennen auf alter Config haengen bleiben."
+            action: "istioctl analyze -A; kubectl -n istio-system logs deploy/istiod | grep -iE 'conflict|duplicate'; letzte VirtualService-/Gateway-Aenderung pruefen."
