@@ -44,3 +44,36 @@ stringData:
       static_configs:
         - targets:
             - prometheus-edge.monitoring.svc.cluster.local:9090
+      # Control-Plane als static_configs statt chart-kubeEtcd: der Chart-Weg
+      # erzeugt manuelle Endpoints-Objekte, und die stehen in ArgoCDs
+      # resource.exclusions (ExcludedResourceWarning) — sie werden NIE angelegt,
+      # der headless-Service bleibt leer, 0 Targets. Statische Jobs brauchen
+      # weder Service noch Endpoints. Job-Namen = upstream-Konvention, damit
+      # Community-Dashboards und Rules greifen.
+      - job_name: kube-etcd
+        scheme: https
+        static_configs:
+          - targets:
+              - 192.168.0.101:2379
+        tls_config:
+          ca_file: /etc/prometheus/secrets/etcd-client-cert/ca.crt
+          cert_file: /etc/prometheus/secrets/etcd-client-cert/server.crt
+          key_file: /etc/prometheus/secrets/etcd-client-cert/server.key
+          # Cert hat CN=ctrl-0, SAN localhost — dagegen validieren
+          server_name: localhost
+      - job_name: kube-controller-manager
+        scheme: https
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        tls_config:
+          insecure_skip_verify: true
+        static_configs:
+          - targets:
+              - 192.168.0.101:10257
+      - job_name: kube-scheduler
+        scheme: https
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        tls_config:
+          insecure_skip_verify: true
+        static_configs:
+          - targets:
+              - 192.168.0.101:10259
