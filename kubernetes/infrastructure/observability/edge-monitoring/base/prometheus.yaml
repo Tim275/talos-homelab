@@ -1,0 +1,75 @@
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: edge-prometheus
+  namespace: edge-monitoring
+spec:
+  replicas: 1
+  serviceAccountName: edge-prometheus
+  serviceMonitorNamespaceSelector: {}
+  serviceMonitorSelector:
+    matchLabels:
+      edge-monitoring/scrape: "true"
+  ruleNamespaceSelector: {}
+  ruleSelector:
+    matchLabels:
+      role: edge-alert-rules
+  alerting:
+    alertmanagers:
+      - namespace: edge-monitoring
+        name: alertmanager-operated
+        port: http-web
+        apiVersion: v2
+  # Kurzes lokales Retention-Fenster: ein echter Fog-Node würde das auf die
+  # erwartete maximale Verbindungsunterbrechung dimensionieren, nicht auf
+  # Monate — hier bewusst klein fuers Homelab.
+  retention: 6h
+  remoteWrite:
+    - url: http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/write
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    seccompProfile:
+      type: RuntimeDefault
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: edge-prometheus-self
+  namespace: edge-monitoring
+  labels:
+    edge-monitoring/scrape: "true"
+spec:
+  selector:
+    matchLabels:
+      operated-prometheus: "true"
+  namespaceSelector:
+    matchNames: [edge-monitoring]
+  endpoints:
+    - port: http-web
+      interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: edge-watchdog
+  namespace: edge-monitoring
+  labels:
+    role: edge-alert-rules
+spec:
+  groups:
+    - name: edge.watchdog
+      rules:
+        - alert: EdgeNodeLocalPipelineAlive
+          expr: vector(1)
+          labels:
+            severity: info
+          annotations:
+            summary: "Lokale Alert-Pipeline auf dem Edge-Node lebt"
+            description: "Feuert unabhaengig davon, ob die Verbindung zum zentralen Cluster steht — Beweis, dass Regel-Auswertung + lokale Zustellung ohne zentrale Konnektivitaet funktionieren."
