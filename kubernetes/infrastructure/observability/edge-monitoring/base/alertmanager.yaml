@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-edge-alertmanager
+  namespace: edge-monitoring
+stringData:
+  alertmanager.yaml: |
+    route:
+      receiver: local-webhook
+      group_wait: 5s
+      group_interval: 30s
+      repeat_interval: 5m
+    receivers:
+      - name: local-webhook
+        webhook_configs:
+          - url: http://edge-webhook-receiver.edge-monitoring.svc:8080/
+            send_resolved: true
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Alertmanager
+metadata:
+  name: edge-alertmanager
+  namespace: edge-monitoring
+spec:
+  replicas: 1
+  configSecret: alertmanager-edge-alertmanager
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 64Mi
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    seccompProfile:
+      type: RuntimeDefault
