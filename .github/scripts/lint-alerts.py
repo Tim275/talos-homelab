@@ -23,8 +23,9 @@ REQUIRED_LABELS = ["severity"]
 VALID_SEVERITIES = {"critical", "warning", "info"}
 ALERTS_TREE = "kubernetes/infrastructure/observability/kube-prometheus-stack/base/alerts/"
 LOCATION_WHITELIST: tuple[str, ...] = (
-    # Recording-Rules des Edge-Prometheus — gehoeren zu einer eigenen Instanz,
-    # nicht in den zentralen Alert-Baum. Enthalten keine Alerts.
+    # Recording-Rules + lokale Alerts des Edge-Prometheus — gehoeren zu einer
+    # eigenen Instanz mit eigenem Alertmanager (disconnected/air-gap-Faehigkeit),
+    # nicht in den zentralen Alert-Baum/das zentrale dead-alert-check-Inventar.
     "kubernetes/infrastructure/observability/prometheus-edge/",
 )
 

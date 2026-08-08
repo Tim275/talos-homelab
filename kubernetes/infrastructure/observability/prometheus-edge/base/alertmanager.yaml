@@ -1,0 +1,122 @@
+# Der Edge-Prometheus aggregierte bisher nur (fuer Federation) und alarmierte
+# nie selbst. Fuer echte Disconnected/Air-Gap-Faehigkeit braucht ein Fog-Node
+# einen EIGENEN Alertmanager, der auch dann feuert, wenn die Verbindung zum
+# zentralen Cluster (und damit zum zentralen Alertmanager) weg ist.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-edge
+  namespace: monitoring
+stringData:
+  alertmanager.yaml: |
+    route:
+      receiver: local-webhook
+      group_wait: 5s
+      group_interval: 30s
+      repeat_interval: 15m
+    receivers:
+      - name: local-webhook
+        webhook_configs:
+          - url: http://edge-webhook-receiver.monitoring.svc:8080/
+            send_resolved: true
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Alertmanager
+metadata:
+  name: edge
+  namespace: monitoring
+spec:
+  replicas: 1
+  configSecret: alertmanager-edge
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 64Mi
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    seccompProfile:
+      type: RuntimeDefault
+---
+# Eigener Service — alertmanager-operated selektiert ALLE Alertmanager-Pods im
+# Namespace (analog zur prometheus-operated-Falle bei prometheus.yaml).
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager-edge
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: alertmanager-edge
+spec:
+  selector:
+    app.kubernetes.io/instance: edge
+    app.kubernetes.io/name: alertmanager
+  ports:
+    - name: http-web
+      port: 9093
+      targetPort: 9093
+---
+# Stellvertreter fuer "lokale Zustellung ohne zentrale Konnektivitaet" — auf
+# einem echten Fog-Node waere das ein lokales Display/eine Sirene/ein Relais.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: edge-webhook-receiver
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: edge-webhook-receiver
+  template:
+    metadata:
+      labels:
+        app: edge-webhook-receiver
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: receiver
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              while true; do
+                { printf 'HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n'; cat >> /data/alerts.log; printf '\n---\n' >> /data/alerts.log; } | nc -l -p 8080
+              done
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: edge-webhook-receiver
+  namespace: monitoring
+spec:
+  selector:
+    app: edge-webhook-receiver
+  ports:
+    - port: 8080
+      targetPort: 8080

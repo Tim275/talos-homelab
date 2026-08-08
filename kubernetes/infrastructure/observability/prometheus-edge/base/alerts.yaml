@@ -1,0 +1,29 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: edge-local-alerts
+  namespace: monitoring
+  labels:
+    # NICHT release: kube-prometheus-stack — wird vom edge-Prometheus ausgewertet,
+    # nicht vom zentralen (gleicher Grund wie bei recording-rules.yaml).
+    prometheus: edge
+spec:
+  groups:
+    - name: edge.disconnected
+      rules:
+        - alert: EdgeNodeLocalPipelineAlive
+          expr: vector(1)
+          labels:
+            severity: info
+          annotations:
+            summary: "Lokale Alert-Pipeline auf dem Edge-Node lebt"
+            description: "Feuert unabhaengig davon, ob die Verbindung zum zentralen Cluster steht — Beweis, dass Regel-Auswertung + lokale Zustellung (edge-webhook-receiver) auch ohne zentrale Konnektivitaet funktionieren."
+
+        - alert: EdgeHypervisorScrapeStale
+          expr: min(edge:target_up) < 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Edge-Prometheus erreicht mindestens einen Hypervisor nicht mehr"
+            description: "Lokaler Alert — feuert auch dann, wenn der zentrale Alertmanager nicht erreichbar ist."
