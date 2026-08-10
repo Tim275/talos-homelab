@@ -1,0 +1,200 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kubernetes-control-plane
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # etcd/kube-scheduler/kube-controller-manager: enabled:false in values-prod.yaml
+  # (chart's own ServiceMonitor+Endpoints path is unusable — ArgoCD excludes the
+  # generated Endpoints objects, ctrl-0 scraped via additionalScrapeConfigs
+  # static_configs instead, see pve-exporter/base/scrape-config.yaml). That same
+  # enabled-flag also gates the chart's default PrometheusRule templates, so
+  # metrics were flowing but nothing alerted on them. Ported from upstream
+  # (prometheus-operator/kube-prometheus etcd.yaml + kubernetes-system-scheduler.yaml
+  # + kubernetes-system-controller-manager.yaml), trimmed to single-node-etcd-relevant
+  # alerts only — quorum/leader-change/member-communication alerts assume multiple
+  # etcd members and are meaningless on ctrl-0's lone instance (already covered by
+  # EtcdQuorumLoss/ControlPlaneNodeDown in cluster.yaml).
+  groups:
+    - name: etcd
+      interval: 1m
+      rules:
+        - alert: etcdHighFsyncDurations
+          expr: |
+            histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket{job=~".*etcd.*"}[5m]))
+            > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            component: control-plane
+            priority: P2
+          annotations:
+            summary: "etcd disk WAL fsync p99 {{ $value | humanizeDuration }} on {{ $labels.instance }}"
+            description: "Disk write latency degrading — leading indicator for the API-latency cascade."
+            action: "Check ctrl-0's etcd VM disk I/O; same root cause class as EtcdRequestLatencyHigh."
+
+        - alert: etcdHighFsyncDurations
+          expr: |
+            histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket{job=~".*etcd.*"}[5m]))
+            > 1
+          for: 10m
+          labels:
+            severity: critical
+            component: control-plane
+            priority: P1
+          annotations:
+            summary: "etcd disk WAL fsync p99 {{ $value | humanizeDuration }} on {{ $labels.instance }}"
+            description: "Disk write latency critically high — API-server slowness/outage imminent."
+            action: "Check ctrl-0's etcd VM disk I/O immediately; verify it's on the fast SSD, not a contended host."
+
+        - alert: etcdHighCommitDurations
+          expr: |
+            histogram_quantile(0.99, rate(etcd_disk_backend_commit_duration_seconds_bucket{job=~".*etcd.*"}[5m]))
+            > 0.25
+          for: 10m
+          labels:
+            severity: warning
+            component: control-plane
+            priority: P2
+          annotations:
+            summary: "etcd backend commit p99 {{ $value | humanizeDuration }} on {{ $labels.instance }}"
+            description: "Backend commit latency high — same disk-health signal class as fsync duration."
+            action: "Check ctrl-0's etcd VM disk I/O."
+
+        - alert: etcdHighNumberOfFailedGRPCRequests
+          expr: |
+            100 * sum(rate(grpc_server_handled_total{job=~".*etcd.*", grpc_code=~"Unknown|FailedPrecondition|ResourceExhausted|Internal|Unavailable|DataLoss|DeadlineExceeded"}[5m])) without (grpc_type, grpc_code)
+              /
+            sum(rate(grpc_server_handled_total{job=~".*etcd.*"}[5m])) without (grpc_type, grpc_code)
+              > 1
+          for: 10m
+          labels:
+            severity: warning
+            component: control-plane
+            priority: P2
+          annotations:
+            summary: "etcd gRPC {{ $labels.grpc_method }} failure-rate {{ $value | humanizePercentage }}"
+            description: "etcd itself is returning errors to its gRPC clients (apiserver included)."
+            action: "talosctl -n ctrl-0 etcd status; check etcd logs for the failing method."
+
+        - alert: etcdHighNumberOfFailedGRPCRequests
+          expr: |
+            100 * sum(rate(grpc_server_handled_total{job=~".*etcd.*", grpc_code=~"Unknown|FailedPrecondition|ResourceExhausted|Internal|Unavailable|DataLoss|DeadlineExceeded"}[5m])) without (grpc_type, grpc_code)
+              /
+            sum(rate(grpc_server_handled_total{job=~".*etcd.*"}[5m])) without (grpc_type, grpc_code)
+              > 5
+          for: 5m
+          labels:
+            severity: critical
+            component: control-plane
+            priority: P1
+          annotations:
+            summary: "etcd gRPC {{ $labels.grpc_method }} failure-rate {{ $value | humanizePercentage }}"
+            description: "etcd returning errors to gRPC clients at critical rate — apiserver operations failing."
+            action: "talosctl -n ctrl-0 etcd status; check etcd logs immediately."
+
+        - alert: etcdGRPCRequestsSlow
+          expr: |
+            histogram_quantile(0.99, sum(rate(grpc_server_handling_seconds_bucket{job=~".*etcd.*", grpc_method!="Defragment", grpc_type="unary"}[5m])) without(grpc_type))
+            > 0.15
+          for: 10m
+          labels:
+            severity: critical
+            component: control-plane
+            priority: P1
+          annotations:
+            summary: "etcd gRPC {{ $labels.grpc_method }} p99 {{ $value | humanizeDuration }} on {{ $labels.instance }}"
+            description: "etcd-side gRPC latency high — more specific signal than the apiserver-side EtcdRequestLatencyHigh."
+            action: "talosctl -n ctrl-0 etcd status; check ctrl-0 disk/CPU load."
+
+        - alert: etcdDatabaseQuotaLowSpace
+          expr: (last_over_time(etcd_mvcc_db_total_size_in_bytes{job=~".*etcd.*"}[5m]) / last_over_time(etcd_server_quota_backend_bytes{job=~".*etcd.*"}[5m]))*100 > 95
+          for: 10m
+          labels:
+            severity: critical
+            component: control-plane
+            priority: P1
+          annotations:
+            summary: "etcd database on {{ $labels.instance }} at {{ $value | humanizePercentage }} of quota"
+            description: "etcd stops accepting writes when the backend quota fills — full cluster write-outage."
+            action: "talosctl -n ctrl-0 etcd defrag; if quota itself is too small, raise --quota-backend-bytes."
+
+        - alert: etcdExcessiveDatabaseGrowth
+          expr: predict_linear(etcd_mvcc_db_total_size_in_bytes{job=~".*etcd.*"}[4h], 4*60*60) > etcd_server_quota_backend_bytes{job=~".*etcd.*"}
+          for: 10m
+          labels:
+            severity: warning
+            component: control-plane
+            priority: P2
+          annotations:
+            summary: "etcd database on {{ $labels.instance }} predicted to exceed quota within 4h"
+            description: "Write-rate trend projects hitting the quota soon — catch this before etcdDatabaseQuotaLowSpace fires."
+            action: "Check what's writing so much (event churn, CRD spam); consider talosctl -n ctrl-0 etcd defrag."
+
+        - alert: etcdDatabaseHighFragmentationRatio
+          expr: (last_over_time(etcd_mvcc_db_total_size_in_use_in_bytes{job=~".*etcd.*"}[5m]) / last_over_time(etcd_mvcc_db_total_size_in_bytes{job=~".*etcd.*"}[5m])) < 0.5 and etcd_mvcc_db_total_size_in_use_in_bytes{job=~".*etcd.*"} > 104857600
+          for: 10m
+          labels:
+            severity: warning
+            component: control-plane
+            priority: P2
+          annotations:
+            runbook_url: "https://etcd.io/docs/v3.5/op-guide/maintenance/#defragmentation"
+            summary: "etcd database on {{ $labels.instance }} is {{ $value | humanizePercentage }} fragmented"
+            description: "In-use space is less than half of allocated disk space — defrag reclaims it."
+            action: "talosctl -n ctrl-0 etcd defrag (safe, brief write-stall, not data-lossy)."
+
+    - name: kube-scheduler
+      interval: 1m
+      rules:
+        - alert: KubeSchedulerDown
+          expr: absent(up{job="kube-scheduler"})
+          for: 15m
+          labels:
+            severity: critical
+            component: control-plane
+            priority: P1
+          annotations:
+            summary: "kube-scheduler has disappeared from Prometheus target discovery"
+            description: "No new pods can be scheduled — existing pods keep running, but nothing new gets placed."
+            action: "talosctl -n ctrl-0 logs kube-scheduler; check the static pod manifest + container status."
+
+        - alert: KubeSchedulerInstanceUnreachable
+          expr: up{job="kube-scheduler"} == 0
+          for: 15m
+          labels:
+            severity: warning
+            component: control-plane
+            priority: P2
+          annotations:
+            summary: "kube-scheduler instance unreachable for >15m"
+            description: "Metrics endpoint unreachable — scheduler may still be running but degraded."
+            action: "talosctl -n ctrl-0 logs kube-scheduler; check port 10259 reachability."
+
+    - name: kube-controller-manager
+      interval: 1m
+      rules:
+        - alert: KubeControllerManagerDown
+          expr: absent(up{job="kube-controller-manager"})
+          for: 15m
+          labels:
+            severity: critical
+            component: control-plane
+            priority: P1
+          annotations:
+            summary: "kube-controller-manager has disappeared from Prometheus target discovery"
+            description: "Reconcile loops stopped — Deployments/Jobs/ReplicaSets stop converging to desired state."
+            action: "talosctl -n ctrl-0 logs kube-controller-manager; check the static pod manifest + container status."
+
+        - alert: KubeControllerManagerInstanceUnreachable
+          expr: up{job="kube-controller-manager"} == 0
+          for: 15m
+          labels:
+            severity: warning
+            component: control-plane
+            priority: P2
+          annotations:
+            summary: "kube-controller-manager instance unreachable for >15m"
+            description: "Metrics endpoint unreachable — controller-manager may still be running but degraded."
+            action: "talosctl -n ctrl-0 logs kube-controller-manager; check port 10257 reachability."
