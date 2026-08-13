@@ -22,7 +22,7 @@ resource "kubernetes_secret_v1" "sealed-secrets-key" {
   }
 }
 
-# rotated 2026-07-23 (old cert expired 2026-07-21); old key stays for decrypting existing sealed secrets
+# old key stays — needed to decrypt already-sealed secrets
 resource "kubernetes_secret_v1" "sealed-secrets-key-2026" {
   depends_on = [kubernetes_namespace_v1.sealed-secrets]
   type       = "kubernetes.io/tls"

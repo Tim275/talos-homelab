@@ -24,7 +24,6 @@ resource "kubernetes_persistent_volume" "pv" {
     }
   }
 
-  # Enterprise lifecycle management for clean destroy
   lifecycle {
     # Allow destroy even if cluster is down
     ignore_changes = [

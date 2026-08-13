@@ -1,24 +1,5 @@
-# Drova Tenant — 1 ApplicationSet ersetzt 4 separate Application-CRs.
-#
-# Vorher (fragmentiert über 4 Layer):
-#   - platform/data/drova-postgres/application.yaml          (drova-postgres)
-#   - platform/messaging/drova-kafka/application.yaml        (drova-kafka)
-#   - platform/drova-infra/redis-drova-app.yaml              (redis-drova)
-#   - apps/overlays/prod/drova/application.yaml              (drova-prod)
-#   PLUS: platform/drova-infra-app.yaml                       (drova-infra parent)
-#
-# Nachher (1 Source-of-Truth):
-#   - applicationsets/tenants/drova-tenant.yaml              → generates 4 Apps
-#
-# Migration-Strategie:
-#   AppSet generiert Apps mit GLEICHEN Namen wie alte single-CRs (drova-postgres,
-#   drova-kafka, redis-drova, drova-prod). ArgoCD adoption-takeover ohne Resource-
-#   Churn. Old single-CRs werden in derselben Commit aus parent kustomizations
-#   entfernt — Argo's instance-tracking annotation matched (selber Name).
-#
-# Multi-Cluster (zukünftig):
-#   - Pi-Spoke registrieren mit Label `drova.tier: enabled`
-#   - Aktuell: nur in-cluster matched (Pi nicht produktionsreif für Drova)
+# Drova Tenant — 1 ApplicationSet generiert 5 Apps (appName matched die alten
+# Einzel-CRs, ArgoCD-Adoption ohne Resource-Churn)
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
@@ -33,8 +14,7 @@ spec:
   goTemplate: true
   goTemplateOptions: ["missingkey=error"]
 
-  # AppSet weg (z.B. PR-Zeile verloren) => Apps ueberleben als Orphans
-  # statt Kaskaden-Delete+prune aller Layer-Workloads.
+  # preserveResourcesOnDeletion: Orphans statt Kaskaden-Delete bei Datei-Verlust
   syncPolicy:
     preserveResourcesOnDeletion: true
   generators:
@@ -131,9 +111,7 @@ spec:
           jsonPointers:
             - /spec/selector
       syncPolicy:
-        # automated: { prune: true, selfHeal: true }  # manual by design (DAX-Gate),
-        # 2026-07-15 an n8n-tenant/tenants-config/apps-stack angeglichen — war der
-        # einzige auto-sync-Tenant (Doku sagte immer manual).
+        # automated: { prune: true, selfHeal: true }  # manual by design (DAX-Gate)
         syncOptions:
           - CreateNamespace=false
           - PrunePropagationPolicy=foreground

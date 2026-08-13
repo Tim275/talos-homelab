@@ -106,11 +106,7 @@ locals {
   }
 }
 
-# Proxmox sets refreservation=size on every ZFS zvol it creates.
-# This wastes full disk capacity twice (reserved + actual data) and causes
-# apparent pool fullness. Clear on all VM disks post-creation.
-# disk-0 = Ceph OSD, disk-1 = OS disk (both get cleared; 2>/dev/null ignores missing disks).
-# Uses the same SSH key as the Proxmox provider (~/.ssh/id_rsa_proxmox).
+# Proxmox setzt refreservation=size je ZFS-Zvol — verdoppelt den Platzbedarf, hier zurueckgesetzt
 resource "null_resource" "zfs_clear_refreservation" {
   for_each = var.nodes
 

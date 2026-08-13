@@ -1,8 +1,4 @@
-# Einmalige Import-Blocks — bringen die am 2026-06-09 manuell im NetBird-
-# Dashboard angelegten Ressourcen unter Terraform-Kontrolle, OHNE sie neu
-# zu erstellen. `tofu plan` muss danach 0 Changes zeigen. IDs per NetBird-API
-# ermittelt (2026-07-22). Reconciliation-Weg B aus README.md (Import, kein
-# Peer-Re-Keying).
+# Import-Blocks für manuell im NetBird-Dashboard angelegte Ressourcen — tofu plan muss 0 Changes zeigen
 
 import {
   to = netbird_group.routers
@@ -39,9 +35,7 @@ import {
   id = "d8k09pafadhs73dapu70"
 }
 
-# netbird_setup_key.routers: KEIN Import-Block mehr — durch das expiry_seconds-
-# Hardening (2026-07-22) destroy+recreated, State trägt bereits die neue ID
-# (Apply lief bereits, kein Re-Import nötig).
+# netbird_setup_key.routers: kein Import-Block mehr — State trägt bereits die aktuelle ID
 
 import {
   to = netbird_account_settings.hardening
