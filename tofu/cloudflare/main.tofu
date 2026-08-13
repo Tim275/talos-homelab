@@ -1,16 +1,11 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# Cloudflare Public-Exposure als Code
-# Managed NUR die public DNS-Records → cloudflared-Tunnel.
-# Allowlist (Tunnel-Ingress) bleibt GitOps (cloudflared/base/config.yaml).
-# Prinzip: explizite Records statt Wildcard → Infra-Subdomains resolven NICHT public.
-# ─────────────────────────────────────────────────────────────────────────────
+# Cloudflare Public-Exposure als Code — nur public DNS-Records → cloudflared-Tunnel.
+# Allowlist bleibt GitOps (cloudflared/base/config.yaml), explizite Records statt Wildcard.
 
 locals {
   tunnel_cname = "${var.tunnel_id}.cfargotunnel.com"
 }
 
-# ── Public Subdomains → Tunnel (proxied) ─────────────────────────────────────
-# drova · n8n · homepage — der Rest existiert hier bewusst NICHT.
+# Public Subdomains → Tunnel (proxied): drova, n8n, homepage — der Rest bewusst nicht
 resource "cloudflare_dns_record" "public" {
   for_each = toset(var.public_hosts)
 
@@ -23,7 +18,7 @@ resource "cloudflare_dns_record" "public" {
   comment = "public via tunnel — managed by tofu/cloudflare"
 }
 
-# ── Apex (optional) ──────────────────────────────────────────────────────────
+# Apex (optional)
 resource "cloudflare_dns_record" "apex" {
   count = var.publish_apex ? 1 : 0
 
@@ -36,12 +31,7 @@ resource "cloudflare_dns_record" "apex" {
   comment = "apex via tunnel — managed by tofu/cloudflare"
 }
 
-# ── Wildcard → Envoy-LB-IP (VPN-only, DNS-only/grau) ─────────────────────────
-# "Gilt für ALLES": jede Subdomain, die NICHT in public_hosts steht, löst auf die
-# private Envoy-LB-IP auf. DoH-Browser bekommen sie übers echte DNS (umgehen
-# /etc/hosts), aber 192.168.0.152 ist nur im VPN/LAN erreichbar. Neue interne App
-# = einfach HTTPRoute anlegen, DNS passt automatisch — KEINE Liste pflegen.
-# public_hosts (explizite CNAME) haben Vorrang (DNS-Spezifität schlägt Wildcard).
+# Wildcard → Envoy-LB-IP, VPN-only: alles außer public_hosts (das hat Vorrang) löst auf die private IP
 resource "cloudflare_dns_record" "wildcard_internal" {
   zone_id = var.zone_id
   name    = "*.${var.zone_name}"
@@ -52,8 +42,7 @@ resource "cloudflare_dns_record" "wildcard_internal" {
   comment = "wildcard → envoy LB (VPN-only, DoH-safe) — managed by tofu/cloudflare"
 }
 
-# ── Zero Trust Access (optional, auskommentiert) ─────────────────────────────
-# Falls du public Apps zusätzlich mit SSO-Gate schützen willst (statt nur App-Auth):
+# Zero Trust Access (optional, auskommentiert) — SSO-Gate zusätzlich zur App-Auth
 #
 # resource "cloudflare_zero_trust_access_application" "n8n" {
 #   account_id = var.account_id
