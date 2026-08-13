@@ -50,8 +50,8 @@ variable "nodes" {
     os_disk_size        = optional(number, 50)
     ceph_disk_size      = optional(number, 0)
     ceph_disk_datastore = optional(string)
-    # node-pool: leer = kein Label (Control-Planes). Kein node-restriction.kubernetes.io/-
-    # Prefix: den blockt NodeRestriction fuer kubelet-gesetzte Labels (2026-08-05 getestet).
+    # node-pool: leer = kein Label (Control-Planes) — node-restriction.kubernetes.io/-Prefix
+    # blockt kubelet-gesetzte Labels
     pool = optional(string, "")
   }))
 }
