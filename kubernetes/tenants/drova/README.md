@@ -35,5 +35,5 @@ betreibt, darf seine eigene Firewall NICHT schreiben. Deshalb liegen diese unter
 
 - ApplicationSet:      `applicationsets/tenants/drova-tenant.yaml`
 - Grafana-Dashboards:  `infrastructure/observability/dashboards/configs/drova/`
-- Renovate:            `platform/gitops/renovate/base/renovate-drova.yaml`
+- Renovate:            `infrastructure/operators/renovate-jobs/base/renovate-drova.yaml`
 - App-Workloads (Go):  Repo `Tim275/drova-gitops` → `overlays/production`

@@ -10,9 +10,9 @@ kubernetes/
 ├── applicationsets/    infrastructure, platform, apps, security, tenants, edge
 ├── infrastructure/     argocd, network, storage, certificates, secrets, operators, ingress, observability
 ├── platform/           identity, gitops
-├── apps/               n8n, cloudbeaver, audiobookshelf, uptime-kuma
-├── tenants/            drova, n8n-prod, keycloak, lldap, oms, infisical
-└── security · projects · clusters · components · scripts
+├── apps/               cloudbeaver, uptime-kuma, forgejo
+├── tenants/            drova, n8n-prod, keycloak, lldap, ml, oms
+└── security · projects · clusters · scripts
 ```
 
 ## Bootstrap
