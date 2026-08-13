@@ -1,0 +1,22 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-openbao
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: openbao-ticket
+      interval: 60s
+      rules:
+        - alert: OpenBaoNotReady
+          expr: kube_pod_container_status_ready{namespace="openbao"} == 0
+          for: 15m
+          labels:
+            severity: warning
+            component: platform
+            priority: P2
+          annotations:
+            summary: "OpenBao {{ $labels.pod }} nicht ready seit >15min"
+            description: "Meist versiegelt nach einem Neustart (Shamir, manuelles Unseal) — ohne Unseal serviert OpenBao keine Requests, neue verschluesselte PVCs (rook-ceph-block-encrypted) koennen dann nicht provisioniert werden."
+            action: "kubectl exec -n openbao openbao-0 -- bao status; falls Sealed=true: bao operator unseal mit dem hinterlegten Shamir-Key."

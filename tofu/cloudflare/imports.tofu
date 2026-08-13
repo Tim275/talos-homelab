@@ -1,7 +1,4 @@
-# Einmalige Import-Blocks — bringen bestehende, manuell angelegte Cloudflare-
-# Ressourcen unter Terraform-Kontrolle, OHNE sie neu zu erstellen. `tofu plan`
-# muss danach 0 Changes zeigen (reiner State-Import, keine Live-Änderung).
-# IDs per Cloudflare-API ermittelt (2026-07-22).
+# Import-Blocks für manuell angelegte Cloudflare-Ressourcen — tofu plan muss 0 Changes zeigen
 
 import {
   to = cloudflare_dns_record.public["drova"]

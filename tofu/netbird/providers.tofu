@@ -1,6 +1,5 @@
 terraform {
-  # SEPARATER State-Key — voll isoliert vom Cluster (talos-homelab.tfstate).
-  # tofu apply hier kann die Talos-VMs NIE anfassen.
+  # Separater State-Key — isoliert vom Cluster, kann Talos-VMs nie anfassen
   backend "azurerm" {
     resource_group_name  = "rg-tofu-state"
     storage_account_name = "tofustatehomelab"

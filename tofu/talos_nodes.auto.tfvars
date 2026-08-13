@@ -81,7 +81,7 @@ talos_nodes = {
     pool           = "stateful"
   }
 
-  # ─── FUTURE NODES (vorbereitet, einkommentieren sobald neue Hardware da) ───
+  # Future Nodes — einkommentieren sobald Hardware da
 
   # "ctrl-1" = {
   #   host_node      = "msa2proxmox"
@@ -114,14 +114,9 @@ talos_nodes = {
     mac_address  = "BC:24:11:2E:C8:B3"
     vm_id        = 1008
     cpu          = 6
-    # 36G statt 40G: 87% Host-RAM verletzte die 85%-Regel (msa2/nipogi-Lektion).
-    # Der Ausfall 2026-08-05 war allerdings die NIC, nicht RAM: e1000e/I219
-    # "Hardware Unit Hang" unter ES/RBD-Last -> ethtool tso/gso/gro off,
-    # persistiert in /etc/network/interfaces auf dem Host.
+    # 36G statt 40G — 85%-Host-RAM-Regel (msa2/nipogi-Lektion)
     ram_dedicated = 36864
-    # hpdesk: LVM-thin statt ZFS; 300G OS-Disk = Talos EPHEMERAL waechst mit,
-    # ~250G davon fuer local-path (AI-Cache/Scratch). Kein Ceph-OSD (eine geteilte
-    # DRAM-lose OEM-SSD, 26% wear).
+    # LVM-thin statt ZFS; 300G fuer local-path, kein Ceph-OSD
     datastore_id   = "local-lvm"
     os_disk_size   = 300
     ceph_disk_size = 0
