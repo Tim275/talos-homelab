@@ -209,6 +209,27 @@ spec:
         sampling_initial: 5
         sampling_thereafter: 200
 
+    # CONNECTORS - Bridge one pipeline's output into another pipeline's input
+
+    connectors:
+      # RED metrics (rate/error/duration) computed directly from spans, here at the
+      # Agent-Tier — BEFORE Gateway tail_sampling (10% probabilistic for most services).
+      # Bypasses Tempo's metrics-generator entirely (confirmed Tempo 2.9.0 upstream
+      # bug, single-tenant mode: github.com/grafana/tempo/issues/5479, active_series
+      # stuck at 0). Metric names differ from Tempo's own span-metrics naming.
+      spanmetrics:
+        histogram:
+          explicit:
+            buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
+        dimensions:
+          - name: http.method
+          - name: http.status_code
+          - name: k8s.namespace.name
+        exemplars:
+          enabled: true
+        metrics_flush_interval: 15s
+        namespace: traces.span.metrics
+
     # EXTENSIONS - Additional functionality
 
     extensions:
@@ -229,6 +250,7 @@ spec:
 
       pipelines:
         # Traces pipeline → Gateway-Tier (für tail_sampling)
+        # spanmetrics-Connector sieht hier 100% des Traffics, VOR dem Gateway-Sampling.
         traces:
           receivers:
             - otlp
@@ -240,6 +262,13 @@ spec:
             - batch
           exporters:
             - otlp/gateway
+            - spanmetrics
+
+        # RED-Metriken aus dem spanmetrics-Connector → Prometheus. Ersatz fuer Tempos
+        # kaputten Metrics-Generator (siehe Connector-Kommentar oben).
+        metrics/spanmetrics:
+          receivers: [spanmetrics]
+          exporters: [prometheusremotewrite]
 
         # Structured application logs via OTLP SDK (Drova services, etc.) → Loki.
         # Pod stdout/stderr still handled by Vector → Loki + ES (Option E pattern).
