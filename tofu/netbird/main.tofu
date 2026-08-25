@@ -20,10 +20,12 @@ resource "netbird_network" "homelab" {
 }
 
 resource "netbird_network_resource" "lan" {
-  name        = "homelab-lan"
-  description = "Heim-LAN — erreicht alle internen Services hinter dem Envoy-Gateway"
+  for_each = var.lan_targets
+
+  name        = "homelab-${each.key}"
+  description = "Einzelziel statt /24-Subnet — vermeidet Routing-Konflikt auf fremden Netzen (netbirdio/netbird#4401)"
   network_id  = netbird_network.homelab.id
-  address     = var.lan_cidr
+  address     = each.value
   groups      = [netbird_group.lan_resource.id]
   enabled     = true
 }

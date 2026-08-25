@@ -20,10 +20,9 @@ import {
   id = "d8k09pafadhs73daptn0"
 }
 
-import {
-  to = netbird_network_resource.lan
-  id = "d8k09pafadhs73daptn0/d8k09pafadhs73dapu00"
-}
+# netbird_network_resource.lan: kein Import-Block mehr — die alte /24-Resource
+# (d8k09pafadhs73daptn0/d8k09pafadhs73dapu00) wird durch `tofu apply` GELÖSCHT,
+# ersetzt durch die neuen for_each-Resources (lan_targets) ohne bestehende NetBird-ID
 
 import {
   to = netbird_network_router.lan
