@@ -124,6 +124,15 @@ data:
               description: "Repo-Server oder Sync gestoert — ArgoCD wird blind fuer Drift, ohne dass eine App unhealthy wird."
               action: "kubectl logs -n argocd -l app.kubernetes.io/name=argocd-repo-server --since=15m"
 
+          - alert: LogsErrorRateAnomaly
+            expr: 'sum by (namespace, pod) (count_over_time({namespace=~".+"} | json | level=~"(?i)error" [10m])) > 30'
+            for: 5m
+            labels: {severity: warning, component: platform, priority: P2, source: loki}
+            annotations:
+              summary: "{{ $labels.pod }} loggt auffaellig viele Errors ({{ $value }} in 10min)"
+              description: "Pod laeuft, crasht nicht — kein spezifisches Muster der anderen Regeln passt, aber die Error-Rate im Log ist erhoeht. Baseline clusterweit ~21/10min ueber ALLE Pods verteilt (2026-08-26 gemessen); ein einzelner Pod ueber 30 ist konzentriert genug, um kein Rauschen zu sein."
+              action: "stern -n {{ $labels.namespace }} {{ $labels.pod }} -i error --since 10m"
+
       - name: logs-data
         interval: 1m
         rules:
