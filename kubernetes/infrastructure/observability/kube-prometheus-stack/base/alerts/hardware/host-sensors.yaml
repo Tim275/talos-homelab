@@ -61,8 +61,8 @@ spec:
           annotations:
             dashboard_url: "/d/k8s-node-overview"
             summary: "Hypervisor {{ $labels.instance }}: {{ $value | humanizePercentage }} Swap belegt"
-            description: "Auf einem Virtualisierungs-Host bedeutet Swap fast immer ausgelagertes Gast-RAM → IO-Delay in den VMs, auch wenn der Host 'genug' RAM meldet. Ursache ist meist RAM-Ueberbuchung (VMs > ~85% Host-RAM)."
-            action: "ssh <host> 'swapoff -a && swapon -a' als Akut-Fix (nur wenn genug RAM frei); dauerhaft: VM-RAM right-sizen (qm set), Ziel <=85% Host-RAM."
+            description: "Auf einem Virtualisierungs-Host bedeutet Swap fast immer ausgelagertes Gast-RAM → IO-Delay in den VMs, auch wenn der Host 'genug' RAM meldet. Bei Host-RAM-Auslastung <85% (per node_memory_MemAvailable_bytes pruefen) ist es KEINE Ueberbuchung, sondern der Kernel-Default vm.swappiness=60, der auch bei freiem RAM proaktiv auslagert."
+            action: "Akut: ssh <host> 'swapoff -a && swapon -a' NUR wenn node_memory_MemAvailable_bytes deutlich > belegtes Swap zeigt. Dauerhaft gegen Wiederkehr bei <85% RAM-Last: ssh <host> \"echo 'vm.swappiness=10' > /etc/sysctl.d/99-swappiness.conf && sysctl --system\" (verhindert das taegliche Wiederauftreten, statt es nur wegzuklicken). Bei >=85% RAM-Last stattdessen VM-RAM right-sizen (qm set)."
 
         - alert: HostSwapUsageHigh
           # Feuert nur bei ECHTEM Thrashing: Swap voll UND wenig RAM frei.
