@@ -1,4 +1,4 @@
-# Coraza WAF (OWASP CRS 4.14) — gateway-wide Envoy WASM filter, DetectionOnly.
+# Coraza WAF (OWASP CRS 4.14) — gateway-wide Envoy WASM filter, enforcing (SecRuleEngine On).
 # Rollout + tuning playbook: CLAUDE.md → "Envoy Gateway + Coraza WAF".
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyExtensionPolicy
@@ -29,6 +29,12 @@ spec:
             # - 'SecAction "id:9000001,phase:1,nolog,pass,t:none,setvar:tx.blocking_paranoia_level=2"'  # PL2 — activate after FP-soak
             - "SecRuleEngine On"  # enforcing — revert to DetectionOnly if legit traffic gets 403'd
             - "SecResponseBodyAccess Off"  # drova SPA > 512KB → empty 520; Off keeps request-side protection
+            # Audit-Log war aus -> FPs nur via Live-Traffic nachstellbar statt kubectl logs
+            - "SecAuditEngine RelevantOnly"
+            - "SecAuditLogParts ABIJDEFHZ"
+            - "SecAuditLogType Serial"
+            - "SecAuditLog /dev/stdout"
+            - "SecAuditLogFormat JSON"
             - 'SecRule REQUEST_HEADERS:Upgrade "@streq websocket" "id:1000,phase:1,pass,nolog,ctl:ruleEngine=Off"'
             - 'SecRule REQUEST_HEADERS:Content-Type "@beginsWith application/grpc" "id:1001,phase:1,pass,nolog,ctl:ruleEngine=Off"'
             # Kibana false-positive exclusions (complex KQL/bsearch trips 942xxx SQLi → 949110 block)
@@ -48,5 +54,7 @@ spec:
             - 'SecRule REQUEST_HEADERS:Host "@streq n8n.timourhomelab.org" "id:1100015,phase:1,pass,nolog,ctl:ruleEngine=Off"'
             # uptime-kuma: Socket.IO (polling+WS-upgrade) verträgt keine WASM-Inspektion; VPN-only Host
             - 'SecRule REQUEST_HEADERS:Host "@streq status.timourhomelab.org" "id:1100016,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            # Forgejo SSH-Key-POST (base64 pubkey) trifft generische CRS-Pattern-Regel
+            - 'SecRule REQUEST_URI "@beginsWith /user/settings/keys" "id:1100017,phase:1,pass,nolog,ctl:ruleEngine=Off"'
             - "Include @owasp_crs/*.conf"
         default_directives: "default"
