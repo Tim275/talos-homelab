@@ -88,6 +88,14 @@ data:
       - name: logs-platform
         interval: 1m
         rules:
+          - alert: LogsLeaderElectionLost
+            expr: 'sum by (namespace, pod) (count_over_time({namespace=~".+"} |= "leader election lost" [30m])) > 0'
+            labels: {severity: warning, component: platform, priority: P2, source: loki}
+            annotations:
+              summary: "{{ $labels.pod }} hat seine Leader-Election-Lease verloren"
+              description: "client-go leaderelection, meist API-Server-Latenz. Operator crasht by-design und startet neu — je nach Operator laeuft er bis zum Neustart blind (kein Reconcile). Betraf bisher strimzi-cluster-operator + elastic-operator (294 restarts/23d), war in keinem Alert sichtbar."
+              action: "kubectl get pods -n {{ $labels.namespace }} {{ $labels.pod }} -o jsonpath='{.status.containerStatuses[0].restartCount}'; kubectl describe node ctrl-0 | grep -A5 Conditions"
+
           - alert: LogsOOMKillBurst
             expr: 'sum(count_over_time({namespace=~".+", pod!~"loki.*"} |~ "(?i)out of memory: killed process" [10m])) > 3'
             for: 5m
@@ -132,6 +140,15 @@ data:
               summary: "{{ $labels.pod }} loggt auffaellig viele Errors ({{ $value }} in 10min)"
               description: "Pod laeuft, crasht nicht — kein spezifisches Muster der anderen Regeln passt, aber die Error-Rate im Log ist erhoeht. Baseline clusterweit ~21/10min ueber ALLE Pods verteilt (2026-08-26 gemessen); ein einzelner Pod ueber 30 ist konzentriert genug, um kein Rauschen zu sein."
               action: "stern -n {{ $labels.namespace }} {{ $labels.pod }} -i error --since 10m"
+
+          - alert: LogsVolumeSpike
+            expr: 'sum by (namespace, pod) (count_over_time({namespace=~".+"}[10m])) > 20000'
+            for: 5m
+            labels: {severity: warning, component: platform, priority: P2, source: loki}
+            annotations:
+              summary: "{{ $labels.pod }} loggt {{ $value }} Zeilen in 10min"
+              description: "Ungefiltert nach Level — faengt Spam/Retry-Loops, die nicht als error/warn markiert sind. Baseline: chattigste Pods (coredns, tetragon, loki, argocd-controller) liegen bei ~4-8k/10min (2026-08-31 gemessen)."
+              action: "stern -n {{ $labels.namespace }} {{ $labels.pod }} --since 10m | head -50; kubectl df-pv -n loki"
 
       - name: logs-data
         interval: 1m
