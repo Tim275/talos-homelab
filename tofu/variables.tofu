@@ -67,6 +67,7 @@ variable "talos_nodes" {
     vm_id               = number
     cpu                 = number
     ram_dedicated       = number
+    ram_floating        = optional(number)
     dns                 = optional(list(string), ["192.168.0.1", "8.8.8.8"])
     update              = optional(bool, false)
     igpu                = optional(bool, false)
