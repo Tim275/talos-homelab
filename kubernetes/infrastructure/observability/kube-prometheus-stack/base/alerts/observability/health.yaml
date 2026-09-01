@@ -171,3 +171,17 @@ spec:
             summary: "Vector sink {{ $labels.component_id }} dropping events"
             description: "Vector is discarding events at the {{ $labels.component_id }} sink for >15min — poison docs (ES mapping conflict), template-render failures or batch rejects. Logs silently lost. Check: kubectl logs -n elastic-system deploy/vector-aggregator | grep -v '^{' | grep ERROR"
             action: "kubectl logs -n elastic-system deploy/vector-aggregator | grep -v '^{' | grep ERROR — poison doc (ES mapping conflict) or sink backpressure; check ES disk/health."
+
+        - alert: LokiIngestionOverloadDropping
+          expr: |
+            sum by (reason) (rate(loki_discarded_samples_total{reason=~"rate_limited|per_stream_rate_limit"}[10m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+            component: observability
+            priority: P2
+          annotations:
+            dashboard_url: "/d/prometheus-stats"
+            summary: "Loki dropping logs — {{ $labels.reason }}"
+            description: "Loki is rejecting incoming logs for >15min ({{ $labels.reason }}) — a tenant is over ingestion_rate_mb or per_stream_rate_limit. Logs silently lost, no disk fills up."
+            action: "kubectl logs -n monitoring loki-0 | grep -i 'rate limit'; identify the noisy stream (namespace/pod) and fix the log spam or raise the per-tenant limit."
