@@ -1,0 +1,29 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: mesh-drova
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # ztunnel/waypoint-Ebene, unabhaengig vom App-eigenen OTel-SDK (slos.yaml). Faengt genau
+  # die Luecke vom 2026-09-01-Vorfall: user-service war ueber den Ambient-Mesh-Pfad nicht
+  # erreichbar, Kubelet-Probe (direkt zur Pod-IP) sah es als Ready, kein http_server_*-Sample
+  # entstand ueberhaupt (Request kam nie in der App an) -> slos.yaml blieb blind.
+  groups:
+    - name: drova-mesh
+      interval: 1m
+      rules:
+        - alert: DrovaMeshConnectionFailures
+          expr: |
+            sum by (destination_workload) (rate(istio_tcp_connections_failed_total{destination_workload_namespace="drova", destination_workload=~"api-gateway|user-service|trip-service|driver-service|chat-service|payment-service"}[5m])) > 0
+          for: 3m
+          labels:
+            severity: warning
+            priority: P2
+            component: mesh
+            tenant: drova
+          annotations:
+            summary: "{{ $labels.destination_workload }} ueber Ambient-Mesh nicht erreichbar"
+            description: "ztunnel/waypoint melden fehlgeschlagene TCP-Verbindungen zu {{ $labels.destination_workload }} — Kubelet-Probe sieht das nicht (geht direkt zur Pod-IP), der Pod kann trotzdem 'Ready' bleiben."
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail?var-service={{ $labels.destination_workload }}"
+            action: "kubectl -n istio-system logs -l app=ztunnel --since=10m | grep {{ $labels.destination_workload }}; kubectl -n drova get pod -l app={{ $labels.destination_workload }} -o wide; waypoint-Pods pruefen."
