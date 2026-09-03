@@ -1,0 +1,29 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kubernetes-kubelet-scrape-fix
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: kubernetes-kubelet-scrape-fix
+      interval: 30s
+      rules:
+        # Replace upstream's too-strict KubeletDown (fires if any 1/7 kubelets offline).
+        # This version only pages when >33% of nodes have no scrape target (genuine outage).
+        - alert: KubeletScrapeTargetsManyDown
+          expr: |
+            (count by (cluster) (kube_node_info{job="kube-state-metrics"})
+            -
+            count by (cluster) (up{job="kubelet", metrics_path="/metrics"} == 1))
+            / on (cluster) group_left() count by (cluster) (kube_node_info{job="kube-state-metrics"}) > 0.33
+          for: 15m
+          labels:
+            severity: critical
+            component: kubernetes
+          annotations:
+            dashboard_url: "/d/k8s-cluster-overview"
+            summary: "Many kubelet targets down (>33% of nodes)"
+            description: "{{ $value | humanizePercentage }} of nodes have no scrape-response on kubelet metrics endpoint. Either a Prometheus connectivity issue or widespread kubelet-cert/TLS degradation."
+            action: "Check: kubectl get nodes (any NotReady?); talosctl service kubelet status on multiple nodes; TLS cert expiration (kubectl get cert -A | grep kubelet)."
