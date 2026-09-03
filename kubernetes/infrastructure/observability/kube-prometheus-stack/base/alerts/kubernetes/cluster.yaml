@@ -43,12 +43,12 @@ spec:
 
         - alert: EtcdRequestLatencyHigh
           # apiserver→etcd call latency (p99) — scrapeable via the apiserver even though the
-          # kube-etcd target is disabled. Baseline ~25ms; >500ms sustained = etcd disk/fsync
-          # degrading, the leading signal for the API-latency cascade (ctrl-0 on a slow disk).
-          # Warn now → check the etcd VM disk BEFORE it becomes ClusterAPIServerDown.
+          # kube-etcd target is disabled. Baseline ~25ms; >800ms sustained = etcd disk/fsync
+          # contending with Ceph-OSD writes on shared Samsung (both on cephpool). Transient
+          # spikes 600-700ms are expected under Ceph-load; alert only on sustained >800ms.
           expr: |
-            histogram_quantile(0.99, sum by (le) (rate(etcd_request_duration_seconds_bucket[5m]))) > 0.5
-          for: 10m
+            histogram_quantile(0.99, sum by (le) (rate(etcd_request_duration_seconds_bucket[5m]))) > 0.8
+          for: 15m
           labels:
             severity: warning
             component: kubernetes
@@ -56,8 +56,8 @@ spec:
           annotations:
             dashboard_url: "/d/k8s-cluster-overview"
             summary: "etcd request p99 {{ $value | humanizeDuration }} (baseline ~25ms)"
-            description: "apiserver→etcd p99 >500ms for 10min — etcd disk/fsync is degrading. Unchecked this cascades to API-server slowness + outage (ctrl-0 on a slow disk)."
-            action: "'talosctl -n ctrl-0 etcd status' + etcd fsync p99. The Samsung 990 PRO throttles without a heatsink — etcd is on the HOGE on purpose; don't move it back until the Samsung is cooled + de-contended."
+            description: "apiserver→etcd p99 >800ms for 15min — etcd disk contention with Ceph (both on Samsung 990 PRO). Expected transient spikes 600-700ms; alarm only on sustained degradation >800ms."
+            action: "Check ceph osd perf / ceph health detail for concurrent heavy writes. Known limitation: etcd shares Samsung with Ceph-OSDs; real fix would need third disk on nipogi or etcd-migration (single-master complexity)."
 
         - alert: ControlPlaneNodeDown
           expr: kube_node_status_condition{condition="Ready",status="true",node="ctrl-0"} == 0
