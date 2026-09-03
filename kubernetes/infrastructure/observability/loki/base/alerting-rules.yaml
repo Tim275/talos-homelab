@@ -89,11 +89,12 @@ data:
         interval: 1m
         rules:
           - alert: LogsLeaderElectionLost
-            expr: 'sum by (namespace, pod) (count_over_time({namespace=~".+", pod!~"loki.*|tetragon.*"} |= "leader election lost" [30m])) > 0'
+            expr: 'sum by (namespace, pod) (count_over_time({namespace=~".+", pod!~"loki.*|tetragon.*"} |= "leader election lost" [30m])) > 5'
+            for: 15m
             labels: {severity: warning, component: platform, priority: P2, source: loki}
             annotations:
-              summary: "{{ $labels.pod }} hat seine Leader-Election-Lease verloren"
-              description: "client-go leaderelection, meist API-Server-Latenz. Operator crasht by-design und startet neu — je nach Operator laeuft er bis zum Neustart blind (kein Reconcile). Betraf bisher strimzi-cluster-operator + elastic-operator (294 restarts/23d), war in keinem Alert sichtbar."
+              summary: "{{ $labels.pod }} verliert kontinuierlich Leader-Election ({{ $value }}× in 30min)"
+              description: "client-go leaderelection, meist API-Server-Latenz. Operator crasht by-design und startet neu. Transiente Spikes <5× pro 30min sind erwartet unter etcd-Last, alarmen nur bei sustained Problemen (>5× für 15min)."
               action: "kubectl get pods -n {{ $labels.namespace }} {{ $labels.pod }} -o jsonpath='{.status.containerStatuses[0].restartCount}'; kubectl describe node ctrl-0 | grep -A5 Conditions"
 
           - alert: LogsOOMKillBurst
