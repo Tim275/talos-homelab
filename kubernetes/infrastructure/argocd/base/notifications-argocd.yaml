@@ -1,0 +1,216 @@
+notifications:
+  enabled: true
+
+  #  ARGOCD NOTIFICATIONS - Deployment Status Tracking
+
+  # Separate from Prometheus alerts - focuses on deployment health
+  # Secret is managed in monitoring/alerts/argocd-slack-webhook-secret.yaml
+
+  secret:
+    create: false  # Secret managed externally in monitoring/alerts/
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: argocd
+      additionalLabels:
+        release: kube-prometheus-stack
+
+  # CONTEXT - ArgoCD URLs for notifications
+  context:
+    argocdUrl: https://argo.timourhomelab.org
+
+  # NOTIFICATION SERVICES - Slack Incoming Webhook
+  # Using webhook service for Slack Incoming Webhooks (not Bot Token)
+  # Reference: https://argo-cd.readthedocs.io/en/stable/operator-manual/notifications/services/webhook/
+  notifiers:
+    service.webhook.slack: |
+      url: $slack-token
+      headers:
+        - name: Content-Type
+          value: application/json
+
+  #  slack templates (block kit)
+  # Uses Webhook service with Slack Attachments API for colored sidebars
+  # Reference: https://argo-cd.readthedocs.io/en/stable/operator-manual/notifications/services/webhook/
+  templates:
+    template.app-deployed: |
+      webhook:
+        slack:
+          method: POST
+          body: |
+            {
+              "channel": "#argocd-deployments",
+              "attachments": [{
+                "title": " Application Deployed",
+                "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
+                "color": "#18be52",
+                "fields": [
+                  {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
+                  {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true},
+                  {"title": "Sync Status", "value": "{{.app.status.sync.status}}", "short": true},
+                  {"title": "Health", "value": "{{.app.status.health.status}}", "short": true},
+                  {"title": "Revision", "value": "{{.app.status.sync.revision | substr 0 7}}", "short": true}
+                ],
+                "footer": "ArgoCD Homelab",
+                "footer_icon": "https://argo-cd.readthedocs.io/en/stable/assets/logo.png"
+              }]
+            }
+
+    template.app-health-degraded: |
+      webhook:
+        slack:
+          method: POST
+          body: |
+            {
+              "attachments": [{
+                "title": " Application Health Degraded",
+                "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
+                "color": "#E96D76",
+                "fields": [
+                  {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
+                  {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true},
+                  {"title": "Health", "value": "{{.app.status.health.status}}", "short": true},
+                  {"title": "Sync", "value": "{{.app.status.sync.status}}", "short": true}
+                ],
+                "footer": "ArgoCD Homelab - NEEDS ATTENTION"
+              }]
+            }
+
+    template.app-sync-failed: |
+      webhook:
+        slack:
+          method: POST
+          body: |
+            {
+              "attachments": [{
+                "title": " Application Sync Failed",
+                "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
+                "color": "#E01E5A",
+                "fields": [
+                  {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
+                  {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true},
+                  {"title": "Phase", "value": "{{.app.status.operationState.phase}}", "short": true},
+                  {"title": "Sync", "value": "{{.app.status.sync.status}}", "short": true}
+                ],
+                "footer": "ArgoCD Homelab - ACTION REQUIRED"
+              }]
+            }
+
+    template.app-sync-succeeded: |
+      webhook:
+        slack:
+          method: POST
+          body: |
+            {
+              "attachments": [{
+                "title": " Application Sync Succeeded",
+                "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
+                "color": "#2EB67D",
+                "fields": [
+                  {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
+                  {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true},
+                  {"title": "Sync", "value": "{{.app.status.sync.status}}", "short": true},
+                  {"title": "Health", "value": "{{.app.status.health.status}}", "short": true}
+                ],
+                "footer": "ArgoCD Homelab"
+              }]
+            }
+
+    template.app-sync-status-unknown: |
+      webhook:
+        slack:
+          method: POST
+          body: |
+            {
+              "attachments": [{
+                "title": " Application Out of Sync",
+                "title_link": "https://argo.timourhomelab.org/applications/{{.app.metadata.name}}",
+                "color": "#FFA500",
+                "fields": [
+                  {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
+                  {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true},
+                  {"title": "Sync", "value": "{{.app.status.sync.status}}", "short": true},
+                  {"title": "Health", "value": "{{.app.status.health.status}}", "short": true}
+                ],
+                "footer": "ArgoCD Homelab - SYNC REQUIRED"
+              }]
+            }
+
+  # triggers with deduplication and null-safety
+  triggers:
+    # PRODUCTION: Deployed = Sync succeeded AND healthy (not just sync)
+    trigger.on-deployed: |
+      - description: Application is synced and healthy
+        oncePer: app.status.operationState.syncResult.revision
+        send:
+        - app-deployed
+        when: app.status.operationState != nil and app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+
+    # PRODUCTION: Health degraded (standalone, no operationState dependency)
+    trigger.on-health-degraded: |
+      - description: Application health is degraded
+        oncePer: app.metadata.name
+        send:
+        - app-health-degraded
+        when: app.status.health.status == 'Degraded'
+
+    # PRODUCTION: Sync failed (critical action needed)
+    trigger.on-sync-failed: |
+      - description: Application sync failed
+        oncePer: app.status.operationState.syncResult.revision
+        send:
+        - app-sync-failed
+        when: app.status.operationState != nil and app.status.operationState.phase in ['Error', 'Failed']
+
+    #  DISABLED: Sync running (too verbose for production)
+    # trigger.on-sync-running: |
+    #   - description: Application is syncing
+    #     send:
+    #     - app-sync-running
+    #     when: app.status.operationState != nil and app.status.operationState.phase in ['Running']
+
+    # Sync succeeded (separate from deployed for visibility)
+    trigger.on-sync-succeeded: |
+      - description: Application sync succeeded
+        oncePer: app.status.operationState.syncResult.revision
+        send:
+        - app-sync-succeeded
+        when: app.status.operationState != nil and app.status.operationState.phase in ['Succeeded']
+
+    # PRODUCTION: OutOfSync with auto-sync disabled (manual intervention needed)
+    trigger.on-sync-status-unknown: |
+      - description: Application out of sync with auto-sync disabled (manual intervention needed)
+        oncePer: app.metadata.name
+        send:
+        - app-sync-status-unknown
+        when: app.status.sync.status == 'OutOfSync' and app.spec.syncPolicy.automated == nil
+
+    # PRODUCTION: Sync Failed + Degraded Health (critical combo)
+    trigger.on-sync-failed-degraded: |
+      - description: Application sync failed AND health degraded (critical)
+        oncePer: app.status.operationState.syncResult.revision
+        send:
+        - app-sync-failed
+        when: app.status.operationState != nil and app.status.operationState.phase in ['Error', 'Failed'] and app.status.health.status == 'Degraded'
+
+  # DEFAULT SUBSCRIPTIONS - Production-grade triggers (no noise!)
+  # Global subscription for all apps (can override per-app via annotations)
+  # For webhooks: just use the webhook name (matches service.webhook.<name>)
+  subscriptions:
+    - recipients: ["slack"]
+      triggers:
+        - on-health-degraded
+        - on-sync-failed
+        - on-sync-failed-degraded
+        - on-sync-status-unknown
+
