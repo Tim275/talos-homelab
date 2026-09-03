@@ -1,0 +1,259 @@
+configs:
+  cm:
+    resource.customizations.health.gateway.networking.k8s.io_Gateway: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "Programmed" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = condition.message
+              return hs
+            elseif condition.type == "Programmed" and condition.status == "False" then
+              hs.status = "Degraded"
+              hs.message = condition.message
+              return hs
+            end
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for Gateway to be Programmed"
+      return hs
+    resource.customizations.health.gateway.networking.k8s.io_HTTPRoute: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.parents ~= nil then
+          numAccepted = 0
+          numParents = 0
+          for i, parent in ipairs(obj.status.parents) do
+            numParents = numParents + 1
+            if parent.conditions ~= nil then
+              for i, condition in ipairs(parent.conditions) do
+                if condition.type == "Accepted" and condition.status == "True" then
+                  numAccepted = numAccepted + 1
+                elseif condition.type == "Accepted" and condition.status == "False" then
+                  hs.status = "Degraded"
+                  hs.message = condition.message
+                  return hs
+                end
+              end
+            end
+          end
+          if numAccepted == numParents then
+            hs.status = "Healthy"
+            hs.message = "HTTPRoute accepted by all parents"
+            return hs
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for HTTPRoute to be accepted by parent Gateway"
+      return hs
+
+    #  STRIMZI KAFKA HEALTH CHECKS - Fix permanent "Progressing" status
+
+    resource.customizations.health.kafka.strimzi.io_Kafka: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "Ready" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = "Kafka cluster is ready"
+              return hs
+            elseif condition.type == "Ready" and condition.status == "False" then
+              hs.status = "Degraded"
+              hs.message = condition.message or "Kafka cluster not ready"
+              return hs
+            end
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for Kafka cluster to be ready"
+      return hs
+    resource.customizations.health.kafka.strimzi.io_KafkaTopic: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "Ready" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = "KafkaTopic is ready"
+              return hs
+            elseif condition.type == "Ready" and condition.status == "False" then
+              hs.status = "Degraded"
+              hs.message = condition.message or "KafkaTopic not ready"
+              return hs
+            end
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for KafkaTopic"
+      return hs
+    resource.customizations.health.kafka.strimzi.io_KafkaNodePool: |
+      hs = {}
+      if obj.status ~= nil then
+        -- KafkaNodePool uses replicas field, not conditions
+        if obj.status.replicas ~= nil and obj.status.replicas > 0 then
+          hs.status = "Healthy"
+          hs.message = "KafkaNodePool has " .. obj.status.replicas .. " replica(s)"
+          return hs
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for KafkaNodePool replicas"
+      return hs
+
+    # CLOUDNATIVE PG HEALTH CHECK
+
+    resource.customizations.health.postgresql.cnpg.io_Cluster: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "Ready" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = "CNPG Cluster is ready (" .. (obj.status.readyInstances or 0) .. "/" .. (obj.status.instances or 0) .. " instances)"
+              return hs
+            elseif condition.type == "Ready" and condition.status == "False" then
+              hs.status = "Progressing"
+              hs.message = condition.message or "CNPG Cluster not ready"
+              return hs
+            end
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for CNPG Cluster to be ready"
+      return hs
+
+    # OPSTREE REDIS REPLICATION HEALTH CHECK
+
+    resource.customizations.health.redis.redis.opstreelabs.in_RedisReplication: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.masterNode ~= nil and obj.status.masterNode ~= "" then
+          hs.status = "Healthy"
+          hs.message = "RedisReplication ready, master: " .. obj.status.masterNode
+          return hs
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for RedisReplication master election"
+      return hs
+
+    # Keycloak Operator (k8s.keycloak.org/v2alpha1)
+    resource.customizations.health.k8s.keycloak.org_Keycloak: |
+      hs = {}
+      if obj.status ~= nil and obj.status.conditions ~= nil then
+        for i, condition in ipairs(obj.status.conditions) do
+          if condition.type == "Ready" and condition.status == "True" then
+            hs.status = "Healthy"
+            hs.message = "Keycloak ready"
+            return hs
+          end
+          if condition.type == "HasErrors" and condition.status == "True" then
+            hs.status = "Degraded"
+            hs.message = condition.message or "Keycloak has errors"
+            return hs
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for Keycloak to become ready"
+      return hs
+
+    # KeycloakRealmImport — realm-as-code import progress
+    resource.customizations.health.k8s.keycloak.org_KeycloakRealmImport: |
+      hs = {}
+      if obj.status ~= nil and obj.status.conditions ~= nil then
+        for i, condition in ipairs(obj.status.conditions) do
+          if condition.type == "Done" and condition.status == "True" then
+            hs.status = "Healthy"
+            hs.message = "Realm imported"
+            return hs
+          end
+          if condition.type == "HasErrors" and condition.status == "True" then
+            hs.status = "Degraded"
+            hs.message = condition.message or "Realm import failed"
+            return hs
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Realm import in progress"
+      return hs
+
+    # Rook-Ceph CephCluster — cluster health
+    resource.customizations.health.ceph.rook.io_CephCluster: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.phase == "Ready" then
+          if obj.status.ceph ~= nil and obj.status.ceph.health == "HEALTH_OK" then
+            hs.status = "Healthy"
+            hs.message = "Ceph cluster healthy (HEALTH_OK)"
+            return hs
+          end
+          if obj.status.ceph ~= nil and obj.status.ceph.health == "HEALTH_WARN" then
+            hs.status = "Degraded"
+            hs.message = obj.status.ceph.details or "Ceph cluster in HEALTH_WARN"
+            return hs
+          end
+        end
+        if obj.status.phase == "Failed" then
+          hs.status = "Degraded"
+          hs.message = "CephCluster phase=Failed"
+          return hs
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "CephCluster initializing"
+      return hs
+
+    # ECK Elasticsearch CR
+    resource.customizations.health.elasticsearch.k8s.elastic.co_Elasticsearch: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.health == "green" then
+          hs.status = "Healthy"
+          hs.message = "ES cluster green (" .. (obj.status.availableNodes or "?") .. " nodes)"
+          return hs
+        end
+        if obj.status.health == "yellow" then
+          hs.status = "Degraded"
+          hs.message = "ES cluster yellow — replicas missing"
+          return hs
+        end
+        if obj.status.health == "red" then
+          hs.status = "Degraded"
+          hs.message = "ES cluster red — data unavailable"
+          return hs
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "ES cluster initializing"
+      return hs
+
+    # ApplicationSet — self-referential health (waits for all generated apps healthy)
+    resource.customizations.health.argoproj.io_ApplicationSet: |
+      hs = {}
+      if obj.status ~= nil and obj.status.conditions ~= nil then
+        for i, condition in ipairs(obj.status.conditions) do
+          if condition.type == "ResourcesUpToDate" and condition.status == "True" then
+            hs.status = "Healthy"
+            hs.message = "ApplicationSet up to date"
+            return hs
+          end
+          if condition.type == "ErrorOccurred" and condition.status == "True" then
+            hs.status = "Degraded"
+            hs.message = condition.message or "ApplicationSet generation error"
+            return hs
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "ApplicationSet reconciling"
+      return hs
