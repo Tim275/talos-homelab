@@ -1,23 +1,17 @@
-# yamllint disable rule:line-length
-# https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml
+
 prometheus:
-  # PodDisruptionBudget — Talos-upgrade-resilience (battle-tested 2026-05-14):
-  # Ohne PDB konnte Talos-upgrade alle prometheus-Pods evicten → "Completed"-loop.
+
   podDisruptionBudget:
     enabled: true
     minAvailable: null
     maxUnavailable: 1
   prometheusSpec:
     replicas: 2
-    # hard-antiAffinity zwingt beide Pods auf unterschiedliche Nodes.
+
     podAntiAffinity: hard
     nodeSelector:
       node-pool: stateful
 
-    # Bare-metal hypervisor scrape jobs (node_exporter :9100 + smartctl :9633 on
-    # msa2/nipogi). Secret defined in pve-exporter/base/scrape-config.yaml.
-    # etcd-mTLS: Client-Cert aus /system/secrets/etcd (ctrl-0), gesealed in
-    # base/etcd-client-cert-sealed.yaml. Mount unter /etc/prometheus/secrets/<name>/.
     secrets:
       - etcd-client-cert
 
@@ -30,17 +24,11 @@ prometheus:
       cluster: prod-talos
       environment: prod
       region: homelab-de
-      # grafana_url: used by Alertmanager template "alert.dashboard_url" to compose
-      # full grafana-URL from path-only annotations. Multi-cluster pattern:
-      # staging-overlay would override to "https://grafana-staging.timourhomelab.org".
       grafana_url: "https://grafana.timourhomelab.org"
 
     retention: 15d
     retentionSize: "45GB"
 
-    # Resource limits — prevents Prometheus from being OOMKilled or starving the node.
-    # 2026-05-16: bumped 2Gi → 4Gi after 54 restarts/41h. Compaction was hitting
-    # 94% memory pressure, livenessProbe timeouts, kubelet kill loop.
     resources:
       requests:
         cpu: 500m
@@ -49,38 +37,27 @@ prometheus:
         cpu: 2000m
         memory: 4Gi
 
-    # Probe overrides MUST live under `containers` (strategic-merged by prometheus-operator).
-    # prometheusSpec.livenessProbe/startupProbe are SILENTLY IGNORED — verified 2026-05-23:
-    # live pods ran the 3s/5s/6 default (~30s tolerance), so a slow Ceph compaction (>30s)
-    # tripped liveness → crashloop → alert for:-timers reset → no alerts delivered.
-    # These actually apply (verify: kubectl get pod ... livenessProbe.timeoutSeconds == 10).
     containers:
       - name: prometheus
         startupProbe:
           timeoutSeconds: 10
           periodSeconds: 30
-          failureThreshold: 300        # ~2.5h WAL-replay tolerance on slow Ceph
+          failureThreshold: 300
         livenessProbe:
           timeoutSeconds: 10
           periodSeconds: 30
-          failureThreshold: 6          # ~3min — survives slow compactions (was 30s default)
+          failureThreshold: 6
         readinessProbe:
           timeoutSeconds: 10
           periodSeconds: 15
           failureThreshold: 6
 
-    # Prometheus 3.x: remote-write-receiver via enableFeatures is deprecated
-    # Must use additionalArgs with --web.enable-remote-write-receiver
     additionalArgs:
       - name: web.enable-remote-write-receiver
         value: ""
-      # Exemplars Storage — Three-Pillar-Correlation
-      # (click histogram bucket → trace_id → opens Tempo trace)
       - name: enable-feature
         value: exemplar-storage
 
-    # Out-of-order ingestion (10m window) — accepts samples up to 10min stale.
-    # NOT a CLI flag — configured via prometheus-operator's tsdb field.
     tsdb:
       outOfOrderTimeWindow: 10m
 
@@ -90,46 +67,27 @@ prometheus:
     serviceMonitorNamespaceSelector: {}
     serviceMonitorSelectorNilUsesHelmValues: false
     serviceMonitorSelector: {}
-    # nodeSelector:
-    #   topology.kubernetes.io/zone: abel
     storageSpec:
       volumeClaimTemplate:
         spec:
-          storageClassName: rook-ceph-block-enterprise  # Use your correct storage class
-          # volumeName: pv-prometheus  # Let Kubernetes auto-provision
+          storageClassName: rook-ceph-block-enterprise
           accessModes:
             - ReadWriteOnce
           resources:
             requests:
               storage: 50G
-          # selector:  # Remove specific PV selector, let Kubernetes handle it
-          #   matchLabels:
-          #     app: prometheus
 
-# https://github.com/siderolabs/talos/discussions/7214
-# Control-plane scrape DISABLED on this single-node Talos: kcm/scheduler/etcd are not
-# reachable for scraping by default (the discussions/7214 relabelings alone don't fix
-# reachability) → permanent up==0 = false TargetDown + EtcdQuorumLoss noise with zero data.
-# Their component-alerting is already off (defaultRules below). Real control-plane failure
-# surfaces as ClusterAPIServerDown + ControlPlaneNodeDown (symptom, not cause).
-# Re-enable needs proper Talos metrics-exposure (+ etcd client-cert for kubeEtcd).
 kubeControllerManager:
-  enabled: false  # via additionalScrapeConfigs (job kube-controller-manager)
+  enabled: false
 
-# 2026-08-07: Direkt-Scrape AKTIV. Der alte Blocker (kein Client-Cert) ist
-# geloest: server.crt aus /system/secrets/etcd traegt die ClientAuth-EKU und
-# dient als Scrape-Identitaet. Host-Firewall gibt 2379 fuer cluster-Pods frei
-# (mTLS bleibt erzwungen). serverName localhost: das Cert hat CN=ctrl-0, aber
-# SAN localhost — Prometheus validiert dagegen.
 kubeEtcd:
-  enabled: false  # SM+Endpoints-Weg tot: ArgoCD excludiert Endpoints (siehe pve-exporter scrape-config: job kube-etcd)
+  enabled: false
 
 kubeProxy:
-  # Cilium replaces Kube Proxy
   enabled: false
 
 kubeScheduler:
-  enabled: false  # via additionalScrapeConfigs (job kube-scheduler)
+  enabled: false
   serviceMonitor:
     relabelings:
       - sourceLabels: [ __meta_kubernetes_pod_node_name ]
@@ -150,7 +108,7 @@ grafana:
   forceDeployDatasources: false
   forceDeployDashboards: false
   defaultDashboardsEnabled: false
-  defaultDashboardsTimezone: Europe/Berlin  # Fixed timezone for Germany
+  defaultDashboardsTimezone: Europe/Berlin
   operator:
     dashboardsConfigMapRefEnabled: true
     matchLabels:
@@ -159,53 +117,30 @@ grafana:
 
 defaultRules:
   create: true
-  # Upstream default-rules run DELIBERATELY alongside the curated base/alerts/ tree — but
-  # de-duped (audit 2026-07-14): any upstream alert that duplicates a tree alert is disabled
-  # below (the tree version is canonical: tuned thresholds, action-runbooks, promtool unit
-  # tests). Upstream gems we do NOT have ourselves stay active: KubeDeploymentReplicasMismatch,
-  # KubeStatefulSet*/KubeDaemonSet*, KubeJobFailed (the DR-verify CronJobs alert through it!),
-  # KubePersistentVolumeInodesFillingUp, Watchdog (→ healthchecks.io dead-man — NEVER disable).
+
   disabled:
-    # Upstream math bugs — replaced by corrected rules in
-    # base/alerts/observability/alertmanager.yaml (ex alertmanager-fixed.yaml).
     AlertmanagerFailedToSendAlerts: true
     AlertmanagerClusterFailedToSendAlerts: true
-    # Noisy on a Ceph cluster — rbd/OSD disks are IO-busy by design (aqu-sq>10 false-fires).
-    # Replaced by the service-level CephSlowOps alert (base/alerts/storage/rook-ceph.yaml).
     NodeDiskIOSaturation: true
-    # Doesn't filter pod phase — dead Failed pods report stale waiting-state forever.
-    # Replaced by ContainerWaitingStuck (base/alerts/kubernetes/workloads.yaml).
     KubeContainerWaiting: true
-    # ── Dedup vs curated tree (2026-07-14) ──
-    TargetDown: true                    # = PrometheusTargetDown
-    KubeAPIDown: true                   # = ClusterAPIServerDown
-    KubeNodeNotReady: true              # SAME alertname as the tree rule → double-fire
-    KubeNodePressure: true              # = NodeMemoryPressure + NodeDiskPressure
-    KubePodCrashLooping: true           # = PodCrashLooping
-    KubePodNotReady: true               # = PodNotReady
-    KubePersistentVolumeFillingUp: true # = PVCFillingUp/PVCCriticallyFull (cnpg-partitioned)
-    PrometheusRuleFailures: true        # = tree version (unit-tested, action-annotated)
-    # ── Noise cuts (2026-07-14) ──
-    CPUThrottlingHigh: true             # upstream fires at 25% — ContainerCPUThrottlingHigh@75% is the tuned one
-    KubeCPUOvercommit: true             # homelab is deliberately overcommitted (nipogi)
+    TargetDown: true
+    KubeAPIDown: true
+    KubeNodeNotReady: true
+    KubeNodePressure: true
+    KubePodCrashLooping: true
+    KubePodNotReady: true
+    KubePersistentVolumeFillingUp: true
+    PrometheusRuleFailures: true
+    CPUThrottlingHigh: true
+    KubeCPUOvercommit: true
     KubeMemoryOvercommit: true
-    # ── Tote Alerts: Metrik existiert hier nicht, koennen also nie feuern (2026-08-06) ──
-    # Ein Alert auf einer nicht existierenden Metrik ist stiller als gar keiner — er
-    # suggeriert Abdeckung. Gefunden per Kreuzprobe aller Rules gegen /label/__name__/values.
-    # Talos hat kein systemd und kein MD-RAID:
     NodeSystemdServiceFailed: true
     NodeSystemdServiceCrashlooping: true
     NodeRAIDDegraded: true
     NodeRAIDDiskFailure: true
-    # Talos-Kubelet exponiert weder Cert-Manager- noch PLEG-Quantile-Metriken:
     KubeletServerCertificateExpiration: true
     KubeletServerCertificateRenewalErrors: true
     KubeletPlegDurationHigh: true
-    # kube-state-metrics: siehe rules.kubeStateMetrics unten — die Gruppe besteht
-    # NUR aus diesen 4 Rules. Einzeln deaktiviert rendert der Chart die Gruppe mit
-    # rules: null, das CRD lehnt das ab ("must be of type array") und ArgoCDs
-    # server-side dry-run scheitert -> ComparisonError -> App diffed GAR NICHTS mehr.
-    # Prometheus schreibt hier nicht remote (nur remote-write-RECEIVER fuer OTel):
     PrometheusRemoteStorageFailures: true
     PrometheusRemoteWriteBehind: true
     PrometheusRemoteWriteDesiredShards: true
@@ -218,7 +153,7 @@ defaultRules:
     kubernetesResources: true
     kubernetesStorage: true
     kubernetesSystem: true
-    kubeStateMetrics: false   # Self-Metrics ungescrapet — ganze Gruppe aus
+    kubeStateMetrics: false
     kubePrometheusGeneral: true
     kubePrometheusNodeRecording: true
     nodeExporterAlerting: true
@@ -243,36 +178,37 @@ defaultRules:
 
 prometheusOperator:
   admissionWebhooks:
-    enabled: false  # Disable admission webhooks completely
+    enabled: false
     patch:
       enabled: false
     certManager:
       enabled: false
-  # Disable TLS completely to avoid cert mount issues
   tls:
     enabled: false
-  # Homelab Stability: Resource limits for Prometheus Operator
   resources:
     requests:
       cpu: 100m
       memory: 256Mi
     limits:
-      cpu: 1000m     # 10x burst for CRD operations
-      memory: 1Gi    # 4x headroom for operator
+      cpu: 1000m
+      memory: 1Gi
 
-# Homelab Stability: Resource limits for Kube State Metrics
 kube-state-metrics:
+
+  prometheus:
+    monitor:
+      metricRelabelings:
+        - action: replace
+          targetLabel: cluster
+          replacement: prod-talos
   resources:
     requests:
-      cpu: 50m       # Actual: ~7m CPU
-      memory: 64Mi   # Actual: ~27Mi memory
+      cpu: 50m
+      memory: 64Mi
     limits:
-      cpu: 500m      # 10x burst for metrics collection
-      memory: 512Mi  # ~20x headroom for cluster growth
+      cpu: 500m
+      memory: 512Mi
 
-  # KSM tolerates slow API-server (talos single-node control-plane occasionally
-  # returns 503 → KSM /livez returns 503 → kubelet kills → restart loop).
-  # failureThreshold: 10 gives 100s tolerance for transient API-server slowness.
   livenessProbe:
     initialDelaySeconds: 60
     periodSeconds: 10
@@ -284,11 +220,6 @@ kube-state-metrics:
     timeoutSeconds: 10
     failureThreshold: 6
 
-  # CNPG backup monitoring (#33): the barman-cloud PLUGIN backs up out-of-band, so the core
-  # cnpg collector never populates cnpg_collector_last_available_backup_timestamp (the old
-  # alerts watched a dead metric). Expose the Backup CR's stoppedAt instead — KSM Gauge
-  # auto-parses the RFC3339 value to a unix timestamp. (A bad value is skipped gracefully;
-  # only a malformed config STRUCTURE would crash KSM, so this uses the standard schema.)
   rbac:
     extraRules:
       - apiGroups: ["postgresql.cnpg.io"]
@@ -319,10 +250,6 @@ kube-state-metrics:
                       phase: [status, phase]
 
 alertmanager:
-  # PodDisruptionBudget — gossip-mesh-resilience (battle-tested 2026-05-14):
-  # Heute war alertmanager-0 16h silent-dead nach Talos-upgrade. minAvailable: 2
-  # → bei 3 Replicas darf nur 1 gleichzeitig evicted werden → gossip-mesh
-  # behält Quorum (3/3 → 2/3 OK, 1/3 disruptionsAllowed=0 → next evict blocked).
   podDisruptionBudget:
     enabled: true
     minAvailable: 2
@@ -359,8 +286,6 @@ alertmanager:
     templates:
       - '/etc/alertmanager/config/*.tmpl'
 
-    # ROUTING TREE - Priority-based with severity fallback
-
     route:
       receiver: 'slack-default'
       group_by: ['alertname', 'namespace', 'severity']
@@ -369,11 +294,6 @@ alertmanager:
       repeat_interval: 4h
 
       routes:
-
-        # Watchdog → healthchecks.io Dead-Mans-Switch (2026-05-17 enabled)
-        # InfoInhibitor stays silent-dropped via 'null'.
-        # Separate routes: Watchdog matched alone (NOT regex with InfoInhibitor)
-        # to keep webhook-pings clean (no garbage InfoInhibitor pings).
         - matchers:
             - alertname="Watchdog"
           receiver: 'watchdog-heartbeat'
@@ -383,8 +303,6 @@ alertmanager:
         - matchers:
             - alertname="InfoInhibitor"
           receiver: 'null'
-        # TargetDown noise — too noisy during rolling restarts
-        # Route to slack-info (silent channel), longer repeat-interval
         - matchers:
             - alertname=~"TargetDown|KubeDeploymentReplicasMismatch|KubeJobFailed"
           receiver: 'slack-default'
@@ -402,7 +320,6 @@ alertmanager:
           repeat_interval: 30m
           continue: true
 
-        # Major degradation, users actively impacted
         - matchers:
             - severity="critical"
           receiver: 'slack-critical'
@@ -427,7 +344,6 @@ alertmanager:
           repeat_interval: 4h
           continue: false
 
-        # Partial issues, workaround available
         - matchers:
             - severity="warning"
           receiver: 'slack-default'
@@ -444,7 +360,6 @@ alertmanager:
           repeat_interval: 2h
           continue: false
 
-        # Minor issues, informational → suppressed (Dashboard, no notification)
         - matchers:
             - severity="info"
           receiver: 'null'
@@ -458,17 +373,7 @@ alertmanager:
           repeat_interval: 12h
           continue: false
 
-    # INHIBITION — Alert-Storm-Schutz. REWRITTEN 2026-07-14: der alte Block referenzierte
-    # Geister-Alertnames (NodeDown, KubeAPIServerDown, KubeletDown, PodOOMKilled,
-    # PostgreSQLReplicationLag, ElasticsearchIndexUnassigned, …) und die Priority-Ladder
-    # (equal: [job, namespace]) über-suppresste still: FEHLENDE Labels zählen in
-    # Alertmanager als GLEICH → ein P1 ohne job/namespace hätte JEDES label-lose P2
-    # unterdrückt. Jede Regel unten nutzt NUR real existierende Alertnames (Inventar:
-    # CLAUDE.md 🔔) und dokumentiert ihren Blast-Radius. Pages (critical) werden nie
-    # von warnings unterdrückt — nur andersrum.
-
     inhibit_rules:
-      # Severity-Leiter: critical unterdrückt warning/info DERSELBEN Alert-Familie.
       - source_matchers:
           - severity="critical"
         target_matchers:
@@ -480,92 +385,67 @@ alertmanager:
           - severity="info"
         equal: ['alertname', 'namespace']
 
-      # VOLL-AUSFALL: API-Server/Control-Plane down → jedes Ticket ist Kollateral-Noise
-      # (die criticals pagen weiter). Bewusst OHNE equal = global während des Events.
       - source_matchers:
           - alertname=~"ClusterAPIServerDown|ControlPlaneNodeDown"
         target_matchers:
           - severity="warning"
 
-      # HOST-AUSFALL (msa2 = worker-3/4/5, nipogi = ctrl-0/1/2): der klassische Storm.
-      # Kein equal möglich — Host-instance (IP) und k8s-node-Label korrelieren nicht;
-      # im 2-Host-Lab ist global korrekt: ein toter Host macht das halbe Warning-
-      # Grundrauschen zu Kollateral. Criticals (CephHealthError, PVCCriticallyFull, …)
-      # pagen weiter.
       - source_matchers:
           - alertname="ProxmoxHostDown"
         target_matchers:
           - alertname=~"KubeNodeNotReady|CiliumNodeUnreachable|PodNotReady|PodCrashLooping|ImagePullBackoff|ContainerOOMKilled|PrometheusTargetDown|VectorPipelineDown|GatusEndpointDown|GatusEndpointSlow|TalosNodeRebootedRecently|NodeMemoryPressure|NodeDiskPressure|CephOSDDown|CephOSDFlapping|CephSlowOps|CephPGsNotActive|EnvoyGatewayNoEndpoints"
 
-      # Internet weg → alles Externe ist Folge (auch das critical CloudflaredAllDown —
-      # ein Page reicht, der Root-Cause).
       - source_matchers:
           - alertname="InternetConnectivityLost"
         target_matchers:
           - alertname=~"CloudflaredAllDown|ExternalDNSResolutionFailed"
 
-      # Ceph-Kaskade: HealthError/QuorumLost (P) → Einzelsymptome derselben Störung.
       - source_matchers:
           - alertname=~"CephHealthError|CephQuorumLost"
         target_matchers:
           - alertname=~"CephOSDDown|CephOSDNearFull|CephPGsNotActive|CephSlowOps|CephMonClockSkew|CephOSDFlapping"
 
-      # Edge-SLO: FastBurn (Page) → SlowBurn + 5xx-Ticket sind dasselbe Ereignis.
       - source_matchers:
           - alertname="EnvoyEdgeSLOFastBurn"
         target_matchers:
           - alertname=~"EnvoyEdgeSLOSlowBurn|EnvoyGateway5xxRateHigh"
 
-      # SSO down → der 5xx-Ticket derselben Instanz ist Folge.
       - source_matchers:
           - alertname="KeycloakDown"
         target_matchers:
           - alertname="KeycloakHttp5xxRateHigh"
         equal: ['namespace']
 
-      # CNPG: Primary weg → Replication-Lag ist Folge (namespace = gleiches DB-Cluster).
       - source_matchers:
           - alertname="CnpgPrimaryDown"
         target_matchers:
           - alertname="CnpgReplicationLagHigh"
         equal: ['namespace']
 
-      # Kafka: Quorum weg → ISR/Lag sind Folge.
       - source_matchers:
           - alertname="KafkaQuorumLeaderless"
         target_matchers:
           - alertname=~"KafkaUnderMinISR|KafkaConsumerLagCritical"
 
-      # Velero down → Backup-Symptome sind Folge.
       - source_matchers:
           - alertname="VeleroDown"
         target_matchers:
           - alertname=~"VeleroNoRecentBackup|VeleroNoRecentWeeklyBackup|VeleroBackupPartialFailure"
 
-      # CoreDNS down → SERVFAIL/Forward/extern-DNS sind Folge.
       - source_matchers:
           - alertname="CoreDNSDown"
         target_matchers:
           - alertname=~"CoreDNSHighSERVFAIL|CoreDNSForwardUnhealthy|ExternalDNSResolutionFailed"
 
     receivers:
-
       - name: 'null'
 
-      # Dead-man's-switch external receiver. The webhook URL must be a
-      # healthchecks.io ping URL (or equivalent silent-alarm service). It must
-      # be sealed because the URL itself is the secret. To set up:
-      #   1. Create a check at https://healthchecks.io/ with period=1m, grace=2m
-      #   2. Copy the ping URL (looks like https://hc-ping.com/<uuid>)
-      #   3. Update the watchdog-webhook-sealed.yaml in this overlay
-      #   4. Configure healthchecks.io to email/SMS you when silent for >2m
       - name: 'watchdog-heartbeat'
         webhook_configs:
           - url_file: /etc/alertmanager/secrets/watchdog-webhook-url/url
             send_resolved: false
             max_alerts: 1
 
-      # ── PAGE tier (critical) → Slack #alerts-critical + Telegram (phone) ──
       - name: 'slack-critical'
         slack_configs:
           - channel: '#alerts-critical'
@@ -580,8 +460,6 @@ alertmanager:
                 url: '{{ if (index .Alerts 0).Annotations.runbook_url }}{{ (index .Alerts 0).Annotations.runbook_url }}{{ else }}https://github.com/Tim275/talos-homelab/tree/main/docs/runbooks{{ end }}'
               - type: button
                 text: 'Dashboard :bar_chart:'
-                # Multi-cluster: composes URL from external_labels.grafana_url + annotation path.
-                # Path-only annotations like "/d/drova-slo" get prefixed automatically.
                 url: '{{ if (index .Alerts 0).Annotations.dashboard_url }}{{ template "alert.dashboard_url" . }}{{ else }}{{ if .CommonLabels.grafana_url }}{{ .CommonLabels.grafana_url }}{{ else }}https://grafana.timourhomelab.org{{ end }}{{ end }}'
               - type: button
                 text: 'Explore :mag:'
@@ -596,9 +474,6 @@ alertmanager:
             send_resolved: true
             message: '{{ template "telegram.body" . }}'
 
-      # ── TICKET tier (warning) → Slack #alerts ONLY, no Telegram ──
-      # Tickets must NOT buzz the phone. This is the page/ticket split: phone =
-      # the 25 criticals, Slack = the full digest of everything (warnings included).
       - name: 'slack-default'
         slack_configs:
           - channel: '#alerts'
@@ -632,41 +507,6 @@ alertmanager:
               - type: button
                 text: 'Silence :no_bell:'
                 url: '{{ template "slack.silenceURL" . }}'
-
-      # ─────────────────────────────────────────────────────────────────────
-      # EMAIL receiver — prepared, COMMENTED (activate when wanted).
-      # Activation = 4 steps, ~5 min:
-      # ─────────────────────────────────────────────────────────────────────
-      # 1) Outlook app password: account.microsoft.com → Security → App passwords
-      #    (requires 2FA; the normal login password will NOT work for SMTP).
-      #
-      # 2) Seal it (bootstrap cert → rebuild-safe) into monitoring ns:
-      #      kubectl create secret generic smtp-password -n monitoring \
-      #        --from-literal=password='<app-password>' --dry-run=client -o yaml \
-      #      | kubeseal --cert tofu/bootstrap/sealed-secrets/certificate/sealed-secrets.crt -o yaml
-      #    + add `smtp-password` to alertmanagerSpec.secrets (top of this file).
-      #
-      # 3) Add to `global:` (top of this config):
-      #      smtp_smarthost: 'smtp-mail.outlook.com:587'
-      #      smtp_from: 'sagichdirnicht259@outlook.de'
-      #      smtp_auth_username: 'sagichdirnicht259@outlook.de'
-      #      smtp_auth_password_file: /etc/alertmanager/secrets/smtp-password/password
-      #      smtp_require_tls: true
-      #
-      # 4) Uncomment the receiver below + add the route (step 5).
-      #    BEST PRACTICE at scale: point `to:` at a distribution list (oncall@...) —
-      #    onboarding a teammate = mail-provider change only, zero IaC change.
-      # - name: 'email-critical'
-      #   email_configs:
-      #     - to: 'sagichdirnicht259@outlook.de'
-      #       send_resolved: true
-      #       headers:
-      #         subject: '[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}'
-      #
-      # 5) Route critical → email too (add under route.routes, next to slack-critical):
-      #      - matchers: [ severity="critical" ]
-      #        receiver: 'email-critical'
-      #        continue: true   # ← REQUIRED: keep delivering to Slack/Telegram as well
 
   templateFiles:
     homelab.tmpl: |-
