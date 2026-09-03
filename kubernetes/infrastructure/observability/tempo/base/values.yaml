@@ -90,18 +90,7 @@ tempo:
 
   # per_tenant_overrides at root level feeds tempo-runtime ConfigMap
 
-# Tempo 2.9 kennt zwei Overrides-Schemas. Flache Keys (metrics_generator_processors)
-# sind "legacy", verschachtelte sind "new". Statisch und per-tenant MUESSEN dasselbe
-# sein, sonst: 'Overrides config type mismatch' (config_type=legacy static_config_type=new)
-# und Tempo verwirft die per-tenant-Overrides KOMPLETT — still, nur eine warn-Zeile
-# beim Start. Folge: 0 aktive Prozessoren, keine span-metrics/service-graphs/local-blocks,
-# TraceQL-Metrics liefern leere Serien und Traces Drilldown bleibt leer.
-#
-# tenant-key MUSS "single-tenant" sein (Tempo-Default bei multitenancy_enabled: false),
-# NICHT "" — sichtbar in tempo_distributor_spans_received_total{tenant="single-tenant"}.
-#
-# `global_overrides` gab es in diesem Chart nie — der Key wird nirgends gelesen.
-# Statische Defaults gehoeren unter `overrides.defaults`.
+# Legacy (flat) vs new (nested) schema must match, sonst 'config type mismatch'.
 overrides:
   defaults:
     metrics_generator:
@@ -116,18 +105,7 @@ overrides:
       max_traces_per_user: 50000
   per_tenant_override_config: /runtime-config/overrides.yaml
 
-per_tenant_overrides:
-  "single-tenant":
-    metrics_generator:
-      processors:
-        - service-graphs
-        - span-metrics
-        - local-blocks
-      max_active_series: 50000
-    ingestion:
-      rate_limit_bytes: 20000000
-      burst_size_bytes: 30000000
-      max_traces_per_user: 50000
+per_tenant_overrides: {}
 
 # Distributor - Ingests traces and forwards to ingesters
 distributor:
