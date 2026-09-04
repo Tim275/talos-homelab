@@ -1,0 +1,50 @@
+name: tofu-root-cd
+
+# Root-Cluster-Modul (tofu/, ohne cloudflare/netbird) — braucht Proxmox + Talos +
+# K8s-API, alle nur im LAN erreichbar. Laeuft auf einem self-hosted Runner (ARC,
+# kubernetes/infrastructure/operators/github-runner-*) statt GitHub-Cloud-Runnern.
+#
+# Kein pull_request-Trigger (public Repo, self-hosted Runner — Fork-PRs sollen
+# diesen Job nie automatisch anstossen). Nur push + manueller workflow_dispatch.
+# apply ist noch nicht verdrahtet — erst nach validierten plan-Laeufen.
+
+on:
+  push:
+    paths:
+      - "tofu/**"
+      - "!tofu/cloudflare/**"
+      - "!tofu/netbird/**"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_USE_AZUREAD: true
+  ARM_USE_OIDC: true
+
+jobs:
+  plan:
+    name: plan (root)
+    runs-on: tofu
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.12.3"
+
+      - name: tofu init
+        working-directory: tofu
+        run: tofu init -input=false
+
+      - name: tofu plan
+        working-directory: tofu
+        env:
+          TF_VAR_proxmox_api_token: ${{ secrets.PROXMOX_API_TOKEN }}
+        run: tofu plan -input=false -no-color
