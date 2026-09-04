@@ -1,0 +1,43 @@
+githubConfigUrl: https://github.com/Tim275/talos-homelab
+githubConfigSecret: github-runner-secret
+runnerScaleSetName: tofu
+controllerServiceAccount:
+  name: arc-controller-gha-rs-controller
+  namespace: arc-systems
+minRunners: 0
+maxRunners: 2
+template:
+  spec:
+    securityContext:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+    containers:
+      - name: runner
+        image: ghcr.io/actions/actions-runner:2.337.0
+        command: ["/home/runner/run.sh"]
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          readOnlyRootFilesystem: false
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        volumeMounts:
+          - name: proxmox-ssh-key
+            mountPath: /home/runner/.ssh
+            readOnly: true
+    volumes:
+      - name: proxmox-ssh-key
+        secret:
+          secretName: tofu-runner-secrets
+          items:
+            - key: id_rsa_proxmox
+              path: id_rsa_proxmox
+              mode: 0600
