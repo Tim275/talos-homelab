@@ -1,11 +1,4 @@
-# Kreuzprobe: feuert jeder Alert-Rule auf Metriken, die es wirklich gibt?
-# Ein Alert auf einer nicht existierenden Metrik ist stiller als gar keiner — er
-# suggeriert Abdeckung. Am 2026-08-06 waren so 20 von 295 Rules tot, darunter
-# ElasticsearchSnapshotStale (403 auf _slm) und der Tempo-Generator-Blindspot.
 #
-# Laeuft nicht in CI, weil dort kein Prometheus mit Live-Metriknamen existiert.
-# Bei Fund exit 1 -> Job failed -> upstream KubeJobFailed alertet (gleiches Muster
-# wie die DR-Verify-CronJobs).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -27,7 +20,6 @@ data:
             if r.get("type") == "alerting":
                 rules.append((r["name"], r.get("query", "")))
 
-    # PromQL-Funktionen/Keywords rausfiltern, damit nur Metriknamen uebrig bleiben.
     KW = {
         "by","on","without","group_left","group_right","and","or","unless","offset","bool","ignoring",
         "rate","irate","sum","avg","min","max","count","increase","absent","absent_over_time","delta",
@@ -44,8 +36,6 @@ data:
         used = {m for m in tok.findall(q) if m not in KW and not m.isdigit()}
         used = {m for m in used if "_" in m or m.startswith("up")}
         missing = sorted(m for m in used if m not in known)
-        # nur melden wenn ALLE Metriken fehlen — sonst false-positives bei
-        # optionalen Joins (z.B. kube_pod_labels).
         if used and len(missing) == len(used):
             dead.append((name, missing))
 

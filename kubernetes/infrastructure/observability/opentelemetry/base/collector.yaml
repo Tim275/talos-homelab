@@ -1,31 +1,9 @@
 
-# OPENTELEMETRY COLLECTOR - Enterprise Unified Observability (2025)
 
-# Single pipeline for ALL telemetry signals:
 # - Traces  Jaeger + Tempo
 # - Logs    Loki + Elasticsearch
 # - Metrics Prometheus (Remote Write)
 #
-# Architecture:
-# ┌─────────────────────────────────────────────────────────────────────────┐
-# │                    Applications (OMS, n8n, etc.)                        │
-# │                    via OpenTelemetry SDK                                │
-# └─────────────────────────────────────────────────────────────────────────┘
-#                          │ OTLP (4317/4318)
-#                          ▼
-# ┌─────────────────────────────────────────────────────────────────────────┐
-# │                    OTel Collector (DaemonSet)                           │
-# │  Receivers: OTLP (traces, logs, metrics)                                │
-# │  Processors: batch, memory_limiter, resource, k8sattributes             │
-# └─────────────────────────────────────────────────────────────────────────┘
-#          │                    │                    │
-#          ▼                    ▼                    ▼
-#    ┌──────────┐        ┌──────────┐        ┌──────────────┐
-#    │  Traces  │        │   Logs   │        │   Metrics    │
-#    │──────────│        │──────────│        │──────────────│
-#    │ • Jaeger │        │ • Loki   │        │ • Prometheus │
-#    │ • Tempo  │        │ • ES     │        │   (remote)   │
-#    └──────────┘        └──────────┘        └──────────────┘
 
 apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
@@ -65,10 +43,8 @@ spec:
           fieldPath: metadata.namespace
   config:
 
-    # RECEIVERS - Accept telemetry from applications
 
     receivers:
-      # OTLP receiver for all signals (traces, logs, metrics)
       otlp:
         protocols:
           grpc:
@@ -76,22 +52,18 @@ spec:
           http:
             endpoint: 0.0.0.0:4318
 
-    # PROCESSORS - Transform and enrich telemetry
 
     processors:
-      # Batch processor for efficient exports
       batch:
         timeout: 10s
         send_batch_size: 1024
         send_batch_max_size: 2048
 
-      # Memory limiter to prevent OOM
       memory_limiter:
         limit_mib: 1400
         spike_limit_mib: 400
         check_interval: 1s
 
-      # Add cluster-level attributes
       resource:
         attributes:
           - key: cluster
@@ -101,7 +73,6 @@ spec:
             value: ${env:K8S_POD_NAME}
             action: upsert
 
-      # Add Kubernetes metadata to all signals
       k8sattributes:
         auth_type: "serviceAccount"
         passthrough: false
@@ -137,8 +108,6 @@ spec:
           - sources:
               - from: connection
 
-      # PII-Redaction fuer Spans: Secrets loeschen, potenziell personenbezogene
-      # Werte hashen (bleiben fuer Debugging korrelierbar, ohne Klartext zu speichern).
       attributes/redact:
         actions:
           - key: http.request.header.authorization
@@ -154,12 +123,8 @@ spec:
           - key: user.email
             action: hash
 
-    # EXPORTERS - Send telemetry to backends
 
     exporters:
-      # --- TRACES → GATEWAY (für tail_sampling) ---
-      # Agent-Tier forwarded raw traces zum Gateway-Tier (Deployment).
-      # Gateway entscheidet via tail_sampling welche Traces zu Jaeger+Tempo gehen.
       otlp/gateway:
         endpoint: otel-gateway-collector.opentelemetry:4317
         tls:
@@ -172,8 +137,6 @@ spec:
           initial_interval: 1s
           max_interval: 30s
 
-      # --- LOGS ---
-      # Loki via native OTLP endpoint (lokiexporter removed in otelcol-contrib 0.116+)
       otlphttp/loki:
         endpoint: http://loki-gateway.monitoring:80/otlp
         headers:
@@ -188,8 +151,6 @@ spec:
           initial_interval: 1s
           max_interval: 30s
 
-      # --- METRICS ---
-      # Prometheus Remote Write
       prometheusremotewrite:
         endpoint: http://kube-prometheus-stack-prometheus.monitoring:9090/api/v1/write
         headers:
@@ -203,20 +164,13 @@ spec:
           initial_interval: 1s
           max_interval: 30s
 
-      # Debug exporter (for troubleshooting)
       debug:
         verbosity: basic
         sampling_initial: 5
         sampling_thereafter: 200
 
-    # CONNECTORS - Bridge one pipeline's output into another pipeline's input
 
     connectors:
-      # RED metrics (rate/error/duration) computed directly from spans, here at the
-      # Agent-Tier — BEFORE Gateway tail_sampling (10% probabilistic for most services).
-      # Bypasses Tempo's metrics-generator entirely (confirmed Tempo 2.9.0 upstream
-      # bug, single-tenant mode: github.com/grafana/tempo/issues/5479, active_series
-      # stuck at 0). Metric names differ from Tempo's own span-metrics naming.
       spanmetrics:
         histogram:
           explicit:
@@ -230,18 +184,14 @@ spec:
         metrics_flush_interval: 15s
         namespace: traces.span.metrics
 
-    # EXTENSIONS - Additional functionality
 
     extensions:
-      # Health check endpoint
       health_check:
         endpoint: 0.0.0.0:13133
 
-      # zpages — debugging endpoints (/debug/tracez, /debug/extensionz)
       zpages:
         endpoint: 0.0.0.0:55679
 
-    # SERVICE - Wire everything together
 
     service:
       extensions:
@@ -249,8 +199,6 @@ spec:
         - zpages
 
       pipelines:
-        # Traces pipeline → Gateway-Tier (für tail_sampling)
-        # spanmetrics-Connector sieht hier 100% des Traffics, VOR dem Gateway-Sampling.
         traces:
           receivers:
             - otlp
@@ -264,23 +212,15 @@ spec:
             - otlp/gateway
             - spanmetrics
 
-        # RED-Metriken aus dem spanmetrics-Connector → Prometheus. Ersatz fuer Tempos
-        # kaputten Metrics-Generator (siehe Connector-Kommentar oben).
         metrics/spanmetrics:
           receivers: [spanmetrics]
           exporters: [prometheusremotewrite]
 
-        # Structured application logs via OTLP SDK (Drova services, etc.) → Loki.
-        # Pod stdout/stderr still handled by Vector → Loki + ES (Option E pattern).
-        # 2026-06-14: elasticsearch-Exporter entfernt — war redundant (Vector indexiert
-        # dieselben Logs schon nach ES) + scheiterte permanent mit 401 (elastic-Superuser-
-        # Passwort driftet bei jedem ES-Rebuild). Kein ES-Export hier = kein Drift, dauerhaft.
         logs:
           receivers: [otlp]
           processors: [memory_limiter, k8sattributes, resource, batch]
           exporters: [otlphttp/loki]
 
-        # Metrics pipeline Prometheus
         metrics:
           receivers:
             - otlp

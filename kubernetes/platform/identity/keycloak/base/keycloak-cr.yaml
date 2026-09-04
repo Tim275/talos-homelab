@@ -1,13 +1,9 @@
-# Keycloak v2alpha1 CR — managed by keycloak-operator (installed via controllers/operators/)
 #
-# Replaces the plain Deployment + Service. Operator generates:
 #   - StatefulSet "keycloak"
 #   - Service "keycloak-service" (HTTP on 8080)
 #   - Service "keycloak-discovery" (JGroups headless)
 #   - PodDisruptionBudget
 #
-# Adopts existing CNPG keycloak-db (no data migration). Same admin secret.
-# Same Realm + Users + Clients survive — Operator just runs Keycloak against the existing DB.
 #
 # Reload: pods auto-restart when keycloak-db-credentials Secret rotates (via Stakater Reloader).
 ---
@@ -58,9 +54,6 @@ spec:
     enabled:
       - admin-fine-grained-authz            # Per-realm fine-grained admin permissions
 
-  # Phase D iter-2: Env-vars via unsupported.podTemplate für realm-import-CR
-  # placeholder substitution. KC liest ${VAR_NAME} aus pod env beim realm-import.
-  # SealedSecrets in this NS bereitstellen.
   unsupported:
     podTemplate:
       spec:
@@ -114,26 +107,14 @@ spec:
       value: INFO
     - name: spi-sticky-session-encoder-infinispan-should-attach-route
       value: "false"
-    # Enable /metrics endpoint on port 9000 (management interface).
-    # KC25: "metrics" ist KEIN feature mehr, sondern Quarkus-option.
-    # ServiceMonitor "keycloak" scrapes /metrics — ohne diese option = 404 → TargetDown.
     - name: metrics-enabled
       value: "true"
-    # Audit log forwarding: emit LOGIN/LOGOUT/UPDATE_PASSWORD/CONSENT events at INFO →
-    # Vector scrapes pod stdout → Elasticsearch logs-* index → Kibana queryable.
     - name: spi-events-listener-jboss-logging-success-level
       value: info
     - name: spi-events-listener-jboss-logging-error-level
       value: warn
-    # 2026-05-16 — B-LITE: cache=local statt distributed Infinispan.
-    # Eliminiert cluster-sync zwischen KC-Pods → kein Rebalance → kein 504 bei pod-restart.
-    # Funktioniert weil Envoy BackendTrafficPolicy ConsistentHash auf CF-Connecting-IP
-    # bereits Sticky-Sessions garantiert (user → 1 pod konsistent).
-    # Tradeoff: bei pod-restart muss user 1x re-login (selten, PDB=2 minimiert).
     - name: cache
       value: local
-  # NOTE: admin user already exists in DB (we manually reset earlier).
-  # No bootstrap-admin needed for v2alpha1 — Operator inherits the existing admin.
 
   resources:
     requests:
@@ -141,7 +122,4 @@ spec:
       memory: 1536Mi
     limits:
       cpu: 2
-      # 3Gi: Keycloak (Quarkus) defaults heap to ~70% of the limit; at 2Gi that's
-      # ~1.4Gi heap + metaspace/off-heap/Quarkus overhead -> OOMKill (exit 137) under
-      # LDAP-federation + realm load. 3Gi gives the heap headroom to stay stable.
       memory: 3Gi

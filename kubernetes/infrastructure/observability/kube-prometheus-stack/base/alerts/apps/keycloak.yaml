@@ -5,18 +5,11 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
-  # KeycloakDown is the page (SSO down = login broken cluster-wide). Dropped the duplicate
-  # Info up==0 alert. Login-failure-spike kept as a security ticket.
   groups:
-    # ── PAGE ──
     - name: keycloak-page
       interval: 60s
       rules:
         - alert: KeycloakDown
-          # Keycloak runs as a StatefulSet (Keycloak Operator), NOT a Deployment.
-          # The old kube_deployment_status_replicas_available{deployment="keycloak"} series
-          # never existed -> alert was structurally dead (missed a 23x OOMKill crashloop, 2026-05-24).
-          # `or absent(...)` also catches the case where the SS metric disappears entirely.
           expr: |
             (kube_statefulset_status_replicas_ready{namespace="keycloak",statefulset="keycloak"} == 0)
             or absent(kube_statefulset_status_replicas_ready{namespace="keycloak",statefulset="keycloak"})
@@ -30,20 +23,11 @@ spec:
             description: "All Keycloak replicas not ready — OIDC login broken cluster-wide (ArgoCD, Grafana, n8n, etc.)."
             action: "kubectl -n keycloak get pod -l app=keycloak + logs (watch OOMKill — 23x crashloop 2026-05-24); check the CNPG keycloak-db."
 
-    # KeycloakLoginFailureSpike removed: keycloak_failed_login_attempts needs the 3rd-party
-    # keycloak-metrics-spi (not deployed) → was permanently blind. Re-add via that SPI, OR a
-    # Vector log_to_metric over keycloak login-failure events (like waf_coraza_detections_total).
 
-    # ── TICKET ──
     - name: keycloak-ticket
       interval: 60s
       rules:
         - alert: KeycloakHttp5xxRateHigh
-          # Consolidated 2026-07-14 from keycloak/base/monitoring.yaml (ex "InfinispanCacheTimeouts",
-          # born from the ISPN000427 outage). Renamed: at 1 replica there is no Infinispan cluster —
-          # but a sustained 5xx burst on the auth provider is a real ticket regardless of cause.
-          # The stray file's other rules were dead (kube_pod_labels join needs a KSM allowlist,
-          # keycloak_failed_login_attempts needs the metrics-spi) and were dropped.
           expr: |
             sum by (namespace) (
               rate(http_server_requests_seconds_count{namespace="keycloak",status=~"5.."}[5m])

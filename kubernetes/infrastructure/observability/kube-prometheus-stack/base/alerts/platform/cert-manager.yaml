@@ -5,11 +5,7 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
-  # CertExpiringIn7Days = the page (service breaks on expiry). 30d = ticket. Dropped the
-  # duplicate <14d Info alert (wrong metric prefix cert_manager_ vs certmanager_) and the
-  # webhook-down (CertManagerDown covers "renewals blocked").
   groups:
-    # ── PAGE ──
     - name: cert-manager-page
       interval: 5m
       rules:
@@ -25,16 +21,10 @@ spec:
             description: "Certificate {{ $labels.name }} in {{ $labels.namespace }} expires in {{ $value | humanizeDuration }} — service will break."
             action: "kubectl describe certificate {{ $labels.name }} -n {{ $labels.namespace }}; check the Issuer + cert-manager logs; force renewal if stuck."
 
-    # ── TICKET ──
     - name: cert-manager-ticket
       interval: 5m
       rules:
         - alert: CertRenewalStuck
-          # cert-manager auto-renews at renewalTime (~2/3 of lifetime). Fire only when that time
-          # has passed and the cert still isn't renewed — i.e. renewal is genuinely stuck (Issuer
-          # down, ACME failing). The old "expires <30d" alert just spammed during the normal
-          # renew window (cert-manager renewBefore < 30d), never actionable. CertExpiringIn7Days
-          # stays as the hard expiry backstop.
           expr: certmanager_certificate_renewal_timestamp_seconds - time() < 0
           for: 1h
           labels:
