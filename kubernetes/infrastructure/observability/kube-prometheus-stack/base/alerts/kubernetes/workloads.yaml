@@ -117,9 +117,11 @@ spec:
           # memcached excluded: a cache filling toward its limit is its JOB (evicts at the
           # top, never OOMs) — the predict sees the fill-ramp and cries wolf
           # (loki-chunks-cache, 2026-07-14).
-          # container_start_time_seconds guard: a relabel change resets series identity,
-          # so predict_linear sees only the few minutes since — false leak on every
-          # container cluster-wide (2026-09-04). Require 6h of real uptime first.
+          # A relabel change resets the series (new label set = new series to Prometheus),
+          # so predict_linear's [6h] window is mostly empty and extrapolates on noise —
+          # false leak cluster-wide regardless of real container age (2026-09-04). Guard
+          # on actual sample count, not container uptime: cAdvisor scrapes every 10s, so
+          # a genuinely-populated 6h window has ~2160 points; a reset series has far fewer.
           expr: |
             (
               sum by (namespace, pod, container) (
@@ -135,7 +137,7 @@ spec:
               / sum by (namespace, pod, container) (kube_pod_container_resource_limits{resource="memory"})
               > 0.60
             and on (namespace, pod, container)
-            max by (namespace, pod, container) (container_start_time_seconds{container!="",container!="memcached"}) < time() - 6 * 3600
+            sum by (namespace, pod, container) (count_over_time(container_memory_working_set_bytes{container!="",container!="memcached"}[6h])) > 2000
           for: 1h
           labels:
             severity: warning
