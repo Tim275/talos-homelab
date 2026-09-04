@@ -1,7 +1,4 @@
 
-# LLDAP Bootstrap CronJob — runs hourly, idempotent.
-# Self-heals if users/groups are deleted/lost (e.g. PVC reset, cluster recreate).
-# Script is idempotent: existing users/groups produce "already exists" → no-op.
 
 apiVersion: batch/v1
 kind: CronJob
@@ -62,7 +59,6 @@ spec:
                   echo "LLDAP Bootstrap - Creating Users and Groups"
                   echo "============================================"
 
-                  # Get auth token
                   echo "Authenticating with LLDAP..."
                   TOKEN=$(curl -sf -X POST http://lldap:17170/auth/simple/login \
                     -H "Content-Type: application/json" \
@@ -75,7 +71,6 @@ spec:
                   fi
                   echo "Authentication successful!"
 
-                  # Function to make GraphQL requests
                   gql() {
                     curl -sf -X POST http://lldap:17170/api/graphql \
                       -H "Content-Type: application/json" \
@@ -83,7 +78,6 @@ spec:
                       -d "$1"
                   }
 
-                  # Create groups from ConfigMap
                   echo ""
                   echo "--- Creating Groups ---"
                   cat /config/groups.json | jq -c '.[]' | while read group; do
@@ -99,13 +93,11 @@ spec:
                     fi
                   done
 
-                  # Get group IDs for later
                   echo ""
                   echo "--- Fetching Group IDs ---"
                   GROUPS_RESPONSE=$(gql '{"query": "{ groups { id displayName } }"}')
                   echo "$GROUPS_RESPONSE" | jq -r '.data.groups[] | "\(.displayName): \(.id)"'
 
-                  # Create users from ConfigMap
                   echo ""
                   echo "--- Creating Users ---"
                   USERS_JSON=$(envsubst '$LLDAP_USER_PASSWORD $LLDAP_ANNA_PASSWORD $LLDAP_BEN_PASSWORD $LLDAP_CLARA_PASSWORD' < /config/users.json)
@@ -118,7 +110,6 @@ spec:
 
                     echo "Creating user: $ID ($EMAIL)"
 
-                    # Create user
                     RESULT=$(gql "{\"query\": \"mutation { createUser(user: {id: \\\"$ID\\\", email: \\\"$EMAIL\\\", displayName: \\\"$DISPLAY\\\"}) { id } }\"}" 2>&1 || true)
                     if echo "$RESULT" | grep -q '"id"'; then
                       echo "  Created: $ID"
@@ -128,7 +119,6 @@ spec:
                       echo "  Result: $RESULT"
                     fi
 
-                    # Add user to groups
                     USER_GROUPS=$(echo "$user" | jq -r '.groups[]?' 2>/dev/null || true)
                     for GROUP_NAME in $USER_GROUPS; do
                       GROUP_ID=$(echo "$GROUPS_RESPONSE" | jq -r ".data.groups[] | select(.displayName==\"$GROUP_NAME\") | .id")
@@ -139,7 +129,6 @@ spec:
                     done
                   done
 
-                  # Set passwords via LDAP (GraphQL doesn't support password setting)
                   echo ""
                   echo "--- Setting Passwords via LDAP ---"
                   apk add --no-cache openldap-clients
@@ -147,8 +136,6 @@ spec:
                   USERS_JSON=$(envsubst '$LLDAP_USER_PASSWORD $LLDAP_ANNA_PASSWORD $LLDAP_BEN_PASSWORD $LLDAP_CLARA_PASSWORD' < /config/users.json)
                   echo "$USERS_JSON" | jq -c '.[]' > /tmp/users.txt
 
-                  # Redirect from a file (not a pipe) so FAILED survives the loop —
-                  # a "echo | while" runs in a subshell and loses the counter.
                   FAILED=0
                   while read user; do
                     ID=$(echo "$user" | jq -r '.id')
@@ -157,7 +144,6 @@ spec:
                     if [ -n "$PASSWORD" ]; then
                       echo "Setting password for: $ID"
 
-                      # 1. Verify if existing password ALREADY works → skip if yes
                       if ldapwhoami -x -H ldap://lldap-ldap:389 \
                           -D "uid=$ID,ou=people,dc=homelab,dc=local" \
                           -w "$PASSWORD" >/dev/null 2>&1; then
@@ -165,14 +151,11 @@ spec:
                         continue
                       fi
 
-                      # 2. Set password — if-form so a hard error (LDAP unreachable)
-                      #    does not trip set -e and kill the whole job.
                       if ldappasswd -x -H ldap://lldap-ldap:389 \
                           -D "uid=$LLDAP_ADMIN_USERNAME,ou=people,dc=homelab,dc=local" \
                           -w "$LLDAP_ADMIN_PASSWORD" \
                           -s "$PASSWORD" \
                           "uid=$ID,ou=people,dc=homelab,dc=local"; then
-                        # 3. Verify the new password actually works (catches dual-store-bug)
                         if ldapwhoami -x -H ldap://lldap-ldap:389 \
                             -D "uid=$ID,ou=people,dc=homelab,dc=local" \
                             -w "$PASSWORD" >/dev/null 2>&1; then
@@ -188,11 +171,6 @@ spec:
                     fi
                   done < /tmp/users.txt
 
-                  # 2026-05-16: Don't fail the whole CronJob run if 1-2 users have
-                  # dual-store-bug. Bootstrap is idempotent reconcile — admins should
-                  # be alerted but recurring CronJob-failure-alerts are noise.
-                  # Failed users keep getting retried hourly. WHEN ALL users start
-                  # failing → real auth-issue, then alert via lldap-bootstrap-script.
                   if [ "${FAILED:-0}" -ge 3 ]; then
                     echo "ERROR: $FAILED password operations failed — job marked failed (≥3 fails = real issue)"
                     exit 1
@@ -200,9 +178,6 @@ spec:
                     echo "WARN: $FAILED users hit dual-store-bug — continuing (idempotent retry next hour)"
                   fi
 
-                  # --- Cleanup: delete LLDAP users NOT in config (declarative reconcile) ---
-                  # Makes Git the source of truth. Guards: never touch 'admin', skip if config
-                  # somehow empty (prevents wiping everyone on a bad mount).
                   echo ""
                   echo "--- Cleanup (drift removal) ---"
                   CONFIG_IDS=$(echo "$USERS_JSON" | jq -r '.[].id')
@@ -220,8 +195,6 @@ spec:
                     done
                   fi
 
-                  # --- Cleanup: delete LLDAP groups NOT in config (declarative) ---
-                  # Protect LLDAP built-in groups. Skip if config somehow empty.
                   echo ""
                   echo "--- Group cleanup (drift removal) ---"
                   CFG_GROUPS=$(cat /config/groups.json | jq -r '.[].name')

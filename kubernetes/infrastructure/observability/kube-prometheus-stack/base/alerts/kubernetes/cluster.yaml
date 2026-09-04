@@ -5,12 +5,7 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
-  # Dedup'd 2026-05-23: dropped 4× apiserver-down / 3× etcd-quorum / 3× nodes-down
-  # duplicates + all latency/capacity/version alerts (→ Grafana "Kubernetes / Compute
-  # Resources" + "API server" dashboards). Upstream kube-prometheus-stack already ships
-  # KubeNodeNotReady, KubeletDown, KubeCPUOvercommit etc. — single source of truth.
   groups:
-    # ── PAGE — cluster-fatal, wake-at-3am ──────────────────────────────────
     - name: kubernetes-page
       interval: 30s
       rules:
@@ -26,9 +21,6 @@ spec:
             description: "API server unreachable for >2 minutes. All cluster operations halted."
             action: "Check ctrl-0 (SPOF): 'talosctl health' + etcd/kubelet on the control plane; verify the Proxmox VM is up."
 
-        # Live since 2026-08-07 (kube-etcd scraped via additionalScrapeConfigs static_configs,
-        # see pve-exporter/base/scrape-config.yaml) — no longer dormant. Blunt up==0 check;
-        # control-plane.yaml carries the etcd-specific disk/quota/latency depth.
         - alert: EtcdQuorumLoss
           expr: sum(up{job=~"kube-etcd|etcd"}) == 0
           for: 10m
@@ -42,10 +34,6 @@ spec:
             action: "talosctl -n 192.168.0.101 etcd status / etcd members; if persistently down and corrupt, restore from snapshot ('talosctl etcd snapshot')."
 
         - alert: EtcdRequestLatencyHigh
-          # apiserver→etcd call latency (p99) — scrapeable via the apiserver even though the
-          # kube-etcd target is disabled. Baseline ~25ms; >800ms sustained = etcd disk/fsync
-          # contending with Ceph-OSD writes on shared Samsung (both on cephpool). Transient
-          # spikes 600-700ms are expected under Ceph-load; alert only on sustained >800ms.
           expr: |
             histogram_quantile(0.99, sum by (le) (rate(etcd_request_duration_seconds_bucket[5m]))) > 0.8
           for: 15m
@@ -85,7 +73,6 @@ spec:
             description: "CoreDNS down >2min — cluster DNS resolution broken, expect cascade failures."
             action: "kubectl get pods -n kube-system -l k8s-app=kube-dns + restart"
 
-    # ── TICKET — degradation, look soon (digest channel) ───────────────────
     - name: kubernetes-ticket
       interval: 60s
       rules:

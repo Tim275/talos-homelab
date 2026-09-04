@@ -1,6 +1,3 @@
-# CoreDNS Day-2 owner (ArgoCD selfHeal).
-# Day-0 bootstrap: tofu/talos/inline-manifests/coredns-config.yaml — keep in sync!
-# Reason: talosctl upgrade-k8s overrides Day-0 config; ArgoCD restores it within 1-3min.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -14,8 +11,6 @@ data:
             lameduck 5s
         }
         ready
-        # class all loggte JEDE Abfrage — 39k Zeilen/h nach Loki, davon fast alles
-        # NOERROR. denial behaelt NXDOMAIN/SERVFAIL/REFUSED, also das Diagnostische.
         log . {
             class denial
         }
@@ -27,14 +22,8 @@ data:
             ttl 30
         }
 
-        # Split-horizon DNS — fix CF-WAF blocking server-side OIDC backchannel:
-        # ArgoCD/Grafana pods fetch https://iam.timourhomelab.org/.well-known/openid-configuration
-        # CF Bot-Score blocks them (no browser User-Agent).
-        # Cluster-internal: rewrite to envoy-gateway (has wildcard TLS + HTTPRoute → KC).
-        # Browsers continue using public DNS → CF Tunnel (unaffected).
         rewrite name exact iam.timourhomelab.org envoy-gateway-envoy-gateway-ee418b6e.gateway.svc.cluster.local
         # n8n: gleiches Muster — Homepage-Statuscheck (Node-Fetch, kein Browser-UA)
-        # lief sonst raus zu Cloudflare und in deren Bot-Score.
         rewrite name exact n8n.timourhomelab.org envoy-gateway-envoy-gateway-ee418b6e.gateway.svc.cluster.local
 
         forward . 192.168.0.1 8.8.8.8 1.1.1.1 {

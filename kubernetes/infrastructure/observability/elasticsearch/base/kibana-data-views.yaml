@@ -1,19 +1,7 @@
 
-# KIBANA DATA VIEWS - matched to actually-ingested data streams
 #
-# Only streams that really exist in ES (verified 2026-06-11). One view per
-# real dataset, grouped by domain. No ghost views for sources that aren't shipped.
 #
-# Structure:
-# 1. [Ops]      cross-cutting by severity (all / critical / warn / info)
-# 2. [SIEM]     audit & security (kube-audit, tetragon, hubble, envoy, netbird, security)
-# 3. [App]      drova, n8n-prod, audiobookshelf
-# 4. [Identity] keycloak, lldap
-# 5. [Infra]    argocd, kyverno, velero, cilium-spire, kube-system, redis-operator
-# 6. [Data]     postgres (cnpg), kafka, cloudbeaver
 #
-# To add a view: FIRST add the namespace to Vector's filter_sensitive_for_es
-# allowlist (vector-aggregator.toml) so the stream exists, THEN add the view here.
 
 apiVersion: v1
 kind: ConfigMap
@@ -23,7 +11,6 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "10"
 data:
-  # WICHTIG: Kibana unterstützt KEINE Brace-Expansion {a,b,c} - nur Wildcards und Komma-Listen!
   data-views.ndjson: |
     {"attributes":{"allowNoIndex":true,"name":"[Ops] All Logs","timeFieldName":"@timestamp","title":".ds-logs-*"},"id":"ops-all-logs","type":"index-pattern"}
     {"attributes":{"allowNoIndex":true,"name":"[Ops] Critical/Errors","timeFieldName":"@timestamp","title":".ds-logs-*.critical-*"},"id":"ops-critical","type":"index-pattern"}
@@ -86,14 +73,11 @@ spec:
             - -c
             - |
               set -e
-              # In-cluster URL: the public hostname is VPN-only since the NetBird
-              # migration. ECK runs Kibana with TLS disabled, so plain HTTP.
               KIBANA_URL="http://production-kibana-kb-http.elastic-system.svc.cluster.local:5601"
 
               echo "=== Tier-0 Kibana Data Views Bootstrap ==="
               echo "Waiting for Kibana to be ready..."
 
-              # Wait for Kibana
               for i in $(seq 1 30); do
                 if curl -s -k -u "elastic:${ELASTIC_PASSWORD}" "${KIBANA_URL}/api/status" | grep -q '"level":"available"'; then
                   echo "Kibana is ready!"
@@ -127,7 +111,6 @@ spec:
 
               echo "$RESULT"
 
-              # Set default data view
               echo ""
               echo "Step 3: Setting default data view..."
               curl -s -k -X POST "${KIBANA_URL}/api/data_views/default" \

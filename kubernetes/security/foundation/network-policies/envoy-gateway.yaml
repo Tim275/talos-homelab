@@ -1,6 +1,4 @@
 ---
-# Lock Envoy Gateway proxy ingress to: cloudflared (public traffic), monitoring (scrape),
-# host (kubelet readiness probe). Prevents lateral movement from compromised in-cluster pods.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -30,24 +28,16 @@ spec:
         - ports:
             - { port: "19003", protocol: TCP }
             - { port: "19001", protocol: TCP }
-    # Cluster-internal: pods using public hostnames (iam/grafana/argo.timourhomelab.org)
-    # — CoreDNS rewrites them to envoy ClusterIP, so they need :10443 access.
-    # Without this rule, server-side OIDC token exchange (Grafana, ArgoCD → KC) times out.
     - fromEntities: [cluster]
       toPorts:
         - ports:
             - { port: "10443", protocol: TCP }
             - { port: "10080", protocol: TCP }
-    # Home-LAN direct access: Mac (192.168.0.0/24) → envoy LB-IP. Bypass CF.
-    # Used for kubelogin (Phase 8), local Browser-Tests etc. — alles im LAN.
-    # Internet bleibt GEBLOCKT (only this CIDR).
     - fromCIDR: ["192.168.0.0/24"]
       toPorts:
         - ports:
             - { port: "10443", protocol: TCP }
             - { port: "10080", protocol: TCP }
-    # istio ambient: HBONE (mTLS-Tunnel) von gemeshten Pods — gleicher Scope wie die
-    # cluster-Klartext-Regel oben, nur der Tunnel-Port (traegt 10443/10080 huckepack).
     - fromEntities: [cluster]
       toPorts:
         - ports:

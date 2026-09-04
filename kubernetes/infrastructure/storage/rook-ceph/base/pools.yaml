@@ -1,7 +1,3 @@
-# Enterprise RBD Pool - 2x Replication (backs default SC: DBs, ES, Redis)
-# failureDomain=zone: 1 copy per physical host (nipogi/msa2) -> survives a full host loss.
-# size 2 (min_size 1) — a 3rd copy adds no host-safety on 2 hosts, costs +50% raw.
-# Reduced 3->2 on 2026-07-04 (OSDs nearfull: osd.1 87%, osd.4 86%).
 apiVersion: ceph.rook.io/v1
 kind: CephBlockPool
 metadata:
@@ -16,21 +12,16 @@ spec:
     requireSafeReplicaSize: true
   parameters:
     min_size: "1"
-    # Optimized for enterprise workloads
     compression_algorithm: "lz4"
     compression_mode: "aggressive"
     compression_required_ratio: "0.875"
     compression_max_blob_size: "131072"
     compression_min_blob_size: "8192"
-  # Enable mirroring for disaster recovery
   mirroring:
     enabled: false
     mode: image
 
 ---
-# Kafka-Fast Pool - msa2proxmox zone only (OSD 0,3,4,5 = 5ms).
-# size 2 (min_size 1): storage-level redundancy (survives 1 OSD loss) on top of
-# Kafka's own RF=3 — defense-in-depth, and clears the POOL_NO_REDUNDANCY warning.
 apiVersion: ceph.rook.io/v1
 kind: CephBlockPool
 metadata:
@@ -48,13 +39,6 @@ spec:
     min_size: "1"
 
 ---
-# Replicapool-Fast — Hot-DB-Tier (Postgres, Redis) — Phase 2 IaC-tune (2026-05-17)
-# Uses device-class "fast-ssd" → nur msa2-OSDs (0,3,4,5) = 5ms latency
-# replication=3, failureDomain=host (3 separate K8s-Workers für PG-replicas)
-# Trade-off: alle 4 OSDs auf physischen msa2-host
-#   → wenn msa2-Proxmox-host stirbt: fast-pool kurz unavailable
-#   → CNPG-Backups + Velero schützen Daten
-#   → für Solo-Homelab: acceptable
 apiVersion: ceph.rook.io/v1
 kind: CephBlockPool
 metadata:
@@ -69,40 +53,28 @@ spec:
     requireSafeReplicaSize: true
   parameters:
     min_size: "2"
-    # Same compression settings as enterprise-pool
     compression_algorithm: "lz4"
     compression_mode: "aggressive"
     compression_required_ratio: "0.875"
   mirroring:
     enabled: false
 
-# DISABLED POOLS - Unused, saves resources (MDS, extra pools)
-# Re-enable by uncommenting if needed
 
-# ---
-# # SSD Pool - Ultra High Performance (DISABLED - no SSD tier in use)
 # apiVersion: ceph.rook.io/v1
 # kind: CephBlockPool
-# metadata:
 #   name: ssd-pool
 #   namespace: rook-ceph
-#   annotations:
 #     argocd.argoproj.io/sync-wave: "3"
-# spec:
 #   failureDomain: host
-#   replicated:
 #     size: 3
 #     requireSafeReplicaSize: true
-#   parameters:
 #     min_size: "2"
 #     pg_num: "32"
 #     pgp_num: "32"
 #     compression_mode: "none"
-#   mirroring:
 #     enabled: false
 
 ---
-# CephFS Filesystem for Shared Storage (GitLab, shared data)
 apiVersion: ceph.rook.io/v1
 kind: CephFilesystem
 metadata:

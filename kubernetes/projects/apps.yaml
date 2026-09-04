@@ -11,8 +11,6 @@ metadata:
 spec:
   description: " Enterprise Applications Layer - User-Facing Services"
 
-  # Nacht-Freeze 02-05 Uhr (Backup-Fenster, niemand wach): kein Auto-Sync/selfHeal,
-  # manueller Sync bleibt als Break-Glass erlaubt
   syncWindows:
     - kind: deny
       schedule: '0 2 * * *'
@@ -22,22 +20,18 @@ spec:
         - '*'
       manualSync: true
 
-  #  SECURITY: Restrict source repositories ()
   sourceRepos:
     - 'https://github.com/Tim275/talos-homelab'
     - 'https://github.com/Tim275/drova'
     - 'https://github.com/Tim275/drova-gitops'
 
-  # DESTINATIONS: Apps namespaces with environment separation
   destinations:
-    # Environment-based namespace pattern
     - namespace: '*-dev'
       server: 'https://kubernetes.default.svc'
     - namespace: '*-staging'
       server: 'https://kubernetes.default.svc'
     - namespace: '*-prod'
       server: 'https://kubernetes.default.svc'
-    # Direkte Namespaces ohne env-Suffix (kein Wildcard)
     - namespace: 'cloudbeaver'
       server: 'https://kubernetes.default.svc'
     - namespace: 'drova'
@@ -47,27 +41,22 @@ spec:
     - namespace: 'forgejo'
       server: 'https://kubernetes.default.svc'
 
-  # CLUSTER RESOURCES: Application-specific (Security )
   clusterResourceWhitelist:
-    # Core Kubernetes Resources
     - group: ''
       kind: '*'
     - group: 'apps'
       kind: '*'
 
-    # RBAC Resources (limited for apps)
     - group: 'rbac.authorization.k8s.io'
       kind: 'Role'
     - group: 'rbac.authorization.k8s.io'
       kind: 'RoleBinding'
 
-    # Network Resources
     - group: 'networking.k8s.io'
       kind: 'NetworkPolicy'
     - group: 'networking.k8s.io'
       kind: 'Ingress'
 
-    # Service Mesh Resources
     - group: 'networking.istio.io'
       kind: 'VirtualService'
     - group: 'networking.istio.io'
@@ -75,9 +64,7 @@ spec:
     - group: 'networking.istio.io'
       kind: 'DestinationRule'
 
-  #  NAMESPACE RESOURCES: Deny dangerous operations (Security )
   namespaceResourceBlacklist:
-    # Prevent cluster-wide resource creation from apps
     - group: 'rbac.authorization.k8s.io'
       kind: 'ClusterRole'
     - group: 'rbac.authorization.k8s.io'
@@ -89,7 +76,6 @@ spec:
     - group: ''
       kind: 'LimitRange'
 
-  # PROJECT ROLES: Apps Team Access Control
   roles:
     - name: apps-admin
       description: "Full apps management access"
@@ -118,43 +104,35 @@ spec:
       groups:
         - viewers
 
-  # ORPHANED RESOURCES: Enterprise cleanup policy
   orphanedResources:
     warn: false  # Disable warnings - resources managed via excludes
     ignore:
-      # Helm chart resources that commonly appear as orphaned
       - kind: Secret
         name: sh.helm.release.v1.*
       - kind: ConfigMap
         name: sh.helm.release.v1.*
-      # Application secrets and configs
       - kind: Secret
         name: "*-app-*"
       - kind: ConfigMap
         name: "*-app-*"
-      # Database connection secrets
       - kind: Secret
         name: "*-db-*"
       - kind: ConfigMap
         name: "*-db-*"
-      # N8N workflow automation
       - kind: Secret
         name: "*-n8n-*"
       - kind: ConfigMap
         name: "*-n8n-*"
       - kind: Pod
         name: "*-n8n-*"
-      # Mealie recipe management
       - kind: Secret
         name: "*-mealie-*"
       - kind: ConfigMap
         name: "*-mealie-*"
-      # Application monitoring resources
       - kind: Secret
         name: "*-monitoring-*"
       - kind: ConfigMap
         name: "*-monitoring-*"
-      # Service mesh sidecar resources
       - kind: Pod
         name: "*-istio-proxy-*"
       - kind: ConfigMap

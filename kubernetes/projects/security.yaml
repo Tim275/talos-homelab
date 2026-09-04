@@ -11,8 +11,6 @@ metadata:
 spec:
   description: " Enterprise Security Foundation - Zero Trust Architecture"
 
-  # Nacht-Freeze 02-05 Uhr (Backup-Fenster, niemand wach): kein Auto-Sync/selfHeal,
-  # manueller Sync bleibt als Break-Glass erlaubt
   syncWindows:
     - kind: deny
       schedule: '0 2 * * *'
@@ -22,8 +20,6 @@ spec:
         - '*'
       manualSync: true
 
-  # Security layer — security-foundation/compliance verteilen NetworkPolicies, Rate-Limits,
-  # mTLS-Policies + Tetragon/Honeypot über viele Namespaces → alle Ziel-NS explizit gelistet.
   destinations:
     - namespace: argocd
       server: https://kubernetes.default.svc
@@ -54,14 +50,9 @@ spec:
     - namespace: opentelemetry
       server: https://kubernetes.default.svc
 
-  # Security layer resources
   sourceRepos:
     - 'https://github.com/Tim275/talos-homelab'
 
-  # Security resource permissions
-  # Cluster-scoped: nur was die Apps LIVE nutzen (Evidenz 2026-07-15 aus
-  # app.status.resources; war */* = God-Mode). Neues Kind -> Sync-Fehler
-  # "not permitted in project" -> hier nachtragen.
   clusterResourceWhitelist:
     - group: ''
       kind: Namespace
@@ -80,7 +71,6 @@ spec:
     - group: '*'
       kind: '*'
 
-  # Security RBAC
   roles:
     - name: security-admin
       description: "Full access to security policies"
@@ -98,38 +88,31 @@ spec:
       groups:
         - sre-team
 
-  # ORPHANED RESOURCES: Enterprise cleanup policy
   orphanedResources:
     warn: false  # Disable warnings - resources managed via excludes
     ignore:
-      # Helm chart resources that commonly appear as orphaned
       - kind: Secret
         name: sh.helm.release.v1.*
       - kind: ConfigMap
         name: sh.helm.release.v1.*
-      # Security policy engine resources
       - kind: Secret
         name: "*-kyverno-*"
       - kind: ConfigMap
         name: "*-kyverno-*"
       - kind: Pod
         name: "*-kyverno-*"
-      # Falco security monitoring
       - kind: Secret
         name: "*-falco-*"
       - kind: ConfigMap
         name: "*-falco-*"
-      # OPA Gatekeeper resources
       - kind: Secret
         name: "*-gatekeeper-*"
       - kind: ConfigMap
         name: "*-gatekeeper-*"
-      # Security scanning resources
       - kind: Secret
         name: "*-trivy-*"
       - kind: ConfigMap
         name: "*-trivy-*"
-      # Pod Security Standards resources
       - kind: Secret
         name: "*-pss-*"
       - kind: ConfigMap

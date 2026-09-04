@@ -11,17 +11,13 @@ policyAuditMode: false
 
 identityChangeGracePeriod: "30s"
 
-# 2025 PERFORMANCE OPTIMIZATIONS
 
-# Bypass iptables conntrack for max performance
 installNoConntrackIptablesRules: true
 
-# Native routing for best eBPF performance
 routingMode: native
 autoDirectNodeRoutes: true
 ipv4NativeRoutingCIDR: 10.244.0.0/16  # Kubernetes pod CIDR
 
-# Talos specific
 k8sServiceHost: localhost
 k8sServicePort: 7445
 securityContext:
@@ -53,22 +49,16 @@ cgroup:
 bpf:
   hostLegacyRouting: false  # BPF host routing REQUIRED for BBR bandwidth manager
   masquerade: true  # Required for installNoConntrackIptablesRules
-  # External-VPN-Clients (WARP, Tailscale) → ClusterIP-Services direkt erreichbar.
-  # Pflicht für CF Zero Trust + Private Networks pattern (Mac via WARP zu 10.x).
   lbExternalClusterIP: true
 
-  # SCALE - BPF map sizing for 10K+ pods
   # https://docs.cilium.io/en/stable/operations/performance/scalability/
   bpfMapDynamicSizeRatio: 0.0025  # Scale maps with cluster size
 
-  # Policy enforcement acceleration
   policyMapMax: 65536    # Max policy entries
 
-  # Connection tracking optimization
   ctTcpMax: 524288       # 512K TCP connections
   ctAnyMax: 262144       # 256K other connections
 
-  # NAT table sizing
   natMax: 524288         # 512K NAT entries
   neighMax: 524288       # 512K neighbor entries
 
@@ -78,7 +68,6 @@ ipam:
   multiPoolPreAllocation: ""
 
 operator:
-  # HIGH AVAILABILITY - 2 replicas for zero downtime
   replicas: 2
 
   rollOutPods: true
@@ -88,11 +77,9 @@ operator:
     port: 9963
     serviceMonitor:
       enabled: true
-  # DISABLED: Too large for ConfigMap annotations
   dashboards:
     enabled: false
 
-  # RESOURCES
   resources:
     limits:
       cpu: 1000m      # Increased for HA workload
@@ -125,18 +112,12 @@ loadBalancer:
   enabled: true
 
 gatewayAPI:
-  # Disabled — Envoy Gateway is the cluster's primary Gateway API implementation.
-  # Both controllers reconciling the same CRDs causes drift / sync conflicts.
   enabled: false
   enableAlpn: true
   enableAppProtocol: true
 
-# PERFORMANCE - Bandwidth Manager + BBR Congestion Control
 
-# Bandwidth Manager: Enables Fair Queue packet scheduling + optimal sysctl settings
-# BBR (Bottleneck Bandwidth and RTT): Google's congestion control algorithm
 #
-# PERFORMANCE IMPACT:
 # - BBR: Up to 2700x higher throughput vs loss-based algorithms (CUBIC)
 # - Bandwidth Manager: Reduces latency spikes, improves fairness
 # - Requires: Linux kernel 5.18+ for BBR on pods
@@ -146,57 +127,33 @@ bandwidthManager:
   enabled: true
   bbr: true  # ENABLED: BBR congestion control for improved throughput
 
-# PERFORMANCE - BIG TCP (DISABLED due to WireGuard)
 
-# BIG TCP: Allows up to 192KB GSO/GRO packets (vs 64KB default)
 #
-# PERFORMANCE IMPACT:
 # - Reduces CPU by 20-40% for high-throughput workloads
 # - Reduces # of times network stack is traversed
 #
-# WARNING: INCOMPATIBLE WITH WIREGUARD ENCRYPTION!
-# BIG TCP requires: No tunneling, no encryption, kernel 6.3+, supported NICs (mlx4/mlx5/ice)
 #
-# CURRENT: Disabled (auto-disabled by Cilium due to WireGuard encryption)
 # TRADE-OFF: Security (WireGuard) > Performance (BIG TCP)
 #
-# To enable BIG TCP: Set encryption.enabled=false
 # https://docs.cilium.io/en/stable/operations/performance/tuning/
 enableIPv4BIGTCP: false  # Auto-disabled when WireGuard is enabled
 enableIPv6BIGTCP: false
 
-# SECURITY - WireGuard Transparent Encryption
 
-# Zero-Trust pod-to-pod encryption using WireGuard (Linux kernel native)
 #
-# SECURITY BENEFITS:
 # - Pod-to-pod traffic encrypted at network layer (transparent to apps)
 # - Compliance: GDPR, SOC2, PCI-DSS, HIPAA
 # - Multi-tenant isolation (encrypted by default)
 #
-# PERFORMANCE IMPACT:
 # - BIG TCP disabled (incompatible) -> ~20-40% CPU overhead vs BIG TCP
 # - WireGuard overhead: ~5-10% (minimal, hardware-accelerated on modern CPUs)
 # - BBR compensates partially for BIG TCP loss
 #
-# NET IMPACT: ~10-15% performance trade-off for enterprise security
 #
-# DECRYPTING TRAFFIC FOR DEBUGGING:
-# -------------------------------------
-# Option 1: Hubble (L7 visibility BEFORE encryption)
-#   kubectl port-forward -n kube-system svc/hubble-ui 12000:80
-#   # Hubble sees unencrypted HTTP/DNS metrics
 #
-# Option 2: tcpdump inside pod (BEFORE encryption)
-#   kubectl exec -it <pod> -- tcpdump -i any -nn port 80
 #
-# Option 3: Cilium Monitor (eBPF events, pre-encryption)
-#   kubectl exec -n kube-system ds/cilium -- cilium monitor --type drop --type trace
 #
-# Option 4: Disable encryption temporarily (NOT for production!)
-#   helm upgrade cilium --set encryption.enabled=false
 #
-# WARNING: Wire-level tcpdump on nodes will show ENCRYPTED traffic (WireGuard ESP packets)
 #
 # https://docs.cilium.io/en/stable/security/network/encryption-wireguard/
 encryption:
@@ -210,28 +167,16 @@ encryption:
     cidr: 10.244.0.0/16
     allowRemoteNodeIdentities: false
 
-# DO NOT REMOVE — siehe notes/CLAUDE-GUIDES.md "Cilium — Complete Guide" → "WireGuard ctrl-0 opt-out trap"
 extraConfig:
   node-encryption-opt-out-labels: "never-opt-out.never.match/key"
-  # ENFORCE node-encryption OFF explicitly. encryption.nodeEncryption:false makes the
-  # Helm template OMIT the encrypt-node key entirely -> ServerSideApply can't prune the
-  # stale `encrypt-node: "true"` that the Talos bootstrap-Cilium leaves behind, so it
-  # survived every rebuild and broke cross-node OSD heartbeats (Ceph peering deadlock,
-  # 2026-05-24). Rendering the key explicitly = ArgoCD owns it = always reconciled to false.
   encrypt-node: "false"
 
-# NETWORKING - DNS Proxy
 
-# DNS visibility + FQDN-based network policies
-# Enables DNS query logging in Hubble metrics
 dnsProxy:
   enabled: true
   enableDnsCompression: true
 
-# OBSERVABILITY - L7 Proxy
 
-# HTTP/gRPC protocol visibility via Envoy proxy
-# Required for: httpV2 metrics, L7 NetworkPolicies, API-level observability
 l7Proxy: true
 
 envoy:
@@ -250,13 +195,7 @@ hubble:
   tls:
     auto:
       enabled: true
-      # cronJob = Cilium generates certs via a CronJob, not Helm template.
-      # With method:helm, ArgoCD server-side-diff sends an empty kubernetes.io/tls
-      # Secret to the API which fails validation (tls.crt/tls.key Required).
-      # cronJob removes the empty Secret from Helm output entirely.
       method: cronJob
-      # 1095 (3y, = CA-Laufzeit) lief bei jedem Re-Run ueber das feste CA-Ablaufdatum
-      # hinaus -> Job scheitert dauerhaft ab dem ersten Renewal nach der Ersteinrichtung.
       certValidityDuration: 365
   metrics:
     enabled:
@@ -313,7 +252,6 @@ hubble:
 ingressController:
   enabled: false  # Not used — all routing via Envoy Gateway HTTPRoute
 
-# mTLS kommt seit Istio ambient (Phase 3/4) vom ztunnel — SPIRE-Stack abgebaut 2026-07-10
 authentication:
   enabled: false
 
@@ -325,12 +263,8 @@ prometheus:
     enabled: true
     trustCRDsExist: true
 
-# DISABLED: Cilium dashboards cause "Too long" annotation error
-# Instead use GrafanaDashboard CRDs in monitoring layer
 dashboards:
   enabled: false
-# DISABLED: Clustermesh not needed for single-cluster setup
-# Prevents TLS certificate errors in clustermesh-apiserver
 clustermesh:
   useAPIServer: false
   config:
@@ -346,7 +280,6 @@ clustermesh:
       serviceMonitor:
         enabled: false
 
-# Istio configuration
 cni:
   exclusive: false
 
