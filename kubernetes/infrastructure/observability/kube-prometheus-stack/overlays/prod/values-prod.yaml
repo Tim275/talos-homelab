@@ -169,7 +169,7 @@ defaultRules:
     kubeApiserverHistogram: false
     kubeApiserverSlos: false
     kubeControllerManager: false
-    kubelet: false
+    kubelet: true
     kubeProxy: false
     kubeSchedulerAlerting: false
     kubeSchedulerRecording: false
@@ -200,6 +200,37 @@ kubelet:
       - action: drop
         sourceLabels: [__name__, le]
         regex: (csi_operations|storage_operation_duration)_seconds_bucket;(0.25|2.5|15|25|120|600)(\.0)?
+      - action: replace
+        targetLabel: cluster
+        replacement: prod-talos
+    # Chart default cAdvisorMetricRelabelings, re-declared because setting this key replaces
+    # (not merges) the list — dropped without this, container_cpu/memory_* had no cluster label
+    # and every dashboard query scoped to cluster="prod-talos" returned "No data".
+    cAdvisorMetricRelabelings:
+      - sourceLabels: [__name__]
+        action: drop
+        regex: 'container_cpu_(cfs_throttled_seconds_total|load_average_10s|system_seconds_total|user_seconds_total)'
+      - sourceLabels: [__name__]
+        action: drop
+        regex: 'container_fs_(io_current|io_time_seconds_total|io_time_weighted_seconds_total|reads_merged_total|sector_reads_total|sector_writes_total|writes_merged_total)'
+      - sourceLabels: [__name__]
+        action: drop
+        regex: 'container_memory_(mapped_file|swap)'
+      - sourceLabels: [__name__]
+        action: drop
+        regex: 'container_(file_descriptors|tasks_state|threads_max)'
+      - sourceLabels: [__name__, scope]
+        action: drop
+        regex: 'container_memory_failures_total;hierarchy'
+      - sourceLabels: [__name__, interface]
+        action: drop
+        regex: 'container_network_.*;(cali|cilium|cni|lxc|nodelocaldns|tunl).*'
+      - sourceLabels: [__name__]
+        action: drop
+        regex: 'container_spec.*'
+      - sourceLabels: [id, pod]
+        action: drop
+        regex: '.+;'
       - action: replace
         targetLabel: cluster
         replacement: prod-talos
