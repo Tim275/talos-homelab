@@ -1,10 +1,7 @@
 notifications:
   enabled: true
 
-  #  ARGOCD NOTIFICATIONS - Deployment Status Tracking
 
-  # Separate from Prometheus alerts - focuses on deployment health
-  # Secret is managed in monitoring/alerts/argocd-slack-webhook-secret.yaml
 
   secret:
     create: false  # Secret managed externally in monitoring/alerts/
@@ -25,12 +22,9 @@ notifications:
       additionalLabels:
         release: kube-prometheus-stack
 
-  # CONTEXT - ArgoCD URLs for notifications
   context:
     argocdUrl: https://argo.timourhomelab.org
 
-  # NOTIFICATION SERVICES - Slack Incoming Webhook
-  # Using webhook service for Slack Incoming Webhooks (not Bot Token)
   # Reference: https://argo-cd.readthedocs.io/en/stable/operator-manual/notifications/services/webhook/
   notifiers:
     service.webhook.slack: |
@@ -39,8 +33,6 @@ notifications:
         - name: Content-Type
           value: application/json
 
-  #  slack templates (block kit)
-  # Uses Webhook service with Slack Attachments API for colored sidebars
   # Reference: https://argo-cd.readthedocs.io/en/stable/operator-manual/notifications/services/webhook/
   templates:
     template.app-deployed: |
@@ -146,9 +138,7 @@ notifications:
               }]
             }
 
-  # triggers with deduplication and null-safety
   triggers:
-    # PRODUCTION: Deployed = Sync succeeded AND healthy (not just sync)
     trigger.on-deployed: |
       - description: Application is synced and healthy
         oncePer: app.status.operationState.syncResult.revision
@@ -156,7 +146,6 @@ notifications:
         - app-deployed
         when: app.status.operationState != nil and app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
 
-    # PRODUCTION: Health degraded (standalone, no operationState dependency)
     trigger.on-health-degraded: |
       - description: Application health is degraded
         oncePer: app.metadata.name
@@ -172,14 +161,10 @@ notifications:
         - app-sync-failed
         when: app.status.operationState != nil and app.status.operationState.phase in ['Error', 'Failed']
 
-    #  DISABLED: Sync running (too verbose for production)
     # trigger.on-sync-running: |
     #   - description: Application is syncing
-    #     send:
     #     - app-sync-running
-    #     when: app.status.operationState != nil and app.status.operationState.phase in ['Running']
 
-    # Sync succeeded (separate from deployed for visibility)
     trigger.on-sync-succeeded: |
       - description: Application sync succeeded
         oncePer: app.status.operationState.syncResult.revision
@@ -187,7 +172,6 @@ notifications:
         - app-sync-succeeded
         when: app.status.operationState != nil and app.status.operationState.phase in ['Succeeded']
 
-    # PRODUCTION: OutOfSync with auto-sync disabled (manual intervention needed)
     trigger.on-sync-status-unknown: |
       - description: Application out of sync with auto-sync disabled (manual intervention needed)
         oncePer: app.metadata.name
@@ -203,9 +187,6 @@ notifications:
         - app-sync-failed
         when: app.status.operationState != nil and app.status.operationState.phase in ['Error', 'Failed'] and app.status.health.status == 'Degraded'
 
-  # DEFAULT SUBSCRIPTIONS - Production-grade triggers (no noise!)
-  # Global subscription for all apps (can override per-app via annotations)
-  # For webhooks: just use the webhook name (matches service.webhook.<name>)
   subscriptions:
     - recipients: ["slack"]
       triggers:

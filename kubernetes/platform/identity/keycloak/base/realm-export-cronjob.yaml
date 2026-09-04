@@ -1,9 +1,4 @@
-# Daily Realm Export CronJob — DR-Resilience
-# Exports realm 'kubernetes' (config + clients + roles + groups; users skipped — they live in LLDAP)
-# to a PVC. Velero backs up the PVC nightly to S3 → restorable to ANY new cluster in <2 min.
 #
-# Restore: copy realm-export-latest.json into a new KC pod, run
-#   kc.sh import --file=/path/to/realm-export-latest.json --override=true
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -15,8 +10,6 @@ metadata:
     app.kubernetes.io/part-of: platform-identity
 spec:
   accessModes: [ReadWriteOnce]
-  # Immediate binding: einziger Consumer ist der Export-CronJob → WaitForFirstConsumer
-  # würde die PVC ewig Pending lassen → ArgoCD-Sync-Deadlock beim Bootstrap.
   storageClassName: rook-ceph-block-enterprise-immediate
   resources:
     requests:
@@ -92,7 +85,6 @@ spec:
 
                   echo "=== Partial-export realm $REALM ==="
                   OUT_FILE="$OUT_DIR/realm-${REALM}-${TS}.json"
-                  # Disable -e temporarily; kcadm exit-code mit -o + redirect ist edge-case
                   set +e
                   /opt/keycloak/bin/kcadm.sh create realms/$REALM/partial-export \
                     --config /tmp/kc.cfg \
@@ -102,7 +94,6 @@ spec:
                   EXPORT_RC=$?
                   set -e
 
-                  # Verify file is valid JSON, not error-text
                   if [ ! -s "$OUT_FILE" ] || ! head -c 1 "$OUT_FILE" | grep -q '{'; then
                     echo "ERROR: export failed (rc=$EXPORT_RC). file content:"
                     head -c 500 "$OUT_FILE"
@@ -111,7 +102,6 @@ spec:
 
                   echo "Export size: $(wc -c < "$OUT_FILE") bytes"
 
-                  # Export is valid — cleanup below must NOT fail the job
                   set +e
                   ln -sf "realm-${REALM}-${TS}.json" "$OUT_DIR/realm-${REALM}-latest.json" || echo "warn: symlink update failed"
 

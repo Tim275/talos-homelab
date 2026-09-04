@@ -1,19 +1,13 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-# Infisical - Modern Secrets Management Platform
-# Purpose: Central secrets management with PostgreSQL + Redis
 # Bootstrap: SealedSecrets (encrypted) Infisical (runtime)
 
 resources:
   - namespace.yaml
-  # Single SealedSecret with ALL Infisical configuration
   - infisical-secrets-sealed.yaml
-  # Redis password SealedSecret (required by Redis Operator)
   - redis-secret-sealed.yaml
-  # External Infrastructure (Redis Operator) - DB managed by platform/data/infisical-db
   - redis.yaml
   - infisical-config.yaml
-  # Operator Infrastructure (same namespace)
   - operator-config.yaml
 
 namespace: infisical
@@ -32,9 +26,7 @@ helmCharts:
     version: "1.7.5"
     releaseName: infisical
     namespace: infisical
-    # USE valuesInline (NOT valuesFile - ArgoCD doesn't support it!)
     valuesInline:
-      # Disable bundled dependencies (we use external PostgreSQL/Redis)
       postgresql:
         enabled: false
 
@@ -46,7 +38,6 @@ helmCharts:
         nginx:
           enabled: false
 
-      # Infisical Application Configuration
       infisical:
         enabled: true
         name: infisical
@@ -55,7 +46,6 @@ helmCharts:
 
         autoDatabaseSchemaMigration: true
 
-        # CRITICAL: Reference to SealedSecret containing ALL config
         kubeSecretRef: "infisical-secrets"
 
         image:
@@ -81,14 +71,12 @@ helmCharts:
             prometheus.io/scrape: "true"
             prometheus.io/port: "8080"
 
-  # Infisical Kubernetes Operator (watches all namespaces)
   - name: secrets-operator
     repo: https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/
     version: "0.11.1"
     releaseName: infisical-secrets-operator
     namespace: infisical
     valuesInline:
-      # Controller configuration
       controllerManager:
         manager:
           image:
@@ -103,13 +91,10 @@ helmCharts:
               cpu: 200m
               memory: 128Mi
 
-        # Cluster-wide scope (watch all namespaces)
         replicas: 1
 
-      # Webhook configuration (for InfisicalSecret validation)
       kubernetesClusterDomain: cluster.local
 
-      # Metrics and monitoring
       metricsService:
         ports:
           - name: https

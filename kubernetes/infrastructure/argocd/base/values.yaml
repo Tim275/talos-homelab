@@ -1,4 +1,3 @@
-# ARGOCD CONFIGURATION
 
 global:
   priorityClassName: platform-critical
@@ -9,30 +8,22 @@ global:
 
 configs:
   # CRITICAL: Secret Management
-  # ArgoCD Helm chart auto-generates these secrets on first install:
   # - server.secretkey (for session encryption)
   # - admin.password (initial admin password)
   # - webhook.github.secret, etc.
-  # We explicitly tell Helm to create the secret (default behavior)
   secret:
     createSecret: true
-    # NEVER manually specify secrets here - let Helm auto-generate them!
-    # Manual secrets can cause "server.secretkey is missing" errors
 
   cm:
     create: true
     application.resourceTrackingMethod: annotation+label
     admin.enabled: true
     url: https://argo.timourhomelab.org
-    # Enable Helm support in Kustomize for all applications
     kustomize.buildOptions: --enable-helm
 
-    # EXEC TIMEOUT - Extended for operators kustomization with 9 Helm charts
     exec.timeout: "300s"  # 5 minutes for kustomize build (default 90s)
 
-    # KEYCLOAK OIDC AUTHENTICATION - PRODUCTION SSO
 
-    # Client secret is stored in SealedSecret: oidc-secret.yaml
     oidc.config: |
       name: Keycloak
       issuer: https://iam.timourhomelab.org/realms/kubernetes
@@ -42,10 +33,7 @@ configs:
       requestedIDTokenClaims:
         groups:
           essential: true
-      # RP-Initiated Logout: ArgoCD "Log out" → KC end_session_endpoint
-      # → KC kills its session too → next login requires re-authentication.
       logoutURL: https://iam.timourhomelab.org/realms/kubernetes/protocol/openid-connect/logout?id_token_hint={{token}}&post_logout_redirect_uri={{logoutRedirectURL}}
-    # PERFORMANCE: Optimized timeout and reconciliation settings
     timeout.reconciliation: "360s"        # Extended from 180s default
     timeout.reconciliation.jitter: "30s"   # Add jitter to prevent thundering herd
     timeout.hard.reconciliation: "600s"    # Hard limit for reconciliation
@@ -62,35 +50,28 @@ configs:
     controller.diff.server.side: true
     server.insecure: true
     server.grpc.web: true
-    # 2025 FIX: Globally disable orphaned resources warnings
     controller.ignore.orphaned.resources: true
     application.resource-tracking-method: annotation+label
 
-    # CRITICAL: Global Cache Control to Prevent File Reference Errors
     reposerver.git.request.timeout: "300s"      # Git request timeout
     reposerver.git.lfs.support: "true"          # Enable Git LFS support
     reposerver.cache.enable: "true"             # Enable cache but with controls
     reposerver.cache.expiration: "10m"          # Very short global cache expiration
 
-    # PERFORMANCE TUNING - 2025 OPTIMIZATIONS
 
-    # Timeouts (Extended for large repositories and Helm charts)
     controller.repo.server.timeout.seconds: "600"    # Increased from 300s
     server.repo.server.timeout.seconds: "600"        # Match controller timeout
     controller.operation.processors: "25"            # Optimized for 1000+ apps
     controller.status.processors: "50"               # Optimized for 1000+ apps
 
-    # Kubernetes API Performance Tuning
     controller.kubectl.parallelism.limit: "20"       # Prevent API server overload
     controller.k8s.client.qps: "50"                  # API request rate limit
     controller.k8s.client.burst: "100"               # API burst rate limit
 
-    # Repository and Cache Performance
     reposerver.parallelism.limit: "10"               # Increased from 1 for better throughput
     repo.cache.expiration: "1h"                      # Reduced from 24h for faster updates
     controller.cache.default.expiration: "60m"       # Cache optimization
 
-    #  2025 CACHE OPTIMIZATION - LATEST STANDARDS
 
     controller.app.state.cache.expiration: "1h"           # Application state cache TTL
     controller.revision-cache-expiration: "300s"          # Git revision cache for rapid sync
@@ -98,28 +79,23 @@ configs:
     controller.manifest.generation.cache.expiration: "1h" # Manifest generation cache
     controller.app.operation.cache.expiration: "300s"     # Operation result cache
 
-    # Controller scaling
     controller.app.resync: "180"                          # Application resync interval (seconds)
     controller.app.hard.resync: "86400"                   # Hard resync once per day
     controller.self.heal.timeout.seconds: "300"           # Self-heal operation timeout
     controller.status.hard.resync: "3600"                 # Status hard resync (1 hour)
 
-    # Repository server 2025 cache optimization
     reposerver.git.lfs.cache.expiration: "1h"             # Git LFS cache TTL
     reposerver.helm.cache.expiration: "1h"                # Helm cache optimization
     reposerver.disable.compression: "false"               # Enable compression for bandwidth
 
-    # Git Operations Optimization
     controller.git.attempts.count: "3"               # Retry failed git operations
     controller.enable.proxy.extension: "false"       # Disable if not needed
 
-    # Application Sync Optimization
     application.sync.wave.delay: "2"                 # Seconds between sync waves
     application.operation.retry.backoff.duration: "5s"  # Retry backoff
     application.operation.retry.backoff.factor: "2"     # Exponential backoff
     application.operation.retry.backoff.maxDuration: "3m" # Max retry wait
 
-    # DELETE GUARANTEE - Applications/ApplicationSets müssen IMMER löschbar sein
 
     application.finalizer.timeout: "60s"                 # Max 1 minute finalizer wait
     applicationset.finalizer.timeout: "60s"              # Max 1 minute finalizer wait
@@ -128,7 +104,6 @@ configs:
     controller.enable.prune: "true"                      # Enable resource pruning
     controller.prune.propagation.policy: "foreground"    # Immediate deletion
 
-    # Cache Control für garantierte Deletion
     reposerver.cache.disable.on.deletion: "true"         # Disable cache during deletion
     controller.refresh.after.deletion: "true"            # Force refresh after delete
     application.sync.retry.limit: "0"                    # No retry during deletion
@@ -138,12 +113,8 @@ crds:
   keep: false
 
 controller:
-  # SCALING CONFIGURATION
-  # 2 replicas + sharding via ARGOCD_CONTROLLER_REPLICAS env.
-  # Pod-restart visible-less; sharding splits managed clusters across replicas.
   replicas: 2
 
-  # Pod-Disruption-Budget — kein voluntary-eviction wenn nur 1 Pod left.
   pdb:
     enabled: true
     minAvailable: 1
@@ -156,7 +127,6 @@ controller:
       cpu: 1000m     # Homelab scale - reduced CPU limit
       memory: 8Gi    # INCREASED: 60+ apps cause OOMKilled (was 4Gi)
 
-  # ADVANCED PERFORMANCE METRICS
   metrics:
     enabled: true
     serviceMonitor:
@@ -167,9 +137,7 @@ controller:
       interval: 30s
       scrapeTimeout: 10s
 
-  # ENVIRONMENT VARIABLES
   extraEnv:
-    # Execution and Timeout Configuration
     - name: ARGOCD_EXEC_TIMEOUT
       value: "600"                           # Increased for complex operations
     - name: ARGOCD_RECONCILIATION_TIMEOUT
@@ -177,29 +145,24 @@ controller:
     - name: ARGOCD_HARD_RECONCILIATION_TIMEOUT
       value: "900"                           # Hard limit
 
-    # Kubernetes API Client Optimization
     - name: ARGOCD_K8S_CLIENT_QPS
       value: "50"                            # High QPS for performance
     - name: ARGOCD_K8S_CLIENT_BURST
       value: "100"                           # Burst capacity
 
-    # Git and Repository Optimization
     - name: ARGOCD_GIT_ATTEMPTS_COUNT
       value: "3"                             # Retry failed git operations
     - name: ARGOCD_GIT_RETRY_DURATION
       value: "1s"                            # Git retry interval
 
-    # Controller Sharding Preparation (for future scaling)
     - name: ARGOCD_CONTROLLER_REPLICAS
       value: "2"                             # Match replica count
 
-    # Memory and Performance Tuning
     - name: GOGC
       value: "50"                            # ULTRA aggressive GC - prevent memory hangs
     - name: GOMEMLIMIT
       value: "8GiB"                          # INCREASED: Match memory limit (was 4GiB)
 
-    # ANTI-HANG PROTECTION - NEVER STUCK AGAIN!
 
     - name: ARGOCD_CONTROLLER_HEARTBEAT_TIME
       value: "30s"                           # Restart if no heartbeat for 30s
@@ -212,14 +175,10 @@ controller:
     - name: ARGOCD_CONTROLLER_DISABLE_COMPRESSION
       value: "true"                          # Prevent compression hangs
 
-    #  2025 REDIS OPTIMIZATION - Reduce Redis traffic
 
     - name: ARGOCD_APPLICATION_TREE_SHARD_SIZE
       value: "100"
-      # Split large app trees (default: 0 = no split)
-      # Reduces Redis key size for 1000+ resource apps
 
-    #  2025 CONTROLLER SCALING
 
     - name: ARGOCD_APP_STATE_CACHE_EXPIRATION
       value: "1h"                            # Application state cache optimization
@@ -235,7 +194,6 @@ controller:
       value: "24h"                           # Hard resync once per day
     - name: ARGOCD_CONTROLLER_STATUS_HARD_RESYNC_PERIOD
       value: "1h"                            # Status hard resync frequency
-  # Prefer nodes that are NOT work-00 or work-02 (i5 server)
   affinity:
     nodeAffinity:
       preferredDuringSchedulingIgnoredDuringExecution:
@@ -257,45 +215,28 @@ dex:
     limits:
       memory: 128Mi
 
-# internal redis disabled — redis-ha with sentinel instead
 
-# Single Redis = single point of failure. Redis-HA = 3 replicas + Sentinel
 redis:
   enabled: false  # Disable single Redis - using redis-ha chart below
 
 #  redis-ha: 3 nodes + sentinel auto-failover
 
-# Never cache freeze, never hang - automatic failover in seconds
 redis-ha:
   enabled: true
 
-  # DISABLE HELM TEST JOBS - NOT FOR BOOTSTRAP
   tests:
     enabled: false  # No test pods during bootstrap
 
-  # DISABLE ALL HELM HOOKS (test pods)
   configmapTest:
     enabled: false
   serviceTest:
     enabled: false
 
-  # 3 REDIS REPLICAS for true HA (1 master + 2 replicas)
   replicas: 3
 
-  #  SENTINEL CONFIGURATION - Auto-failover orchestration
   sentinel:
     quorum: 2  # Need 2 out of 3 sentinels to agree on failover
 
-    # PRODUCTION NOTE (2026-07-14): the sentinel container busy-looped at ~1 FULL CORE
-    # each on server-1/-2 (both scheduled on msa2) → host CPU hit 95°C, near thermal
-    # shutdown. redis itself was fine (~7m); the sentinel container had NO cpu limit.
-    # A healthy sentinel needs <10m, so 100m was set as an initial cap.
-    # UPDATE (2026-08-17): still recurs on any redis-ha pod restart (reproduced on
-    # server-0 AND server-2, not just one instance) — the sentinel binary itself
-    # (not the chart's bash wrapper) burns CPU, root cause not conclusively found
-    # (would need strace/sentinel debug logging during an active throttle event).
-    # 150m gives headroom over the confirmed-healthy ~10m baseline without fully
-    # releasing the cap. Workaround until root-caused: restart the throttled pod.
     resources:
       requests:
         cpu: 25m
@@ -304,7 +245,6 @@ redis-ha:
         cpu: 150m
         memory: 128Mi
 
-  # redis-ha resources
   redis:
     resources:
       requests:
@@ -314,7 +254,6 @@ redis-ha:
         cpu: 500m
         memory: 1Gi
 
-    #  REDIS PERFORMANCE TUNING (s)
     config:
       maxmemory-policy: "allkeys-lru"  # LRU eviction
       save: ""                         # No persistence - pure cache
@@ -323,7 +262,6 @@ redis-ha:
       maxclients: "10000"              # Max connections
       timeout: "300"                   # 5min idle timeout
 
-  # HAPROXY LOAD BALANCER - Distribute traffic across Redis nodes
   haproxy:
     enabled: true
     replicas: 3  # HA for load balancer too!
@@ -335,10 +273,8 @@ redis-ha:
         cpu: 200m
         memory: 256Mi
 
-  # POD ANTI-AFFINITY - Force distribution across nodes
   hardAntiAffinity: true  # Never run 2 Redis on same node
 
-  # PROMETHEUS METRICS
   exporter:
     enabled: true
     serviceMonitor:
@@ -348,8 +284,6 @@ redis-ha:
         release: kube-prometheus-stack
 
 server:
-  # HIGH AVAILABILITY SERVER CONFIGURATION
-  # 2 replicas + PDB. Server is stateless → no sharding nötig.
   replicas: 2
 
   pdb:
@@ -361,7 +295,6 @@ server:
     # loadBalancerIP: "192.168.68.160"  # Disabled - no LoadBalancer
     servicePortHttpsAppProtocol: kubernetes.io/h2c
 
-  # ENHANCED METRICS AND MONITORING
   metrics:
     enabled: true
     serviceMonitor:
@@ -391,13 +324,10 @@ server:
       cpu: 500m      # Homelab scale - reduced CPU limit
       memory: 1Gi    # Homelab scale - reduced memory limit
 
-  # SERVER PERFORMANCE TUNING
   extraEnv:
-    # Enable GRPC metrics for Prometheus dashboards
     - name: ARGOCD_ENABLE_GRPC_TIME_HISTOGRAM
       value: "true"
 
-    # SERVER ANTI-FREEZE PROTECTION
 
     - name: ARGOCD_SERVER_CONNECTION_STATUS_CACHE_EXPIRATION
       value: "1m"                          # Short connection cache - prevent connection hangs
@@ -410,18 +340,12 @@ server:
     - name: ARGOCD_SERVER_MAX_CONCURRENT_LOGIN_REQUESTS_COUNT
       value: "50"                          # Limit concurrent login requests
 
-  # INGRESS DISABLED - Using kubectl port-forward instead
   ingress:
     enabled: false  # Disabled per user request - use kubectl port-forward
 
 repoServer:
-  # REPO SERVER - ULTRA PERFORMANCE CONFIG
-  # 2 replicas → parallel manifest-generation für 65+ apps.
   replicas: 2
 
-  # kustomize --enable-helm on the kube-prometheus-stack overlay renders >90s under
-  # evening Ceph-IO load → default 90s exec timeout produced ComparisonError/Unknown
-  # (2026-07-14, also hit blackbox-exporter). 3m gives the biggest chart headroom.
   env:
     - name: ARGOCD_EXEC_TIMEOUT
       value: "3m"
@@ -430,7 +354,6 @@ repoServer:
     enabled: true
     minAvailable: 1
 
-  # PROMETHEUS METRICS CONFIGURATION
   podAnnotations:
     prometheus.io/scrape: "true"
     prometheus.io/port: "8084"
@@ -439,7 +362,6 @@ repoServer:
   containerSecurityContext:
     readOnlyRootFilesystem: true
 
-  # IMPROVED READINESS/LIVENESS PROBES - Prevent premature restarts
 
   readinessProbe:
     initialDelaySeconds: 30  # Wait 30s before first check (was 10s)
@@ -454,7 +376,6 @@ repoServer:
     successThreshold: 1
     failureThreshold: 3      # 3 failures = restart
 
-  # PERSISTENT VOLUME CONFIGURATION FOR CACHING
   volumes:
     - name: cmp-kustomize-build-with-helm
       configMap:
@@ -462,11 +383,9 @@ repoServer:
     - name: cmp-tmp
       emptyDir:
         sizeLimit: 2Gi  # Limit tmp space
-    # EMPTYDIR CACHE FOR BOOTSTRAP (no PVC dependency)
     - name: repo-cache
       emptyDir:
         sizeLimit: 5Gi
-    # ADDITIONAL TMP SPACE FOR LARGE REPOSITORIES
     - name: repo-tmp
       emptyDir:
         sizeLimit: 5Gi
@@ -478,7 +397,6 @@ repoServer:
     - name: repo-tmp
       mountPath: /repo-tmp        # Fix: use unique mount path
 
-  # ADVANCED METRICS AND MONITORING
   metrics:
     enabled: true
     serviceMonitor:
@@ -489,7 +407,6 @@ repoServer:
       interval: 30s
       scrapeTimeout: 10s
 
-  # RESOURCE ALLOCATION
   resources:
     requests:
       cpu: 100m      # Homelab scale - reduced for bootstrap
@@ -498,9 +415,7 @@ repoServer:
       cpu: 1000m     # Increased: 70% throttling at 500m
       memory: 1Gi    # Homelab scale - reduced memory limit
 
-  # REPO SERVER PERFORMANCE ENVIRONMENT VARIABLES
   extraEnv:
-    # Cache and Performance
     - name: TMPDIR
       value: "/repo-tmp"                   # Fix: match updated mount path
     - name: ARGOCD_EXEC_TIMEOUT
@@ -510,25 +425,20 @@ repoServer:
     - name: ARGOCD_REPO_SERVER_PARALLELISM_LIMIT
       value: "10"                          # Parallel manifest generation
 
-    # Enable GRPC metrics for Prometheus dashboards
     - name: ARGOCD_ENABLE_GRPC_TIME_HISTOGRAM
       value: "true"
 
-    # Go Runtime Optimization
     - name: GOGC
       value: "80"                          # Aggressive GC for memory efficiency
     - name: GOMEMLIMIT
       value: "3GiB"                        # Go memory limit
 
-    # Git Configuration
     - name: GIT_CONFIG_GLOBAL
       value: "/repo-cache/.gitconfig"      # Custom git config location
 
-    # Repository Cache Configuration
     - name: ARGOCD_REPO_CACHE_EXPIRATION
       value: "1h"                          # Faster cache invalidation
 
-    # CRITICAL: Prevent aggressive cache persistence that causes file reference errors
     - name: ARGOCD_REPO_SERVER_DISABLE_CACHE
       value: "false"                       # Keep cache but with short expiration
     - name: ARGOCD_REPO_SERVER_CACHE_EXPIRATION
@@ -536,7 +446,6 @@ repoServer:
     - name: ARGOCD_REPO_SERVER_STRICT_TLS
       value: "false"                       # Allow non-strict TLS for faster git operations
 
-    # REPO SERVER ANTI-HANG PROTECTION
 
     - name: ARGOCD_REPO_SERVER_TIMEOUT_SECONDS
       value: "120"                         # Kill hanging git operations after 2min
@@ -545,7 +454,6 @@ repoServer:
     - name: ARGOCD_REPO_SERVER_DISABLE_TLS_VERIFY
       value: "false"                       # Prevent TLS verification hangs
 
-  # DISABLED PERSISTENT CACHE FOR BOOTSTRAP (can enable later)
   persistence:
     enabled: false  # Disable for bootstrap - use emptyDir
     size: 20Gi
@@ -568,7 +476,6 @@ repoServer:
           type: RuntimeDefault
         capabilities:
           drop: [ ALL ]
-      # Homelab Stability: Resource limits for Kustomize+Helm plugin
       resources:
         requests:
           cpu: 50m
@@ -584,19 +491,7 @@ repoServer:
           subPath: kustomize-build-with-helm.yaml
         - mountPath: /tmp
           name: cmp-tmp
-  # Also avoid i5 server nodes
-  # NOTE 2026-08-02: "work-00"/"work-02" matchen KEINEN aktuellen Node-Namen
-  # (Cluster heißt ctrl-0/worker-1..5) — vermutlich stiller Rest von vor einer
-  # Node-Umbenennung, aktuell ein No-Op. Absichtlich unangetastet gelassen (Scope).
   #
-  # podAntiAffinity NEU (2026-08-02): beide repo-server-Replicas liefen auf
-  # DEMSELBEN Node (worker-4) — der PDB (oben) schützt nur vor freiwilligen
-  # Drains, nicht davor, dass ein Node-Event BEIDE Pods gleichzeitig killt. Genau
-  # das passierte: beide restarteten zeitgleich, der lokale git-Cache (emptyDir)
-  # wurde dabei korrupt ("index file smaller than expected") -> ComparisonError
-  # auf 70/73 Apps, ArgoCD blind für Drift, bis manuell entdeckt. "preferred"
-  # statt "required": bei nur 5 Workern soll ein Node-Ausfall nicht 1 Replica
-  # unschedulable machen — im Normalfall verteilt der Scheduler sie jetzt trotzdem.
   affinity:
     nodeAffinity:
       preferredDuringSchedulingIgnoredDuringExecution:
@@ -633,7 +528,6 @@ applicationSet:
       cpu: 1000m     # Allow burst processing
       memory: 2Gi
 
-  # APPLICATIONSET PERFORMANCE TUNING
   metrics:
     enabled: true
     serviceMonitor:
@@ -643,12 +537,9 @@ applicationSet:
         release: kube-prometheus-stack
 
   extraEnv:
-    # Removed duplicate REPO_SERVER_TIMEOUT - already in configs.params
     - name: ARGOCD_APPLICATIONSET_CONTROLLER_PARALLELISM_LIMIT
       value: "10"      # Process multiple ApplicationSets in parallel
 
 # REVERTED: Keep redis-secret-init enabled (default behavior)
-# The Job creates the argocd-redis secret automatically
-# Original issue was Helm hook causing ArgoCD sync hangs, but we need the secret
 redisSecretInit:
   enabled: true  # Keep default - auto-creates argocd-redis secret

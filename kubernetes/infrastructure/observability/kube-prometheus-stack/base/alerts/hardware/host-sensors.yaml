@@ -5,19 +5,12 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
-  # CPU-temp (PAGE: thermal-shutdown imminent >95 → host power-off kills its Talos workers)
-  # + NVMe-temp + heavy swap (nipogi runs RAM-overcommitted) → Grafana "Node Exporter /
-  # Nodes" dashboard. Host-memory dropped 2026-07-14: duplicated ProxmoxHostMemoryPressure
-  # (hosts) + NodeMemoryPressure (Talos).
   groups:
     - name: host-sensors
       interval: 1m
       rules:
         - alert: HostCPUTemperatureCritical
           expr: node_hwmon_temp_celsius{chip!~"nvme.*"} > 95
-          # 2m war zu kurz: msa2 k10temp (CPU) spitzt unter Ceph-Last transient >95°C und
-          # resolved selbst → Flap-Noise. 15m = nur SUSTAINED Hitze (echte Gefahr) alarmiert.
-          # nvme excluded → eigener HostNVMeTemperatureCritical (node_exporter labelt SSD-Hotspot sonst als "CPU")
           for: 15m
           labels:
             severity: critical
@@ -29,10 +22,6 @@ spec:
             description: "Thermal shutdown imminent — host may power off. Check airflow / dust / fan."
             action: "PHYSICAL: clean dust + check fan/airflow on the host; reduce load until temp drops below throttle."
         - alert: HostNVMeTemperatureCritical
-          # sensor="temp1" = COMPOSITE (== smartctl current, live verifiziert 51/79°C match).
-          # temp2/temp3 sind Controller-HOTSPOT-Sensoren, die bauartbedingt 20-30° heißer
-          # laufen — 2026-07-14 feuerte temp3=107°C auf der nipogi-Samsung, während
-          # Composite bei 79°C lag (Throttle ~82°C). Hotspot alarmieren = Dauer-False-Positive.
           expr: node_hwmon_temp_celsius{chip=~"nvme.*",sensor="temp1"} > 85
           for: 15m
           labels:
@@ -45,27 +34,16 @@ spec:
             description: "NVMe running hot — thermal-throttles and degrades Ceph performance."
             action: "PHYSICAL: add/reseat heatsink, improve airflow/dust; reduce write load."
 
-        # disabled — VMs bewusst overcommitted, Swap>30% ist Dauerzustand.
-        # HostSwapUsageHigh unten deckt echtes Thrashing bereits ab.
         # - alert: HypervisorSwapInUse
         #   expr: |
-        #     (node_memory_SwapTotal_bytes{job="proxmox-host-node"} - node_memory_SwapFree_bytes{job="proxmox-host-node"})
-        #       / clamp_min(node_memory_SwapTotal_bytes{job="proxmox-host-node"}, 1) > 0.3
         #   for: 15m
-        #   labels:
         #     severity: warning
         #     component: hardware
         #     priority: P2
-        #   annotations:
         #     dashboard_url: "/d/k8s-node-overview"
         #     summary: "Hypervisor {{ $labels.instance }}: {{ $value | humanizePercentage }} Swap belegt"
-        #     description: "Auf einem Virtualisierungs-Host bedeutet Swap fast immer ausgelagertes Gast-RAM → IO-Delay in den VMs, auch wenn der Host 'genug' RAM meldet. Ursache ist meist RAM-Ueberbuchung (VMs > ~85% Host-RAM)."
-        #     action: "ssh <host> 'swapoff -a && swapon -a' als Akut-Fix (nur wenn genug RAM frei); dauerhaft: VM-RAM right-sizen (qm set), Ziel <=85% Host-RAM."
 
         - alert: HostSwapUsageHigh
-          # Feuert nur bei ECHTEM Thrashing: Swap voll UND wenig RAM frei.
-          # (Swap>50% allein ist ein nachlaufender Wert — bleibt nach einem
-          #  Last-Peak voll, obwohl wieder RAM verfügbar ist → war Dauer-Noise.)
           expr: |
             (node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes) / clamp_min(node_memory_SwapTotal_bytes, 1) > 0.8
             and

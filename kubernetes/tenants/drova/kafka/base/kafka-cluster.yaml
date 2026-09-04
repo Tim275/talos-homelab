@@ -1,16 +1,12 @@
-# Drova Kafka — KRaft with dedicated controllers + brokers
 #
-# Split architecture (Strimzi docs recommend this for HA).
 # - 3 dedicated controllers (light pods, hold metadata quorum)
 # - 3 dedicated brokers (heavy pods, handle data + replication)
 # - Dual-role 3pods previously caused KRaft quorum deadlock in Strimzi 0.51 + Kafka 4.1.1
 #
-# Why split?
 #  - Controllers have small, fast-fsync workload (metadata-only)
 #  - Brokers have large, throughput-heavy workload (data replication)
 #  - Failure-domain separation: broker crash doesn't kill quorum
 
-# ─── CONTROLLER NodePool ─────────────────────────────────────────
 apiVersion: kafka.strimzi.io/v1
 kind: KafkaNodePool
 metadata:
@@ -30,8 +26,6 @@ spec:
         type: persistent-claim
         size: 2Gi
         class: rook-ceph-block-kafka
-        # deleteClaim=false → PVCs überleben KafkaNodePool-delete.
-        # Production-safety: bei versehentlichem prune sind ALLE metadata-PVCs nicht weg.
         deleteClaim: false
         kraftMetadata: shared
   resources:
@@ -53,7 +47,6 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
-      # REQUIRED anti-affinity for controllers: lose 1 node = lose 1 voter = still have quorum
       affinity:
         nodeAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -69,7 +62,6 @@ spec:
                   strimzi.io/controller-role: "true"
               topologyKey: kubernetes.io/hostname
 ---
-# ─── BROKER NodePool ─────────────────────────────────────────────
 apiVersion: kafka.strimzi.io/v1
 kind: KafkaNodePool
 metadata:
@@ -89,8 +81,6 @@ spec:
         type: persistent-claim
         size: 10Gi
         class: rook-ceph-block-kafka
-        # deleteClaim=false → PVCs überleben KafkaNodePool-delete.
-        # Production-safety für Drova-event-data (~10GB pro broker).
         deleteClaim: false
         kraftMetadata: shared
   resources:
@@ -112,7 +102,6 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
-      # Preferred anti-affinity for brokers (homelab has limited nodes)
       affinity:
         nodeAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -130,7 +119,6 @@ spec:
                     strimzi.io/broker-role: "true"
                 topologyKey: kubernetes.io/hostname
 ---
-# ─── Kafka cluster ───────────────────────────────────────────────
 apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
@@ -155,7 +143,6 @@ spec:
       timeoutSeconds: 30
       periodSeconds: 30
       failureThreshold: 20
-    # JMX Prometheus Exporter — required for KafkaBrokerDown alerts.
     metricsConfig:
       type: jmxPrometheusExporter
       valueFrom:
@@ -178,10 +165,6 @@ spec:
       default.replication.factor: 3
       min.insync.replicas: 2
       auto.create.topics.enable: "false"
-      # KRaft quorum tuning — CRITICAL: election.timeout is when leader-less
-      # controllers START an election. Setting it too high (e.g. 600000=10min)
-      # causes Controllers to never elect a leader on fresh boot!
-      # Defaults are good; only modest bumps for Ceph RBD slow-fsync.
       controller.quorum.election.timeout.ms: 10000
       controller.quorum.fetch.timeout.ms: 20000
       controller.quorum.election.backoff.max.ms: 1000
@@ -191,8 +174,6 @@ spec:
   kafkaExporter:
     topicRegex: ".*"
     groupRegex: ".*"
-    # Kyverno require-limits/require-requests: mem-Limit + cpu/mem-Requests
-    # (kein CPU-Limit → kein CFS-Throttle, wie die App via automaxprocs).
     resources:
       requests:
         cpu: "50m"

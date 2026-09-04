@@ -3,21 +3,16 @@ kind: Kustomization
 commonAnnotations:
   argocd.argoproj.io/sync-wave: "4"
 
-# Rook-Ceph Storage Infrastructure (CRDs Operator Cluster)
 
 namespace: rook-ceph
 
 resources:
-  # Upstream Rook-Ceph components (v1.18.7 - Latest December 2025)
   # https://github.com/rook/rook/releases
   - https://raw.githubusercontent.com/rook/rook/v1.18.7/deploy/examples/crds.yaml
   - https://raw.githubusercontent.com/rook/rook/v1.18.7/deploy/examples/common.yaml
   - https://raw.githubusercontent.com/rook/rook/v1.18.7/deploy/examples/operator.yaml
-  # CRITICAL: CSI Operator required for Rook v1.18+ (manages CSI drivers)
-  # The csi-operator.yaml deploys the ceph-csi-controller-manager and all CSI-related RBAC
   - https://raw.githubusercontent.com/rook/rook/v1.18.7/deploy/examples/csi-operator.yaml
 
-  # Enterprise components
   - priority-classes.yaml
   - cluster.yaml
   - pools.yaml
@@ -25,37 +20,23 @@ resources:
   - csi-kms.yaml
   - toolbox.yaml
 
-  # Monitoring
   - servicemonitor-ceph-mgr.yaml
   - servicemonitor-ceph-exporter.yaml
   - ceph-dashboard-prometheus-config.yaml
 
-  # Crash archiver — auto-archive ceph crashes every 6h
   - ceph-crash-archive.yaml
 
-  # CSI orphan omap cleanup — runs daily, removes stale csi.volume.* keys
-  # whose PVC no longer exists. Prevents "operation already exists" deadlocks.
   - csi-orphan-cleanup.yaml
 
-  # Released-PV cleanup — daily removes orphan PVs older than 24h.
-  # Pairs with default Retain reclaim policy: PVs survive long enough for
-  # recovery (1 day) but don't accumulate forever.
   - released-pv-cleanup.yaml
 
-  # PDBs für CSI controller plugins — verhindert dass beide Replicas
-  # gleichzeitig evicted werden (Node-Drain). Eviction mid-CreateVolume
-  # war Hauptauslöser der Stuck-CSI-Locks.
   - csi-pdb.yaml
 
-  # Gateway routing
   - http-route.yaml
 
-  # S3 users for Velero / Loki
   - velero-users.yaml
 
-# Enterprise and Talos-specific patches
 patches:
-  # Wave -10: CRDs must deploy first
   - target:
       kind: CustomResourceDefinition
     patch: |-
@@ -65,7 +46,6 @@ patches:
           argocd.argoproj.io/sync-wave: "-10"
           argocd.argoproj.io/sync-options: ServerSideApply=true
 
-  # Wave -10: Namespace and RBAC with CRDs
   - target:
       kind: Namespace
       name: rook-ceph
@@ -74,7 +54,6 @@ patches:
         path: /metadata/annotations/argocd.argoproj.io~1sync-wave
         value: "-10"
 
-  # Wave -5: Operator deployment after CRDs are ready
   - target:
       kind: Deployment
       name: rook-ceph-operator
@@ -85,7 +64,6 @@ patches:
           argocd.argoproj.io/sync-wave: "-5"
           argocd.argoproj.io/sync-options: Prune=false
 
-  # Wave 0: Cluster resources after operator is ready
   - target:
       kind: CephCluster
       name: rook-ceph
@@ -96,9 +74,6 @@ patches:
           argocd.argoproj.io/sync-wave: "0"
           argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 
-  # CSI Controller Plugin: resource limits to prevent OOM-kill mid-operation.
-  # OOM-kill during CreateVolume/DeleteVolume leaves orphaned goroutines holding
-  # in-memory volume locks "operation already exists" on every retry.
   - target:
       kind: Deployment
       name: rook-ceph.rbd.csi.ceph.com-ctrlplugin
@@ -113,7 +88,6 @@ patches:
             cpu: "500m"
             memory: "512Mi"
 
-  # CSI Node Plugin (DaemonSet): mount/unmount only — 256Mi is sufficient
   - target:
       kind: DaemonSet
       name: csi-rbdplugin
@@ -128,12 +102,6 @@ patches:
             cpu: "10m"
             memory: "64Mi"
 
-  # CSI Timeout Fix: lower from 150s to 30s
-  # Root cause of "operation already exists" deadlock:
-  # goroutine gets stuck (Ceph slow / RST_STREAM), holds in-memory volume lock
-  # for up to 150s. With 30s timeout goroutines fail fast lock released retry works.
-  # ROOK_CEPH_COMMANDS_TIMEOUT_SECONDS=15s so 30s gives 2x buffer.
-  # CSI_ENABLE_LIVENESS=true Kubernetes restarts the CSI pod if stuck.
   - target:
       kind: ConfigMap
       name: rook-ceph-operator-config
@@ -144,14 +112,10 @@ patches:
       - op: replace
         path: /data/CSI_ENABLE_LIVENESS
         value: "true"
-      # CSI Provisioner HA: 2 → 3 replicas. Failover beim Pod-Eviction
-      # passiert via Leader-Election innerhalb Sekunden statt Minuten.
-      # Reduziert Stuck-Lock-Risiko bei parallel Provisioning (Strimzi-Scaling).
       - op: add
         path: /data/CSI_PROVISIONER_REPLICAS
         value: "3"
 
-  # CRITICAL: Add Prometheus discovery labels to Ceph services
   - target:
       kind: Service
       name: rook-ceph-mgr
@@ -163,7 +127,6 @@ patches:
         path: /metadata/labels/release
         value: prometheus-operator
 
-  # Namespace enterprise labeling
   - target:
       kind: Namespace
       name: rook-ceph
@@ -179,7 +142,6 @@ patches:
           environment: production
           tier: storage
 
-  # Enterprise operator configuration (NOT a Ceph daemon - limits are OK here)
   - target:
       kind: Deployment
       name: rook-ceph-operator
@@ -211,7 +173,6 @@ patches:
         value:
           name: ROOK_ENABLE_DISCOVERY_DAEMON
           value: "true"
-      # ENABLED: CephFS for GitLab shared storage
       - op: add
         path: /spec/template/spec/containers/0/env/-
         value:

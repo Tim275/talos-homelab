@@ -5,12 +5,7 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
-  # Disk IO-saturation + read/write-latency → Grafana "Node Exporter / Disk" dashboard
-  # (rates/latencies are debug signals, not pages — and they flap under Ceph load).
-  # Root-fs fill: node-exporter only reports mountpoint="/" on the Proxmox HOSTS (Talos
-  # roots aren't exposed) → this is the <5% PAGE tier; ProxmoxRootDiskFull is the <15% warn.
   groups:
-    # ── PAGE ──
     - name: disk-io-page
       interval: 1m
       rules:
@@ -28,14 +23,10 @@ spec:
             description: "Node out of disk space imminent — write failures, stuck services."
             action: "SSH host; 'journalctl --vacuum-size=200M'; 'du -sh /var/*' to find the offender; prune images/logs."
 
-    # ── TICKET ──
     - name: disk-io-ticket
       interval: 1m
       rules:
         - alert: TalosNodeDiskFillingUp
-          # Talos node-exporter reports the writable partition as mountpoint="/var" (holds
-          # etcd, containerd images, logs). Nodes expose no "/" → this is the ONLY node
-          # disk-fill signal. Leading warn <15%; NodeDiskPressure (kubelet) is the lagging backstop.
           expr: |
             node_filesystem_avail_bytes{job="node-exporter",mountpoint="/var"}
             / node_filesystem_size_bytes{job="node-exporter",mountpoint="/var"} < 0.15

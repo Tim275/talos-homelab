@@ -5,11 +5,7 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
-  # ProxmoxClusterQuorumLost removed — msa2 + nipogi are 2 standalone hosts, not a PVE
-  # cluster (quorum N/A). High-load / disk-temp / near-full(85%) / pve-storage → Grafana
-  # "Proxmox" dashboard. ProxmoxNodeOffline stays disabled (pve-exporter has no API token).
   groups:
-    # ── PAGE ──
     - name: proxmox-page
       interval: 60s
       rules:
@@ -26,9 +22,6 @@ spec:
             action: "Check the Proxmox host ({{ $labels.instance }}) physically; SSH it; its VMs are down too — full-host outage."
 
         - alert: ProxmoxZfsPoolCritical
-          # node_zfs_zpool_alloc/size don't exist (node-exporter has no pool-capacity gauge).
-          # Repointed to pool HEALTH: faulted/unavail/suspended = data-loss state = page.
-          # (ProxmoxZfsPoolDegraded warns on any state!="online", incl. "degraded".)
           expr: node_zfs_zpool_state{job="proxmox-host-node",state=~"faulted|unavail|suspended|removed"} == 1
           for: 5m
           labels:
@@ -40,7 +33,6 @@ spec:
             description: "Pool in a data-loss state ({{ $labels.state }}) — VMs/Ceph on it at risk."
             action: "SSH the host; 'zpool status {{ $labels.zpool }}'; check failed disks, replace + resilver."
 
-    # ── TICKET ──
     - name: proxmox-ticket
       interval: 60s
       rules:

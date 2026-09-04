@@ -1,8 +1,4 @@
-# Auto-Verify Nightly Restore — Schrödinger's Backup eliminieren.
 #
-# Backup das nicht restorebar ist = kein Backup. Dieser CronJob restored täglich
-# um 04:00 UTC vom letzten Backup in Test-Namespace, validiert Restore.Phase=Completed,
-# cleanup, sendet Slack-Alert wenn Restore fehlschlägt.
 #
 # Backup-Schedule: tier0-databases-6h (alle 6h) → Backup-Name pattern: tier0-databases-6h-<TIMESTAMP>
 ---
@@ -46,10 +42,6 @@ metadata:
     app.kubernetes.io/name: velero-restore-verify
     app.kubernetes.io/part-of: backup-validation
 spec:
-  # 07:30 UTC — war 04:00 und lief damit exakt zeitgleich mit cnpg-dr-verify (jetzt 04:30).
-  # Beide zusammen mit dem 03:00-Backup-Nachlauf = I/O-Sturm auf cephpool/Samsung, wo auch
-  # etcd liegt → fsync-Spikes → leader-election-Verluste clusterweit (2026-07-20).
-  # 07:30 liegt frei zwischen der 06:00- und 12:00-tier0-Welle.
   schedule: "30 7 * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
@@ -79,9 +71,6 @@ spec:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
                 capabilities: { drop: [ALL] }
-              # Slack-Alert via Prometheus → Alertmanager: CronJob-Fail wird über
-              # KubeJobFailed Alert detected (siehe alerts/kubernetes/workloads.yaml).
-              # Slack-Webhook nicht direkt mountbar (cross-namespace secret-ref unsupported).
               volumeMounts:
                 - { name: tmp, mountPath: /tmp }
               command: [/bin/bash, -c]
@@ -94,7 +83,6 @@ spec:
 
                   echo "═══ DR-Verify-Run ${TS} ═══"
 
-                  # 1. Latest *Completed* Daily-Backup finden (skip FailedValidation/InProgress)
                   LATEST=$(kubectl get backups.velero.io -n velero \
                     -l velero.io/schedule-name=tier0-databases-6h \
                     --sort-by=.metadata.creationTimestamp \
@@ -112,7 +100,6 @@ spec:
 
                   echo "→ Found latest completed backup: $LATEST"
 
-                  # 3. Restore in Test-NS triggern (nur drova-postgres als Smoke-Test)
                   kubectl apply -f - <<EOF
                   apiVersion: velero.io/v1
                   kind: Restore
@@ -129,7 +116,6 @@ spec:
                   EOF
 
                   ERROR_REASON=""
-                  # 4. Wait for restore to complete (max 15min)
                   for i in $(seq 1 90); do
                     PHASE=$(kubectl get restores.velero.io -n velero "$RESTORE" -o jsonpath='{.status.phase}' 2>/dev/null)
                     if [ "$PHASE" = "Completed" ]; then
@@ -145,13 +131,9 @@ spec:
                     sleep 10
                   done
 
-                  # 5. Cleanup
                   kubectl delete restores.velero.io -n velero "$RESTORE" --ignore-not-found=true >/dev/null 2>&1
-                  # --wait=false: sonst blockiert der Delete bis der NS finalisiert ist und
-                  # der Job stirbt mit "timed out waiting for the condition" (2026-07-20).
                   kubectl delete ns "$TEST_NS" --ignore-not-found=true --wait=false >/dev/null 2>&1
 
-                  # 6. Final verdict — exit code triggers KubeJobFailed Prometheus alert
                   if [ "$PHASE" = "Completed" ]; then
                     echo "═══ ✓ DR-Verify SUCCESS for backup $LATEST ═══"
                     exit 0
@@ -159,8 +141,6 @@ spec:
                     echo "═══ ✗ DR-Verify FAILED ($ERROR_REASON) for backup $LATEST ═══"
                     exit 1
                   fi
-              # Bumped 2026-05-16 — was 500m + had stuck-12h job. Velero-restore
-              # orchestrates PVC-snapshot-restores → needs more CPU+RAM headroom.
               resources:
                 requests: { cpu: 100m, memory: 256Mi }
                 limits:   { cpu: 1500m, memory: 512Mi }

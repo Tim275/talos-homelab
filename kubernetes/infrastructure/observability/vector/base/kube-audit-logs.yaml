@@ -1,7 +1,4 @@
 ---
-# Kubernetes Audit Logs Collection
-# Purpose: Collect k8s API server audit logs for security compliance
-# Collected Events: Authentication, Authorization, Resource Changes
 
 apiVersion: v1
 kind: ConfigMap
@@ -12,48 +9,35 @@ data:
   audit-policy.yaml: |
     apiVersion: audit.k8s.io/v1
     kind: Policy
-    # Don't generate audit events for all requests in RequestReceived stage.
     omitStages:
       - "RequestReceived"
     rules:
-      # ═══════════════════════════════════════════════════════════════
-      # CRITICAL: Log pod exec/attach/portforward (security-sensitive)
-      # ═══════════════════════════════════════════════════════════════
       - level: RequestResponse
         resources:
           - group: ""
             resources: ["pods/exec", "pods/attach", "pods/portforward"]
         verbs: ["create"]
 
-      # ═══════════════════════════════════════════════════════════════
       # CRITICAL: Log secret/configmap changes
-      # ═══════════════════════════════════════════════════════════════
       - level: RequestResponse
         resources:
           - group: ""
             resources: ["secrets", "configmaps"]
         verbs: ["create", "update", "patch", "delete"]
 
-      # ═══════════════════════════════════════════════════════════════
       # HIGH: Log authentication/authorization failures
-      # ═══════════════════════════════════════════════════════════════
       - level: Metadata
         omitStages:
           - "RequestReceived"
         userGroups: ["system:unauthenticated"]
 
-      # ═══════════════════════════════════════════════════════════════
-      # MEDIUM: Log RBAC changes (roles, rolebindings)
-      # ═══════════════════════════════════════════════════════════════
       - level: RequestResponse
         resources:
           - group: "rbac.authorization.k8s.io"
             resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
         verbs: ["create", "update", "patch", "delete"]
 
-      # ═══════════════════════════════════════════════════════════════
       # MEDIUM: Log pod/deployment/statefulset changes
-      # ═══════════════════════════════════════════════════════════════
       - level: Request
         resources:
           - group: ""
@@ -62,9 +46,6 @@ data:
             resources: ["deployments", "statefulsets", "daemonsets"]
         verbs: ["create", "update", "patch", "delete"]
 
-      # ═══════════════════════════════════════════════════════════════
-      # LOW: Log everything else at Metadata level
-      # ═══════════════════════════════════════════════════════════════
       - level: Metadata
         omitStages:
           - "RequestReceived"

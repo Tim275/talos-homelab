@@ -11,8 +11,6 @@ metadata:
 spec:
   instances: 3
   imageName: ghcr.io/cloudnative-pg/postgresql:16.1
-  # Preemption + Eviction-Reihenfolge: DB wird zuletzt verdraengt
-  # (Klasse aus tenants/drova/kafka/base — Requests bewusst schlank gelassen)
   priorityClassName: platform-critical
   resources:
     requests:
@@ -51,12 +49,8 @@ spec:
       - GRANT ALL PRIVILEGES ON DATABASE drova_payments TO drova_admin;
       - GRANT ALL PRIVILEGES ON DATABASE drova_drivers TO drova_admin;
   affinity:
-    # Required for production: 3-instance HA must NEVER place 2 replicas on same node.
-    # 8 worker nodes — plenty of capacity. preferred was a homelab-shortcut.
     podAntiAffinityType: required
     topologyKey: kubernetes.io/hostname
-    # preferred, nicht required: der harte zone-Spread unten laesst sonst bei
-    # einem Node-Ausfall keine Ausweichflaeche mehr.
     nodeAffinity:
       preferredDuringSchedulingIgnoredDuringExecution:
         - weight: 100
@@ -65,10 +59,6 @@ spec:
               - key: node-pool
                 operator: In
                 values: [stateful]
-  # Zone-Spread HART: nie alle 3 Instanzen auf einem Proxmox-Host.
-  # ScheduleAnyway verlor gegen das RAM-Scoring (alle 3 landeten auf msa2 = Totalausfall-Risiko).
-  # Trade-off: bei echtem Zonen-Ausfall kann die 3. Instanz Pending bleiben — akzeptiert,
-  # dafür überlebt garantiert eine Instanz in der anderen Zone.
   topologySpreadConstraints:
     - maxSkew: 1
       topologyKey: topology.kubernetes.io/zone
@@ -77,7 +67,6 @@ spec:
         matchLabels:
           cnpg.io/cluster: drova-postgres
           cnpg.io/podRole: instance
-  # Rook-Ceph disk I/O is slow — replicas need more time for WAL replay on startup
   probes:
     startup:
       failureThreshold: 60

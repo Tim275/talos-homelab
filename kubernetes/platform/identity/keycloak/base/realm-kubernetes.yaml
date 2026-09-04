@@ -1,8 +1,5 @@
 realm: kubernetes
 displayName: "Kubernetes Homelab"
-# frontendUrl forces all action-tokens (welcome/reset emails) to use
-# the public hostname even if API was called via port-forward.
-# Battle-tested 2026-05-09 — vorher leakte port-forward host in welcome-mails.
 attributes:
   frontendUrl: "https://iam.timourhomelab.org"
 enabled: true
@@ -19,7 +16,6 @@ failureFactor: 5
 waitIncrementSeconds: 60
 maxFailureWaitSeconds: 900
 quickLoginCheckMilliSeconds: 1000
-# SMTP — Resend (configured via env-vars from sealed-secret/keycloak-smtp)
 smtpServer:
   host: "smtp.resend.com"
   port: "587"
@@ -33,7 +29,6 @@ smtpServer:
   auth: "true"
   user: "$(SMTP_USER:-resend)"
   password: "$(SMTP_PASSWORD)"
-# Audit Events → stdout → Vector → ES logs-* index
 eventsEnabled: true
 eventsExpiration: 2592000
 eventsListeners:
@@ -58,18 +53,15 @@ enabledEventTypes:
   - IDENTITY_PROVIDER_LOGIN
 adminEventsEnabled: true
 adminEventsDetailsEnabled: true
-# Token lifetimes
 accessTokenLifespan: 3600 # 1h
 ssoSessionIdleTimeout: 1800 # 30min
 ssoSessionMaxLifespan: 36000 # 10h
-# Realm-Roles
 roles:
   realm:
     - name: grafana-admin
       description: "Grafana GrafanaAdmin role"
     - name: grafana-editor
       description: "Grafana Editor role"
-# Groups (LDAP-Federation will sync these from LLDAP, but defining here ensures they exist)
 groups:
   - name: cluster-admins
     path: /cluster-admins
@@ -77,16 +69,10 @@ groups:
       - grafana-admin
   - name: argocd-admins
     path: /argocd-admins
-# Default-roles attached to every user (not modified)
 defaultRole:
   name: default-roles-kubernetes
   composite: true
   clientRole: false
-# ── 2FA enforcement (TOTP via Authenticator-App) ──────────────────────
-# Phase 4 (re-enabled 2026-05-06 nach Phase D fix):
-# Jeder neue User → CONFIGURE_TOTP als Required-Action.
-# Beim ersten Browser-Login zeigt KC QR-Code für Authy/Google Authenticator.
-# WICHTIG: blockt grant_type=password (curl) — Test ausschließlich via Browser.
 requiredActions:
   - alias: CONFIGURE_TOTP
     name: "Configure OTP"
@@ -100,15 +86,11 @@ requiredActions:
     enabled: true
     defaultAction: false
     priority: 30
-# OTP Policy
 otpPolicyType: totp
 otpPolicyAlgorithm: HmacSHA1
 otpPolicyDigits: 6
 otpPolicyPeriod: 30
 otpPolicyLookAheadWindow: 1
-# ── CLIENT SCOPES ──────────────────────────────────────────────────────
-# 'groups' scope: maps user's KC groups to JWT 'groups' claim.
-# ArgoCD/Grafana use this for RBAC: cluster-admins → role:admin etc.
 clientScopes:
   - name: groups
     description: "Group membership (mapped to 'groups' JWT claim)"
@@ -128,9 +110,6 @@ clientScopes:
           id.token.claim: "true"
           access.token.claim: "true"
           userinfo.token.claim: "true"
-  # Standard OIDC scopes — a clientScopes block suppresses Keycloak's built-in
-  # defaults, so profile/email/roles must be defined here or argocd/grafana
-  # requesting them fails with "Invalid scopes".
   - name: profile
     protocol: openid-connect
     attributes:
@@ -209,7 +188,6 @@ clientScopes:
           id.token.claim: "false"
           access.token.claim: "true"
           userinfo.token.claim: "false"
-# ── LDAP USER FEDERATION (LLDAP) ──────────────────────────────────────
 components:
   org.keycloak.storage.UserStorageProvider:
     - name: lldap-federation
@@ -279,10 +257,6 @@ components:
         connectionPooling: ["true"]
         pagination: ["false"]
         # UNSYNCED: LDAP = Source-of-Truth for IDENTITY (id, email, groups).
-        # KC stores PASSWORDS + TOTP locally → User Self-Service (UPDATE_PASSWORD,
-        # CONFIGURE_TOTP) funktioniert ohne LDAP-write.
-        # Trade-off: bei KC-DB-Loss sind Passwörter weg (Welcome-Mail re-trigger).
-        # Battle-tested 2026-05-09: READ_ONLY → "Federated storage is not writable".
         editMode: ["UNSYNCED"]
         syncRegistrations: ["false"]
         importEnabled: ["true"]
@@ -291,7 +265,6 @@ components:
         fullSyncPeriod: ["-1"]
         changedSyncPeriod: ["86400"]
         trustEmail: ["true"]
-# ── OIDC CLIENTS ───────────────────────────────────────────────────────
 clients:
   - clientId: argocd
     enabled: true
@@ -336,9 +309,6 @@ clients:
       - email
       - roles
       - groups
-    # Der geteilte roles-Scope schreibt nach realm_access.roles und nur ins
-    # Access-Token. Grafanas role_attribute_path liest roles[*] aus ID-Token
-    # und userinfo — dieser Mapper legt es dort ab.
     protocolMappers:
       - name: grafana-realm-roles
         protocol: openid-connect
@@ -371,11 +341,6 @@ clients:
       - email
       - roles
       - groups
-    # offline_access — kubelogin requests it by default for refresh-tokens.
-    # battle-tested 2026-05-14: ohne diesen scope → "Invalid scopes:
-    # email groups profile offline_access openid" beim Browser-Login →
-    # kubectl OIDC komplett broken. Optional-Scope reicht (kubelogin
-    # requested es, KC stellt's bereit, andere Clients ignorieren).
     optionalClientScopes:
       - offline_access
   - clientId: hubble

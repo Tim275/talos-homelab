@@ -1,5 +1,4 @@
 ---
-# Grafana
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:
@@ -22,14 +21,7 @@ spec:
                 - name: CF-Connecting-IP
                   type: Distinct
 ---
-# ArgoCD — UI ist polling-heavy (status pro App alle 10s × 65 Apps = ~400/min minimum).
-# 2000/min gibt Headroom für UI-Navigation + Concurrent-User + WebSocket-Heartbeats.
 #
-# StickySession via ConsistentHash CF-Connecting-IP:
-# Verhindert "data length is less than nonce size" Fehler bei 2+ argocd-server Replicas.
-# OIDC-Session wird auf einem Pod erstellt — wenn nächster Request auf anderem Pod landet,
-# kann session-cookie nicht entschlüsselt werden (selbst mit shared Redis race-condition möglich).
-# Sticky-Session pinned User auf einen Pod → Session konsistent.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:
@@ -57,7 +49,6 @@ spec:
             - headers:
                 - name: CF-Connecting-IP
                   type: Distinct
-  # 2026-05-16 — Resilience gegen 504s (Cilium-WireGuard pod-to-pod blips)
   healthCheck:
     active:
       timeout: 3s
@@ -87,7 +78,6 @@ spec:
       triggers: [connect-failure, refused-stream, reset-before-request, retriable-status-codes]
       httpStatusCodes: [502, 503, 504]
 ---
-# Keycloak
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:
@@ -115,8 +105,6 @@ spec:
             - headers:
                 - name: CF-Connecting-IP
                   type: Distinct
-  # 2026-05-16 — Resilience gegen transient 504s (Cilium-WireGuard pod-to-pod blips)
-  # Health-check kicks bad pods aus dem upstream-pool — Envoy routet auf gesunden Pod
   healthCheck:
     active:
       timeout: 3s
@@ -127,18 +115,15 @@ spec:
       http:
         path: /health/ready
         expectedStatuses: [200]
-  # Circuit-Breaker: zu viele failing requests → fail-fast statt timeout
   circuitBreaker:
     maxConnections: 100
     maxPendingRequests: 50
     maxParallelRequests: 100
     maxParallelRetries: 5
-  # TCP-Keepalive: hält idle connections warm (verhindert reset-by-peer)
   tcpKeepalive:
     idleTime: 30s
     interval: 5s
     probes: 3
-  # Retry auf 502/503/504 — bei intermittenten pod-to-pod issues
   retry:
     numRetries: 2
     perRetry:
@@ -149,7 +134,6 @@ spec:
       triggers: [connect-failure, refused-stream, reset-before-request, retriable-status-codes]
       httpStatusCodes: [502, 503, 504]
 ---
-# Kibana
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:

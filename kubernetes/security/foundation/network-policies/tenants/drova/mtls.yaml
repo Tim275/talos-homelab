@@ -1,14 +1,3 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# Drova mTLS — Cilium Mutual Authentication (SPIFFE/SPIRE), eine Policy pro Service.
-# Muster (alle 6 Services unten gleich, nur Ports unterscheiden sich):
-#   authentication.mode: required → East-West (drova↔drova) MUSS mTLS sein. Cilium prüft
-#     per SPIFFE-SVID (von SPIRE) beide Identitäten, WireGuard verschlüsselt — die App
-#     selbst braucht KEINEN TLS-Code (eBPF macht's transparent).
-#     ⚠ SPIRE down ⇒ dieser Traffic wird still GEDROPPT (siehe SPIREAgentDown-Alert).
-#   KEIN auth für: gateway/cloudflared (Edge-Ingress, TLS endet am Envoy/CF-Tunnel),
-#     monitoring (Prometheus-Scrape), host/kube-apiserver (kubelet-Health-Probes).
-#   Alles andere: default-deny.yaml.
-# ─────────────────────────────────────────────────────────────────────────────
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -38,14 +27,12 @@ spec:
       toPorts:
         - ports:
             - { port: "8081", protocol: TCP }
-    # Prometheus-Scrape ⇒ kein mTLS
     - fromEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: monitoring
       toPorts:
         - ports:
             - { port: "8081", protocol: TCP }
-    # kubelet-Health-Probes + apiserver ⇒ kein mTLS
     - fromEntities: [host, kube-apiserver]
       toPorts:
         - ports:

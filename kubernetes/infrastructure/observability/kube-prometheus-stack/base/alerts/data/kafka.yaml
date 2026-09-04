@@ -5,10 +5,6 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
-  # Symptom-level only. JVM/GC/heap/old-gen/controller-churn/event-loop/lag-internals
-  # are cause-detectors → Grafana "Strimzi Kafka" dashboard (Google-SRE: page on symptom,
-  # not cause). Drova-kafka duplicates folded into the generic rules. Kafka is not in the
-  # active-apps set → ticket-tier (no 3am page for the demo message bus).
   groups:
     - name: kafka
       interval: 1m
@@ -27,9 +23,6 @@ spec:
             description: "KRaft cannot elect a leader — all metadata ops blocked, producers/consumers cannot connect."
             action: "kubectl -n {{ $labels.namespace }} get pod -l strimzi.io/controller-role=true + logs; do NOT delete all controllers (KRaft quorum)."
 
-        # Die zwei "MUSS 0"-Fruehwarner (Datenverlust-Vorstufe):
-        # UnderReplicated feuert BEVOR UnderMinISR (Producer laufen noch,
-        # aber ein weiterer Broker-Ausfall = Verlustgefahr).
         - alert: KafkaUnderReplicatedPartitions
           expr: sum(kafka_server_replicamanager_underreplicatedpartitions) > 0
           for: 5m

@@ -5,9 +5,6 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
-  # Single-node ES is permanently YELLOW (replicas unassigned) → ClusterYellow removed
-  # (would alert forever). UnassignedPrimaryShards == ClusterRed (dup) removed.
-  # Heap/GC-internals → Grafana "Elasticsearch" dashboard.
   groups:
     - name: elasticsearch
       interval: 1m
@@ -25,21 +22,14 @@ spec:
             description: "Primary shards unassigned — log/SIEM data unavailable. Check disk + node health."
             action: "'GET _cluster/allocation/explain' for unassigned primaries; free disk if a watermark is hit; check node health."
 
-        # ElasticsearchClusterYellow — BEWUSST DEAKTIVIERT (nur auskommentiert, 2026-07-14):
-        # single-node ES = Replicas nie zuweisbar = IMMER yellow → Dauer-Noise. Wurde beim
-        # 05-23-Prune entfernt, überlebte aber als Zombie in vector/logging-alerts.yaml (dort
-        # konsolidiert + gelöscht). Re-enable NUR bei echtem Multi-Node-ES.
         # - alert: ElasticsearchClusterYellow
         #   expr: elasticsearch_cluster_health_status{color="yellow"} == 1
         #   for: 15m
-        #   labels:
         #     severity: warning
         #     component: data
         #     priority: P2
-        #   annotations:
         #     dashboard_url: "/d/elasticsearch"
         #     summary: "Elasticsearch cluster YELLOW"
-        #     description: "Replicas unassigned >15min — nur relevant bei Multi-Node."
 
         - alert: ElasticsearchDiskFillingUp
           expr: |
@@ -56,10 +46,6 @@ spec:
             description: "{{ $value | humanizePercentage }} used. ES blocks writes at 95% (flood watermark)."
             action: "Free ES disk: delete old indices or lower ILM retention before the 95% flood watermark blocks writes."
 
-        # elasticsearch_slm_stats_last_success_timestamp_seconds gibt es in
-        # exporter v1.10 NICHT — der Alert war blind, auch nach dem 403-Fix.
-        # Vorhanden sind Zaehler je policy. Guard >0: frischer Cluster ohne je
-        # einen Snapshot soll nicht feuern; for:6h gibt dem Counter Historie.
         - alert: ElasticsearchSnapshotStale
           expr: |
             increase(elasticsearch_slm_stats_snapshots_taken_total[2d]) == 0

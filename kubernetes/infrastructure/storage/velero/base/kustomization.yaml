@@ -2,9 +2,6 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: velero
 
-# HINWEIS: velero-s3-credentials wird DYNAMISCH vom init-velero-buckets-job erstellt!
-# Der Job holt die Credentials vom Rook-generierten Secret und erstellt die Buckets.
-# Das SealedSecret ist nur als Backup falls der Job fehlschlägt.
 
 resources:
   - namespace.yaml
@@ -20,13 +17,7 @@ helmCharts:
     namespace: velero
     includeCRDs: true
     valuesInline:
-      # DISABLED 2026-05-15: bitnamilegacy/kubectl:1.36 returns 404 (Bitnami deprecation Oct 2025)
-      # CRD-Upgrades laufen via includeCRDs + ArgoCD-SSA — kein upgrade-Job nötig.
       upgradeCRDs: false
-      # Image-Pin entfernt 2026-07-15: tag folgt der Chart-appVersion (11.4.0 = v1.17.1).
-      # Vorher divergierte v1.15.0-Pin vom Chart → EINE Versions-Quelle, Renovate
-      # managt nur noch die Chart-Version. Kein replicas-Value: Chart 11.x hardcodet
-      # replicas=1 — Velero-Server ist Singleton by design (kein active-active).
       credentials:
         useSecret: true
         existingSecret: velero-s3-credentials
@@ -46,9 +37,6 @@ helmCharts:
               s3Url: http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
               insecureSkipTLSVerify: "true"
               checksumAlgorithm: ""  # Ceph RGW rejects SDK-v2 CRC32 checksums
-          # WORM: S3 Object Lock COMPLIANCE 14d. Velero kann hier NICHT loeschen —
-          # das ist der Zweck. Expired-Backup-Reaper laeuft trotzdem und loggt
-          # AccessDenied; das ist erwartet, kein Defekt.
           - name: worm-backups
             provider: aws
             bucket: velero-worm-backups
@@ -67,26 +55,12 @@ helmCharts:
               s3Url: http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
               insecureSkipTLSVerify: "true"
               checksumAlgorithm: ""  # Ceph RGW rejects SDK-v2 CRC32 checksums
-          # OPTIONAL: AWS S3 Offsite Backup (Disaster Recovery)
-          # ACTIVATION STEPS:
-          # 1. Create AWS S3 bucket: timour-homelab-velero-dr
-          # 2. Create IAM user with S3 full access policy
-          # 3. Create sealed-secret-aws.yaml with AWS credentials (see template below)
-          # 4. Uncomment sealed-secret-aws.yaml in resources section
-          # 5. Uncomment this BackupStorageLocation
-          # 6. Uncomment AWS schedules in velero-schedules/backup-schedules-aws.yaml
-          # 7. kubectl apply -f infrastructure/storage/velero/
-          # Estimated cost: EUR 0.50/month for ~50GB (Glacier Instant Retrieval)
           # - name: aws-s3-offsite
           #   provider: aws
           #   bucket: timour-homelab-velero-dr
-          #   credential:
           #     name: velero-aws-credentials
           #     key: cloud
-          #   config:
           #     region: eu-central-1  # Frankfurt (closest to Germany)
-        # kopia repo-maintain-jobs liefen ohne requests/limits → Kyverno
-        # audit-require-limits/-requests Violation-Flut alle ~5min (2026-07-15)
         repositoryMaintenanceJob:
           repositoryConfigData:
             name: velero-repo-maintenance
@@ -134,8 +108,6 @@ helmCharts:
         extraVolumeMounts:
           - name: udmrepo-cache
             mountPath: /udmrepo
-      # ENCRYPTION - Client-Side with Kopia
-      # Backups are encrypted BEFORE upload to S3!
       # Note: defaultVolumesToFsBackup removed - use opt-in annotation instead
       podSecurityContext:
         runAsNonRoot: true
@@ -147,7 +119,6 @@ helmCharts:
         capabilities:
           drop:
             - ALL
-        # readOnlyRootFilesystem: true  # Disabled - Velero/Kopia needs write access to /udmrepo
         runAsNonRoot: true
       extraVolumes:
         - name: udmrepo-cache
