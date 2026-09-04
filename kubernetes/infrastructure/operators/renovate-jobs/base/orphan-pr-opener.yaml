@@ -1,14 +1,3 @@
-## Auto-PR-Opener — Workaround for Renovate v43 "Repository has changed" Quirk
-##
-## Renovate v43 has a known bug: after creating a branch + pushing commit,
-## the next ref-check detects the push itself as "repo changed" → abort.
-## Operator does NOT auto-retry on this specific error.
-##
-## This CronJob runs 10min after each scheduled Renovate-Run (operator schedule:
-## 0/30 */2 * * *), finds orphan-branches, creates PRs via GitHub-API.
-##
-## Smart title-parsing: detects update-type from branch-name and uses
-## Renovate-style commit-prefixes (fix:/feat:/chore:).
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -19,7 +8,6 @@ metadata:
     app.kubernetes.io/part-of: devops-platform
 spec:
   schedule: "*/5 * * * *"   # every 5min — passt zu Renovate /30 schedule
-                            # safety: <24h age + <5 commits ahead filter
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 2
   failedJobsHistoryLimit: 3
@@ -44,14 +32,6 @@ spec:
               command: ["/usr/local/bin/python3", "-c"]
               args:
                 - |
-                  ## v43-Quirk Workaround: Renovate v43 erstellt Branches aber abortet
-                  ## vor PR-Creation ("Repository has changed during renovation - aborting").
-                  ## Dieser Script öffnet PRs für orphan Renovate-Branches.
-                  ##
-                  ## SAFETY-FEATURES (battle-tested 2026-05-12):
-                  ##   1. Max-age 24h: keine PRs für stale-branches die Wochen alt sind
-                  ##   2. Max-ahead 5 commits: stale branches haben oft 30+ commits drift
-                  ##   3. Skip if branch can't fast-forward (Konflikte = wahrscheinlich stale)
                   import json, os, re, urllib.request, urllib.error
                   from datetime import datetime, timezone, timedelta
                   REPOS = ["Tim275/drova", "Tim275/talos-homelab"]

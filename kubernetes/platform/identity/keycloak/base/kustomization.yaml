@@ -2,15 +2,10 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: keycloak
 
-# Phase D (2026-05-06): Realm-as-Code via KeycloakRealmImport CR.
-# Replaces 5 imperative setup-jobs (mfa, ldap-federation, oidc-client, argocd-client,
-# druid-client) with single declarative realm-import.yaml. No more setup-job race
-# conditions, no more federation duplicates, no more drift between live + git.
 
 resources:
   - namespace.yaml
 
-  # Sealed Secrets (creds für KC + LDAP + OIDC clients)
   - admin-sealed-secret.yaml             # KC admin login
   - db-credentials-sealed.yaml           # KC ↔ Postgres
   - lldap-admin-sealed-secret.yaml       # LDAP-Federation bindCredential
@@ -19,38 +14,20 @@ resources:
   - kubectl-client-sealed-secret.yaml      # kubernetes (kubectl OIDC) client secret
   - smtp-sealed-secret.yaml                # Resend SMTP creds (User-Onboarding emails)
 
-  # Operator-managed KC StatefulSet
   - keycloak-cr.yaml
   - pdb.yaml                              # PodDisruptionBudget (Operator macht keine auto)
 
-  # Realm-as-Code via keycloak-config-cli — substitutes $(VAR) secrets from env
-  # natively, so client secrets + LDAP bind are correct on every run. Replaces the
-  # operator KeycloakRealmImport + the bind-reconcile CronJob. Adding a service = one
-  # client block in realm-kubernetes.yaml (mounted via configMapGenerator below).
   - keycloak-config-cli.yaml
   - hubble-client-sealed-secret.yaml       # hubble OIDC client secret (Envoy SecurityPolicy)
 
-  # Phase D iter-2: Enforce CONFIGURE_TOTP für existing LDAP-federated users
-  # (defaultAction=true im realm-import wirkt nur für NEW users).
-  # PostSync-Hook, idempotent, skippt User die TOTP schon konfiguriert haben.
   - 2fa-enforce-existing-users.yaml
 
-  # Daily DR backup of realm-config to PVC (Phase A)
   - realm-export-cronjob.yaml
 
-  # 2026-05-16 — Monitoring nach Infinispan-Outage
   - monitoring.yaml              # ServiceMonitor (alerts → kps alerts tree, 2026-07-14)
-  # cluster-health-cronjob.yaml ENTFERNT 2026-07-15: prüfte hart auf READY==3,
-  # KC läuft aber 1 Replica → der "Auto-Heal" restartete SSO ALLE 30min.
-  # Mit 1 Replica kein Infinispan-Clustering; Hänger fängt die Liveness-Probe,
-  # echten Ausfall der KeycloakDown-Alert.
 
-  # Public route via envoy gateway
   - httproute.yaml
 
-  # Phase-D-Altbestand (imperative setup-jobs, deployment/service/certificate/
-  # enterprise-config) 2026-07-15 GELÖSCHT — ersetzt durch realm-import +
-  # keycloak-cr.yaml; bei Bedarf: git-history.
 
 configMapGenerator:
   - name: keycloak-realm-config

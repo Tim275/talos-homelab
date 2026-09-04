@@ -16,7 +16,6 @@ spec:
           - resources:
               namespaces: ["kube-system", "kyverno", "argocd"]
       validate:
-        # Enforce seit 2026-07-19 — PolicyReports zeigten 0 Violations nach Soak.
         failureAction: Enforce
         message: "Using a mutable image tag like ':latest' is not allowed; pin a version."
         pattern:
@@ -61,11 +60,6 @@ spec:
   background: true
   rules:
     - name: require-memory-limits
-      # Memory is incompressible → a container without a memory limit can OOM the whole node,
-      # and it is invisible to ContainerMemoryHigh/ContainerMemoryLeakSuspected (both divide
-      # by the limit). Audit-only: reports via PolicyReport, blocks nothing. CPU limits are
-      # deliberately NOT required — CPU is compressible; a blanket cpu-limit causes harmful
-      # throttling. Runaway CPU is caught by ContainerCPUThrottlingHigh on capped workloads.
       match:
         any:
           - resources:
@@ -89,11 +83,6 @@ kind: ClusterPolicy
 metadata:
   name: audit-verify-drova-signatures
 spec:
-  # ENFORCE seit 2026-07-21: Signatur-Gate ist scharf (Name behalten für
-  # Report-Kontinuität; Umbenennung = kosmetisches Follow-up).
-  # failurePolicy Fail = fail-closed: Webhook-Ausfall darf kein stiller
-  # Bypass sein, sonst ist das Gate dekorativ. Scope: NUR ns drova,
-  # NUR ghcr.io/tim275/drova/* — Platform-Images unberührt.
   failurePolicy: Fail
   webhookTimeoutSeconds: 30
   background: false

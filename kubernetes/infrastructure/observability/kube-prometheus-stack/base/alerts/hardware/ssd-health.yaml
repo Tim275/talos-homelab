@@ -5,17 +5,11 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
-  # SSD-death pages on "failing NOW" (media errors / NVMe critical-warning bitfield).
-  # Wear% + spare% + temp are gradual → ticket / Grafana "smartctl" dashboard. The
-  # proactive SSD monitoring (smartctl_exporter :9633) the homelab set up in 2026-05.
   groups:
-    # ── PAGE — disk is failing now ──
     - name: ssd-page
       interval: 5m
       rules:
         - alert: SSDCriticalWarning
-          # value 2 = temperature-only bit → gehört zu HostNVMeTemperatureCritical (Kühlung),
-          # NICHT "Disk stirbt". Nur bits spare/reliability/read-only/backup pagen hier.
           expr: smartctl_device_critical_warning > 0 and smartctl_device_critical_warning != 2
           for: 5m
           labels:
@@ -39,11 +33,6 @@ spec:
             description: "Uncorrectable NAND errors — the drive is failing. Back up + replace (Ceph replicas on the other node protect cluster data)."
 
         - alert: SSDSmartHealthFailed
-          # Overall SMART self-assessment = FAILED (distinct from the NVMe critical-warning
-          # bitfield above — this is the drive's own pass/fail verdict). Moved here 2026-07-14
-          # from proxmox.yaml to co-locate all smartctl_exporter alerts; label fixed disk→device.
-          # NVMe smart_status=FAILED wird aus critical_warning abgeleitet → bei reinem
-          # Temp-Bit (value 2) ist das ein Fehlalarm (Disk ok, nur heiss). Temp-Bit ausschliessen.
           expr: smartctl_device_smart_status == 0 and on(instance, device) smartctl_device_critical_warning != 2
           for: 5m
           labels:
@@ -55,7 +44,6 @@ spec:
             description: "Drive's overall SMART self-assessment = FAILED (nicht nur Temp) — replace soon (data-loss risk; Ceph replicas on the other node protect cluster data)."
             action: "SSH the host; 'smartctl -a /dev/{{ $labels.device }}'; plan a disk replacement."
 
-    # ── TICKET — wearing out / blind spot ──
     - name: ssd-ticket
       interval: 5m
       rules:

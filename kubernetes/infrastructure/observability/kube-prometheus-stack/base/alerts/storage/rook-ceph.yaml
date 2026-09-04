@@ -5,12 +5,7 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
-  # CephClusterDown (==3) removed — ceph_health_status is only 0/1/2, so it never fired.
-  # CephHealthError(==2) is the real cluster-error page. Dropped HEALTH_WARN (too noisy —
-  # benign warns), the OSDDown/SlowOps/Capacity Info+Warning duplicates, and PG-recovery/
-  # slow-ops internals → Grafana "Ceph - Cluster" / "Ceph - OSD" dashboards.
   groups:
-    # ── PAGE ──
     - name: ceph-page
       interval: 30s
       rules:
@@ -38,7 +33,6 @@ spec:
             description: "More than 50% of OSDs down — DATA LOSS RISK, storage unavailable."
             action: "kubectl -n rook-ceph get pod -l app=rook-ceph-osd; check node/disk of down OSDs; do NOT restart all OSDs at once."
 
-    # ── TICKET ──
     - name: ceph-ticket
       interval: 60s
       rules:
@@ -56,10 +50,6 @@ spec:
             action: "kubectl -n rook-ceph logs -l app=rook-ceph-osd; check host SSD SMART (smartctl); reschedule OSD pod if node-local."
 
         - alert: CephPGsNotActive
-          # Targeted replacement for the dropped (noisy) blanket HEALTH_WARN: fires ONLY when
-          # PGs are genuinely not active (stuck peering / inactive = data unavailable), which
-          # benign warns (scrub, nearfull) never cause. A 12h stuck-peering deadlock from a
-          # broken cross-node WireGuard link (encrypt-node, 2026-05-24) went completely unalerted.
           expr: (ceph_pg_total - ceph_pg_active) > 0
           for: 15m
           labels:
@@ -98,13 +88,8 @@ spec:
             description: "Operator unreachable >5min — Ceph reconcile/management operations blocked."
             action: "kubectl -n rook-ceph rollout restart deploy/rook-ceph-operator; check operator logs."
 
-        # RGWBucketQuotaWarning removed: the Ceph mgr prometheus module doesn't export
-        # ceph_rgw_bucket_* (no per-bucket quota metrics) → was a permanently-blind alert.
 
         - alert: CephSlowOps
-          # Service-level signal for BlueStore slow-ops (HEALTH_WARN). Replaces the noisy
-          # upstream NodeDiskIOSaturation (disabled in values-prod) which false-fires on
-          # Ceph disks. Ticket-tier: slow-ops = degraded performance, not an outage.
           expr: ceph_health_detail{name="BLUESTORE_SLOW_OP_ALERT"} > 0
           for: 15m
           labels:
@@ -118,8 +103,6 @@ spec:
             action: "Toolbox: 'ceph health detail' (which OSDs) + 'ceph osd perf' (latency); check disk SMART + the heaviest write-load on that node."
 
         - alert: CephMonClockSkew
-          # mon clock skew → quorum instability + cert/SVID/SA-token auth risk (same NTP root
-          # as TalosNodeClockSkew / SPIRE). Service-level via ceph_health_detail.
           expr: ceph_health_detail{name="MON_CLOCK_SKEW"} > 0
           for: 10m
           labels:

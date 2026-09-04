@@ -5,13 +5,7 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
-  # Dedup'd 2026-05-23: dropped the inferior up==0 PrometheusDown/AlertmanagerDown
-  # (+ their Warning/Info twins) — the kube-state *PodMissing alerts below are
-  # strictly better (catch the Phase=Succeeded gap that up{} misses, HA-aware).
-  # Cardinality/ingestion-rate → Grafana "Prometheus"/"Loki" dashboards. Kubescape
-  # disabled → its target-down alert removed.
   groups:
-    # ── PAGE — monitoring itself is blind ──────────────────────────────────
     - name: observability-page
       interval: 30s
       rules:
@@ -43,7 +37,6 @@ spec:
             description: "Fewer ready AM pods than desired >10min. A single dead AM can stay invisible (HA majority). Fix: kubectl delete pod -n monitoring <name> --force."
             action: "kubectl delete pod -n monitoring -l app.kubernetes.io/name=alertmanager --force (a single dead AM hides behind HA majority)."
 
-    # ── TICKET — degradation (digest channel) ──────────────────────────────
     - name: observability-ticket
       interval: 60s
       rules:
@@ -61,9 +54,6 @@ spec:
             action: "Check {{ $labels.instance }} ({{ $labels.job }}): is the exporter/pod up? ServiceMonitor selector + network policy?"
 
         - alert: PrometheusRuleFailures
-          # A recording/alerting rule erroring at eval time = silent blind spot: the alert it
-          # would raise never fires. We add rules often → catch a broken PromQL/template.
-          # (Does NOT catch a missing `release` label — that rule never loads, no failure metric.)
           expr: increase(prometheus_rule_evaluation_failures_total[10m]) > 0
           for: 15m
           labels:
@@ -143,9 +133,6 @@ spec:
             action: "kubectl -n elastic-system get pod -l app.kubernetes.io/name=vector + logs; restart the agent/aggregator."
 
         - alert: VectorBufferUtilizationHigh
-          # Consolidated 2026-07-14 from vector/logging-alerts.yaml (the only survivor of its
-          # 14 rules — 8 referenced non-existent metrics, 5 duplicated this tree). Buffer >80%
-          # sustained = sink (ES/Loki) can't keep up → next stop is dropped events.
           expr: vector_buffer_byte_size / vector_buffer_max_byte_size > 0.8
           for: 15m
           labels:

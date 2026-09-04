@@ -5,11 +5,7 @@ metadata:
   labels:
     release: kube-prometheus-stack
 spec:
-  # Two 5xx alerts deduped to one (the %-based EnvoyGateway5xxRateHigh). Down+Info merged.
-  # Upstream-connection-failure → dashboard. CloudflaredAllDown = the external-access page.
   groups:
-    # ── RECORDING — edge SLO ratios (single source for the burn alerts below AND the
-    # edge-slo Grafana dashboard; availability = 1 - 5xx-ratio at the Envoy front door) ──
     - name: edge-slo-recording
       interval: 30s
       rules:
@@ -42,7 +38,6 @@ spec:
         - record: slo:edge_requests:rate30m
           expr: sum(rate(envoy_cluster_upstream_rq_total[30m]))
 
-    # ── PAGE ──
     - name: ingress-page
       interval: 60s
       rules:
@@ -58,7 +53,6 @@ spec:
             description: "External access via Cloudflare Tunnel completely down — all public services unreachable."
             action: "kubectl -n cloudflared get pod -l app=cloudflared + logs; check the tunnel token secret + Cloudflare dashboard tunnel status."
 
-    # ── TICKET ──
     - name: ingress-ticket
       interval: 60s
       rules:
@@ -93,11 +87,6 @@ spec:
             action: "Find the failing upstream in the envoy-global dashboard; check that backend's pods/health + any recent deploy."
 
         - alert: EnvoyEdgeSLOFastBurn
-          # Edge availability SLO 99.5% (error budget 0.5%). Multi-window burn: 5m AND 1h
-          # 5xx-ratio both >14.4× budget (7.2%) = a month's budget gone in ~2 days → PAGE.
-          # Front-door SLO for EVERY exposed app (n8n, grafana, drova, …) — n8n has no internal
-          # error-SLI, so its user-facing availability is captured here. Traffic-floor kills
-          # low-traffic night false-pages.
           expr: |
             ((1 - slo:edge_availability:ratio_rate1h) > 0.072)
             and
@@ -116,8 +105,6 @@ spec:
             action: "envoy-global dashboard → which upstream is 5xx'ing; check that backend + recent deploys. Pages because the whole front door is degraded."
 
         - alert: EnvoyEdgeSLOSlowBurn
-          # Slow window: 30m AND 6h 5xx-ratio both >6× budget (3%) → catches a grinding
-          # degradation the fast-burn misses. Ticket.
           expr: |
             ((1 - slo:edge_availability:ratio_rate6h) > 0.03)
             and

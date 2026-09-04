@@ -1,20 +1,10 @@
-# =============================================================================
-# Drova Tenant Default-Deny (Cilium NetworkPolicy)
-# =============================================================================
 #
 # Pattern: Per-Tenant Default-Deny statt cluster-wide.
 #  - Niedriges Risiko (bricht NICHT andere Tenants/Ceph)
 #  - AKTIV sind NUR die 2 Policies in diesem File (default-deny + egress-baseline).
-#    Das mTLS-Set (6 per-service CNPs via SPIRE) ist GEPARKT — SPIRE abgebaut 2026-07-10,
-#    Files liegen als Roadmap in mtls.yaml / mtls-policies.yaml (nicht in kustomization).
 #
-# Diese Policy fügt cluster-internal default-deny + DNS-egress hinzu.
-# =============================================================================
 
 ---
-# Default-Deny Ingress NUR für Drova-Microservices (haben mTLS)
-# NICHT für Kafka/Postgres/Redis — die brauchen eigene Policies wenn überhaupt
-# Selector: app.kubernetes.io/part-of=drova matcht nur die 6 services
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -25,7 +15,6 @@ spec:
     matchLabels:
       app.kubernetes.io/part-of: drova
   ingress:
-    # System-Namespaces dürfen rein (Monitoring, kube-system probes, gateway)
     - fromEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: kube-system
@@ -35,8 +24,6 @@ spec:
             io.kubernetes.pod.namespace: gateway
         - matchLabels:
             io.kubernetes.pod.namespace: cloudflared
-        # Operators die drova-pods managen müssen (z.B. redis-operator für RedisReplication)
-        # 2026-05-16: ohne diese Regel war redis-operator blocked → 2 masters statt 1 master + 1 replica.
         - matchLabels:
             io.kubernetes.pod.namespace: redis-operator-system
         - matchLabels:
@@ -47,13 +34,11 @@ spec:
     - fromEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: drova
-    # Kubelet-Probes (von Host)
     - fromEntities:
         - host
         - kube-apiserver
 
 ---
-# Egress-Allow für Microservices (gleicher Selector — additive zu mTLS-Policies)
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -64,7 +49,6 @@ spec:
     matchLabels:
       app.kubernetes.io/part-of: drova
   egress:
-    # PFLICHT: DNS zu CoreDNS (sonst kein Service-Discovery)
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: kube-system
@@ -79,16 +63,13 @@ spec:
             dns:
               - matchPattern: "*"
 
-    # kube-apiserver für Service-Account-Auth
     - toEntities:
         - kube-apiserver
 
-    # Intra-namespace (drova ↔ drova) für Microservice-Chains
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: drova
 
-    # cnpg-system (Postgres-Operator-Webhook)
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: cnpg-system
@@ -103,7 +84,6 @@ spec:
               protocol: TCP
 
     # External: Mapbox API (Trip-Service braucht /directions für Routing)
-    # Battle-tested 2026-05-10: ohne diese FQDN-Allow → /trip/preview 500
     - toFQDNs:
         - matchPattern: "*.mapbox.com"
         - matchName: api.mapbox.com
@@ -120,8 +100,6 @@ spec:
             - port: "3478"
               protocol: UDP
 
-    # External: GitHub API (drova-dispatch-prod-deployed Job sends repo-dispatch)
-    # Battle-tested 2026-05-15: ohne diese → dispatch-job hängt → ArgoCD stuck-hook
     - toFQDNs:
         - matchName: api.github.com
       toPorts:
@@ -147,7 +125,6 @@ spec:
             - port: "4317"
               protocol: TCP
 
-    # OIDC: Keycloak via Public-Hostname (für Service-zu-Service Auth wenn nötig)
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: keycloak

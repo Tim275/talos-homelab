@@ -1,6 +1,4 @@
 ---
-# Elasticsearch ILM Policies Bootstrap
-# Purpose: Configure Index Lifecycle Management for log retention
 # Retention: Critical (90d), Warn (30d), Info (7d), Debug (1d)
 
 apiVersion: batch/v1
@@ -34,7 +32,6 @@ spec:
 
               echo " Starting Elasticsearch ILM Policies Bootstrap..."
 
-              # Wait for Elasticsearch
               until curl -k -s -u "elastic:${ELASTIC_PASSWORD}" "${ES_URL}/_cluster/health" | grep -q "yellow\|green"; do
                 echo "⏳ Waiting for Elasticsearch..."
                 sleep 10
@@ -42,9 +39,6 @@ spec:
 
               echo " Elasticsearch is ready!"
 
-              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-              # POLICY 1: CRITICAL LOGS (90 days retention)
-              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
               echo " Creating ILM Policy: logs-critical-policy"
 
               curl -k -X PUT "${ES_URL}/_ilm/policy/logs-critical-policy" \
@@ -98,9 +92,6 @@ spec:
                   }
                 }'
 
-              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-              # POLICY 2: WARN LOGS (30 days retention)
-              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
               echo " Creating ILM Policy: logs-warn-policy"
 
               curl -k -X PUT "${ES_URL}/_ilm/policy/logs-warn-policy" \
@@ -145,9 +136,6 @@ spec:
                   }
                 }'
 
-              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-              # POLICY 3: INFO LOGS (7 days retention)
-              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
               echo " Creating ILM Policy: logs-info-policy"
 
               curl -k -X PUT "${ES_URL}/_ilm/policy/logs-info-policy" \
@@ -178,9 +166,6 @@ spec:
                   }
                 }'
 
-              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-              # POLICY 4: DEBUG LOGS (1 day retention)
-              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
               echo " Creating ILM Policy: logs-debug-policy"
 
               curl -k -X PUT "${ES_URL}/_ilm/policy/logs-debug-policy" \
@@ -211,9 +196,6 @@ spec:
                   }
                 }'
 
-              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-              # POLICY 5: AUDIT LOGS (90 days — security forensics / compliance)
-              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
               echo " Creating ILM Policy: logs-audit-policy"
 
               curl -k -X PUT "${ES_URL}/_ilm/policy/logs-audit-policy" \
@@ -252,12 +234,8 @@ spec:
                   }
                 }'
 
-              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-              # APPLY ILM POLICIES TO DATA STREAMS
-              # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
               echo " Applying ILM Policies to Data Streams..."
 
-              # Apply to CRITICAL logs
               curl -k -X PUT "${ES_URL}/logs-*.critical-*/_settings" \
                 -u "elastic:${ELASTIC_PASSWORD}" \
                 -H 'Content-Type: application/json' \
@@ -265,7 +243,6 @@ spec:
                   "index.lifecycle.name": "logs-critical-policy"
                 }'
 
-              # Apply to WARN logs
               curl -k -X PUT "${ES_URL}/logs-*.warn-*/_settings" \
                 -u "elastic:${ELASTIC_PASSWORD}" \
                 -H 'Content-Type: application/json' \
@@ -273,7 +250,6 @@ spec:
                   "index.lifecycle.name": "logs-warn-policy"
                 }'
 
-              # Apply to INFO logs
               curl -k -X PUT "${ES_URL}/logs-*.info-*/_settings" \
                 -u "elastic:${ELASTIC_PASSWORD}" \
                 -H 'Content-Type: application/json' \
@@ -281,7 +257,6 @@ spec:
                   "index.lifecycle.name": "logs-info-policy"
                 }'
 
-              # Apply to DEBUG logs
               curl -k -X PUT "${ES_URL}/logs-*.debug-*/_settings" \
                 -u "elastic:${ELASTIC_PASSWORD}" \
                 -H 'Content-Type: application/json' \
@@ -289,7 +264,6 @@ spec:
                   "index.lifecycle.name": "logs-debug-policy"
                 }'
 
-              # Apply to AUDIT logs (overrides the severity-based binding above → 90d)
               curl -k -X PUT "${ES_URL}/logs-kube-audit.*-*/_settings" \
                 -u "elastic:${ELASTIC_PASSWORD}" \
                 -H 'Content-Type: application/json' \

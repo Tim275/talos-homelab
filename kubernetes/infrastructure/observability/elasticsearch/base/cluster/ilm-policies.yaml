@@ -1,24 +1,11 @@
 
-# ELASTICSEARCH ILM POLICIES -  (2025)
 
 #
-# Consolidated ILM policies for all log types based on:
 # - Data criticality (business vs operational)
 # - Compliance requirements (audit trails)
 # - Storage optimization (hot/warm/cold tiering)
 #
-# POLICY STRUCTURE:
-# ┌──────────────────────┬───────────┬──────────────────────────────────────┐
-# │ Policy               │ Retention │ Use Case                             │
-# ├──────────────────────┼───────────┼──────────────────────────────────────┤
-# │ logs-critical        │ 365 days  │ Errors, security events, compliance  │
-# │ logs-standard        │ 90 days   │ Warnings, business app logs (OMS)    │
-# │ logs-operational     │ 30 days   │ Info logs, infrastructure            │
-# │ logs-debug           │ 7 days    │ Debug/trace logs, high volume        │
-# │ traces-short         │ 7 days    │ Jaeger traces, APM data              │
-# └──────────────────────┴───────────┴──────────────────────────────────────┘
 #
-# MAPPING TO YOUR APPLICATIONS:
 # - OMS (Orders, Payments, Stock, Kitchen) logs-standard (90d)
 # - OMS Errors logs-critical (365d)
 # - n8n logs-operational (30d)
@@ -72,18 +59,14 @@ spec:
               echo "  Elasticsearch ILM Policies - Enterprise"
               echo "=============================================="
 
-              # Wait for Elasticsearch to be ready
               echo "Waiting for Elasticsearch cluster..."
               until curl -sk -u "elastic:${ES_PASSWORD}" "${ES_URL}/_cluster/health" | grep -q '"status":"green\|yellow"'; do
                 sleep 10
               done
               echo "Elasticsearch is ready!"
 
-              # ─────────────────────────────────────────────────────────
-              # POLICY 1: logs-critical (365 days)
               # For: Errors, security events, audit logs, compliance data
               # Phases: Hot(7d) Warm(30d) Cold(90d) Delete(365d)
-              # ─────────────────────────────────────────────────────────
               echo ""
               echo "[1/5] Creating ILM policy: logs-critical (365 days)"
               curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
@@ -125,11 +108,7 @@ spec:
                 }'
               echo " - Created!"
 
-              # ─────────────────────────────────────────────────────────
-              # POLICY 2: logs-standard (90 days)
-              # For: Business application logs (OMS), warnings
               # Phases: Hot(7d) Warm(14d) Cold(30d) Delete(90d)
-              # ─────────────────────────────────────────────────────────
               echo ""
               echo "[2/5] Creating ILM policy: logs-standard (90 days)"
               curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
@@ -171,11 +150,8 @@ spec:
                 }'
               echo " - Created!"
 
-              # ─────────────────────────────────────────────────────────
-              # POLICY 3: logs-operational (90 days)
               # For: Infrastructure logs, info level, n8n
               # Phases: Hot(3d) Warm(7d) Delete(90d)
-              # ─────────────────────────────────────────────────────────
               echo ""
               echo "[3/5] Creating ILM policy: logs-operational (90 days)"
               curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
@@ -211,11 +187,7 @@ spec:
                 }'
               echo " - Created!"
 
-              # ─────────────────────────────────────────────────────────
-              # POLICY 4: logs-debug (7 days)
-              # For: Debug/trace logs, high volume temporary data
               # Phases: Hot(1d) Delete(7d)
-              # ─────────────────────────────────────────────────────────
               echo ""
               echo "[4/5] Creating ILM policy: logs-debug (7 days)"
               curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
@@ -243,11 +215,8 @@ spec:
                 }'
               echo " - Created!"
 
-              # ─────────────────────────────────────────────────────────
-              # POLICY 5: traces-short (7 days)
               # For: Jaeger traces, APM spans
               # Phases: Hot(1d) Delete(7d)
-              # ─────────────────────────────────────────────────────────
               echo ""
               echo "[5/5] Creating ILM policy: traces-short (7 days)"
               curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
@@ -275,9 +244,7 @@ spec:
                 }'
               echo " - Created!"
 
-              # ─────────────────────────────────────────────────────────
               # CLEANUP: Delete legacy/orphan ILM policies
-              # ─────────────────────────────────────────────────────────
               echo ""
               echo "[6/8] Cleaning up legacy ILM policies..."
               for policy in \
@@ -297,9 +264,6 @@ spec:
               done
               echo " - Legacy policies cleaned up!"
 
-              # ─────────────────────────────────────────────────────────
-              # CLEANUP: Delete legacy index templates
-              # ─────────────────────────────────────────────────────────
               echo ""
               echo "[7/9] Cleaning up legacy index templates..."
               for template in \
@@ -313,15 +277,10 @@ spec:
               done
               echo " - Legacy templates cleaned up!"
 
-              # ─────────────────────────────────────────────────────────
-              # INDEX TEMPLATES: Link to ILM policies by severity
-              # ─────────────────────────────────────────────────────────
               echo ""
               echo "[8/9] Creating index templates with ILM policy mapping..."
 
-              # Template for CRITICAL logs (*.critical-*)
               # NOTE: number_of_replicas=1 (3-node cluster, single-loss-safe).
-              # If you scale down to <3 nodes, revert to 0 to avoid yellow status.
               curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
                 "${ES_URL}/_index_template/logs-critical-template" \
                 -H 'Content-Type: application/json' \
@@ -352,7 +311,6 @@ spec:
                 }'
               echo "  - logs-critical-template (365d retention)"
 
-              # Template for WARN logs (*.warn-*)
               curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
                 "${ES_URL}/_index_template/logs-warn-template" \
                 -H 'Content-Type: application/json' \
@@ -383,7 +341,6 @@ spec:
                 }'
               echo "  - logs-warn-template (90d retention)"
 
-              # Template for INFO logs (*.info-*)
               curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
                 "${ES_URL}/_index_template/logs-info-template" \
                 -H 'Content-Type: application/json' \
@@ -414,7 +371,6 @@ spec:
                 }'
               echo "  - logs-info-template (30d retention)"
 
-              # Template for DEBUG logs (*.debug-*)
               curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
                 "${ES_URL}/_index_template/logs-debug-template" \
                 -H 'Content-Type: application/json' \
@@ -445,9 +401,6 @@ spec:
                 }'
               echo "  - logs-debug-template (7d retention)"
 
-              # Template for Jaeger SPAN traces (NO ILM - Jaeger manages its own daily indices)
-              # Jaeger creates jaeger-span-YYYY-MM-DD indices which conflict with rollover-based ILM
-              # IMPORTANT: Must include full mapping to avoid dynamic text mapping for keyword fields
               curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
                 "${ES_URL}/_index_template/jaeger-span-template" \
                 -H 'Content-Type: application/json' \
@@ -532,7 +485,6 @@ spec:
                 }'
               echo "  - jaeger-span-template (no ILM - Jaeger managed)"
 
-              # Template for Jaeger SERVICE indices
               curl -sk -X PUT -u "elastic:${ES_PASSWORD}" \
                 "${ES_URL}/_index_template/jaeger-service-template" \
                 -H 'Content-Type: application/json' \
