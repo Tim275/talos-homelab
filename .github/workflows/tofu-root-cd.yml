@@ -9,6 +9,9 @@ name: tofu-root-cd
 # workflow_dispatch — passt zur bestehenden Azure-Federated-Credential
 # (repo:Tim275/talos-homelab:ref:refs/heads/main), keine neue Azure-Aenderung
 # noetig. apply ist noch nicht verdrahtet — erst nach validierten plan-Laeufen.
+#
+# Checkout/OpenTofu-Install als Shell statt Action: Runner-Image hat kein
+# node (actions/runner#4623, offen).
 
 on:
   push:
@@ -35,12 +38,17 @@ jobs:
     name: plan (root)
     runs-on: tofu
     steps:
-      - uses: actions/checkout@v4
+      - name: checkout
+        run: |
+          git clone https://github.com/${{ github.repository }}.git .
+          git checkout ${{ github.sha }}
 
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: "1.12.3"
+      - name: install opentofu
+        run: |
+          curl -sSLo /tmp/tofu.tar.gz https://github.com/opentofu/opentofu/releases/download/v1.12.3/tofu_1.12.3_linux_amd64.tar.gz
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf /tmp/tofu.tar.gz -C "$HOME/.local/bin" tofu
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: tofu init
         working-directory: tofu
