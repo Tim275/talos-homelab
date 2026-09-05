@@ -83,12 +83,13 @@ variable "talos_nodes" {
 }
 
 variable "sealed_secrets_config" {
-  description = "Sealed secrets certificate configuration"
+  description = "Sealed secrets certificate configuration — null skips the module (CI has no access to the private key)"
   type = object({
     certificate_path     = string
     certificate_key_path = string
   })
   sensitive = true
+  default   = null
 }
 
 variable "kubernetes_volumes" {
