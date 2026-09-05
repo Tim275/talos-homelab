@@ -9,8 +9,11 @@ name: tofu-root-cd
 # des Repos (nur "scan" ist required). Zusaetzlich zum Fork-Schutz noetig, weil
 # der Job hier auf einem self-hosted Runner laeuft (nicht ubuntu-latest wie
 # cloudflare/netbird): job-if laesst Fork-PRs den Job gar nicht erst starten.
-# push zu main bleibt als Post-Merge-Bestaetigung. apply ist noch nicht
-# verdrahtet — erst nach validierten plan-Laeufen.
+# push zu main faehrt plan und danach apply — apply haengt am environment
+# tofu-apply (Required-Reviewer), laeuft also nie ohne Freigabe durch. Wichtig
+# beim Freigeben: talos_machine_configuration_apply kann je nach geaendertem
+# Feld einen Node-Reboot ausloesen (sysctls nicht, Kernel-Args/Disk schon) —
+# Plan im Job davor lesen, nicht blind bestaetigen.
 #
 # Checkout/OpenTofu-Install als Shell statt Action: Runner-Image hat kein
 # node (actions/runner#4623, offen) — deshalb auch gh pr comment statt
@@ -111,3 +114,36 @@ jobs:
             curl -sS -X POST -H "Authorization: Bearer $GH_TOKEN" \
               "$API/issues/$PR/comments" -d @payload.json -o /dev/null
           fi
+
+  apply:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: plan
+    name: apply (root)
+    runs-on: tofu
+    environment: tofu-apply # Required-Reviewer-Gate
+    concurrency:
+      group: tofu-apply-root
+      cancel-in-progress: false # laufenden apply nie abbrechen
+    steps:
+      - name: checkout
+        run: |
+          git clone https://github.com/${{ github.repository }}.git .
+          git checkout ${{ github.sha }}
+
+      - name: install opentofu
+        run: |
+          curl -sSLo /tmp/tofu.tar.gz https://github.com/opentofu/opentofu/releases/download/v1.12.3/tofu_1.12.3_linux_amd64.tar.gz
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf /tmp/tofu.tar.gz -C "$HOME/.local/bin" tofu
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: tofu init
+        working-directory: tofu
+        run: tofu init -input=false
+
+      - name: tofu apply
+        working-directory: tofu
+        env:
+          TF_VAR_proxmox: ${{ secrets.PROXMOX_CONFIG }}
+          TF_VAR_proxmox_api_token: ${{ secrets.PROXMOX_API_TOKEN }}
+        run: tofu apply -input=false -auto-approve -no-color
