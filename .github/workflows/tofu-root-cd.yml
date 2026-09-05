@@ -79,11 +79,14 @@ jobs:
           TF_VAR_proxmox_api_token: ${{ secrets.PROXMOX_API_TOKEN }}
         run: tofu plan -input=false -no-color | tee plan_output.txt
 
+      # curl statt gh: die gh-CLI fehlt im offiziellen Runner-Image (wie node).
       - name: comment plan on pr
         if: github.event_name == 'pull_request'
         working-directory: tofu
         env:
           GH_TOKEN: ${{ github.token }}
+          API: https://api.github.com/repos/${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
         run: |
           {
             echo "#### tofu plan — \`root\`"
@@ -94,10 +97,17 @@ jobs:
             echo '```'
             echo "</details>"
           } > pr_comment.md
-          gh pr comment ${{ github.event.pull_request.number }} \
-            --repo ${{ github.repository }} \
-            --body-file pr_comment.md \
-            --edit-last || \
-          gh pr comment ${{ github.event.pull_request.number }} \
-            --repo ${{ github.repository }} \
-            --body-file pr_comment.md
+
+          jq -Rs '{body: .}' < pr_comment.md > payload.json
+
+          existing=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+            "$API/issues/$PR/comments" \
+            | jq -r '[.[] | select(.body | startswith("#### tofu plan — `root`")) | .id] | last // empty')
+
+          if [ -n "$existing" ]; then
+            curl -sS -X PATCH -H "Authorization: Bearer $GH_TOKEN" \
+              "$API/issues/comments/$existing" -d @payload.json -o /dev/null
+          else
+            curl -sS -X POST -H "Authorization: Bearer $GH_TOKEN" \
+              "$API/issues/$PR/comments" -d @payload.json -o /dev/null
+          fi

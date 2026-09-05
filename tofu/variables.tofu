@@ -83,7 +83,7 @@ variable "talos_nodes" {
 }
 
 variable "sealed_secrets_config" {
-  description = "Sealed secrets certificate configuration — null skips the module (CI has no access to the private key)"
+  description = "Sealed secrets certificate configuration — null in CI (no access to the private key), ignore_changes on data keeps the plan clean"
   type = object({
     certificate_path     = string
     certificate_key_path = string
