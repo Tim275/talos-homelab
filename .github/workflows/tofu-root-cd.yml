@@ -1,23 +1,7 @@
 name: tofu-root-cd
 
-# Root-Cluster-Modul (tofu/, ohne cloudflare/netbird) — braucht Proxmox + Talos +
-# K8s-API, alle nur im LAN erreichbar. Laeuft auf einem self-hosted Runner (ARC,
-# kubernetes/infrastructure/operators/github-runner-*) statt GitHub-Cloud-Runnern.
-#
-# pull_request postet den Plan als PR-Kommentar (Stil wie tofu-cd.yml fuer
-# cloudflare/netbird) — kein Required-Status-Check, bleibt konsistent zum Rest
-# des Repos (nur "scan" ist required). Zusaetzlich zum Fork-Schutz noetig, weil
-# der Job hier auf einem self-hosted Runner laeuft (nicht ubuntu-latest wie
-# cloudflare/netbird): job-if laesst Fork-PRs den Job gar nicht erst starten.
-# push zu main faehrt plan und danach apply — apply haengt am environment
-# tofu-apply (Required-Reviewer), laeuft also nie ohne Freigabe durch. Wichtig
-# beim Freigeben: talos_machine_configuration_apply kann je nach geaendertem
-# Feld einen Node-Reboot ausloesen (sysctls nicht, Kernel-Args/Disk schon) —
-# Plan im Job davor lesen, nicht blind bestaetigen.
-#
-# Checkout/OpenTofu-Install als Shell statt Action: Runner-Image hat kein
-# node (actions/runner#4623, offen) — deshalb auch gh pr comment statt
-# actions/github-script fuer den PR-Kommentar.
+# LAN-only (Proxmox/Talos/K8s) -> self-hosted Runner
+# Runner-Image ohne node -> shell statt JS-Actions (actions/runner#4623)
 
 on:
   pull_request:
@@ -48,8 +32,7 @@ env:
 
 jobs:
   plan:
-    # Fork-PR laesst den Job gar nicht erst starten (self-hosted Runner!) —
-    # cloudflare/netbird brauchen das nicht, die laufen auf ubuntu-latest.
+    # kein Fork-PR auf dem self-hosted Runner
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: plan (root)
     runs-on: tofu
@@ -82,7 +65,7 @@ jobs:
           TF_VAR_proxmox_api_token: ${{ secrets.PROXMOX_API_TOKEN }}
         run: tofu plan -input=false -no-color | tee plan_output.txt
 
-      # curl statt gh: die gh-CLI fehlt im offiziellen Runner-Image (wie node).
+      # kein gh im Runner-Image
       - name: comment plan on pr
         if: github.event_name == 'pull_request'
         working-directory: tofu
