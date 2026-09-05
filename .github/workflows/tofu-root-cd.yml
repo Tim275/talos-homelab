@@ -4,16 +4,25 @@ name: tofu-root-cd
 # K8s-API, alle nur im LAN erreichbar. Laeuft auf einem self-hosted Runner (ARC,
 # kubernetes/infrastructure/operators/github-runner-*) statt GitHub-Cloud-Runnern.
 #
-# Kein pull_request-Trigger (public Repo, self-hosted Runner — Fork-PRs sollen
-# diesen Job nie automatisch anstossen). Nur push zu main + manueller
-# workflow_dispatch — passt zur bestehenden Azure-Federated-Credential
-# (repo:Tim275/talos-homelab:ref:refs/heads/main), keine neue Azure-Aenderung
-# noetig. apply ist noch nicht verdrahtet — erst nach validierten plan-Laeufen.
+# pull_request postet den Plan als PR-Kommentar (Stil wie tofu-cd.yml fuer
+# cloudflare/netbird) — kein Required-Status-Check, bleibt konsistent zum Rest
+# des Repos (nur "scan" ist required). Zusaetzlich zum Fork-Schutz noetig, weil
+# der Job hier auf einem self-hosted Runner laeuft (nicht ubuntu-latest wie
+# cloudflare/netbird): job-if laesst Fork-PRs den Job gar nicht erst starten.
+# push zu main bleibt als Post-Merge-Bestaetigung. apply ist noch nicht
+# verdrahtet — erst nach validierten plan-Laeufen.
 #
 # Checkout/OpenTofu-Install als Shell statt Action: Runner-Image hat kein
-# node (actions/runner#4623, offen).
+# node (actions/runner#4623, offen) — deshalb auch gh pr comment statt
+# actions/github-script fuer den PR-Kommentar.
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "tofu/**"
+      - "!tofu/cloudflare/**"
+      - "!tofu/netbird/**"
   push:
     branches: [main]
     paths:
@@ -25,6 +34,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  pull-requests: write
 
 env:
   ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -35,13 +45,21 @@ env:
 
 jobs:
   plan:
+    # Fork-PR laesst den Job gar nicht erst starten (self-hosted Runner!) —
+    # cloudflare/netbird brauchen das nicht, die laufen auf ubuntu-latest.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: plan (root)
     runs-on: tofu
     steps:
       - name: checkout
         run: |
           git clone https://github.com/${{ github.repository }}.git .
-          git checkout ${{ github.sha }}
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin ${{ github.event.pull_request.head.sha }}
+            git checkout ${{ github.event.pull_request.head.sha }}
+          else
+            git checkout ${{ github.sha }}
+          fi
 
       - name: install opentofu
         run: |
@@ -59,4 +77,27 @@ jobs:
         env:
           TF_VAR_proxmox: ${{ secrets.PROXMOX_CONFIG }}
           TF_VAR_proxmox_api_token: ${{ secrets.PROXMOX_API_TOKEN }}
-        run: tofu plan -input=false -no-color
+        run: tofu plan -input=false -no-color | tee plan_output.txt
+
+      - name: comment plan on pr
+        if: github.event_name == 'pull_request'
+        working-directory: tofu
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "#### tofu plan — \`root\`"
+            echo "<details><summary>Show plan</summary>"
+            echo
+            echo '```'
+            tail -c 60000 plan_output.txt
+            echo '```'
+            echo "</details>"
+          } > pr_comment.md
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --repo ${{ github.repository }} \
+            --body-file pr_comment.md \
+            --edit-last || \
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --repo ${{ github.repository }} \
+            --body-file pr_comment.md
