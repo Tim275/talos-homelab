@@ -12,6 +12,7 @@ module "talos" {
 }
 
 module "sealed-secrets" {
+  count      = var.sealed_secrets_config != null ? 1 : 0
   depends_on = [module.talos]
   source     = "./bootstrap/sealed-secrets"
 
