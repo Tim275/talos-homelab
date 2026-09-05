@@ -43,22 +43,22 @@ data:
               action: "Loki: {service_name=\"kube-audit\"} |~ \"system:anonymous\" | json — sourceIPs und requestURI pruefen."
 
           - alert: LogsAuditRBACChange
-            expr: 'sum(count_over_time({service_name="kube-audit"} |~ "clusterrolebindings|rolebindings" !~ "system:serviceaccount|system:node" !~ "\"verb\":\"(get|list|watch)\"" [15m])) > 0'
+            expr: 'sum by (user_name) (count_over_time({service_name="kube-audit"} |~ "clusterrolebindings|rolebindings" !~ "system:serviceaccount|system:node" !~ "\"verb\":\"(get|list|watch)\"" | json user_name="user.name" [15m])) > 0'
             for: 2m
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
-              summary: "Rechte-Vergabe ausserhalb von GitOps ({{ $value }} in 15min)"
+              summary: "Rechte-Vergabe ausserhalb von GitOps: {{ $labels.user_name }} ({{ $value }} in 15min)"
               description: "Ein Mensch hat ein RoleBinding geaendert. Reconciler-Aenderungen sind ausgefiltert, Baseline ist null."
-              action: "Loki: {service_name=\"kube-audit\"} |~ \"rolebindings\" | json — user.name und verb pruefen."
+              action: "Loki: {service_name=\"kube-audit\"} |~ \"rolebindings\" | json — verb pruefen."
 
           - alert: LogsAuditHumanSecretAccess
-            expr: 'sum(count_over_time({service_name="kube-audit"} |~ "\"kubernetes.resource\":\"secrets\"" !~ "system:serviceaccount|system:node" [10m])) > 25'
+            expr: 'sum by (user_name) (count_over_time({service_name="kube-audit"} |~ "\"kubernetes.resource\":\"secrets\"" !~ "system:serviceaccount|system:node" | json user_name="user.name" [10m])) > 40'
             for: 5m
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
-              summary: "Auffaellig viele Secret-Zugriffe durch Nutzer ({{ $value }} in 10min)"
+              summary: "Auffaellig viele Secret-Zugriffe durch Nutzer: {{ $labels.user_name }} ({{ $value }} in 10min)"
               description: "ServiceAccounts sind ausgefiltert. Baseline liegt bei ~7 pro 10min — ein Vielfaches davon sieht nach Absammeln aus."
-              action: "Loki: {service_name=\"kube-audit\"} |~ \"secrets\" !~ \"serviceaccount\" | json — user.name gruppieren."
+              action: "Loki: {service_name=\"kube-audit\"} |~ \"secrets\" !~ \"serviceaccount\" | json — welche Secrets pruefen."
 
           - alert: LogsNetBirdAccessChange
             expr: 'sum(count_over_time({namespace="netbird", pod=~"netbird-audit-export.*"} |~ "\"activity_code\":\"(rule|policy|route|group|nameserver)\\." [20m])) > 0'
