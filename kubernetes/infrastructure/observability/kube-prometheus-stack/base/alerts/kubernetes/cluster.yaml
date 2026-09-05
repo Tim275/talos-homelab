@@ -212,11 +212,13 @@ spec:
             description: "Webhook rejecting requests AND not responding — investigate cert-manager-webhook, cnpg-webhook, kyverno."
             action: "kubectl delete secret <webhook-cert> -n <ns>; kubectl rollout restart deploy/<webhook>"
 
-        - alert: CronJobFailureRateHigh
+        - alert: CronJobFailed
           expr: |
-            sum by (namespace, cronjob) (
-              rate(kube_job_status_failed{job_name=~".+"}[1h])
-            ) > 0.5
+            sum by (namespace, owner_name) (
+              kube_job_status_failed
+              * on (namespace, job_name) group_left(owner_name)
+              kube_job_owner{owner_kind="CronJob"}
+            ) > 0
           for: 2h
           labels:
             severity: warning
@@ -224,6 +226,6 @@ spec:
             priority: P2
           annotations:
             dashboard_url: "/d/k8s-cluster-overview"
-            summary: "CronJob {{ $labels.namespace }}/{{ $labels.cronjob }} failure-rate high"
-            description: ">50% of last-hour jobs failed for >2h — check job logs."
-            action: "kubectl -n {{ $labels.namespace }} get job | grep {{ $labels.cronjob }}; logs the last failed job for the root cause."
+            summary: "CronJob {{ $labels.namespace }}/{{ $labels.owner_name }} has failed jobs"
+            description: "At least one job object has been in failed state for >2h."
+            action: "kubectl -n {{ $labels.namespace }} get job | grep {{ $labels.owner_name }}; logs the last failed pod."
