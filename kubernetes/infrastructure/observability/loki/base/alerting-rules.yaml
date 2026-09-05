@@ -19,10 +19,10 @@ data:
               action: "kubectl logs -n keycloak keycloak-0 | grep -i invalid; Quell-IPs gruppieren."
 
           - alert: LogsSensitiveFileAccess
-            expr: 'sum by (pod) (count_over_time({namespace="kube-system"} |~ "/etc/shadow|/etc/sudoers|authorized_keys" [10m])) > 0'
+            expr: 'sum (count_over_time({namespace="kube-system"} |~ "/etc/shadow|/etc/sudoers|authorized_keys" [10m])) > 0'
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
-              summary: "Zugriff auf Credential-Datei ({{ $labels.pod }})"
+              summary: "Zugriff auf Credential-Datei ({{ $value }} in 10min)"
               description: "Tetragon meldet Zugriff auf shadow/sudoers/authorized_keys — passiert im Normalbetrieb nie."
               action: "kubectl logs -n kube-system -l app.kubernetes.io/name=tetragon --since=15m | grep -E 'shadow|sudoers'"
 
@@ -43,20 +43,20 @@ data:
               action: "Loki: {service_name=\"kube-audit\"} |~ \"system:anonymous\" | json — sourceIPs und requestURI pruefen."
 
           - alert: LogsAuditRBACChange
-            expr: 'sum by (user_name) (count_over_time({service_name="kube-audit"} |~ "clusterrolebindings|rolebindings" !~ "system:serviceaccount|system:node" !~ "\"verb\":\"(get|list|watch)\"" | json user_name="[\"user.name\"]" [15m])) > 0'
+            expr: 'sum (count_over_time({service_name="kube-audit"} |~ "clusterrolebindings|rolebindings" !~ "system:serviceaccount|system:node" !~ "\"verb\":\"(get|list|watch)\"" [15m])) > 0'
             for: 2m
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
-              summary: "Rechte-Vergabe ausserhalb von GitOps: {{ $labels.user_name }} ({{ $value }} in 15min)"
+              summary: "Rechte-Vergabe ausserhalb von GitOps ({{ $value }} in 15min)"
               description: "Ein Mensch hat ein RoleBinding geaendert. Reconciler-Aenderungen sind ausgefiltert, Baseline ist null."
               action: "Loki: {service_name=\"kube-audit\"} |~ \"rolebindings\" | json — verb pruefen."
 
           - alert: LogsAuditHumanSecretAccess
-            expr: 'sum by (user_name) (count_over_time({service_name="kube-audit"} |~ "\"kubernetes.resource\":\"secrets\"" !~ "system:serviceaccount|system:node" | json user_name="[\"user.name\"]" [10m])) > 40'
+            expr: 'sum (count_over_time({service_name="kube-audit"} |~ "\"kubernetes.resource\":\"secrets\"" !~ "system:serviceaccount|system:node" [10m])) > 40'
             for: 5m
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
-              summary: "Auffaellig viele Secret-Zugriffe durch Nutzer: {{ $labels.user_name }} ({{ $value }} in 10min)"
+              summary: "Auffaellig viele Secret-Zugriffe durch Nutzer ({{ $value }} in 10min)"
               description: "ServiceAccounts sind ausgefiltert. Baseline liegt bei ~7 pro 10min — ein Vielfaches davon sieht nach Absammeln aus."
               action: "Loki: {service_name=\"kube-audit\"} |~ \"secrets\" !~ \"serviceaccount\" | json — welche Secrets pruefen."
 
@@ -89,13 +89,13 @@ data:
         interval: 1m
         rules:
           - alert: LogsLeaderElectionLost
-            expr: 'sum by (namespace, pod) (count_over_time({namespace=~".+", pod!~"loki.*|tetragon.*"} |= "leader election lost" [30m])) > 5'
+            expr: 'sum by (namespace) (count_over_time({namespace=~".+", pod!~"loki.*|tetragon.*"} |= "leader election lost" [30m])) > 5'
             for: 15m
             labels: {severity: warning, component: platform, priority: P2, source: loki}
             annotations:
-              summary: "{{ $labels.pod }} verliert kontinuierlich Leader-Election ({{ $value }}× in 30min)"
+              summary: "Leader-Election-Verluste in {{ $labels.namespace }} ({{ $value }}× in 30min)"
               description: "client-go leaderelection, meist API-Server-Latenz. Operator crasht by-design und startet neu. Transiente Spikes <5× pro 30min sind erwartet unter etcd-Last, alarmen nur bei sustained Problemen (>5× für 15min)."
-              action: "kubectl get pods -n {{ $labels.namespace }} {{ $labels.pod }} -o jsonpath='{.status.containerStatuses[0].restartCount}'; kubectl describe node ctrl-0 | grep -A5 Conditions"
+              action: "kubectl get pods -n {{ $labels.namespace }}; kubectl describe node ctrl-0 | grep -A5 Conditions"
 
           - alert: LogsOOMKillBurst
             expr: 'sum(count_over_time({namespace=~".+", pod!~"loki.*"} |~ "(?i)out of memory: killed process" [10m])) > 3'
@@ -134,22 +134,22 @@ data:
               action: "kubectl logs -n argocd -l app.kubernetes.io/name=argocd-repo-server --since=15m"
 
           - alert: LogsErrorRateAnomaly
-            expr: 'sum by (namespace, pod) (count_over_time({namespace=~".+", pod!~"loki.*"} | json | level=~"(?i)error" [10m])) > 30'
+            expr: 'sum by (namespace) (count_over_time({namespace=~".+", pod!~"loki.*"} | json | __error__="" | level=~"(?i)error" [10m])) > 50'
             for: 5m
             labels: {severity: warning, component: platform, priority: P2, source: loki}
             annotations:
-              summary: "{{ $labels.pod }} loggt auffaellig viele Errors ({{ $value }} in 10min)"
-              description: "Pod laeuft, crasht nicht — kein spezifisches Muster der anderen Regeln passt, aber die Error-Rate im Log ist erhoeht. Baseline clusterweit ~21/10min ueber ALLE Pods verteilt (2026-08-26 gemessen); ein einzelner Pod ueber 30 ist konzentriert genug, um kein Rauschen zu sein."
-              action: "stern -n {{ $labels.namespace }} {{ $labels.pod }} -i error --since 10m"
+              summary: "Auffaellig viele Errors in {{ $labels.namespace }} ({{ $value }} in 10min)"
+              description: "Namespace laeuft, crasht nicht — kein spezifisches Muster der anderen Regeln passt, aber die Error-Rate im Log ist erhoeht. Baseline pro Namespace: lldap ~22, istio-system ~4 pro 10min (2026-09-06 gemessen)."
+              action: "stern -n {{ $labels.namespace }} . -i error --since 10m"
 
           - alert: LogsVolumeSpike
-            expr: 'sum by (namespace, pod) (count_over_time({namespace=~".+"}[10m])) > 20000'
+            expr: 'sum by (namespace) (count_over_time({namespace=~".+"}[10m])) > 80000'
             for: 5m
             labels: {severity: warning, component: platform, priority: P2, source: loki}
             annotations:
-              summary: "{{ $labels.pod }} loggt {{ $value }} Zeilen in 10min"
-              description: "Ungefiltert nach Level — faengt Spam/Retry-Loops, die nicht als error/warn markiert sind. Baseline: chattigste Pods (coredns, tetragon, loki, argocd-controller) liegen bei ~4-8k/10min (2026-08-31 gemessen)."
-              action: "stern -n {{ $labels.namespace }} {{ $labels.pod }} --since 10m | head -50; kubectl df-pv -n loki"
+              summary: "{{ $labels.namespace }} loggt {{ $value }} Zeilen in 10min"
+              description: "Ungefiltert nach Level — faengt Spam/Retry-Loops, die nicht als error/warn markiert sind. Baseline pro Namespace: kube-system ~53k, monitoring ~21k, argocd ~13k pro 10min (2026-09-06 gemessen)."
+              action: "stern -n {{ $labels.namespace }} . --since 10m | head -50; kubectl df-pv -n loki"
 
       - name: logs-data
         interval: 1m
@@ -173,13 +173,13 @@ data:
               action: "velero backup get; velero backup logs $(velero backup get -o name | tail -1 | cut -d/ -f2)"
 
           - alert: LogsDiskIOError
-            expr: 'sum by (pod) (count_over_time({namespace="rook-ceph"} |~ "I/O error|EXT4-fs error|Buffer I/O error|blk_update_request" [15m])) > 0'
+            expr: 'sum (count_over_time({namespace="rook-ceph"} |~ "I/O error|EXT4-fs error|Buffer I/O error|blk_update_request" [15m])) > 0'
             for: 5m
             labels: {severity: critical, component: storage, priority: P1, source: loki}
             annotations:
-              summary: "Disk-I/O-Fehler auf {{ $labels.pod }} ({{ $value }} in 15min)"
+              summary: "Disk-I/O-Fehler in rook-ceph ({{ $value }} in 15min)"
               description: "Die OSD meldet Lese-/Schreibfehler von der Platte. Ceph-Health kann noch OK sein, waehrend die SSD schon stirbt."
-              action: "kubectl logs -n rook-ceph {{ $labels.pod }} --since=15m | grep -i 'i/o error'; smartctl-Dashboard fuer den Host pruefen."
+              action: "stern -n rook-ceph . --since 15m -i 'i/o error'; smartctl-Dashboard fuer den Host pruefen."
 
           - alert: LogsCSIMountFailure
             expr: 'sum(count_over_time({namespace="rook-ceph"} |~ "(?i)(failed to mount|rbd image.*still being used|MountVolume.*failed)" [15m])) > 3'
