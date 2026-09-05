@@ -19,35 +19,35 @@ data:
               action: "kubectl logs -n keycloak keycloak-0 | grep -i invalid; Quell-IPs gruppieren."
 
           - alert: LogsSensitiveFileAccess
-            expr: 'sum (count_over_time({namespace="kube-system"} |~ "/etc/shadow|/etc/sudoers|authorized_keys" [10m])) > 0'
+            expr: 'sum (count_over_time({namespace="kube-system"} |~ "process_kprobe" |~ "/etc/shadow|/etc/sudoers|authorized_keys" [1h])) > 0'
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
-              summary: "Zugriff auf Credential-Datei ({{ $value }} in 10min)"
-              description: "Tetragon meldet Zugriff auf shadow/sudoers/authorized_keys — passiert im Normalbetrieb nie."
+              summary: "Zugriff auf Credential-Datei ({{ $value }} in 1h)"
+              description: "Tetragon meldet Datei-Zugriff auf shadow/sudoers/authorized_keys. Nur process_kprobe (echter Zugriff) — process_exec/exit mit dem String im Kommandozeilen-Argument zaehlt nicht mehr mit."
               action: "kubectl logs -n kube-system -l app.kubernetes.io/name=tetragon --since=15m | grep -E 'shadow|sudoers'"
 
           - alert: LogsAuditPodExec
-            expr: 'sum(count_over_time({service_name="kube-audit"} |~ "pods/exec" [10m])) > 0'
+            expr: 'sum(count_over_time({service_name="kube-audit"} |~ "pods/exec" [1h])) > 0'
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
-              summary: "Shell in einem Pod geoeffnet ({{ $value }} in 10min)"
+              summary: "Shell in einem Pod geoeffnet ({{ $value }} in 1h)"
               description: "kubectl exec umgeht GitOps und hinterlaesst keine Spur im Repo. Im Normalbetrieb passiert das nie."
               action: "Loki: {service_name=\"kube-audit\"} |~ \"pods/exec\" | json — user.name und kubernetes.namespace pruefen."
 
           - alert: LogsAuditAnonymousAccess
-            expr: 'sum(count_over_time({service_name="kube-audit"} |~ "system:anonymous" [10m])) > 0'
+            expr: 'sum(count_over_time({service_name="kube-audit"} |~ "system:anonymous" [1h])) > 0'
             labels: {severity: critical, component: security, priority: P1, source: loki}
             annotations:
-              summary: "Nicht authentifizierter API-Zugriff ({{ $value }} in 10min)"
+              summary: "Nicht authentifizierter API-Zugriff ({{ $value }} in 1h)"
               description: "Jemand spricht den apiserver ohne Identitaet an. Baseline ist exakt null."
               action: "Loki: {service_name=\"kube-audit\"} |~ \"system:anonymous\" | json — sourceIPs und requestURI pruefen."
 
           - alert: LogsAuditRBACChange
-            expr: 'sum (count_over_time({service_name="kube-audit"} |~ "clusterrolebindings|rolebindings" !~ "system:serviceaccount|system:node" !~ "\"verb\":\"(get|list|watch)\"" [15m])) > 0'
+            expr: 'sum (count_over_time({service_name="kube-audit"} |~ "clusterrolebindings|rolebindings" !~ "system:serviceaccount|system:node" !~ "\"verb\":\"(get|list|watch)\"" [1h])) > 0'
             for: 2m
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
-              summary: "Rechte-Vergabe ausserhalb von GitOps ({{ $value }} in 15min)"
+              summary: "Rechte-Vergabe ausserhalb von GitOps ({{ $value }} in 1h)"
               description: "Ein Mensch hat ein RoleBinding geaendert. Reconciler-Aenderungen sind ausgefiltert, Baseline ist null."
               action: "Loki: {service_name=\"kube-audit\"} |~ \"rolebindings\" | json — verb pruefen."
 
@@ -61,7 +61,7 @@ data:
               action: "Loki: {service_name=\"kube-audit\"} |~ \"secrets\" !~ \"serviceaccount\" | json — welche Secrets pruefen."
 
           - alert: LogsNetBirdAccessChange
-            expr: 'sum(count_over_time({namespace="netbird", pod=~"netbird-audit-export.*"} |~ "\"activity_code\":\"(rule|policy|route|group|nameserver)\\." [20m])) > 0'
+            expr: 'sum(count_over_time({namespace="netbird", pod=~"netbird-audit-export.*"} |~ "\"activity_code\":\"(rule|policy|route|group|nameserver)\\." [1h])) > 0'
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
               summary: "VPN-Zugriffsregeln geaendert ({{ $value }} Events)"
@@ -69,7 +69,7 @@ data:
               action: "Loki: {namespace=\"netbird\", pod=~\"netbird-audit-export.*\"} | json — activity und initiator_email pruefen; gegen tofu/netbird abgleichen."
 
           - alert: LogsNetBirdPeerEnrollment
-            expr: 'sum(count_over_time({namespace="netbird", pod=~"netbird-audit-export.*"} |~ "\"activity_code\":\"(peer\\.setupkey\\.add|setupkey\\.add|user\\.invite|user\\.join|user\\.role\\.update)\"" [20m])) > 0'
+            expr: 'sum(count_over_time({namespace="netbird", pod=~"netbird-audit-export.*"} |~ "\"activity_code\":\"(peer\\.setupkey\\.add|setupkey\\.add|user\\.invite|user\\.join|user\\.role\\.update)\"" [1h])) > 0'
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
               summary: "Neues Geraet oder neuer Nutzer im VPN ({{ $value }} Events)"
@@ -77,11 +77,11 @@ data:
               action: "Loki: {namespace=\"netbird\", pod=~\"netbird-audit-export.*\"} | json — target_id und initiator_email pruefen."
 
           - alert: LogsSealedSecretsDecryptFailure
-            expr: 'sum(count_over_time({namespace="sealed-secrets"} |~ "(?i)(no key could decrypt|cannot decrypt|unsealing failed)" [15m])) > 0'
+            expr: 'sum(count_over_time({namespace="sealed-secrets"} |~ "(?i)(no key could decrypt|cannot decrypt|unsealing failed)" [1h])) > 0'
             for: 5m
             labels: {severity: critical, component: security, priority: P1, source: loki}
             annotations:
-              summary: "Sealed-Secrets kann nicht entschluesseln ({{ $value }} in 15min)"
+              summary: "Sealed-Secrets kann nicht entschluesseln ({{ $value }} in 1h)"
               description: "Der Controller kommt nicht an den Key. Betrifft jedes Secret im Cluster — Single Point of Failure."
               action: "kubectl logs -n sealed-secrets -l name=sealed-secrets-controller --since=15m; Key-Backup pruefen."
 
@@ -116,11 +116,11 @@ data:
               action: "stern -n {{ $labels.namespace }} . -i 'panic|fatal' --since 15m"
 
           - alert: LogsCertificateIssuanceFailure
-            expr: 'sum(count_over_time({namespace="cert-manager"} |~ "(?i)(failed to finalize order|error issuing certificate|acme: error)" [30m])) > 0'
+            expr: 'sum(count_over_time({namespace="cert-manager"} |~ "(?i)(failed to finalize order|error issuing certificate|acme: error)" [1h])) > 0'
             for: 10m
             labels: {severity: warning, component: platform, priority: P2, source: loki}
             annotations:
-              summary: "cert-manager kann nicht ausstellen ({{ $value }} in 30min)"
+              summary: "cert-manager kann nicht ausstellen ({{ $value }} in 1h)"
               description: "ACME schlaegt fehl. Wird erst in Wochen zum Ausfall — deshalb frueh melden."
               action: "kubectl get certificate,certificaterequest,order -A | grep -v True"
 
@@ -173,11 +173,11 @@ data:
               action: "velero backup get; velero backup logs $(velero backup get -o name | tail -1 | cut -d/ -f2)"
 
           - alert: LogsDiskIOError
-            expr: 'sum (count_over_time({namespace="rook-ceph"} |~ "I/O error|EXT4-fs error|Buffer I/O error|blk_update_request" [15m])) > 0'
+            expr: 'sum (count_over_time({namespace="rook-ceph"} |~ "I/O error|EXT4-fs error|Buffer I/O error|blk_update_request" [1h])) > 0'
             for: 5m
             labels: {severity: critical, component: storage, priority: P1, source: loki}
             annotations:
-              summary: "Disk-I/O-Fehler in rook-ceph ({{ $value }} in 15min)"
+              summary: "Disk-I/O-Fehler in rook-ceph ({{ $value }} in 1h)"
               description: "Die OSD meldet Lese-/Schreibfehler von der Platte. Ceph-Health kann noch OK sein, waehrend die SSD schon stirbt."
               action: "stern -n rook-ceph . --since 15m -i 'i/o error'; smartctl-Dashboard fuer den Host pruefen."
 
@@ -200,7 +200,7 @@ data:
               action: "velero restore get; velero restore logs $(velero restore get -o name | tail -1 | cut -d/ -f2)"
 
           - alert: LogsDatabaseFailover
-            expr: 'sum by (namespace) (count_over_time({namespace=~"cnpg-system|drova|n8n-prod|keycloak"} |~ "(?i)(promoted to primary|switchover|new primary)" [15m])) > 0'
+            expr: 'sum by (namespace) (count_over_time({namespace=~"cnpg-system|drova|n8n-prod|keycloak"} |~ "(?i)(promoted to primary|switchover|new primary)" [1h])) > 0'
             for: 0m
             labels: {severity: warning, component: data, priority: P2, source: loki}
             annotations:
@@ -209,11 +209,11 @@ data:
               action: "kubectl get cluster -n {{ $labels.namespace }}; kubectl cnpg status <cluster> -n {{ $labels.namespace }}"
 
           - alert: LogsElasticsearchClusterBlock
-            expr: 'sum(count_over_time({namespace="elastic-system", pod=~"production-cluster.*"} |~ "(?i)(cluster_block_exception|circuit_breaking_exception|index_not_found)" [15m])) > 0'
+            expr: 'sum(count_over_time({namespace="elastic-system", pod=~"production-cluster.*"} |~ "(?i)(cluster_block_exception|circuit_breaking_exception|index_not_found)" [1h])) > 0'
             for: 5m
             labels: {severity: warning, component: data, priority: P2, source: loki}
             annotations:
-              summary: "Elasticsearch blockt Schreibzugriffe ({{ $value }} in 15min)"
+              summary: "Elasticsearch blockt Schreibzugriffe ({{ $value }} in 1h)"
               description: "Read-only-Block oder Circuit-Breaker — Log- und Trace-Ingest laeuft ins Leere."
               action: "kubectl exec -n elastic-system production-cluster-es-master-data-0 -- curl -s localhost:9200/_cluster/allocation/explain"
 
