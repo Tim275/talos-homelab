@@ -39,7 +39,7 @@ talos_nodes = {
     ram_floating        = 8192
     datastore_id        = "local-zfs"
     os_disk_size        = 50
-    ceph_disk_size      = 280
+    ceph_disk_size      = 430
     ceph_disk_datastore = "cephpool"
     pool                = "stateless"
   }
