@@ -17,8 +17,14 @@ resource "kubernetes_secret_v1" "sealed-secrets-key" {
   }
 
   data = {
-    "tls.crt" = file("${path.root}/${var.cert.certificate_path}")
-    "tls.key" = file("${path.root}/${var.cert.certificate_key_path}")
+    "tls.crt" = var.cert != null ? file("${path.root}/${var.cert.certificate_path}") : ""
+    "tls.key" = var.cert != null ? file("${path.root}/${var.cert.certificate_key_path}") : ""
+  }
+
+  # CI plant ohne den lokalen Private Key (var.cert = null) — data waere dann
+  # leer und wuerde als Diff gegen die echten Cluster-Secrets erscheinen.
+  lifecycle {
+    ignore_changes = [data]
   }
 }
 
@@ -36,7 +42,11 @@ resource "kubernetes_secret_v1" "sealed-secrets-key-2026" {
   }
 
   data = {
-    "tls.crt" = file("${path.root}/bootstrap/sealed-secrets/certificate/sealed-secrets-2026.crt")
-    "tls.key" = file("${path.root}/bootstrap/sealed-secrets/certificate/sealed-secrets-2026.key")
+    "tls.crt" = var.cert != null ? file("${path.root}/bootstrap/sealed-secrets/certificate/sealed-secrets-2026.crt") : ""
+    "tls.key" = var.cert != null ? file("${path.root}/bootstrap/sealed-secrets/certificate/sealed-secrets-2026.key") : ""
+  }
+
+  lifecycle {
+    ignore_changes = [data]
   }
 }
