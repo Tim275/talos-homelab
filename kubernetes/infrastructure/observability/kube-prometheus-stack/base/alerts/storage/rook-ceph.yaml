@@ -75,8 +75,8 @@ spec:
             description: "OSD at {{ $value | humanizePercentage }} — Ceph nearfull at 85%, blocks writes at 95%. Add capacity."
             action: "Toolbox 'ceph osd df'. Balancer is upmap (already optimal) — reweight won't help on same-disk OSDs; grow/add OSD capacity."
 
-        - alert: RookCephOperatorDown
-          expr: up{job="rook-ceph-operator"} == 0
+        - alert: RookCephMgrDown
+          expr: absent(up{job="rook-ceph-mgr"}) or up{job="rook-ceph-mgr"} == 0
           for: 5m
           labels:
             severity: warning
@@ -84,9 +84,9 @@ spec:
             priority: P2
           annotations:
             dashboard_url: "/d/ceph-cluster"
-            summary: "Rook-Ceph operator down"
-            description: "Operator unreachable >5min — Ceph reconcile/management operations blocked."
-            action: "kubectl -n rook-ceph rollout restart deploy/rook-ceph-operator; check operator logs."
+            summary: "Rook-Ceph mgr down"
+            description: "Without mgr, Ceph stops exposing ceph_* metrics — every other Ceph alert goes blind."
+            action: "kubectl -n rook-ceph get pod -l app=rook-ceph-mgr; toolbox 'ceph mgr stat'."
 
 
         - alert: CephSlowOps
