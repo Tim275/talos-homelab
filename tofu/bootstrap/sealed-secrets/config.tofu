@@ -21,8 +21,7 @@ resource "kubernetes_secret_v1" "sealed-secrets-key" {
     "tls.key" = var.cert != null ? file("${path.root}/${var.cert.certificate_key_path}") : ""
   }
 
-  # CI plant ohne den lokalen Private Key (var.cert = null) — data waere dann
-  # leer und wuerde als Diff gegen die echten Cluster-Secrets erscheinen.
+  # CI hat den key nicht
   lifecycle {
     ignore_changes = [data]
   }
