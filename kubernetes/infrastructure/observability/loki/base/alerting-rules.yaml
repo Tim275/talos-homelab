@@ -19,12 +19,12 @@ data:
               action: "kubectl logs -n keycloak keycloak-0 | grep -i invalid; Quell-IPs gruppieren."
 
           - alert: LogsSensitiveFileAccess
-            expr: 'sum (count_over_time({namespace="kube-system"} |~ "process_kprobe" |~ "/etc/shadow|/etc/sudoers|authorized_keys" [1h])) > 0'
+            expr: 'sum (count_over_time({namespace="kube-system"} |~ "process_kprobe" |~ "/etc/shadow|/etc/sudoers|authorized_keys" != "loki-gateway" != "/loki/api/" [1h])) > 0'
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
               summary: "Zugriff auf Credential-Datei ({{ $value }} in 1h)"
-              description: "Tetragon meldet Datei-Zugriff auf shadow/sudoers/authorized_keys. Nur process_kprobe (echter Zugriff) — process_exec/exit mit dem String im Kommandozeilen-Argument zaehlt nicht mehr mit."
-              action: "kubectl logs -n kube-system -l app.kubernetes.io/name=tetragon --since=15m | grep -E 'shadow|sudoers'"
+              description: "Tetragon meldet Datei-Zugriff auf shadow/sudoers/authorized_keys. Nur process_kprobe (echter Zugriff); Prozess-Argumente und Loki-Queries nach denselben Strings sind ausgefiltert."
+              action: "Loki: {namespace=\"kube-system\"} |~ \"process_kprobe\" |~ \"shadow|sudoers|authorized_keys\" | json ns=\"process_kprobe.process.pod.namespace\", pod=\"process_kprobe.process.pod.name\" — zeigt betroffenen Pod."
 
           - alert: LogsAuditPodExec
             expr: 'sum(count_over_time({service_name="kube-audit"} |~ "pods/exec" [1h])) > 0'
@@ -104,7 +104,7 @@ data:
             annotations:
               summary: "Mehrere OOM-Kills in 10min ({{ $value }})"
               description: "Der Kernel killt Prozesse wegen Speichermangel — steht im Log, bevor ein Restart sichtbar wird."
-              action: "kubectl top pods -A --sort-by=memory; Limits der Top-Verbraucher pruefen."
+              action: "Loki: {namespace=~\".+\"} |~ \"out of memory: killed process\" — zeigt Pod+Prozess. Dann kubectl top pods -A --sort-by=memory."
 
           - alert: LogsPanicDetected
             expr: 'sum by (namespace) (count_over_time({namespace=~".+", pod!~"loki.*"} |~ "(?i)(panic:|fatal error:|runtime error:)" [15m])) > 5'
