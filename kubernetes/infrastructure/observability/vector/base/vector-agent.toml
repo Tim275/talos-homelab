@@ -97,6 +97,29 @@ del(.objectRef)
 del(.responseStatus)
 '''
 
+# Talos sendet Kernel- und Service-Logs an 127.0.0.1:5555 (machine.logging in
+# common.yaml.tftpl). hostNetwork noetig, sonst kommt nichts an.
+[sources.talos_logs]
+type = "socket"
+mode = "tcp"
+address = "127.0.0.1:5555"
+
+[sources.talos_logs.decoding]
+codec = "json"
+
+[transforms.parse_talos]
+type = "remap"
+inputs = ["talos_logs"]
+source = '''
+.source = "talos"
+.cluster = "talos-homelab"
+.service_name = if exists(."talos-service") {
+  "talos-" + downcase(to_string!(."talos-service"))
+} else {
+  "talos-kernel"
+}
+'''
+
 [sources.hubble_flows]
 type = "file"
 include = ["/var/run/cilium/hubble/events.log*"]
@@ -125,7 +148,7 @@ includes(["DROPPED", "ERROR", "AUDIT", "POLICY_DENIED"], to_string(.flow.verdict
 # Forward to Vector Aggregator
 [sinks.vector_aggregator]
 type = "vector"
-inputs = ["filter_noise", "parse_kube_audit", "filter_hubble_security"]
+inputs = ["filter_noise", "parse_kube_audit", "filter_hubble_security", "parse_talos"]
 address = "vector-aggregator.elastic-system.svc.cluster.local:6000"
 version = "2"
 
