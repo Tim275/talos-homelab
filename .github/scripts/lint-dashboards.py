@@ -45,7 +45,8 @@ def check_panel_datasources(panels: list, file: str, errors: list) -> None:
             ds = tgt.get("datasource") or panel.get("datasource") or {}
             if isinstance(ds, dict):
                 uid = ds.get("uid")
-                if uid and uid not in KNOWN_DS_UIDS:
+                is_variable_ref = isinstance(uid, str) and uid.startswith("$")
+                if uid and not is_variable_ref and uid not in KNOWN_DS_UIDS:
                     errors.append(
                         f"  panel '{panel.get('title','?')}': unknown datasource uid '{uid}'"
                     )
