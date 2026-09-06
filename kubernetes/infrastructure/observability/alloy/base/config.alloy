@@ -1,0 +1,67 @@
+discovery.kubernetes "pods" {
+	role = "pod"
+}
+
+discovery.relabel "pod_logs" {
+	targets = discovery.kubernetes.pods.targets
+
+	// eigene Logs nicht einsammeln (sonst Rückkopplung)
+	rule {
+		source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+		regex         = "(alloy|vector)"
+		action        = "drop"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_namespace"]
+		target_label  = "namespace"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_name"]
+		target_label  = "pod"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_container_name"]
+		target_label  = "container"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+		target_label  = "service"
+	}
+
+	rule {
+		replacement  = "talos-homelab"
+		target_label = "cluster"
+	}
+}
+
+loki.source.kubernetes "pods" {
+	targets    = discovery.relabel.pod_logs.output
+	forward_to = [loki.process.enrich.receiver]
+}
+
+loki.process "enrich" {
+	stage.json {
+		expressions = {
+			level = "level",
+		}
+	}
+
+	stage.labels {
+		values = {
+			level = "",
+		}
+	}
+
+	forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+	endpoint {
+		url       = "http://loki-gateway.monitoring.svc.cluster.local:80/loki/api/v1/push"
+		tenant_id = "talos-homelab"
+	}
+}
