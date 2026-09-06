@@ -13,46 +13,11 @@ argocd = "latest"
 [settings]
 experimental = true
 
-# ════════════════════════════════════════════════════════════════════════
-# KUBECONFIG-MANAGEMENT — 2 parallele Auth-Pfade zum Talos-Cluster
-# ════════════════════════════════════════════════════════════════════════
-#
-# Datei                              | Wer du bist          | Wann nutzen
-# ──────────────────────────────────  | ──────────────────── | ──────────────
-# ~/.kube/config-oidc                | oidc:<your-user>     | Daily-Driver
-#   ↑ kubelogin → KC-Login + 2FA    | OIDC-User aus LDAP   | (Default-Pfad)
-#                                    |                      |
-# ~/.kube/config-break-glass         | admin (system:masters)| KC kaputt /
-#   ↑ X.509 Talos-Admin-Cert        | Cluster-Admin direkt  | OIDC tot /
-#                                    |                      | Notfall-Recovery
-#                                    |                      |
-# ~/.kube/config-talos-backup        | (Talos-API-Cert)     | Backup von ~/.talos/config
-#   ↑ NICHT für kubectl —           |                      | für talosctl
-#   sondern für talosctl-Notfall    |                      |
-#
-# ─── Wie wechseln ────────────────────────────────────────────────────────
-#
-# Option A: Mit mise (auto, in diesem Repo)
-#   cd ~/Desktop/.../talos-homelab-scratch    # → mise lädt KUBECONFIG=config-oidc
-#
-# Option B: Per Hand (überall)
-#   export KUBECONFIG=~/.kube/config-oidc        # OIDC daily
-#   export KUBECONFIG=~/.kube/config-break-glass # Notfall
-#   export KUBECONFIG=~/.kube/config             # Default-Mac-config
-#
-# Option C: Einmal-Befehl (ohne shell-export)
-#   KUBECONFIG=~/.kube/config-break-glass kubectl get nodes
-#
-# ─── Erstellen / Re-generieren ───────────────────────────────────────────
-#
-# Wenn config-break-glass kaputt/abgelaufen:
-#   talosctl --talosconfig ~/.talos/config --nodes 192.168.0.101 \
-#     kubeconfig ~/.kube/config-break-glass
-#   chmod 600 ~/.kube/config-break-glass
-#
-# Wenn config-oidc kaputt: kubelogin-Setup wiederholen.
-#
-# ════════════════════════════════════════════════════════════════════════
+# Kubeconfigs: config-oidc = daily (Keycloak+2FA), config-break-glass = Notfall
+# (X.509 system:masters, OIDC tot). Wechseln: export KUBECONFIG=~/.kube/<name>,
+# oder einmalig KUBECONFIG=~/.kube/config-break-glass kubectl get nodes.
+# Neu erzeugen bei Ablauf: talosctl --talosconfig ~/.talos/config -n 192.168.0.101
+#   kubeconfig ~/.kube/config-break-glass && chmod 600 ~/.kube/config-break-glass
 [env]
 # KUBECONFIG bewusst NICHT hier setzen — sonst überschreibt mise bei jedem Prompt
 # den manuellen `export KUBECONFIG=config-oidc`. Default kommt aus der .zshrc.

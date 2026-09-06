@@ -15,9 +15,7 @@ mkdir -p "$SNAP"
 echo "Snapshot dir: $SNAP"
 echo ""
 
-# ─────────────────────────────────────────────────────────────────
 # 1) CURRENT STATE SNAPSHOT
-# ─────────────────────────────────────────────────────────────────
 echo "→ Strimzi-Operator current version"
 kubectl get deploy strimzi-cluster-operator -n kafka \
   -o jsonpath='{.spec.template.spec.containers[0].image}' > "$SNAP/strimzi-current.txt" 2>&1
@@ -53,9 +51,7 @@ kubectl get pod -A -l strimzi.io/kind=Kafka -o wide --no-headers > "$SNAP/kafka-
 cat "$SNAP/kafka-pods.txt"
 echo ""
 
-# ─────────────────────────────────────────────────────────────────
 # 2) DANGER-SIGNAL CHECKS
-# ─────────────────────────────────────────────────────────────────
 echo "─────────────────────────────────────────────"
 echo "DANGER-SIGNAL CHECKS"
 echo "─────────────────────────────────────────────"
@@ -150,9 +146,7 @@ else
 fi
 echo ""
 
-# ─────────────────────────────────────────────────────────────────
 # 3) VERDICT
-# ─────────────────────────────────────────────────────────────────
 echo "─────────────────────────────────────────────"
 if [ "$DANGER" -eq 0 ]; then
   echo "✓ READY for Strimzi upgrade"

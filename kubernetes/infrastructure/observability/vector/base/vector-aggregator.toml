@@ -43,9 +43,7 @@ source = '''
 .datacenter = "homelab"
 .node_type = "hypervisor"
 
-# ═══════════════════════════════════════════════════════════════
 # ELASTIC BEST PRACTICE: Namespace differentiation by hostname
-# ═══════════════════════════════════════════════════════════════
 # Extract hostname from syslog metadata to differentiate hosts
 .proxmox_hostname = if exists(.hostname) {
   downcase(string!(.hostname))
@@ -70,9 +68,7 @@ source = '''
 # .cluster = "talos-homelab"
 # .environment = "production"
 #
-# # ═══════════════════════════════════════════════════════════════
 # # ELASTIC BEST PRACTICE: Node role separation (control-plane vs workers)
-# # ═══════════════════════════════════════════════════════════════
 # # Detect node role based on IP address
 # if exists(.node_ip) {
 #   .node_ip = .node_ip
@@ -112,9 +108,7 @@ if !exists(.namespace_suffix) {
   .namespace_suffix = "default"
 }
 
-# ═══════════════════════════════════════════════════════════════
 # FIX: Remove nested Kubernetes labels that break Elasticsearch
-# ═══════════════════════════════════════════════════════════════
 # Labels like app.kubernetes.io/name cause ES parsing errors
 del(.kubernetes.pod_labels)
 del(.kubernetes.namespace_labels)
@@ -151,14 +145,10 @@ if exists(.level) {
   .level = "info"
 }
 
-# ═══════════════════════════════════════════════════════════════
 # TIER-0: Service-Based Index Routing
-# ═══════════════════════════════════════════════════════════════
 .namespace = to_string(.kubernetes.namespace) ?? "unknown"
 
-# ═══════════════════════════════════════════════════════════════
 # OMS (Order Management System) - 7 Service-Specific Indices
-# ═══════════════════════════════════════════════════════════════
 # Backend: gateway, orders, payments, stock, kitchen
 # Frontend: customer-app, kitchen-display
 
@@ -226,9 +216,7 @@ pod_name = to_string(.kubernetes.pod_name) ?? ""
   .namespace
 }
 
-# ═══════════════════════════════════════════════════════════════
 # Map Severity (critical/warn/info/debug)
-# ═══════════════════════════════════════════════════════════════
 .severity = if .level == "error" || .level == "fatal" || .level == "critical" {
   "critical"
 } else if .level == "warn" || .level == "warning" {
@@ -239,9 +227,7 @@ pod_name = to_string(.kubernetes.pod_name) ?? ""
   "info"
 }
 
-# ═══════════════════════════════════════════════════════════════
-# ENTERPRISE: ECS-Compliant Field Mappings
-# ═══════════════════════════════════════════════════════════════
+# ECS-Compliant Field Mappings
 
 # ECS version
 ."ecs.version" = "8.17"
@@ -263,9 +249,7 @@ pod_name = to_string(.kubernetes.pod_name) ?? ""
 .datacenter = "homelab"
 .environment = "production"
 
-# ═══════════════════════════════════════════════════════════════
-# ENTERPRISE: OpenTelemetry Tracing Support
-# ═══════════════════════════════════════════════════════════════
+# OpenTelemetry Tracing Support
 
 # Extract trace.id from headers/metadata (if exists)
 if exists(.trace_id) {
@@ -290,9 +274,7 @@ if exists(.span_id) {
   ."span.id" = string!(.spanId)
 }
 
-# ═══════════════════════════════════════════════════════════════
-# ENTERPRISE: Structured Logging Support
-# ═══════════════════════════════════════════════════════════════
+# Structured Logging Support
 
 # If log is JSON, preserve structured fields
 if exists(.workflow_id) {
@@ -333,28 +315,18 @@ inputs = ["enrich_logs"]
 rate = 1
 key_field = ".kubernetes.pod"  # Sample per pod
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# OPTION E (DAX-Mittelstand-Pattern, 2026-05-16):
-# Filter ES-sink auf SENSITIVE namespaces only. Reason: Promtail liefert
-# ALL pod-logs zu Loki (für daily-grep). ES bekommt nur Audit/Compliance-NS.
-# Spart ~70% ES-storage + halbiert index-shards.
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ES bekommt nur Audit/Compliance-NS, Loki bekommt weiterhin alle Pod-Logs.
+# Spart ~70% ES-Storage + halbiert Index-Shards.
 [transforms.filter_sensitive_for_es]
 type = "filter"
 inputs = ["sample_logs"]
-# Fix 2026-05-17: stricter VRL parser in newer Vector versions rejects
-# `||` line-continuation inside `(...)`. Use `includes()` with array literal
-# (set-membership check). Same semantics, parser-stable.
-# 2026-06-14: tetragon aus ES auskommentiert — info-level war ~15GB (halber ES-Store).
-# Bleibt 1:1 in Loki (Forensik per grep). Re-enable = tetragon-Klausel unten wieder
-# an die condition anhängen (das `||` davor nicht vergessen):
-#   || (exists(.kubernetes.pod_name) && starts_with(string!(.kubernetes.pod_name), "tetragon"))
+# includes() statt ||-Kette — manche VRL-Parser lehnen ||-Zeilenfortsetzung in (...) ab.
+# Tetragon bewusst ausgeschlossen (info-level ~15GB) — bleibt 1:1 in Loki.
+# Re-include: || (exists(.kubernetes.pod_name) && starts_with(string!(.kubernetes.pod_name), "tetragon"))
 condition = '(exists(.kubernetes.pod_namespace) && includes(["drova","drova-prod","keycloak","lldap","argocd","cert-manager","kyverno","security","cilium-spire","cnpg-system","velero","gateway","netbird","n8n-prod","kafka","cloudbeaver","audiobookshelf-prod","redis-operator-system"], .kubernetes.pod_namespace)) || (exists(.source) && .source == "kubernetes-audit") || (exists(.source) && .source == "hubble")'
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ES-VOLUME-SCHUTZ: laute INFO-Quellen (kafka/n8n-prod) auf 1/5 samplen.
 # WARN/CRITICAL + alle anderen NS bleiben 1:1 (exclude). Loki bekommt weiter alles.
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [transforms.sample_noisy_for_es]
 type = "sample"
 inputs = ["filter_sensitive_for_es"]
@@ -364,9 +336,7 @@ exclude = '''
 .severity != "info" || !(exists(.kubernetes.pod_namespace) && includes(["kafka","n8n-prod"], .kubernetes.pod_namespace))
 '''
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ELASTICSEARCH SINK - DATA STREAMS + ECS (sensitive NS only)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [sinks.elasticsearch]
 type = "elasticsearch"
 inputs = ["sample_noisy_for_es"]
@@ -402,9 +372,7 @@ timeout_secs = 10
 timeout_secs = 60
 retry_attempts = 3
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # LOKI SINK - Grafana log storage
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [sinks.loki]
 type = "loki"
 inputs = ["sample_logs"]
@@ -472,9 +440,7 @@ namespace = "waf"
 tags.rule_id = "{{ coraza_rule_id }}"
 tags.action = "{{ coraza_action }}"
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # PROMETHEUS EXPORTER - Vector Internal Metrics + Coraza WAF counter
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [sources.internal_metrics]
 type = "internal_metrics"
 
