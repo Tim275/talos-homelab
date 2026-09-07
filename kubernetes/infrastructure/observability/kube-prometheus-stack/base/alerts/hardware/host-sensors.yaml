@@ -34,6 +34,20 @@ spec:
             description: "NVMe running hot — thermal-throttles and degrades Ceph performance."
             action: "PHYSICAL: add/reseat heatsink, improve airflow/dust; reduce write load."
 
+        # 85C is thermal-shutdown territory; Ceph slow-ops start well below that
+        - alert: HostNVMeTemperatureWarning
+          expr: node_hwmon_temp_celsius{chip=~"nvme.*",sensor="temp1"} > 70
+          for: 30m
+          labels:
+            severity: warning
+            component: hardware
+            priority: P2
+          annotations:
+            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-node-overview"
+            summary: "NVMe {{ $labels.chip }} on {{ $labels.instance }} at {{ $value }}°C"
+            description: "Sustained >70C. The Samsung 990 PRO on nipogi sits ~20C above its neighbour and is the usual source of CephSlowOps on osd.2/osd.4 — check here before blaming Ceph."
+            action: "smartctl -a /dev/nvmeN on the host; compare against the other NVMe. PHYSICAL: heatsink/airflow. Cross-check: does CephSlowOps fire at the same time?"
+
         # - alert: HypervisorSwapInUse
         #   expr: |
         #   for: 15m

@@ -52,3 +52,18 @@ spec:
             summary: "Talos node {{ $labels.instance }} rebooted recently"
             description: "Node uptime <10min — investigate if unplanned."
             action: "talosctl -n <node> get events / dmesg; if unplanned: check the Proxmox VM + host stability."
+
+        # replaces the upstream NodeMemoryHighUtilization (disabled in values-prod.yaml):
+        # its 90% fires permanently on nodes carrying a Ceph OSD, which is normal there
+        - alert: TalosNodeMemoryCritical
+          expr: 100 - (node_memory_MemAvailable_bytes{job="node-exporter"} / node_memory_MemTotal_bytes{job="node-exporter"} * 100) > 95
+          for: 30m
+          labels:
+            severity: warning
+            component: hypervisor
+            priority: P2
+          annotations:
+            dashboard_url: "https://grafana.timourhomelab.org/d/talos-os"
+            summary: "Talos node {{ $labels.instance }} below 5% available memory"
+            description: "MemAvailable <5% for 30min — page-cache is already excluded, so this is real pressure and OOM-kills are near. worker-1/2 idle around 90% because osd.2/osd.4 hold their BlueStore cache there; only <5% is actionable."
+            action: "kubectl top pod -A --sort-by=memory | head; check for a pod that grew. nipogi has no spare RAM (77G host, 66G assigned) — evict or move, do not raise VM RAM in place (that destroyed worker-3 once)."

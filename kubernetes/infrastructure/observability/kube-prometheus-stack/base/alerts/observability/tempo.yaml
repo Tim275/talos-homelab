@@ -22,18 +22,22 @@ spec:
             description: "Apps cannot push traces; OTel-Collector queue grows. (Tracing only — no user impact.)"
             action: "kubectl -n tempo get pod -l app.kubernetes.io/component=distributor + logs; the OTel queue grows until restored (tracing only)."
 
-        - alert: TempoMetricsGeneratorNotProcessing
-          expr: |
-            sum(tempo_metrics_generator_registry_active_series) == 0
-            and
-            sum(rate(tempo_metrics_generator_spans_received_total[15m])) > 0
-          for: 15m
-          labels:
-            severity: warning
-            component: tempo
-            priority: P2
-          annotations:
-            dashboard_url: "https://grafana.timourhomelab.org/d/tempo-service-graph"
-            summary: "Tempo metrics-generator bekommt Spans, erzeugt aber keine Serien"
-            description: "active_series=0 bei laufendem Span-Eingang — span-metrics/service-graphs/local-blocks liefern nichts. TraceQL-Metrics geben leere Serien zurueck, Traces Drilldown bleibt leer. Trace-SUCHE funktioniert weiter, deshalb faellt es sonst nicht auf."
-            action: "Bekannter Tempo-Bug bei single-tenant (github.com/grafana/tempo/issues/2027, /5479): Spans kommen an (spans_received>0, 0 push-failures), Prozessoren erzeugen trotzdem nichts, keine Fehlermeldung im Log. Kein Config-Fix bekannt — nur pruefen, ob remote_write ueberhaupt gesetzt ist (tempo/base/values.yaml, metricsGenerator.config.storage.remote_write), das war 09-06 der andere, echte Bug."
+      # PARKED 2026-09-07: feuert dauerhaft. Verifiziert: spans_received rate 2.8/s,
+      # active_series 0 — der Alert hat recht, aber es ist der Upstream-Bug
+      # (grafana/tempo#2027, #5479). remote_write ist seit #849 gesetzt, half nicht.
+      # Reaktivieren, wenn Tempo den Bug behebt.
+      # - alert: TempoMetricsGeneratorNotProcessing
+      # expr: |
+      # sum(tempo_metrics_generator_registry_active_series) == 0
+      # and
+      # sum(rate(tempo_metrics_generator_spans_received_total[15m])) > 0
+      # for: 15m
+      # labels:
+      # severity: warning
+      # component: tempo
+      # priority: P2
+      # annotations:
+      # dashboard_url: "https://grafana.timourhomelab.org/d/tempo-service-graph"
+      # summary: "Tempo metrics-generator bekommt Spans, erzeugt aber keine Serien"
+      # description: "active_series=0 bei laufendem Span-Eingang — span-metrics/service-graphs/local-blocks liefern nichts. TraceQL-Metrics geben leere Serien zurueck, Traces Drilldown bleibt leer. Trace-SUCHE funktioniert weiter, deshalb faellt es sonst nicht auf."
+      # action: "Bekannter Tempo-Bug bei single-tenant (github.com/grafana/tempo/issues/2027, /5479): Spans kommen an (spans_received>0, 0 push-failures), Prozessoren erzeugen trotzdem nichts, keine Fehlermeldung im Log. Kein Config-Fix bekannt — nur pruefen, ob remote_write ueberhaupt gesetzt ist (tempo/base/values.yaml, metricsGenerator.config.storage.remote_write), das war 09-06 der andere, echte Bug."
