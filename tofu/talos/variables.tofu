@@ -53,7 +53,8 @@ variable "nodes" {
     ceph_disk_datastore = optional(string)
     # node-pool: leer = kein Label (Control-Planes) — node-restriction.kubernetes.io/-Prefix
     # blockt kubelet-gesetzte Labels
-    pool = optional(string, "")
+    pool        = optional(string, "")
+    node_taints = optional(map(string), {}) # taint-key => effect
   }))
 }
 
