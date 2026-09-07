@@ -138,13 +138,25 @@ spec:
           - key: ui-config.json
             path: ui-config.json
 
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/name: jaeger
-          topologyKey: kubernetes.io/hostname
+  # the operator labels pods app.kubernetes.io/name=jaeger-collector, so a selector
+  # on "jaeger" matched nothing and all replicas piled onto the two nipogi nodes
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: DoNotSchedule
+      matchLabelKeys:
+        - pod-template-hash
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/instance: jaeger.jaeger
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+      matchLabelKeys:
+        - pod-template-hash
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/instance: jaeger.jaeger
 ---
 apiVersion: v1
 kind: ConfigMap
