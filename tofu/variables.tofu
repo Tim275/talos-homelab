@@ -71,9 +71,9 @@ variable "talos_nodes" {
     dns                 = optional(list(string), ["192.168.0.1", "8.8.8.8"])
     update              = optional(bool, false)
     igpu                = optional(bool, false)
-    os_disk_size        = optional(number, 50) # OS disk size in GB
-    ceph_disk_size      = optional(number, 0)  # Ceph OSD disk size in GB (0 = no Ceph disk)
-    ceph_disk_datastore = optional(string)     # Datastore for Ceph disk (fallback: datastore_id)
+    os_disk_size        = optional(number, 50)      # OS disk size in GB
+    ceph_disk_size      = optional(number, 0)       # Ceph OSD disk size in GB (0 = no Ceph disk)
+    ceph_disk_datastore = optional(string)          # Datastore for Ceph disk (fallback: datastore_id)
     node_taints         = optional(map(string), {}) # taint-key => effect
   }))
 
