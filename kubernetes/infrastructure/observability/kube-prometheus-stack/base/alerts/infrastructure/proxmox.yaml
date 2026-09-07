@@ -88,6 +88,19 @@ spec:
             description: "Cannot scrape Proxmox API — VM/cluster state not visible in Grafana."
             action: "Check the pve-exporter pod + the Proxmox API token; Grafana loses VM/cluster state meanwhile."
 
+        - alert: ProxmoxHostRebooted
+          expr: (time() - node_boot_time_seconds{job="proxmox-host-node"}) < 600
+          for: 1m
+          labels:
+            severity: warning
+            component: hypervisor
+            priority: P2
+          annotations:
+            dashboard_url: "https://grafana.timourhomelab.org/d/proxmox-cluster"
+            summary: "Proxmox host {{ $labels.instance }} rebooted recently"
+            description: "Host uptime <10min — all VMs on it restarted too."
+            action: "ssh <host> 'journalctl --list-boots; last -x reboot | head'; if unplanned check power + the VMs that came back."
+
         # - alert: ProxmoxBackupStale
         #   expr: time() - max by (host) (pve_vzdump_last_backup_timestamp_seconds) > 93600
         #   for: 1h
