@@ -26,7 +26,8 @@ talos_nodes = {
     ceph_disk_size      = 430
     ceph_disk_datastore = "cephpool"
     # Pools spannen mehrere Zonen — sonst bricht der zone-Spread von drova-pg/kafka.
-    pool = "stateful"
+    pool        = "stateful"
+    node_taints = { "nipogi" = "PreferNoSchedule" }
   }
   "worker-2" = {
     host_node           = "nipogi"
@@ -42,6 +43,7 @@ talos_nodes = {
     ceph_disk_size      = 430
     ceph_disk_datastore = "cephpool"
     pool                = "stateless"
+    node_taints         = { "nipogi" = "PreferNoSchedule" }
   }
   "worker-3" = {
     host_node      = "msa2proxmox"

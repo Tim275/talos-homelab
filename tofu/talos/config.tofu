@@ -60,6 +60,7 @@ data "talos_machine_configuration" "this" {
       node_name          = each.value.host_node
       kubernetes_version = var.cluster.kubernetes_version
       pool               = each.value.pool
+      node_taints        = each.value.node_taints
     }),
     each.value.machine_type == "controlplane" ?
     templatefile("${path.module}/machine-config/control-plane.yaml.tftpl", {
