@@ -74,6 +74,7 @@ variable "talos_nodes" {
     os_disk_size        = optional(number, 50) # OS disk size in GB
     ceph_disk_size      = optional(number, 0)  # Ceph OSD disk size in GB (0 = no Ceph disk)
     ceph_disk_datastore = optional(string)     # Datastore for Ceph disk (fallback: datastore_id)
+    node_taints         = optional(map(string), {}) # taint-key => effect
   }))
 
   validation {
