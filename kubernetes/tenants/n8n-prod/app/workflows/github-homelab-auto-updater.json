@@ -286,6 +286,58 @@
     },
     {
       "parameters": {
+        "url": "=https://api.github.com/repos/Tim275/talos-homelab/pulls/{{ $('Only New PRs').item.json.pr_number }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Accept", "value": "application/vnd.github+json" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "checkPRState",
+      "name": "Check PR State",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2592, 48],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "homelab-github-cred",
+          "name": "Github Token n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "mergeableClean",
+              "leftValue": "={{ $json.mergeable_state }}",
+              "rightValue": "clean",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "mergeableGate",
+      "name": "Mergeable?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2784, 48]
+    },
+    {
+      "parameters": {
         "method": "PUT",
         "url": "=https://api.github.com/repos/Tim275/talos-homelab/pulls/{{ $('Only New PRs').item.json.pr_number }}/merge",
         "authentication": "genericCredentialType",
@@ -424,9 +476,18 @@
     },
     "Decision Router": {
       "main": [
-        [{ "node": "Merge PR", "type": "main", "index": 0 }],
+        [{ "node": "Check PR State", "type": "main", "index": 0 }],
         [{ "node": "Notify Needs Review", "type": "main", "index": 0 }],
         [{ "node": "Notify Rejected", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check PR State": {
+      "main": [[{ "node": "Mergeable?", "type": "main", "index": 0 }]]
+    },
+    "Mergeable?": {
+      "main": [
+        [{ "node": "Merge PR", "type": "main", "index": 0 }],
+        [{ "node": "Notify Needs Review", "type": "main", "index": 0 }]
       ]
     },
     "Merge PR": {
