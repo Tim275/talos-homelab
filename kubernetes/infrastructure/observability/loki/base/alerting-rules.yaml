@@ -10,7 +10,7 @@ data:
         interval: 1m
         rules:
           - alert: LogsAuthFailureSpike
-            expr: 'sum(count_over_time({namespace=~"keycloak|lldap"} |~ "(?i)(invalid_user_credentials|authentication failed|invalid password)" [10m])) > 20'
+            expr: 'sum by (namespace, pod) (count_over_time({namespace=~"keycloak|lldap"} |~ "(?i)(invalid_user_credentials|authentication failed|invalid password)" [10m])) > 20'
             for: 5m
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
@@ -19,7 +19,7 @@ data:
               action: "kubectl logs -n keycloak keycloak-0 | grep -i invalid; Quell-IPs gruppieren."
 
           - alert: LogsSensitiveFileAccess
-            expr: 'sum (count_over_time({namespace="kube-system"} |~ "process_kprobe" |~ "/etc/shadow|/etc/sudoers|authorized_keys" != "loki-gateway" != "/loki/api/" [1h])) > 0'
+            expr: 'sum by (pod) (count_over_time({namespace="kube-system"} |~ "process_kprobe" |~ "/etc/shadow|/etc/sudoers|authorized_keys" != "loki-gateway" != "/loki/api/" [1h])) > 0'
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
               summary: "Zugriff auf Credential-Datei ({{ $value }} in 1h)"
@@ -61,7 +61,7 @@ data:
               action: "Loki: {service_name=\"kube-audit\"} |~ \"secrets\" !~ \"serviceaccount\" | json — welche Secrets pruefen."
 
           - alert: LogsNetBirdAccessChange
-            expr: 'sum(count_over_time({namespace="netbird", pod=~"netbird-audit-export.*"} |~ "\"activity_code\":\"(rule|policy|route|group|nameserver)\\." [1h])) > 0'
+            expr: 'sum by (pod) (count_over_time({namespace="netbird", pod=~"netbird-audit-export.*"} |~ "\"activity_code\":\"(rule|policy|route|group|nameserver)\\." [1h])) > 0'
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
               summary: "VPN-Zugriffsregeln geaendert ({{ $value }} Events)"
@@ -69,7 +69,7 @@ data:
               action: "Loki: {namespace=\"netbird\", pod=~\"netbird-audit-export.*\"} | json — activity und initiator_email pruefen; gegen tofu/netbird abgleichen."
 
           - alert: LogsNetBirdPeerEnrollment
-            expr: 'sum(count_over_time({namespace="netbird", pod=~"netbird-audit-export.*"} |~ "\"activity_code\":\"(peer\\.setupkey\\.add|setupkey\\.add|user\\.invite|user\\.join|user\\.role\\.update)\"" [1h])) > 0'
+            expr: 'sum by (pod) (count_over_time({namespace="netbird", pod=~"netbird-audit-export.*"} |~ "\"activity_code\":\"(peer\\.setupkey\\.add|setupkey\\.add|user\\.invite|user\\.join|user\\.role\\.update)\"" [1h])) > 0'
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
               summary: "Neues Geraet oder neuer Nutzer im VPN ({{ $value }} Events)"
@@ -77,7 +77,7 @@ data:
               action: "Loki: {namespace=\"netbird\", pod=~\"netbird-audit-export.*\"} | json — target_id und initiator_email pruefen."
 
           - alert: LogsSealedSecretsDecryptFailure
-            expr: 'sum(count_over_time({namespace="sealed-secrets"} |~ "(?i)(no key could decrypt|cannot decrypt|unsealing failed)" [1h])) > 0'
+            expr: 'sum by (pod) (count_over_time({namespace="sealed-secrets"} |~ "(?i)(no key could decrypt|cannot decrypt|unsealing failed)" [1h])) > 0'
             for: 5m
             labels: {severity: critical, component: security, priority: P1, source: loki}
             annotations:
@@ -89,7 +89,7 @@ data:
         interval: 1m
         rules:
           - alert: LogsLeaderElectionLost
-            expr: 'sum by (namespace) (count_over_time({namespace=~".+", pod!~"loki.*|tetragon.*"} |= "leader election lost" [30m])) > 5'
+            expr: 'sum by (namespace, pod) (count_over_time({namespace=~".+", pod!~"loki.*|tetragon.*"} |= "leader election lost" [30m])) > 5'
             for: 15m
             labels: {severity: warning, component: platform, priority: P2, source: loki}
             annotations:
@@ -98,7 +98,7 @@ data:
               action: "kubectl get pods -n {{ $labels.namespace }}; kubectl describe node ctrl-0 | grep -A5 Conditions"
 
           - alert: LogsOOMKillBurst
-            expr: 'sum(count_over_time({namespace=~".+", pod!~"loki.*"} |~ "(?i)out of memory: killed process" [10m])) > 3'
+            expr: 'sum by (namespace, pod) (count_over_time({namespace=~".+", pod!~"loki.*"} |~ "(?i)out of memory: killed process" [10m])) > 3'
             for: 5m
             labels: {severity: warning, component: platform, priority: P2, source: loki}
             annotations:
@@ -107,7 +107,7 @@ data:
               action: "Loki: {namespace=~\".+\"} |~ \"out of memory: killed process\" — zeigt Pod+Prozess. Dann kubectl top pods -A --sort-by=memory."
 
           - alert: LogsPanicDetected
-            expr: 'sum by (namespace) (count_over_time({namespace=~".+", pod!~"loki.*"} |~ "(?i)(panic:|fatal error:|runtime error:)" [15m])) > 5'
+            expr: 'sum by (namespace, pod) (count_over_time({namespace=~".+", pod!~"loki.*"} |~ "(?i)(panic:|fatal error:|runtime error:)" [15m])) > 5'
             for: 10m
             labels: {severity: warning, component: platform, priority: P2, source: loki}
             annotations:
@@ -116,7 +116,7 @@ data:
               action: "stern -n {{ $labels.namespace }} . -i 'panic|fatal' --since 15m"
 
           - alert: LogsCertificateIssuanceFailure
-            expr: 'sum(count_over_time({namespace="cert-manager"} |~ "(?i)(failed to finalize order|error issuing certificate|acme: error)" [1h])) > 0'
+            expr: 'sum by (pod) (count_over_time({namespace="cert-manager"} |~ "(?i)(failed to finalize order|error issuing certificate|acme: error)" [1h])) > 0'
             for: 10m
             labels: {severity: warning, component: platform, priority: P2, source: loki}
             annotations:
@@ -125,7 +125,7 @@ data:
               action: "kubectl get certificate,certificaterequest,order -A | grep -v True"
 
           - alert: LogsArgoCDSyncFailure
-            expr: 'sum(count_over_time({namespace="argocd"} |~ "(?i)(ComparisonError|failed to sync|rpc error.*repo)" [15m])) > 3'
+            expr: 'sum by (pod) (count_over_time({namespace="argocd"} |~ "(?i)(ComparisonError|failed to sync|rpc error.*repo)" [15m])) > 3'
             for: 10m
             labels: {severity: warning, component: platform, priority: P2, source: loki}
             annotations:
@@ -155,7 +155,7 @@ data:
         interval: 1m
         rules:
           - alert: LogsDatabaseLoginFailure
-            expr: 'sum by (namespace) (count_over_time({namespace=~"drova|n8n-prod|keycloak|cnpg-system"} |~ "server login has been failing|password authentication failed" [10m])) > 20'
+            expr: 'sum by (namespace, pod) (count_over_time({namespace=~"drova|n8n-prod|keycloak|cnpg-system"} |~ "server login has been failing|password authentication failed" [10m])) > 20'
             for: 2m
             labels: {severity: warning, component: data, priority: P2, source: loki}
             annotations:
@@ -164,7 +164,7 @@ data:
               action: "kubectl get cluster,pooler -n {{ $labels.namespace }}; kubectl logs -n {{ $labels.namespace }} -l cnpg.io/poolerName --since=15m"
 
           - alert: LogsVeleroBackupError
-            expr: 'sum(count_over_time({namespace="velero"} |~ "(?i)(backup failed|error backing up|failed to upload)" [1h])) > 2'
+            expr: 'sum by (pod) (count_over_time({namespace="velero"} |~ "(?i)(backup failed|error backing up|failed to upload)" [1h])) > 2'
             for: 10m
             labels: {severity: warning, component: data, priority: P2, source: loki}
             annotations:
@@ -173,7 +173,7 @@ data:
               action: "velero backup get; velero backup logs $(velero backup get -o name | tail -1 | cut -d/ -f2)"
 
           - alert: LogsDiskIOError
-            expr: 'sum (count_over_time({namespace="rook-ceph"} |~ "I/O error|EXT4-fs error|Buffer I/O error|blk_update_request" [1h])) > 0'
+            expr: 'sum by (pod) (count_over_time({namespace="rook-ceph"} |~ "I/O error|EXT4-fs error|Buffer I/O error|blk_update_request" [1h])) > 0'
             for: 5m
             labels: {severity: critical, component: storage, priority: P1, source: loki}
             annotations:
@@ -182,7 +182,7 @@ data:
               action: "stern -n rook-ceph . --since 15m -i 'i/o error'; smartctl-Dashboard fuer den Host pruefen."
 
           - alert: LogsCSIMountFailure
-            expr: 'sum(count_over_time({namespace="rook-ceph"} |~ "(?i)(failed to mount|rbd image.*still being used|MountVolume.*failed)" [15m])) > 3'
+            expr: 'sum by (pod) (count_over_time({namespace="rook-ceph"} |~ "(?i)(failed to mount|rbd image.*still being used|MountVolume.*failed)" [15m])) > 3'
             for: 10m
             labels: {severity: warning, component: storage, priority: P2, source: loki}
             annotations:
@@ -191,7 +191,7 @@ data:
               action: "kubectl get pods -A --field-selector status.phase=Pending; kubectl get volumeattachments | grep false"
 
           - alert: LogsVeleroRestoreFailure
-            expr: 'sum(count_over_time({namespace="velero"} |~ "(?i)(restore failed|error restoring|restore.*PartiallyFailed)" [1h])) > 0'
+            expr: 'sum by (pod) (count_over_time({namespace="velero"} |~ "(?i)(restore failed|error restoring|restore.*PartiallyFailed)" [1h])) > 0'
             for: 10m
             labels: {severity: warning, component: data, priority: P2, source: loki}
             annotations:
@@ -200,7 +200,7 @@ data:
               action: "velero restore get; velero restore logs $(velero restore get -o name | tail -1 | cut -d/ -f2)"
 
           - alert: LogsDatabaseFailover
-            expr: 'sum by (namespace) (count_over_time({namespace=~"cnpg-system|drova|n8n-prod|keycloak"} |~ "(?i)(promoted to primary|switchover|new primary)" [1h])) > 0'
+            expr: 'sum by (namespace, pod) (count_over_time({namespace=~"cnpg-system|drova|n8n-prod|keycloak"} |~ "(?i)(promoted to primary|switchover|new primary)" [1h])) > 0'
             for: 0m
             labels: {severity: warning, component: data, priority: P2, source: loki}
             annotations:
@@ -221,7 +221,7 @@ data:
         interval: 1m
         rules:
           - alert: LogsNoHealthyUpstream
-            expr: 'sum(count_over_time({namespace="gateway"} |~ "no_healthy_upstream|upstream_reset_before_response_started" [10m])) > 5'
+            expr: 'sum by (pod) (count_over_time({namespace="gateway"} |~ "no_healthy_upstream|upstream_reset_before_response_started" [10m])) > 5'
             for: 5m
             labels: {severity: warning, component: network, priority: P2, source: loki}
             annotations:
@@ -230,7 +230,7 @@ data:
               action: "kubectl get httproute -A; kubectl get endpointslices -A | grep -v ' 1 '"
 
           - alert: LogsCloudflaredTunnelFailure
-            expr: 'sum(count_over_time({namespace="cloudflared"} |~ "(?i)(failed to connect|unregistered tunnel|connection terminated)" [15m])) > 5'
+            expr: 'sum by (pod) (count_over_time({namespace="cloudflared"} |~ "(?i)(failed to connect|unregistered tunnel|connection terminated)" [15m])) > 5'
             for: 10m
             labels: {severity: warning, component: network, priority: P2, source: loki}
             annotations:

@@ -1,14 +1,13 @@
 talos_nodes = {
   "ctrl-0" = {
-    host_node     = "nipogi"
-    machine_type  = "controlplane"
-    ip            = "192.168.0.101"
-    mac_address   = "BC:24:11:2E:C8:A0"
-    vm_id         = 1000
-    cpu           = 6
-    ram_dedicated = 14336
-    # etcd-fsync: ctrl-0 OS-Disk auf Samsung (cephpool), nicht HOGE (local-zfs)
-    datastore_id   = "cephpool"
+    host_node      = "pve"
+    machine_type   = "controlplane"
+    ip             = "192.168.0.101"
+    mac_address    = "BC:24:11:2E:C8:A0"
+    vm_id          = 1000
+    cpu            = 6
+    ram_dedicated  = 12288
+    datastore_id   = "local-lvm"
     os_disk_size   = 50
     ceph_disk_size = 0
   }
@@ -121,8 +120,8 @@ talos_nodes = {
     mac_address  = "BC:24:11:2E:C8:B3"
     vm_id        = 1008
     cpu          = 6
-    # 36G statt 40G — 85%-Host-RAM-Regel (msa2/nipogi-Lektion)
-    ram_dedicated = 36864
+    # 85%-Regel wie msa2/nipogi: (46G*0.85)-12G ctrl-0
+    ram_dedicated = 27648
     # LVM-thin statt ZFS; 300G fuer local-path, kein Ceph-OSD
     datastore_id   = "local-lvm"
     os_disk_size   = 300
