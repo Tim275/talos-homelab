@@ -27,7 +27,7 @@ data:
               action: "Loki: {namespace=\"kube-system\"} |~ \"process_kprobe\" |~ \"shadow|sudoers|authorized_keys\" | json ns=\"process_kprobe.process.pod.namespace\", pod=\"process_kprobe.process.pod.name\" — zeigt betroffenen Pod."
 
           - alert: LogsAuditPodExec
-            expr: 'sum(count_over_time({service_name="kube-audit"} |~ "pods/exec" [1h])) > 0'
+            expr: 'sum by (kubernetes_namespace, kubernetes_name) (count_over_time({service_name="kube-audit"} |~ "pods/exec" | json [1h])) > 0'
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
               summary: "Shell in einem Pod geoeffnet ({{ $value }} in 1h)"
@@ -35,7 +35,7 @@ data:
               action: "Loki: {service_name=\"kube-audit\"} |~ \"pods/exec\" | json — user.name und kubernetes.namespace pruefen."
 
           - alert: LogsAuditAnonymousAccess
-            expr: 'sum(count_over_time({service_name="kube-audit"} |~ "system:anonymous" [1h])) > 0'
+            expr: 'sum by (kubernetes_namespace, kubernetes_resource, kubernetes_name) (count_over_time({service_name="kube-audit"} |~ "system:anonymous" | json [1h])) > 0'
             labels: {severity: critical, component: security, priority: P1, source: loki}
             annotations:
               summary: "Nicht authentifizierter API-Zugriff ({{ $value }} in 1h)"
@@ -43,7 +43,7 @@ data:
               action: "Loki: {service_name=\"kube-audit\"} |~ \"system:anonymous\" | json — sourceIPs und requestURI pruefen."
 
           - alert: LogsAuditRBACChange
-            expr: 'sum (count_over_time({service_name="kube-audit"} |~ "clusterrolebindings|rolebindings" !~ "system:serviceaccount|system:node" !~ "\"verb\":\"(get|list|watch)\"" [1h])) > 0'
+            expr: 'sum by (kubernetes_namespace, kubernetes_name) (count_over_time({service_name="kube-audit"} |~ "clusterrolebindings|rolebindings" !~ "system:serviceaccount|system:node" !~ "\"verb\":\"(get|list|watch)\"" | json [1h])) > 0'
             for: 2m
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
@@ -52,7 +52,7 @@ data:
               action: "Loki: {service_name=\"kube-audit\"} |~ \"rolebindings\" | json — verb pruefen."
 
           - alert: LogsAuditHumanSecretAccess
-            expr: 'sum (count_over_time({service_name="kube-audit"} |~ "\"kubernetes.resource\":\"secrets\"" !~ "system:serviceaccount|system:node" [10m])) > 40'
+            expr: 'sum by (user_name) (count_over_time({service_name="kube-audit"} |~ "\"kubernetes.resource\":\"secrets\"" !~ "system:serviceaccount|system:node" | json [10m])) > 40'
             for: 5m
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
@@ -134,7 +134,7 @@ data:
               action: "kubectl logs -n argocd -l app.kubernetes.io/name=argocd-repo-server --since=15m"
 
           - alert: LogsErrorRateAnomaly
-            expr: 'sum by (namespace) (count_over_time({namespace=~".+", pod!~"loki.*"} | json | __error__="" | level=~"(?i)error" [10m])) > 50'
+            expr: 'sum by (namespace, pod) (count_over_time({namespace=~".+", pod!~"loki.*"} | json | __error__="" | level=~"(?i)error" [10m])) > 50'
             for: 5m
             labels: {severity: warning, component: platform, priority: P2, source: loki}
             annotations:
@@ -143,7 +143,7 @@ data:
               action: "stern -n {{ $labels.namespace }} . -i error --since 10m"
 
           - alert: LogsVolumeSpike
-            expr: 'sum by (namespace) (count_over_time({namespace=~".+"}[10m])) > 80000'
+            expr: 'sum by (namespace, pod) (count_over_time({namespace=~".+"}[10m])) > 80000'
             for: 5m
             labels: {severity: warning, component: platform, priority: P2, source: loki}
             annotations:
@@ -209,7 +209,7 @@ data:
               action: "kubectl get cluster -n {{ $labels.namespace }}; kubectl cnpg status <cluster> -n {{ $labels.namespace }}"
 
           - alert: LogsElasticsearchClusterBlock
-            expr: 'sum(count_over_time({namespace="elastic-system", pod=~"production-cluster.*"} |~ "(?i)(cluster_block_exception|circuit_breaking_exception|index_not_found)" [1h])) > 0'
+            expr: 'sum by (namespace, pod) (count_over_time({namespace="elastic-system", pod=~"production-cluster.*"} |~ "(?i)(cluster_block_exception|circuit_breaking_exception|index_not_found)" [1h])) > 0'
             for: 5m
             labels: {severity: warning, component: data, priority: P2, source: loki}
             annotations:
