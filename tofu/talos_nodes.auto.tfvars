@@ -114,13 +114,14 @@ talos_nodes = {
   #   ceph_disk_size = 0
   # }
   "worker-6" = {
-    host_node     = "pve"
-    machine_type  = "worker"
-    ip            = "192.168.0.109"
-    mac_address   = "BC:24:11:2E:C8:B3"
-    vm_id         = 1008
-    cpu           = 6
-    ram_dedicated = 22528
+    host_node    = "pve"
+    machine_type = "worker"
+    ip           = "192.168.0.109"
+    mac_address  = "BC:24:11:2E:C8:B3"
+    vm_id        = 1008
+    cpu          = 6
+    # 85%-Regel wie msa2/nipogi: (46G*0.85)-12G ctrl-0
+    ram_dedicated = 27648
     # LVM-thin statt ZFS; 300G fuer local-path, kein Ceph-OSD
     datastore_id   = "local-lvm"
     os_disk_size   = 300
