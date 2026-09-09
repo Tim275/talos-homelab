@@ -7,13 +7,9 @@ commonAnnotations:
 namespace: rook-ceph
 
 resources:
-  # https://github.com/rook/rook/releases
-  - https://raw.githubusercontent.com/rook/rook/v1.18.7/deploy/examples/crds.yaml
-  - https://raw.githubusercontent.com/rook/rook/v1.18.7/deploy/examples/common.yaml
-  - https://raw.githubusercontent.com/rook/rook/v1.18.7/deploy/examples/operator.yaml
-  - https://raw.githubusercontent.com/rook/rook/v1.18.7/deploy/examples/csi-operator.yaml
   - https://raw.githubusercontent.com/rook/rook/v1.18.7/deploy/examples/monitoring/rbac.yaml
 
+  - namespace.yaml
   - priority-classes.yaml
   - cluster.yaml
   - pools.yaml
@@ -37,6 +33,15 @@ resources:
 
   - velero-users.yaml
 
+helmCharts:
+  - name: rook-ceph
+    repo: https://charts.rook.io/release
+    version: v1.18.7
+    releaseName: rook-ceph
+    namespace: rook-ceph
+    includeCRDs: true
+    valuesFile: values.yaml
+
 patches:
   - target:
       kind: CustomResourceDefinition
@@ -46,14 +51,6 @@ patches:
         value:
           argocd.argoproj.io/sync-wave: "-10"
           argocd.argoproj.io/sync-options: ServerSideApply=true,Prune=false
-
-  - target:
-      kind: Namespace
-      name: rook-ceph
-    patch: |-
-      - op: add
-        path: /metadata/annotations/argocd.argoproj.io~1sync-wave
-        value: "-10"
 
   - target:
       kind: Deployment
@@ -75,79 +72,3 @@ patches:
           argocd.argoproj.io/sync-wave: "0"
           argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 
-  - target:
-      kind: ConfigMap
-      name: rook-ceph-operator-config
-    patch: |-
-      - op: replace
-        path: /data/CSI_GRPC_TIMEOUT_SECONDS
-        value: "30"
-      - op: replace
-        path: /data/CSI_ENABLE_LIVENESS
-        value: "true"
-      - op: add
-        path: /data/CSI_PROVISIONER_REPLICAS
-        value: "3"
-
-  - target:
-      kind: Namespace
-      name: rook-ceph
-    patch: |-
-      - op: replace
-        path: /metadata/labels
-        value:
-          pod-security.kubernetes.io/enforce: privileged
-          pod-security.kubernetes.io/audit: privileged
-          pod-security.kubernetes.io/warn: privileged
-          app.kubernetes.io/name: rook-ceph
-          app.kubernetes.io/instance: enterprise
-          environment: production
-          tier: storage
-
-  - target:
-      kind: Deployment
-      name: rook-ceph-operator
-    patch: |-
-      - op: replace
-        path: /spec/template/spec/containers/0/resources
-        value:
-          limits:
-            cpu: "2000m"   # Increased for reconciliation under load
-            memory: "2Gi"  # Increased for large cluster management
-          requests:
-            cpu: "150m"
-            memory: "256Mi"
-      - op: add
-        path: /spec/template/spec/priorityClassName
-        value: system-cluster-critical
-      - op: add
-        path: /spec/template/spec/containers/0/env/-
-        value:
-          name: ROOK_LOG_LEVEL
-          value: "INFO"
-      - op: add
-        path: /spec/template/spec/containers/0/env/-
-        value:
-          name: ROOK_CEPH_ALLOW_LOOP_DEVICES
-          value: "false"
-      - op: add
-        path: /spec/template/spec/containers/0/env/-
-        value:
-          name: ROOK_ENABLE_DISCOVERY_DAEMON
-          value: "true"
-      - op: add
-        path: /spec/template/spec/containers/0/env/-
-        value:
-          name: ROOK_CSI_ENABLE_CEPHFS
-          value: "true"
-      - op: add
-        path: /spec/template/spec/containers/0/env/-
-        value:
-          name: ROOK_CSI_ENABLE_RBD
-          value: "true"
-      - op: add
-        path: /spec/template/metadata/annotations
-        value:
-          prometheus.io/scrape: "true"
-          prometheus.io/port: "8080"
-          prometheus.io/path: "/metrics"
