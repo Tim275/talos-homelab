@@ -143,12 +143,12 @@ data:
               action: "stern -n {{ $labels.namespace }} . -i error --since 10m"
 
           - alert: LogsVolumeSpike
-            expr: 'sum by (namespace, pod) (count_over_time({namespace=~".+"}[10m])) > 80000'
+            expr: 'sum by (namespace, pod) (count_over_time({namespace=~".+", namespace!="velero"}[10m])) > 80000'
             for: 5m
             labels: {severity: warning, component: platform, priority: P2, source: loki}
             annotations:
               summary: "{{ $labels.namespace }} loggt {{ $value }} Zeilen in 10min"
-              description: "Ungefiltert nach Level — faengt Spam/Retry-Loops, die nicht als error/warn markiert sind. Baseline pro Namespace: kube-system ~53k, monitoring ~21k, argocd ~13k pro 10min (2026-09-06 gemessen)."
+              description: "Ungefiltert nach Level — faengt Spam/Retry-Loops, die nicht als error/warn markiert sind. Baseline pro Namespace: kube-system ~53k, monitoring ~21k, argocd ~13k pro 10min (2026-09-06 gemessen). velero ausgenommen: jedes Backup loggt eine Zeile pro Objekt (~118k, 2026-09-10 gemessen) — Fehler deckt VeleroBackupPartialFailure ab."
               action: "stern -n {{ $labels.namespace }} . --since 10m | head -50; kubectl df-pv -n loki"
 
       - name: logs-data
