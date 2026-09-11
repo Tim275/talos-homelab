@@ -15,11 +15,13 @@ on:
     paths:
       - "tofu/cloudflare/**"
       - "tofu/netbird/**"
+      - "tofu/uptime-kuma/**"
   push:
     branches: [main]
     paths:
       - "tofu/cloudflare/**"
       - "tofu/netbird/**"
+      - "tofu/uptime-kuma/**"
 
 permissions:
   contents: read
@@ -37,10 +39,17 @@ jobs:
   plan:
     if: github.event_name == 'pull_request'
     name: plan (${{ matrix.module }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        module: [cloudflare, netbird]
+        include:
+          - module: cloudflare
+            runner: ubuntu-latest
+          - module: netbird
+            runner: ubuntu-latest
+          # LAN-only: braucht den in-cluster Runner (ARC scale set "tofu")
+          - module: uptime-kuma
+            runner: tofu
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -60,6 +69,10 @@ jobs:
           TF_VAR_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
           TF_VAR_publish_apex: true
           TF_VAR_netbird_api_token: ${{ secrets.NETBIRD_API_TOKEN }}
+          TF_VAR_uptime_kuma_url: http://uptime-kuma.uptime-kuma.svc.cluster.local:3001
+          TF_VAR_uptime_kuma_password: ${{ secrets.UPTIME_KUMA_PASSWORD }}
+          TF_VAR_telegram_bot_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TF_VAR_slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: tofu plan -input=false -no-color 2>&1 | tee plan_output.txt
 
       - name: Comment plan on PR
@@ -110,4 +123,8 @@ jobs:
           TF_VAR_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
           TF_VAR_publish_apex: true
           TF_VAR_netbird_api_token: ${{ secrets.NETBIRD_API_TOKEN }}
+          TF_VAR_uptime_kuma_url: http://uptime-kuma.uptime-kuma.svc.cluster.local:3001
+          TF_VAR_uptime_kuma_password: ${{ secrets.UPTIME_KUMA_PASSWORD }}
+          TF_VAR_telegram_bot_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TF_VAR_slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: tofu apply -input=false -auto-approve -no-color
