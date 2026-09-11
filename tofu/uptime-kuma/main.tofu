@@ -1,34 +1,47 @@
-resource "uptimekuma_notification_telegram" "main" {
+resource "uptimekuma_notification_telegram" "apps" {
   name       = "Telegram"
   bot_token  = var.telegram_bot_token
   chat_id    = var.telegram_chat_id
   is_active  = true
-  is_default = true
+  is_default = false
+}
+
+resource "uptimekuma_notification_slack" "admin" {
+  name        = "Slack"
+  webhook_url = var.slack_webhook_url
+  channel     = "#alerts"
+  is_active   = true
+  is_default  = false
 }
 
 locals {
   groups = ["Anwendungen", "Monitoring", "Plattform"]
 
   monitors = {
-    "Drova"        = { url = "https://drova.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"] }
-    "n8n"          = { url = "https://n8n.timourhomelab.org/healthz", group = "Anwendungen", codes = ["200-299"] }
-    "Forgejo"      = { url = "https://forgejo.timourhomelab.org/api/healthz", group = "Anwendungen", codes = ["200-299"] }
-    "Keycloak"     = { url = "https://iam.timourhomelab.org/realms/kubernetes", group = "Anwendungen", codes = ["200-299"] }
-    "Homepage"     = { url = "https://homepage.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"] }
-    "LLDAP"        = { url = "https://lldap.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"] }
-    "pgAdmin"      = { url = "https://pgadmin.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"] }
-    "OpenBao"      = { url = "https://openbao.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"] }
-    "Grafana"      = { url = "https://grafana.timourhomelab.org/", group = "Monitoring", codes = ["200-299"] }
-    "Prometheus"   = { url = "https://prometheus.timourhomelab.org/", group = "Monitoring", codes = ["200-299"] }
-    "Alertmanager" = { url = "https://alertmanager.timourhomelab.org/", group = "Monitoring", codes = ["200-299"] }
-    "Kibana"       = { url = "https://kibana.timourhomelab.org/", group = "Monitoring", codes = ["200-299"] }
-    "Hubble"       = { url = "https://hubble.timourhomelab.org/", group = "Monitoring", codes = ["200-299"] }
-    "Jaeger"       = { url = "https://jaeger.timourhomelab.org/", group = "Monitoring", codes = ["200-299", "401"] }
-    "Kiali"        = { url = "https://kiali.timourhomelab.org/", group = "Monitoring", codes = ["200-299", "401"] }
-    "ArgoCD"       = { url = "https://argo.timourhomelab.org/", group = "Plattform", codes = ["200-299"] }
-    "Ceph"         = { url = "https://ceph.timourhomelab.org/", group = "Plattform", codes = ["200-299"] }
-    "Redpanda"     = { url = "https://redpanda.timourhomelab.org/", group = "Plattform", codes = ["200-299", "401"] }
-    "Renovate"     = { url = "https://renovate.timourhomelab.org/", group = "Plattform", codes = ["200-299", "401"] }
+    "Drova"        = { url = "https://drova.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"], notify = "telegram" }
+    "n8n"          = { url = "https://n8n.timourhomelab.org/healthz", group = "Anwendungen", codes = ["200-299"], notify = "telegram" }
+    "Forgejo"      = { url = "https://forgejo.timourhomelab.org/api/healthz", group = "Anwendungen", codes = ["200-299"], notify = "slack" }
+    "Keycloak"     = { url = "https://iam.timourhomelab.org/realms/kubernetes", group = "Anwendungen", codes = ["200-299"], notify = "slack" }
+    "Homepage"     = { url = "https://homepage.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"], notify = "slack" }
+    "LLDAP"        = { url = "https://lldap.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"], notify = "slack" }
+    "pgAdmin"      = { url = "https://pgadmin.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"], notify = "slack" }
+    "OpenBao"      = { url = "https://openbao.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"], notify = "slack" }
+    "Grafana"      = { url = "https://grafana.timourhomelab.org/", group = "Monitoring", codes = ["200-299"], notify = "slack" }
+    "Prometheus"   = { url = "https://prometheus.timourhomelab.org/", group = "Monitoring", codes = ["200-299"], notify = "slack" }
+    "Alertmanager" = { url = "https://alertmanager.timourhomelab.org/", group = "Monitoring", codes = ["200-299"], notify = "slack" }
+    "Kibana"       = { url = "https://kibana.timourhomelab.org/", group = "Monitoring", codes = ["200-299"], notify = "slack" }
+    "Hubble"       = { url = "https://hubble.timourhomelab.org/", group = "Monitoring", codes = ["200-299"], notify = "slack" }
+    "Jaeger"       = { url = "https://jaeger.timourhomelab.org/", group = "Monitoring", codes = ["200-299", "401"], notify = "slack" }
+    "Kiali"        = { url = "https://kiali.timourhomelab.org/", group = "Monitoring", codes = ["200-299", "401"], notify = "slack" }
+    "ArgoCD"       = { url = "https://argo.timourhomelab.org/", group = "Plattform", codes = ["200-299"], notify = "slack" }
+    "Ceph"         = { url = "https://ceph.timourhomelab.org/", group = "Plattform", codes = ["200-299"], notify = "slack" }
+    "Redpanda"     = { url = "https://redpanda.timourhomelab.org/", group = "Plattform", codes = ["200-299", "401"], notify = "slack" }
+    "Renovate"     = { url = "https://renovate.timourhomelab.org/", group = "Plattform", codes = ["200-299", "401"], notify = "slack" }
+  }
+
+  notification_id = {
+    telegram = uptimekuma_notification_telegram.apps.id
+    slack    = uptimekuma_notification_slack.admin.id
   }
 }
 
@@ -42,7 +55,7 @@ resource "uptimekuma_monitor_http" "app" {
   timeout               = 30
   max_retries           = 2
   active                = true
-  notification_ids      = [uptimekuma_notification_telegram.main.id]
+  notification_ids      = [local.notification_id[each.value.notify]]
 }
 
 resource "uptimekuma_monitor_http_keyword" "drova_health" {
@@ -53,7 +66,7 @@ resource "uptimekuma_monitor_http_keyword" "drova_health" {
   timeout          = 30
   max_retries      = 2
   active           = true
-  notification_ids = [uptimekuma_notification_telegram.main.id]
+  notification_ids = [local.notification_id.telegram]
 }
 
 resource "uptimekuma_monitor_http_keyword" "drova_ready" {
@@ -64,7 +77,7 @@ resource "uptimekuma_monitor_http_keyword" "drova_ready" {
   timeout          = 30
   max_retries      = 2
   active           = true
-  notification_ids = [uptimekuma_notification_telegram.main.id]
+  notification_ids = [local.notification_id.telegram]
 }
 
 resource "uptimekuma_status_page" "homelab" {
