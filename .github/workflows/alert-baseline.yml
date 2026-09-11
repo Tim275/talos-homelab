@@ -42,10 +42,15 @@ jobs:
 
           cat summary.md >> "$GITHUB_STEP_SUMMARY"
 
+      # Der in-cluster Runner hat keine gh-CLI, deshalb direkt gegen die REST-API.
       - name: Issue anlegen
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh issue create --repo "$GITHUB_REPOSITORY" \
-            --title "Alert-Schwellen nachmessen ($(date +%Y-%m-%d))" \
-            --body-file summary.md
+          jq -n --arg t "Alert-Schwellen nachmessen ($(date +%Y-%m-%d))" --rawfile b summary.md \
+            '{title: $t, body: $b}' > issue.json
+          curl -sf -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/issues" \
+            -d @issue.json | jq -r '"Issue #\(.number): \(.html_url)"'
