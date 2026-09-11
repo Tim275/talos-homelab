@@ -1,5 +1,4 @@
 terraform {
-  # Eigener State-Key — hat mit Talos/Cluster nichts zu tun
   backend "azurerm" {
     resource_group_name  = "rg-tofu-state"
     storage_account_name = "tofustatehomelab"

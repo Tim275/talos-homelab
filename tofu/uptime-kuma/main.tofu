@@ -1,5 +1,3 @@
-# Uptime-Kuma-Monitore + Status-Seite — unabhängig von Prometheus/Alertmanager
-
 resource "uptimekuma_notification_telegram" "main" {
   name       = "Telegram"
   bot_token  = var.telegram_bot_token
@@ -11,7 +9,6 @@ resource "uptimekuma_notification_telegram" "main" {
 locals {
   groups = ["Anwendungen", "Monitoring", "Plattform"]
 
-  # codes: 401 heißt "antwortet, verlangt nur Login" — ohne das wäre der Monitor rot
   monitors = {
     "Drova"        = { url = "https://drova.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"] }
     "n8n"          = { url = "https://n8n.timourhomelab.org/healthz", group = "Anwendungen", codes = ["200-299"] }
@@ -48,7 +45,6 @@ resource "uptimekuma_monitor_http" "app" {
   notification_ids      = [uptimekuma_notification_telegram.main.id]
 }
 
-# /health antwortet bei totem Backend trotzdem mit 200 (Frontend-HTML) — deshalb Keyword
 resource "uptimekuma_monitor_http_keyword" "drova_health" {
   name             = "Drova API"
   url              = "https://drova.timourhomelab.org/health"
