@@ -21,3 +21,40 @@ spec:
             summary: "OTel-Collector failing to export spans"
             description: "Spans dropped — backend (Jaeger/Tempo) unreachable or rate-limited. All tracing affected."
             action: "kubectl logs -n opentelemetry -l app.kubernetes.io/component=opentelemetry-collector | grep -i export; check Jaeger/Tempo reachability."
+
+        - alert: TracingPipelineSilent
+          expr: (sum(rate(traces_span_metrics_calls_total[15m])) or vector(0)) == 0
+          for: 15m
+          labels:
+            severity: warning
+            component: tracing
+            priority: P2
+          annotations:
+            dashboard_url: "https://grafana.timourhomelab.org/d/jaeger-internals"
+            summary: "Keine Spans mehr — Tracing ist blind"
+            description: "Ueber 15m kein einziger Span. Niedrigster gemessener Wert in 7d war 3.5/min, null kam nie vor. OtelCollectorExportFailing faengt nur Export-Fehler, nicht Stille."
+            action: "kubectl -n opentelemetry logs -l app.kubernetes.io/component=opentelemetry-collector; pruefen ob die Services noch OTLP senden (OTEL_EXPORTER_OTLP_ENDPOINT)."
+
+    - name: tracing.spans
+      interval: 60s
+      rules:
+        - alert: DrovaSpanErrorRateHigh
+          expr: |
+            (
+              sum by (service_name) (rate(traces_span_metrics_calls_total{status_code="STATUS_CODE_ERROR"}[15m]))
+              /
+              sum by (service_name) (rate(traces_span_metrics_calls_total[15m]))
+            ) > 0.05
+            and
+            sum by (service_name) (increase(traces_span_metrics_calls_total{status_code="STATUS_CODE_ERROR"}[15m])) > 10
+          for: 15m
+          labels:
+            severity: warning
+            component: tracing
+            tenant: drova
+            priority: P2
+          annotations:
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail"
+            summary: "{{ $labels.service_name }}: {{ $value | humanizePercentage }} Spans mit Fehler-Status"
+            description: "Deckt gRPC, Redis, Postgres und Kafka mit ab — Pfade, die die HTTP-SLOs strukturell nicht sehen. Grundlast 7d: chat-service 0.66%, user-service 0.38%, api-gateway 0.08%. Schwelle 5% liegt rund 8x darueber; die Mindestzahl von 10 Fehlern haelt Fenster mit wenig Verkehr raus."
+            action: "In Jaeger nach Spans mit error=true filtern: https://jaeger.timourhomelab.org"
