@@ -27,3 +27,9 @@ variable "telegram_chat_id" {
   default     = "8449184586"
   description = "Chat-ID, identisch zu Alertmanager."
 }
+
+variable "slack_webhook_url" {
+  type        = string
+  sensitive   = true
+  description = "Slack-Webhook, via TF_VAR_slack_webhook_url. Gleicher wie Alertmanager #alerts."
+}
