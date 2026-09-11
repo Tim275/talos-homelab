@@ -73,6 +73,21 @@ alertmanager:
             - alertname="InfoInhibitor"
           receiver: 'null'
 
+        # Telegram nur fuer Nutzer-Apps, Infrastruktur bleibt in Slack
+        - matchers:
+            - severity="critical"
+            - tenant="drova"
+          receiver: 'telegram-apps'
+          continue: true
+
+        # tenant!=drova verhindert einen zweiten Ping bei Alerts mit beiden Labels
+        - matchers:
+            - severity="critical"
+            - tenant!="drova"
+            - namespace=~"drova|n8n-prod"
+          receiver: 'telegram-apps'
+          continue: true
+
         # ── Claude-Triage (INAKTIV — zum Aktivieren diesen Block + den Receiver unten einkommentieren)
         # Additiv: continue=true, laeuft NEBEN dem Slack-Routing. Faellt der Dienst oder die
         # API aus, geht der normale Alert trotzdem raus — niemals als Ersatz verdrahten.
@@ -286,6 +301,8 @@ alertmanager:
               - type: button
                 text: 'Silence :no_bell:'
                 url: '{{ template "slack.silenceURL" . }}'
+
+      - name: 'telegram-apps'
         telegram_configs:
           - bot_token_file: /etc/alertmanager/secrets/telegram-bot-token/token
             chat_id: 8449184586
