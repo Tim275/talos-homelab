@@ -23,7 +23,7 @@ spec:
             action: "kubectl logs -n opentelemetry -l app.kubernetes.io/component=opentelemetry-collector | grep -i export; check Jaeger/Tempo reachability."
 
         - alert: TracingPipelineSilent
-          expr: (sum(rate(traces_span_metrics_calls_total[15m])) or vector(0)) == 0
+          expr: (sum(rate(otelcol_receiver_accepted_spans[15m])) or vector(0)) == 0
           for: 15m
           labels:
             severity: warning
@@ -32,7 +32,7 @@ spec:
           annotations:
             dashboard_url: "https://grafana.timourhomelab.org/d/jaeger-internals"
             summary: "Keine Spans mehr — Tracing ist blind"
-            description: "Ueber 15m kein einziger Span. Niedrigster gemessener Wert in 7d war 3.5/min, null kam nie vor. OtelCollectorExportFailing faengt nur Export-Fehler, nicht Stille."
+            description: "Ueber 15m erreicht kein einziger Span den Collector. Gemessen am Receiver-Zaehler, nicht an den Span-Metriken: seit dem Health-Span-Filter faellt deren Rate in ruhigen Phasen auf null, der Receiver-Zaehler lag in 7 Tagen nie unter 53/min."
             action: "kubectl -n opentelemetry logs -l app.kubernetes.io/component=opentelemetry-collector; pruefen ob die Services noch OTLP senden (OTEL_EXPORTER_OTLP_ENDPOINT)."
 
     - name: tracing.spans
