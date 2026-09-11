@@ -1,0 +1,51 @@
+name: alert-baseline
+
+# Zwei Alerts starteten mit geschaetzten Schwellen; das hier misst woechentlich, was real anliegt.
+on:
+  schedule:
+    - cron: "7 6 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  measure:
+    name: measure
+    runs-on: tofu # in-cluster, erreicht Prometheus direkt
+    steps:
+      - name: Grundlast abfragen
+        env:
+          PROM: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+          NOISE: '/health|/readyz'
+        run: |
+          q() { curl -sfG --max-time 30 "$PROM/api/v1/query" --data-urlencode "query=$1"; }
+          fmt() { jq -r '.data.result[]? | "\(.metric.service_name // .metric.http_route)\t\(.value[1]|tonumber*100|.*1000|round/1000) %"'; }
+
+          {
+            echo "## Alert-Grundlast, 7 Tage"
+            echo
+            echo "Schwellen gehoeren deutlich ueber diese Werte. Regeln:"
+            echo "\`kubernetes/infrastructure/observability/kube-prometheus-stack/base/alerts/\`"
+            echo
+            echo "### DrovaSpanErrorRateHigh — Schwelle 5 %, min. 10 Fehler je 15m"
+            echo '```'
+            q 'sum by (service_name) (increase(traces_span_metrics_calls_total{status_code="STATUS_CODE_ERROR"}[7d])) / sum by (service_name) (increase(traces_span_metrics_calls_total[7d]))' | fmt || echo "keine Daten"
+            echo '```'
+            echo
+            echo "### DrovaEndpointSlow — Schwelle 5 % langsamer als 1s (nur Routen mit >20 Aufrufen)"
+            echo '```'
+            q "(sum by (http_route) (1 - (increase(http_server_request_duration_seconds_bucket{service_name=\"api-gateway\", http_route!~\"$NOISE\", le=\"1\"}[7d]) / ignoring(le) increase(http_server_request_duration_seconds_count{service_name=\"api-gateway\", http_route!~\"$NOISE\"}[7d])))) and on (http_route) (sum by (http_route) (increase(http_server_request_duration_seconds_count{service_name=\"api-gateway\", http_route!~\"$NOISE\"}[7d])) > 20)" | fmt || echo "keine Route mit genug Verkehr"
+            echo '```'
+          } > summary.md
+
+          cat summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Issue anlegen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "Alert-Schwellen nachmessen ($(date +%Y-%m-%d))" \
+            --body-file summary.md
