@@ -1,0 +1,33 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: drova-endpoints
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: drova.endpoints
+      interval: 60s
+      rules:
+        - alert: DrovaEndpointSlow
+          expr: |
+            (
+              1 - (
+                sum by (http_route) (rate(http_server_request_duration_seconds_bucket{service_name="api-gateway", http_route=~"POST /v1/auth/.*|POST /v1/users/register|PATCH /v1/users/profile|GET /v1/users/me|POST /trip/.*|GET /trips/.*|GET /drivers/nearby", le="1"}[6h]))
+                /
+                sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name="api-gateway", http_route=~"POST /v1/auth/.*|POST /v1/users/register|PATCH /v1/users/profile|GET /v1/users/me|POST /trip/.*|GET /trips/.*|GET /drivers/nearby"}[6h]))
+              )
+            ) > 0.05
+            and
+            sum by (http_route) (increase(http_server_request_duration_seconds_count{service_name="api-gateway", http_route=~"POST /v1/auth/.*|POST /v1/users/register|PATCH /v1/users/profile|GET /v1/users/me|POST /trip/.*|GET /trips/.*|GET /drivers/nearby"}[6h])) > 20
+          for: 30m
+          labels:
+            severity: warning
+            tenant: drova
+            component: api-gateway
+            priority: P2
+          annotations:
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail"
+            summary: "{{ $labels.http_route }}: {{ $value | humanizePercentage }} der Aufrufe langsamer als 1s"
+            description: "Anteilsbasiert statt Perzentil, weil Perzentile bei wenigen Anfragen pro Sekunde nicht tragen. 6h-Fenster und die Mindestzahl von 20 Aufrufen halten ruhige Zeiten raus. Die 1s ist eine harte Obergrenze und ersetzt nicht die 500ms-SLOs."
+            action: "Im Grafana-Panel auf den Ausschlag klicken, das Exemplar fuehrt direkt in den Trace; dort zeigt Jaegers Critical Path den langsamen Hop."
