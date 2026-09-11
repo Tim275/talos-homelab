@@ -50,6 +50,9 @@ data:
     gateway: true
 
   widgets.yaml: |
+    - search:
+        provider: duckduckgo
+        target: _blank
     # DACHS-Layout: Titel links, Uhr + Wetter rechts.
     - openmeteo:
         label: Duesseldorf
@@ -114,6 +117,19 @@ data:
             href: https://grafana.timourhomelab.org/dashboards?query=vector
             description: Log Pipeline (VPN-only via NetBird)
     - Data:
+        - Postgres:
+            icon: mdi-database-outline
+            href: https://pgadmin.timourhomelab.org
+            description: CloudNativePG Replication
+            widget:
+              type: prometheusmetric
+              url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+              refreshInterval: 60000
+              metrics:
+                - label: Replication-Lag
+                  query: max(cnpg_pg_replication_lag)
+                  format: number
+                  suffix: "s"
         - Elasticsearch:
             icon: elasticsearch.png
             href: https://kibana.timourhomelab.org
@@ -124,6 +140,28 @@ data:
             href: https://github.com/Tim275/talos-homelab/tree/main/kubernetes/infrastructure/storage/velero-schedules
             description: Backup Schedules (GitOps)
     - Platform:
+        - Cluster:
+            icon: mdi-chart-box-outline
+            href: https://prometheus.timourhomelab.org
+            description: Scrape-Targets, Alerts, Ceph
+            widget:
+              type: prometheusmetric
+              url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+              refreshInterval: 60000
+              metrics:
+                - label: Targets down
+                  query: count(up == 0) or vector(0)
+                  format: number
+                - label: Alerts
+                  query: max(alertmanager_alerts{state="active"})
+                  format: number
+                - label: OSDs
+                  query: sum(ceph_osd_up)
+                  format: number
+                - label: Ceph
+                  query: round(100 * (ceph_cluster_total_used_bytes / ceph_cluster_total_bytes))
+                  format: number
+                  suffix: "%"
         - Sealed Secrets:
             icon: mdi-lock-outline
             href: https://github.com/Tim275/talos-homelab/tree/main/kubernetes/security
