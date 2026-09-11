@@ -49,3 +49,17 @@ spec:
             description: "Harte gRPC-Fehler auf der Strecke {{ $labels.service_name }} -> {{ $labels.server_address }}, ununterbrochen ueber 10 Minuten. Grundlast der letzten 7 Tage war null, deshalb genuegt hier rate > 0 — anders als bei Latenz-Perzentilen, die bei wenigen Anfragen pro Sekunde nicht tragen. Ein Deploy-Blip haelt die 10 Minuten nicht durch."
             action: "Erreichbarkeit pruefen: kubectl get endpointslices -n drova | grep <ziel>; dann kubectl logs auf dem Zieldienst."
 
+        - alert: DrovaCircuitBreakerOpen
+          expr: circuitbreaker_state == 2
+          for: 5m
+          labels:
+            severity: critical
+            tenant: drova
+            component: api-gateway
+            priority: P1
+          annotations:
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail"
+            summary: "Circuit Breaker zu {{ $labels.target }} ist offen"
+            description: "Das api-gateway hat die Verbindung zu {{ $labels.target }} abgeschaltet — 10 aufeinanderfolgende Infrastrukturfehler. Aufrufe schlagen sofort fehl, ohne es zu versuchen. Der Breaker probiert alle 5s erneut; bleibt er 5 Minuten offen, ist der Zieldienst wirklich weg."
+            action: "kubectl get pods -n drova -l app={{ $labels.target }}; kubectl get endpointslices -n drova | grep {{ $labels.target }}"
+
