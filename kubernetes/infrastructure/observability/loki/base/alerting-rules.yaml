@@ -19,11 +19,11 @@ data:
               action: "kubectl logs -n keycloak keycloak-0 | grep -i invalid; Quell-IPs gruppieren."
 
           - alert: LogsSensitiveFileAccess
-            expr: 'sum by (pod) (count_over_time({namespace="kube-system"} |~ "process_kprobe" |~ "/etc/shadow|/etc/sudoers|authorized_keys" != "loki-gateway" != "/loki/api/" [1h])) > 0'
+            expr: 'sum by (pod) (count_over_time({namespace="kube-system"} |~ "process_kprobe" |~ "/etc/shadow|/etc/sudoers|authorized_keys" != "loki-gateway" != "/loki/api/" != "/usr/bin/sudo" != "/usr/sbin/unix_chkpwd" [1h])) > 0'
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
               summary: "Zugriff auf Credential-Datei ({{ $value }} in 1h)"
-              description: "Tetragon meldet Datei-Zugriff auf shadow/sudoers/authorized_keys. Nur process_kprobe (echter Zugriff); Prozess-Argumente und Loki-Queries nach denselben Strings sind ausgefiltert."
+              description: "Tetragon meldet Datei-Zugriff auf shadow/sudoers/authorized_keys durch einen anderen Prozess als sudo/unix_chkpwd. Der sudo-Auth-Pfad (Ceph smartctl-Polling) ist ausgefiltert, Baseline damit null."
               action: "Loki: {namespace=\"kube-system\"} |~ \"process_kprobe\" |~ \"shadow|sudoers|authorized_keys\" | json ns=\"process_kprobe.process.pod.namespace\", pod=\"process_kprobe.process.pod.name\" — zeigt betroffenen Pod."
 
           - alert: LogsAuditPodExec
