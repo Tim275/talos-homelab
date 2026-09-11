@@ -5,6 +5,7 @@ alertmanager:
   alertmanagerSpec:
     replicas: 3
     topologySpreadConstraints:
+      # hart: nie zwei Replicas auf demselben Node
       - maxSkew: 1
         topologyKey: kubernetes.io/hostname
         whenUnsatisfiable: DoNotSchedule
@@ -12,13 +13,17 @@ alertmanager:
         labelSelector:
           matchLabels:
             app.kubernetes.io/name: alertmanager
+            alertmanager: kube-prometheus-stack-alertmanager
+      # weich: 3 Replicas auf 3 Zonen ist bei belegten Nodes nicht erfuellbar —
+      # DoNotSchedule liess die dritte Replica dauerhaft Pending
       - maxSkew: 1
         topologyKey: topology.kubernetes.io/zone
-        whenUnsatisfiable: DoNotSchedule
+        whenUnsatisfiable: ScheduleAnyway
         matchLabelKeys: [pod-template-hash]
         labelSelector:
           matchLabels:
             app.kubernetes.io/name: alertmanager
+            alertmanager: kube-prometheus-stack-alertmanager
     retention: 720h
     storage:
       volumeClaimTemplate:
@@ -67,6 +72,18 @@ alertmanager:
         - matchers:
             - alertname="InfoInhibitor"
           receiver: 'null'
+
+        # ── Claude-Triage (INAKTIV — zum Aktivieren diesen Block + den Receiver unten einkommentieren)
+        # Additiv: continue=true, laeuft NEBEN dem Slack-Routing. Faellt der Dienst oder die
+        # API aus, geht der normale Alert trotzdem raus — niemals als Ersatz verdrahten.
+        # Greift fuer critical UND warning; info/p3/p4 bleiben bewusst draussen (Kosten).
+        # - matchers:
+        #     - severity=~"critical|warning"
+        #   receiver: 'claude-triage'
+        #   group_wait: 60s          # Kontext sammeln lassen, nicht auf den ersten Zucker feuern
+        #   group_interval: 10m
+        #   repeat_interval: 24h     # dieselbe Gruppe nicht mehrfach teuer triagieren
+        #   continue: true
         - matchers:
             - alertname=~"TargetDown|KubeDeploymentReplicasMismatch|KubeJobFailed"
           receiver: 'slack-default'
@@ -214,6 +231,18 @@ alertmanager:
 
     receivers:
       - name: 'null'
+
+      # ── Claude-Triage (INAKTIV — siehe Route oben)
+      # Ziel ist ein kleiner In-Cluster-Dienst, NICHT die Anthropic-API direkt:
+      # Alertmanager spricht nur HTTP-Webhook, und der Kontext (Loki/PromQL/Pod-State)
+      # muss vor dem API-Call eingesammelt werden. Der Dienst haelt auch den API-Key.
+      # - name: 'claude-triage'
+      #   webhook_configs:
+      #     - url: http://alert-triage.monitoring.svc.cluster.local:8080/alert
+      #       send_resolved: false   # nur FIRING triagieren, RESOLVED spart Tokens
+      #       max_alerts: 5          # Payload deckeln
+      #       http_config:
+      #         follow_redirects: false
 
       - name: 'watchdog-heartbeat'
         webhook_configs:
