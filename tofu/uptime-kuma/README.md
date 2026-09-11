@@ -26,7 +26,7 @@ cd tofu/uptime-kuma
 export TF_VAR_uptime_kuma_password='...'       # NIE committen
 export TF_VAR_telegram_bot_token="$(kubectl get secret telegram-bot-token -n monitoring -o jsonpath='{.data.token}' | base64 -d)"
 tofu init
-tofu plan      # 1 Notification, 11 Monitore, 1 Status-Seite
+tofu plan      # 1 Notification, 21 Monitore, 1 Status-Seite
 tofu apply
 ```
 
@@ -34,10 +34,17 @@ tofu apply
 (`type: uptime-kuma`, slug `homelab`).
 
 ## Was überwacht wird
-| Gruppe | Was | Warum so |
-|---|---|---|
-| Anwendungen | Drova (API · Readiness · Frontend), n8n, Keycloak, Forgejo, Homepage | öffentlicher Weg — prüft Tunnel, Gateway und App zusammen |
-| Monitoring | Alertmanager, Prometheus, Grafana, ArgoCD | intern — zeigt beim Ausfall, wo es klemmt |
+Alle 19 per HTTPRoute veröffentlichten Hosts, gruppiert wie auf der Status-Seite:
+
+| Gruppe | Was |
+|---|---|
+| Anwendungen | Drova (API · Readiness · Frontend), n8n, Forgejo, Keycloak, Homepage, LLDAP, pgAdmin, OpenBao |
+| Monitoring | Grafana, Prometheus, Alertmanager, Kibana, Hubble, Jaeger, Kiali |
+| Plattform | ArgoCD, Ceph, Redpanda, Renovate |
+
+Geprüft wird der öffentliche Weg (Tunnel → Gateway → App), nicht der Service im Cluster.
+`status.timourhomelab.org` fehlt bewusst — ein Monitor, der sich selbst überwacht, ist
+immer grün, wenn es darauf ankommt.
 
 Drova läuft als Keyword-Check: `/health` antwortet auch bei totem Backend mit 200
 (Frontend-HTML), ein reiner Status-Check wäre dann fälschlich grün. Geprüft wird der

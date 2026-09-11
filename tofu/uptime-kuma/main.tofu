@@ -9,46 +9,43 @@ resource "uptimekuma_notification_telegram" "main" {
 }
 
 locals {
-  # öffentlicher Weg: Tunnel → Gateway → App
-  public_monitors = {
-    "Drova Frontend" = "https://drova.timourhomelab.org/"
-    "n8n"            = "https://n8n.timourhomelab.org/healthz"
-    "Keycloak"       = "https://iam.timourhomelab.org/realms/kubernetes"
-    "Forgejo"        = "https://forgejo.timourhomelab.org/api/healthz"
-    "Homepage"       = "https://homepage.timourhomelab.org/"
-  }
+  groups = ["Anwendungen", "Monitoring", "Plattform"]
 
-  # intern, ohne Ingress dazwischen
-  internal_monitors = {
-    "Alertmanager" = "http://alertmanager-operated.monitoring.svc.cluster.local:9093/-/healthy"
-    "Prometheus"   = "http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090/-/healthy"
-    "Grafana"      = "http://grafana-service.grafana.svc.cluster.local:3000/api/health"
-    "ArgoCD"       = "http://argocd-server.argocd.svc.cluster.local:80/healthz"
+  # codes: 401 heißt "antwortet, verlangt nur Login" — ohne das wäre der Monitor rot
+  monitors = {
+    "Drova"        = { url = "https://drova.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"] }
+    "n8n"          = { url = "https://n8n.timourhomelab.org/healthz", group = "Anwendungen", codes = ["200-299"] }
+    "Forgejo"      = { url = "https://forgejo.timourhomelab.org/api/healthz", group = "Anwendungen", codes = ["200-299"] }
+    "Keycloak"     = { url = "https://iam.timourhomelab.org/realms/kubernetes", group = "Anwendungen", codes = ["200-299"] }
+    "Homepage"     = { url = "https://homepage.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"] }
+    "LLDAP"        = { url = "https://lldap.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"] }
+    "pgAdmin"      = { url = "https://pgadmin.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"] }
+    "OpenBao"      = { url = "https://openbao.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"] }
+    "Grafana"      = { url = "https://grafana.timourhomelab.org/", group = "Monitoring", codes = ["200-299"] }
+    "Prometheus"   = { url = "https://prometheus.timourhomelab.org/", group = "Monitoring", codes = ["200-299"] }
+    "Alertmanager" = { url = "https://alertmanager.timourhomelab.org/", group = "Monitoring", codes = ["200-299"] }
+    "Kibana"       = { url = "https://kibana.timourhomelab.org/", group = "Monitoring", codes = ["200-299"] }
+    "Hubble"       = { url = "https://hubble.timourhomelab.org/", group = "Monitoring", codes = ["200-299"] }
+    "Jaeger"       = { url = "https://jaeger.timourhomelab.org/", group = "Monitoring", codes = ["200-299", "401"] }
+    "Kiali"        = { url = "https://kiali.timourhomelab.org/", group = "Monitoring", codes = ["200-299", "401"] }
+    "ArgoCD"       = { url = "https://argo.timourhomelab.org/", group = "Plattform", codes = ["200-299"] }
+    "Ceph"         = { url = "https://ceph.timourhomelab.org/", group = "Plattform", codes = ["200-299"] }
+    "Redpanda"     = { url = "https://redpanda.timourhomelab.org/", group = "Plattform", codes = ["200-299", "401"] }
+    "Renovate"     = { url = "https://renovate.timourhomelab.org/", group = "Plattform", codes = ["200-299", "401"] }
   }
 }
 
-resource "uptimekuma_monitor_http" "public" {
-  for_each = local.public_monitors
+resource "uptimekuma_monitor_http" "app" {
+  for_each = local.monitors
 
-  name             = each.key
-  url              = each.value
-  interval         = 60
-  timeout          = 30
-  max_retries      = 2
-  active           = true
-  notification_ids = [uptimekuma_notification_telegram.main.id]
-}
-
-resource "uptimekuma_monitor_http" "internal" {
-  for_each = local.internal_monitors
-
-  name             = each.key
-  url              = each.value
-  interval         = 60
-  timeout          = 30
-  max_retries      = 2
-  active           = true
-  notification_ids = [uptimekuma_notification_telegram.main.id]
+  name                  = each.key
+  url                   = each.value.url
+  accepted_status_codes = each.value.codes
+  interval              = 60
+  timeout               = 30
+  max_retries           = 2
+  active                = true
+  notification_ids      = [uptimekuma_notification_telegram.main.id]
 }
 
 # /health antwortet bei totem Backend trotzdem mit 200 (Frontend-HTML) — deshalb Keyword
@@ -77,27 +74,22 @@ resource "uptimekuma_monitor_http_keyword" "drova_ready" {
 resource "uptimekuma_status_page" "homelab" {
   slug        = "homelab"
   title       = "Homelab Status"
-  description = "Anwendungen und Monitoring-Stack"
+  description = "Anwendungen, Monitoring und Plattform"
   published   = true
   show_tags   = false
   theme       = "auto"
 
   public_group_list = [
-    {
-      name   = "Anwendungen"
-      weight = 1
+    for i, g in local.groups : {
+      name   = g
+      weight = i + 1
       monitor_list = concat(
-        [for k, m in uptimekuma_monitor_http.public : { id = m.id, send_url = true, url = m.url }],
-        [
+        [for name, m in local.monitors : { id = uptimekuma_monitor_http.app[name].id, send_url = true, url = m.url } if m.group == g],
+        g == "Anwendungen" ? [
           { id = uptimekuma_monitor_http_keyword.drova_health.id, send_url = false, url = "" },
           { id = uptimekuma_monitor_http_keyword.drova_ready.id, send_url = false, url = "" },
-        ]
+        ] : []
       )
-    },
-    {
-      name         = "Monitoring"
-      weight       = 2
-      monitor_list = [for k, m in uptimekuma_monitor_http.internal : { id = m.id, send_url = false, url = "" }]
-    },
+    }
   ]
 }
