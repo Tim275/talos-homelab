@@ -46,8 +46,8 @@ spec:
           annotations:
             dashboard_url: "https://grafana.timourhomelab.org/d/k8s-cluster-overview"
             summary: "etcd request p99 {{ $value | humanizeDuration }} (baseline ~25ms)"
-            description: "apiserver→etcd p99 >800ms for 15min — etcd disk contention with Ceph (both on Samsung 990 PRO). Expected transient spikes 600-700ms; alarm only on sustained degradation >800ms."
-            action: "Check ceph osd perf / ceph health detail for concurrent heavy writes. Known limitation: etcd shares Samsung with Ceph-OSDs; real fix would need third disk on nipogi or etcd-migration (single-master complexity)."
+            description: "apiserver→etcd p99 >800ms for 15min. ctrl-0 runs on pve, etcd writes to its LENSE 512GB SSD (17.5ms write await at 67% busy, measured 2026-09-11) — the slowest disk in the cluster. Ceph is not involved, the OSDs sit on nipogi/msa2."
+            action: "talosctl -n 192.168.0.101 read /proc/pressure/io — full avg300 >5 means the disk, not the workload. Real fix is moving ctrl-0 off the LENSE SSD; nipogi's Samsung does 0.58ms at 5.8% busy."
 
         - alert: ControlPlaneNodeDown
           expr: kube_node_status_condition{condition="Ready",status="true",node="ctrl-0"} == 0
