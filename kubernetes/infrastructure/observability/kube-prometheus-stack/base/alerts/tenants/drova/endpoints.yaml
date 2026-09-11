@@ -31,3 +31,21 @@ spec:
             summary: "{{ $labels.http_route }}: {{ $value | humanizePercentage }} der Aufrufe langsamer als 1s"
             description: "Anteilsbasiert statt Perzentil, weil Perzentile bei wenigen Anfragen pro Sekunde nicht tragen. 6h-Fenster und die Mindestzahl von 20 Aufrufen halten ruhige Zeiten raus. Die 1s ist eine harte Obergrenze und ersetzt nicht die 500ms-SLOs."
             action: "Im Grafana-Panel auf den Ausschlag klicken, das Exemplar fuehrt direkt in den Trace; dort zeigt Jaegers Critical Path den langsamen Hop."
+
+        - alert: DrovaRpcHopFailing
+          expr: |
+            sum by (service_name, rpc_method, server_address) (
+              rate(rpc_client_call_duration_seconds_count{rpc_response_status_code=~"UNAVAILABLE|DEADLINE_EXCEEDED|RESOURCE_EXHAUSTED"}[5m])
+            ) > 0
+          for: 10m
+          labels:
+            severity: critical
+            tenant: drova
+            component: api-gateway
+            priority: P1
+          annotations:
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail"
+            summary: "{{ $labels.service_name }} erreicht {{ $labels.rpc_method }} nicht"
+            description: "Harte gRPC-Fehler auf der Strecke {{ $labels.service_name }} -> {{ $labels.server_address }}, ununterbrochen ueber 10 Minuten. Grundlast der letzten 7 Tage war null, deshalb genuegt hier rate > 0 — anders als bei Latenz-Perzentilen, die bei wenigen Anfragen pro Sekunde nicht tragen. Ein Deploy-Blip haelt die 10 Minuten nicht durch."
+            action: "Erreichbarkeit pruefen: kubectl get endpointslices -n drova | grep <ziel>; dann kubectl logs auf dem Zieldienst."
+
