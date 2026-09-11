@@ -10,14 +10,6 @@ spec:
   config:
     log:
       mode: console
-    # CNPG statt SQLite-auf-emptyDir: State ueberlebt Pod-Restarts, kein
-    # Reconciliation-Gap der operator-verwalteten Datasources nach Neustart.
-    database:
-      type: postgres
-      host: grafana-db-rw.grafana.svc.cluster.local:5432
-      name: grafana
-      user: grafana
-      ssl_mode: require
     server:
       root_url: https://grafana.timourhomelab.org
       serve_from_sub_path: "false"
@@ -68,6 +60,10 @@ spec:
     spec:
       template:
         spec:
+          # SQLite unter /var/lib/grafana: ohne fsGroup kann der Container
+          # (UID/GID 10001) nicht auf das gemountete Volume schreiben.
+          securityContext:
+            fsGroup: 10001
           containers:
             - name: grafana
               envFrom:
@@ -75,12 +71,6 @@ spec:
                     name: grafana-oauth-secret
                 - secretRef:
                     name: grafana-datasource-env
-              env:
-                - name: GF_DATABASE_PASSWORD
-                  valueFrom:
-                    secretKeyRef:
-                      name: grafana-db-credentials
-                      key: password
               volumeMounts:
                 - name: drova-datasources-provisioning
                   mountPath: /etc/grafana/provisioning/datasources/drova-datasources.yaml
@@ -98,3 +88,8 @@ spec:
             - name: drova-datasources-provisioning
               configMap:
                 name: grafana-drova-datasources-provisioning
+            # ersetzt das emptyDir des Operators — sonst ist die SQLite-DB
+            # (Dashboards, User, Datasources) nach jedem Pod-Restart weg
+            - name: grafana-data
+              persistentVolumeClaim:
+                claimName: grafana-data
