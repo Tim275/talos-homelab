@@ -41,12 +41,12 @@ spec:
         - alert: DrovaSpanErrorRateHigh
           expr: |
             (
-              sum by (service_name) (rate(traces_span_metrics_calls_total{status_code="STATUS_CODE_ERROR"}[15m]))
+              sum by (service_name) (rate(traces_span_metrics_calls_total{status_code="STATUS_CODE_ERROR", span_name!~"ping|grpc.health.v1.Health/Check"}[15m]))
               /
-              sum by (service_name) (rate(traces_span_metrics_calls_total[15m]))
+              sum by (service_name) (rate(traces_span_metrics_calls_total{span_name!~"ping|grpc.health.v1.Health/Check"}[15m]))
             ) > 0.05
             and
-            sum by (service_name) (increase(traces_span_metrics_calls_total{status_code="STATUS_CODE_ERROR"}[15m])) > 10
+            sum by (service_name) (increase(traces_span_metrics_calls_total{status_code="STATUS_CODE_ERROR", span_name!~"ping|grpc.health.v1.Health/Check"}[15m])) > 10
           for: 15m
           labels:
             severity: warning
@@ -56,5 +56,5 @@ spec:
           annotations:
             dashboard_url: "https://grafana.timourhomelab.org/d/drova-service-detail"
             summary: "{{ $labels.service_name }}: {{ $value | humanizePercentage }} Spans mit Fehler-Status"
-            description: "Deckt gRPC, Redis, Postgres und Kafka mit ab — Pfade, die die HTTP-SLOs strukturell nicht sehen. Grundlast 7d: chat-service 0.66%, user-service 0.38%, api-gateway 0.08%. Schwelle 5% liegt rund 8x darueber; die Mindestzahl von 10 Fehlern haelt Fenster mit wenig Verkehr raus."
+            description: "Deckt gRPC, Redis, Postgres und Kafka mit ab — Pfade, die die HTTP-SLOs nicht sehen. Redis-ping und gRPC-Health sind ausgenommen, die stellten 45k der rund 50k Spans pro Tag und waren reines Rauschen. Die Schwelle von 5% stammt noch aus der Messung MIT diesem Rauschen und gehoert nach einer Woche echter Daten nachgezogen."
             action: "In Jaeger nach Spans mit error=true filtern: https://jaeger.timourhomelab.org"
