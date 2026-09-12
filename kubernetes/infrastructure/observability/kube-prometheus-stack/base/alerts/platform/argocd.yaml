@@ -105,3 +105,17 @@ spec:
             summary: "LLDAP directory down — Keycloak LDAP federation will fail"
             description: "lldap Deployment has 0 available replicas >5min → LDAP-backed Keycloak logins start failing (SSO impact)."
             action: "kubectl -n lldap get pod,deploy; kubectl -n lldap logs deploy/lldap; check its PVC/SQLite + the node."
+
+        - alert: ArgoCDAppOutOfSyncTooLong
+          expr: argocd_app_info{sync_status="OutOfSync"} == 1
+          for: 24h
+          labels:
+            severity: warning
+            component: gitops
+            priority: P3
+          annotations:
+            dashboard_url: "https://argo.timourhomelab.org/applications"
+            summary: "{{ $labels.name }} steht seit 24h OutOfSync"
+            description: "Gemergte Aenderungen sind nicht ausgerollt. Bei den manual-sync-Apps (DAX-Gate) ist OutOfSync kurzzeitig normal — ueber 24h heisst es vergessen. Genau so lag v0.22.11 stundenlang unbemerkt herum."
+            action: "kubectl -n argocd patch application {{ $labels.name }} --type merge -p '{\"operation\":{\"sync\":{\"revision\":\"main\"}}}'"
+
