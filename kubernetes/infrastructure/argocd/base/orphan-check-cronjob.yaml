@@ -1,0 +1,114 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argocd-orphan-check
+  namespace: argocd
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argocd-orphan-check
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: [list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argocd-orphan-check
+subjects:
+  - kind: ServiceAccount
+    name: argocd-orphan-check
+    namespace: argocd
+roleRef:
+  kind: ClusterRole
+  name: argocd-orphan-check
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: argocd-orphan-check
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  schedule: "40 5 * * 0"
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 604800
+      activeDeadlineSeconds: 900
+      template:
+        spec:
+          serviceAccountName: argocd-orphan-check
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            fsGroup: 65534
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: check
+              image: docker.io/bitnamilegacy/kubectl:1.33.4@sha256:ed0b31a0508da84ee655c5c6e01bd3897fc56ad6cf69debb27fa1893a06d2246
+              resources:
+                limits:
+                  memory: 512Mi
+                requests:
+                  cpu: 50m
+                  memory: 256Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: { drop: ["ALL"] }
+                readOnlyRootFilesystem: true
+              command: [/bin/bash, -c]
+              args:
+                - |
+                  set -uo pipefail
+                  kubectl -n argocd get applications \
+                    -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' > /tmp/apps.txt
+
+                  cat > /tmp/scan.py <<'PY'
+                  import json, sys
+                  apps = set(open('/tmp/apps.txt').read().split())
+                  found = 0
+                  for path in sys.argv[1:]:
+                      for r in json.load(open(path)).get('items', []):
+                          m = r['metadata']
+                          l = m.get('labels') or {}
+                          a = m.get('annotations') or {}
+                          ti = a.get('argocd.argoproj.io/tracking-id', '')
+                          inst = l.get('argocd.argoproj.io/instance') or (ti.split(':')[0] if ti else '')
+                          if inst and inst not in apps:
+                              print(f"{r['kind']} {m.get('namespace','-')}/{m['name']} <- deleted app '{inst}'")
+                              found += 1
+                  sys.exit(1 if found else 0)
+                  PY
+
+                  NS=$(kubectl api-resources --namespaced=true --verbs=list -o name \
+                       | grep -vE '^(events|pods|replicasets|endpoints|endpointslices|controllerrevisions|leases)' | paste -sd, -)
+                  CL=$(kubectl api-resources --namespaced=false --verbs=list -o name \
+                       | grep -vE '^(componentstatuses|nodes|selfsubject|tokenreviews)' | paste -sd, -)
+
+                  kubectl get "$NS" -A -o json > /tmp/ns.json
+                  kubectl get "$CL"    -o json > /tmp/cl.json
+                  python3 /tmp/scan.py /tmp/ns.json /tmp/cl.json
+                  rc=$?
+                  if [ $rc -ne 0 ]; then
+                    echo "FAIL: resources above are tracked by Applications that no longer exist."
+                    echo "They were left behind because the ApplicationSets set preserveResourcesOnDeletion."
+                  else
+                    echo "OK: no resources tracked by deleted Applications."
+                  fi
+                  exit $rc
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}
