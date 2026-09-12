@@ -13,7 +13,7 @@ spec:
         - alert: etcdHighFsyncDurations
           expr: |
             histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket{job=~".*etcd.*"}[5m]))
-            > 0.025
+            > 0.5
           for: 10m
           labels:
             severity: warning
@@ -22,13 +22,13 @@ spec:
           annotations:
             summary: "etcd disk WAL fsync p99 {{ $value | humanizeDuration }} on {{ $labels.instance }}"
             dashboard_url: "https://grafana.timourhomelab.org/d/etcd"
-            description: "etcd targets p99 <10ms. Disk write latency degrading — leading indicator for the API-latency cascade."
+            description: "Baseline on the LENSE SSD is p50 105ms / p90 216ms — known and accepted. This fires only on degradation beyond that. AdmissionWebhookRejecting is the alert that catches the actual damage."
             action: "Check ctrl-0's etcd VM disk I/O; same root cause class as EtcdRequestLatencyHigh."
 
         - alert: etcdHighFsyncDurations
           expr: |
             histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket{job=~".*etcd.*"}[5m]))
-            > 0.1
+            > 1
           for: 10m
           labels:
             severity: critical
@@ -43,7 +43,7 @@ spec:
         - alert: etcdHighCommitDurations
           expr: |
             histogram_quantile(0.99, rate(etcd_disk_backend_commit_duration_seconds_bucket{job=~".*etcd.*"}[5m]))
-            > 0.05
+            > 0.8
           for: 10m
           labels:
             severity: warning
@@ -52,7 +52,7 @@ spec:
           annotations:
             summary: "etcd backend commit p99 {{ $value | humanizeDuration }} on {{ $labels.instance }}"
             dashboard_url: "https://grafana.timourhomelab.org/d/etcd"
-            description: "etcd targets p99 <25ms. Backend commit latency high — same disk-health signal class as fsync duration."
+            description: "Baseline on the LENSE SSD is p50 145ms / p90 422ms — known and accepted. Fires only on degradation beyond that."
             action: "Check ctrl-0's etcd VM disk I/O."
 
         - alert: etcdHighNumberOfFailedGRPCRequests
