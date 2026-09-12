@@ -19,9 +19,9 @@ locals {
 
   monitors = {
     "Drova"        = { url = "https://drova.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"], notify = "telegram" }
-    "n8n"          = { url = "https://n8n.timourhomelab.org/healthz", group = "Anwendungen", codes = ["200-299"], notify = "telegram" }
+    "n8n"          = { url = "https://n8n.timourhomelab.org/healthz", group = "Anwendungen", codes = ["200-299"], notify = "slack" }
     "Forgejo"      = { url = "https://forgejo.timourhomelab.org/api/healthz", group = "Anwendungen", codes = ["200-299"], notify = "slack" }
-    "Keycloak"     = { url = "https://iam.timourhomelab.org/realms/kubernetes", group = "Anwendungen", codes = ["200-299"], notify = "slack" }
+    "Keycloak"     = { url = "https://iam.timourhomelab.org/realms/kubernetes", group = "Anwendungen", codes = ["200-299"], notify = "telegram" }
     "Homepage"     = { url = "https://homepage.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"], notify = "slack" }
     "LLDAP"        = { url = "https://lldap.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"], notify = "slack" }
     "pgAdmin"      = { url = "https://pgadmin.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"], notify = "slack" }
@@ -33,8 +33,8 @@ locals {
     "Hubble"       = { url = "https://hubble.timourhomelab.org/", group = "Monitoring", codes = ["200-299"], notify = "slack" }
     "Jaeger"       = { url = "https://jaeger.timourhomelab.org/", group = "Monitoring", codes = ["200-299", "401"], notify = "slack" }
     "Kiali"        = { url = "https://kiali.timourhomelab.org/", group = "Monitoring", codes = ["200-299", "401"], notify = "slack" }
-    "ArgoCD"       = { url = "https://argo.timourhomelab.org/", group = "Plattform", codes = ["200-299"], notify = "slack" }
-    "Ceph"         = { url = "https://ceph.timourhomelab.org/", group = "Plattform", codes = ["200-299"], notify = "slack" }
+    "ArgoCD"       = { url = "https://argo.timourhomelab.org/", group = "Plattform", codes = ["200-299"], notify = "telegram" }
+    "Ceph"         = { url = "https://ceph.timourhomelab.org/", group = "Plattform", codes = ["200-299"], notify = "telegram" }
     "Redpanda"     = { url = "https://redpanda.timourhomelab.org/", group = "Plattform", codes = ["200-299", "401"], notify = "slack" }
     "Renovate"     = { url = "https://renovate.timourhomelab.org/", group = "Plattform", codes = ["200-299", "401"], notify = "slack" }
   }
