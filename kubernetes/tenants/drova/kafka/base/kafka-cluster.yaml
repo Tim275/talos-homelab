@@ -49,11 +49,7 @@ spec:
           type: RuntimeDefault
       affinity:
         nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - { key: kubernetes.io/hostname, operator: NotIn, values: [worker-1, worker-2] }
-          preferredDuringSchedulingIgnoredDuringExecution:
+          preferredDuringSchedulingIgnoredDuringExecution:  # nipogi wieder erlaubt, sonst kein Spread ueber drei Zonen
             - weight: 100
               preference:
                 matchExpressions:
@@ -65,6 +61,14 @@ spec:
                   strimzi.io/cluster: drova-kafka
                   strimzi.io/controller-role: "true"
               topologyKey: kubernetes.io/hostname
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              strimzi.io/cluster: drova-kafka
+              strimzi.io/controller-role: "true"
 ---
 apiVersion: kafka.strimzi.io/v1
 kind: KafkaNodePool
@@ -108,24 +112,26 @@ spec:
           type: RuntimeDefault
       affinity:
         nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - { key: kubernetes.io/hostname, operator: NotIn, values: [worker-1, worker-2] }
-          preferredDuringSchedulingIgnoredDuringExecution:
+          preferredDuringSchedulingIgnoredDuringExecution:  # nipogi wieder erlaubt, sonst kein Spread ueber drei Zonen
             - weight: 100
               preference:
                 matchExpressions:
                   - { key: node-pool, operator: In, values: [stateful] }
         podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchLabels:
-                    strimzi.io/cluster: drova-kafka
-                    strimzi.io/broker-role: "true"
-                topologyKey: kubernetes.io/hostname
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  strimzi.io/cluster: drova-kafka
+                  strimzi.io/broker-role: "true"
+              topologyKey: kubernetes.io/hostname
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              strimzi.io/cluster: drova-kafka
+              strimzi.io/broker-role: "true"
 ---
 apiVersion: kafka.strimzi.io/v1
 kind: Kafka
