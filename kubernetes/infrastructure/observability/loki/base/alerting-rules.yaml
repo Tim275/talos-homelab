@@ -237,3 +237,12 @@ data:
               summary: "cloudflared verliert Tunnel-Verbindungen ({{ $value }} in 15min)"
               description: "Betrifft die oeffentlich exponierten Dienste (drova, n8n) — VPN-only-Dienste bleiben erreichbar."
               action: "kubectl logs -n cloudflared -l app=cloudflared --since=15m | grep -i 'connect'"
+
+          - alert: LogsGatewayRoutesDisabled
+            expr: 'sum(count_over_time({namespace="gateway"} |= "setting 500 direct response in routes" [5m])) > 0'
+            for: 2m
+            labels: {severity: critical, component: network, priority: P1, source: loki}
+            annotations:
+              summary: "Envoy Gateway hat Routen auf 500 gesetzt"
+              description: "Der Controller konnte eine Extension- oder SecurityPolicy nicht aufloesen und ersetzt betroffene Routen durch eine 500-Direktantwort. Bei der WAF genuegt ein einmalig fehlgeschlagener WASM-Download: envoyproxy/gateway#5619 retried nicht, der Zustand bleibt bis zum Neustart."
+              action: "kubectl -n gateway rollout restart deploy envoy-gateway"
