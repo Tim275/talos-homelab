@@ -61,3 +61,18 @@ spec:
             summary: "Homelab service unreachable: {{ $labels.instance }}"
             description: "Blackbox probe to {{ $labels.instance }} returned no valid HTTP response for >5min (refused/timeout/5xx)."
             action: "curl --resolve HOST:443:192.168.0.152 https://HOST/ ; check app pod + HTTPRoute + Envoy filter-chain."
+
+        - alert: HomelabEdgeDown
+          expr: |
+            count(probe_success{job="blackbox-homelab"} == 0)
+              / count(probe_success{job="blackbox-homelab"}) > 0.5
+          for: 2m
+          labels:
+            severity: critical
+            priority: P1
+            component: ingress
+          annotations:
+            dashboard_url: "https://grafana.timourhomelab.org/d/blackbox-exporter"
+            summary: "{{ $value | humanizePercentage }} of public services down at once"
+            description: "Unrelated apps do not fail together. Shared path: Envoy Gateway, cloudflared or DNS."
+            action: "kubectl -n gateway logs -l control-plane=envoy-gateway | grep 'direct response' — if present: kubectl -n gateway rollout restart deploy envoy-gateway"
