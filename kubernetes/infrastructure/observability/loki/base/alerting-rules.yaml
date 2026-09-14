@@ -238,6 +238,15 @@ data:
               description: "Betrifft die oeffentlich exponierten Dienste (drova, n8n) — VPN-only-Dienste bleiben erreichbar."
               action: "kubectl logs -n cloudflared -l app=cloudflared --since=15m | grep -i 'connect'"
 
+          - alert: LogsMeshRedirectionLost
+            expr: 'sum by (pod) (count_over_time({namespace="istio-system", pod=~"ztunnel.*"} |= "Connection refused" [10m])) > 20'
+            for: 5m
+            labels: {severity: warning, component: network, priority: P2, source: loki}
+            annotations:
+              summary: "ztunnel erreicht Ziel-Pods nicht ({{ $value }} in 10min)"
+              description: "Baseline ist null. Ein Pod hat seine ambient-Umleitung verloren — meist nach einem Node-Reboot, bei dem istio-cni sie fuer laufende Pods nicht neu setzt. Der Pod bleibt Running, ztunnel meldet im eigenen Log nichts, nur die Gegenstelle sieht Connection refused."
+              action: "Ziel-Pod finden: kubectl -n istio-system logs -l app=ztunnel --since=10m | grep 'Connection refused' | grep -oE 'dst.workload=\"[^\"]*\"' | sort | uniq -c. Danach diesen Pod NEU ERSTELLEN (delete pod), nicht nur den Container neu starten. Betrifft mehrere Ziele auf demselben Node: ztunnel dieses Nodes neu erstellen."
+
           - alert: LogsGatewayRoutesDisabled
             expr: 'sum(count_over_time({namespace="gateway"} |= "setting 500 direct response in routes" [5m])) > 0'
             for: 2m
