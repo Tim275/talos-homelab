@@ -127,4 +127,18 @@ talos_nodes = {
     # schwaechster Host, eine heisse Platte — nur was per Zone-Constraint hier hin muss
     node_taints = { "pve" = "PreferNoSchedule" }
   }
+  "worker-7" = {
+    host_node      = "nipogi"
+    machine_type   = "worker"
+    ip             = "192.168.0.110"
+    mac_address    = "BC:24:11:2E:C8:B4"
+    vm_id          = 1009
+    cpu            = 6
+    ram_dedicated  = 16384
+    datastore_id   = "local-zfs"
+    os_disk_size   = 50
+    ceph_disk_size = 0
+    pool           = "stateless"
+    # node_taints    = { "nipogi" = "PreferNoSchedule" }
+  }
 }
