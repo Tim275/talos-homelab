@@ -1,14 +1,15 @@
 # kein ram_floating: Ballooning laesst kubelet den Boot-Wert melden, der Scheduler ueberpackt den Node
 talos_nodes = {
   "ctrl-0" = {
-    host_node      = "pve"
+    # etcd lag auf pves LENSE bei 95 C Hotspot, Laufzeiten fielen von Wochen auf Stunden
+    host_node      = "msa2proxmox"
     machine_type   = "controlplane"
     ip             = "192.168.0.101"
     mac_address    = "BC:24:11:2E:C8:A0"
     vm_id          = 1000
-    cpu            = 6
-    ram_dedicated  = 12288
-    datastore_id   = "local-lvm"
+    cpu            = 4      # 7d-Auslastung 18%
+    ram_dedicated  = 10240  # 7d-Spitze 5,3 GB
+    datastore_id   = "local-zfs"
     os_disk_size   = 50
     ceph_disk_size = 0
   }
@@ -123,5 +124,7 @@ talos_nodes = {
     os_disk_size   = 300
     ceph_disk_size = 0
     pool           = "stateful"
+    # schwaechster Host, eine heisse Platte — nur was per Zone-Constraint hier hin muss
+    node_taints = { "pve" = "PreferNoSchedule" }
   }
 }
