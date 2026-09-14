@@ -127,6 +127,20 @@ spec:
                         gql "{\"query\": \"mutation { addUserToGroup(userId: \\\"$ID\\\", groupId: $GROUP_ID) { ok } }\"}" > /dev/null 2>&1 || true
                       fi
                     done
+
+                    if [ "$(echo "$USER_GROUPS" | grep -c .)" -lt 1 ]; then
+                      echo "  SAFETY: config lists 0 groups for $ID → skip membership cleanup"
+                    else
+                      gql "{\"query\": \"{ user(userId: \\\"$ID\\\") { groups { id displayName } } }\"}" \
+                        | jq -r '.data.user.groups[]? | "\(.id)|\(.displayName)"' | while IFS='|' read gid gname; do
+                        [ -z "$gname" ] && continue
+                        if ! echo "$USER_GROUPS" | grep -qx "$gname"; then
+                          echo "  Removing from group: $gname (ID: $gid)"
+                          gql "{\"query\": \"mutation { removeUserFromGroup(userId: \\\"$ID\\\", groupId: $gid) { ok } }\"}" > /dev/null 2>&1 \
+                            || echo "    (remove failed for $gname)"
+                        fi
+                      done
+                    fi
                   done
 
                   echo ""
