@@ -6,7 +6,7 @@ talos_nodes = {
     machine_type   = "controlplane"
     ip             = "192.168.0.101"
     mac_address    = "BC:24:11:2E:C8:A0"
-    vm_id          = 1000
+    vm_id          = 1010
     cpu            = 4      # 7d-Auslastung 18%
     ram_dedicated  = 10240  # 7d-Spitze 5,3 GB
     datastore_id   = "local-zfs"
@@ -117,8 +117,8 @@ talos_nodes = {
     mac_address  = "BC:24:11:2E:C8:B3"
     vm_id        = 1008
     cpu          = 6
-    # 85%-Regel wie msa2/nipogi: (46G*0.85)-12G ctrl-0
-    ram_dedicated = 27648
+    # einzige VM auf pve, 46G minus ~8G fuer den Host
+    ram_dedicated = 38912
     # LVM-thin statt ZFS; 300G fuer local-path, kein Ceph-OSD
     datastore_id   = "local-lvm"
     os_disk_size   = 300
