@@ -1,5 +1,3 @@
-
-
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -20,253 +18,66 @@ spec:
       template:
         spec:
           restartPolicy: OnFailure
-          initContainers:
-            - name: wait-for-lldap
-              image: busybox:1.38@sha256:dc2d74b28e4cf8984fa52af1f39bc7c3d9c73760b41a74d629f5d11b1ab28616
-              command:
-                - sh
-                - -c
-                - |
-                  echo "Waiting for LLDAP to be ready..."
-                  for i in $(seq 1 60); do
-                    if nc -z lldap 17170 2>/dev/null; then
-                      echo "LLDAP is ready!"
-                      exit 0
-                    fi
-                    echo "Attempt $i/60: LLDAP not ready, waiting 5s..."
-                    sleep 5
-                  done
-                  echo "ERROR: LLDAP not ready after 5 minutes"
-                  exit 1
-              resources:
-                requests:
-                  cpu: 10m
-                  memory: 32Mi
-                limits:
-                  cpu: 50m
-                  memory: 32Mi
+          securityContext:
+            fsGroup: 1001
           containers:
             - name: bootstrap
-              image: alpine:3.24@sha256:f5064d3e5f88c467c714509f491853ab2d951932c5cad699c0cb969dcec6f3b4
+              image: lldap/lldap:2025-02-05-alpine-rootless
               command:
-                - /bin/sh
+                - /bin/bash
                 - -c
                 - |
                   set -e
-                  apk add --no-cache curl jq gettext
+                  mkdir -p /bootstrap/user-configs /bootstrap/group-configs /bootstrap/user-schemas
+                  # Schemas erwartet bootstrap.sh als Array, User und Gruppen als JSON-Stream
+                  cp /config/user-schemas.json /bootstrap/user-schemas/
+                  jq -c '.[]' /config/groups.json > /bootstrap/group-configs/groups.json
+                  jq -c '.[]' /config/users.json  > /bootstrap/user-configs/users.json
 
-                  echo "============================================"
-                  echo "LLDAP Bootstrap - Creating Users and Groups"
-                  echo "============================================"
-
-                  echo "Authenticating with LLDAP..."
-                  TOKEN=$(curl -sf -X POST http://lldap:17170/auth/simple/login \
-                    -H "Content-Type: application/json" \
-                    -d "{\"username\":\"$LLDAP_ADMIN_USERNAME\",\"password\":\"$LLDAP_ADMIN_PASSWORD\"}" \
-                    | jq -r '.token')
-
-                  if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
-                    echo "ERROR: Failed to authenticate with LLDAP"
-                    exit 1
-                  fi
-                  echo "Authentication successful!"
-
-                  gql() {
-                    curl -sf -X POST http://lldap:17170/api/graphql \
-                      -H "Content-Type: application/json" \
-                      -H "Authorization: Bearer $TOKEN" \
-                      -d "$1"
-                  }
-
-                  echo ""
-                  echo "--- Creating Groups ---"
-                  cat /config/groups.json | jq -c '.[]' | while read group; do
-                    NAME=$(echo "$group" | jq -r '.name')
-                    echo "Creating group: $NAME"
-                    RESULT=$(gql "{\"query\": \"mutation { createGroup(name: \\\"$NAME\\\") { id } }\"}" 2>&1 || true)
-                    if echo "$RESULT" | grep -q '"id"'; then
-                      echo "  Created: $NAME"
-                    elif echo "$RESULT" | grep -q 'already exists'; then
-                      echo "  Exists: $NAME"
-                    else
-                      echo "  Result: $RESULT"
-                    fi
+                  # "password": "secret:<key>" gegen den gleichnamigen Secret-Key auflösen
+                  for f in /secrets/*; do
+                    jq -c --arg k "secret:$(basename "$f")" --rawfile v "$f" \
+                      'if .password == $k then .password = ($v | rtrimstr("\n")) else . end' \
+                      /bootstrap/user-configs/users.json > /tmp/users.json
+                    mv /tmp/users.json /bootstrap/user-configs/users.json
                   done
 
-                  echo ""
-                  echo "--- Fetching Group IDs ---"
-                  GROUPS_RESPONSE=$(gql '{"query": "{ groups { id displayName } }"}')
-                  echo "$GROUPS_RESPONSE" | jq -r '.data.groups[] | "\(.displayName): \(.id)"'
-
-                  echo ""
-                  echo "--- Creating Users ---"
-                  USERS_JSON=$(envsubst '$LLDAP_USER_PASSWORD $LLDAP_ANNA_PASSWORD $LLDAP_BEN_PASSWORD $LLDAP_CLARA_PASSWORD $LLDAP_SVC_KEYCLOAK_PASSWORD' < /config/users.json)
-                  echo "$USERS_JSON" | jq -c '.[]' | while read user; do
-                    ID=$(echo "$user" | jq -r '.id')
-                    EMAIL=$(echo "$user" | jq -r '.email')
-                    FIRST=$(echo "$user" | jq -r '.firstName // ""')
-                    LAST=$(echo "$user" | jq -r '.lastName // ""')
-                    DISPLAY=$(echo "$user" | jq -r '.displayName // .id')
-
-                    echo "Creating user: $ID ($EMAIL)"
-
-                    RESULT=$(gql "{\"query\": \"mutation { createUser(user: {id: \\\"$ID\\\", email: \\\"$EMAIL\\\", displayName: \\\"$DISPLAY\\\"}) { id } }\"}" 2>&1 || true)
-                    if echo "$RESULT" | grep -q '"id"'; then
-                      echo "  Created: $ID"
-                    elif echo "$RESULT" | grep -q 'already exists'; then
-                      echo "  Exists: $ID"
-                    else
-                      echo "  Result: $RESULT"
-                    fi
-
-                    USER_GROUPS=$(echo "$user" | jq -r '.groups[]?' 2>/dev/null || true)
-                    for GROUP_NAME in $USER_GROUPS; do
-                      GROUP_ID=$(echo "$GROUPS_RESPONSE" | jq -r ".data.groups[] | select(.displayName==\"$GROUP_NAME\") | .id")
-                      if [ -n "$GROUP_ID" ]; then
-                        echo "  Adding to group: $GROUP_NAME (ID: $GROUP_ID)"
-                        gql "{\"query\": \"mutation { addUserToGroup(userId: \\\"$ID\\\", groupId: $GROUP_ID) { ok } }\"}" > /dev/null 2>&1 || true
-                      fi
-                    done
-
-                    if [ "$(echo "$USER_GROUPS" | grep -c .)" -lt 1 ]; then
-                      echo "  SAFETY: config lists 0 groups for $ID → skip membership cleanup"
-                    else
-                      gql "{\"query\": \"{ user(userId: \\\"$ID\\\") { groups { id displayName } } }\"}" \
-                        | jq -r '.data.user.groups[]? | "\(.id)|\(.displayName)"' | while IFS='|' read gid gname; do
-                        [ -z "$gname" ] && continue
-                        if ! echo "$USER_GROUPS" | grep -qx "$gname"; then
-                          echo "  Removing from group: $gname (ID: $gid)"
-                          gql "{\"query\": \"mutation { removeUserFromGroup(userId: \\\"$ID\\\", groupId: $gid) { ok } }\"}" > /dev/null 2>&1 \
-                            || echo "    (remove failed for $gname)"
-                        fi
-                      done
-                    fi
-                  done
-
-                  echo ""
-                  echo "--- Setting Passwords via LDAP ---"
-                  apk add --no-cache openldap-clients
-
-                  USERS_JSON=$(envsubst '$LLDAP_USER_PASSWORD $LLDAP_ANNA_PASSWORD $LLDAP_BEN_PASSWORD $LLDAP_CLARA_PASSWORD $LLDAP_SVC_KEYCLOAK_PASSWORD' < /config/users.json)
-                  echo "$USERS_JSON" | jq -c '.[]' > /tmp/users.txt
-
-                  FAILED=0
-                  while read user; do
-                    ID=$(echo "$user" | jq -r '.id')
-                    PASSWORD=$(echo "$user" | jq -r '.password // empty')
-
-                    if [ -n "$PASSWORD" ]; then
-                      echo "Setting password for: $ID"
-
-                      if ldapwhoami -x -H ldap://lldap-ldap:389 \
-                          -D "uid=$ID,ou=people,dc=homelab,dc=local" \
-                          -w "$PASSWORD" >/dev/null 2>&1; then
-                        echo "  ✓ already correct, skip"
-                        continue
-                      fi
-
-                      if ldappasswd -x -H ldap://lldap-ldap:389 \
-                          -D "uid=$LLDAP_ADMIN_USERNAME,ou=people,dc=homelab,dc=local" \
-                          -w "$LLDAP_ADMIN_PASSWORD" \
-                          -s "$PASSWORD" \
-                          "uid=$ID,ou=people,dc=homelab,dc=local"; then
-                        if ldapwhoami -x -H ldap://lldap-ldap:389 \
-                            -D "uid=$ID,ou=people,dc=homelab,dc=local" \
-                            -w "$PASSWORD" >/dev/null 2>&1; then
-                          echo "  ✓ password verified"
-                        else
-                          echo "  ✗ ldappasswd reported OK but ldap-bind STILL fails (LLDAP dual-store bug?)"
-                          FAILED=$((FAILED+1))
-                        fi
-                      else
-                        echo "  ✗ ldappasswd FAILED for $ID (LDAP unreachable/error)"
-                        FAILED=$((FAILED+1))
-                      fi
-                    fi
-                  done < /tmp/users.txt
-
-                  if [ "${FAILED:-0}" -ge 3 ]; then
-                    echo "ERROR: $FAILED password operations failed — job marked failed (≥3 fails = real issue)"
+                  if grep -q '"secret:' /bootstrap/user-configs/users.json; then
+                    echo "ERROR: unaufgelöste secret:-Referenz in users.json"
+                    grep -o '"secret:[a-z0-9-]*"' /bootstrap/user-configs/users.json
                     exit 1
-                  elif [ "${FAILED:-0}" -gt 0 ]; then
-                    echo "WARN: $FAILED users hit dual-store-bug — continuing (idempotent retry next hour)"
                   fi
 
-                  echo ""
-                  echo "--- Cleanup (drift removal) ---"
-                  CONFIG_IDS=$(echo "$USERS_JSON" | jq -r '.[].id')
-                  if [ "$(echo "$CONFIG_IDS" | grep -c .)" -lt 1 ]; then
-                    echo "  SAFETY: config lists 0 users → skip cleanup (won't wipe)"
-                  else
-                    LIVE_IDS=$(gql '{"query":"{ users { id } }"}' | jq -r '.data.users[].id')
-                    for uid in $LIVE_IDS; do
-                      [ "$uid" = "admin" ] && continue
-                      if ! echo "$CONFIG_IDS" | grep -qx "$uid"; then
-                        echo "  DELETING drift user: $uid (not in config)"
-                        gql "{\"query\": \"mutation { deleteUser(userId: \\\"$uid\\\") { ok } }\"}" > /dev/null 2>&1 \
-                          || echo "    (delete failed for $uid)"
-                      fi
-                    done
-                  fi
-
-                  echo ""
-                  echo "--- Group cleanup (drift removal) ---"
-                  CFG_GROUPS=$(cat /config/groups.json | jq -r '.[].name')
-                  if [ "$(echo "$CFG_GROUPS" | grep -c .)" -lt 1 ]; then
-                    echo "  SAFETY: config lists 0 groups → skip"
-                  else
-                    gql '{"query":"{ groups { id displayName } }"}' \
-                      | jq -r '.data.groups[] | "\(.id)|\(.displayName)"' | while IFS='|' read gid gname; do
-                      case "$gname" in lldap_admin|lldap_password_manager|lldap_strict_readonly) continue;; esac
-                      if ! echo "$CFG_GROUPS" | grep -qx "$gname"; then
-                        echo "  DELETING drift group: $gname (id $gid)"
-                        gql "{\"query\": \"mutation { deleteGroup(groupId: $gid) { ok } }\"}" > /dev/null 2>&1 \
-                          || echo "    (delete failed for $gname)"
-                      fi
-                    done
-                  fi
-
-                  echo ""
-                  echo "============================================"
-                  echo "Bootstrap Complete!"
-                  echo "============================================"
+                  exec /app/bootstrap.sh
               env:
+                - name: LLDAP_URL
+                  value: http://lldap:17170
                 - name: LLDAP_ADMIN_USERNAME
-                  value: "admin"
+                  value: admin
                 - name: LLDAP_ADMIN_PASSWORD
                   valueFrom:
                     secretKeyRef:
                       name: lldap-secrets
                       key: admin-password
-                - name: LLDAP_USER_PASSWORD
-                  valueFrom:
-                    secretKeyRef:
-                      name: lldap-secrets
-                      key: user-password
-                - name: LLDAP_ANNA_PASSWORD
-                  valueFrom:
-                    secretKeyRef:
-                      name: lldap-secrets
-                      key: anna-password
-                - name: LLDAP_BEN_PASSWORD
-                  valueFrom:
-                    secretKeyRef:
-                      name: lldap-secrets
-                      key: ben-password
-                - name: LLDAP_CLARA_PASSWORD
-                  valueFrom:
-                    secretKeyRef:
-                      name: lldap-secrets
-                      key: clara-password
-                - name: LLDAP_SVC_KEYCLOAK_PASSWORD
-                  valueFrom:
-                    secretKeyRef:
-                      name: lldap-secrets
-                      key: svc-keycloak-password
+                - name: USER_CONFIGS_DIR
+                  value: /bootstrap/user-configs
+                - name: GROUP_CONFIGS_DIR
+                  value: /bootstrap/group-configs
+                - name: USER_SCHEMAS_DIR
+                  value: /bootstrap/user-schemas
+                - name: DO_CLEANUP
+                  value: "true"
               volumeMounts:
                 - name: config
                   mountPath: /config
                   readOnly: true
+                - name: secrets
+                  mountPath: /secrets
+                  readOnly: true
+                - name: bootstrap
+                  mountPath: /bootstrap
+                - name: tmp
+                  mountPath: /tmp
               resources:
                 requests:
                   cpu: 50m
@@ -282,3 +93,12 @@ spec:
                       name: bootstrap-users
                   - configMap:
                       name: bootstrap-groups
+                  - configMap:
+                      name: bootstrap-user-schemas
+            - name: secrets
+              secret:
+                secretName: lldap-secrets
+            - name: bootstrap
+              emptyDir: {}
+            - name: tmp
+              emptyDir: {}
