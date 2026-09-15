@@ -111,16 +111,16 @@ jobs:
         run: |
           set +e
           PILOTS=(
-            # "dry-source-overlay|rendered-manifests-file" — one line per pilot
+            "kubernetes/infrastructure/operators/reloader/overlays/prod|kubernetes/infrastructure/operators/reloader/rendered/manifests.yaml"
           )
           DRIFTED=0
-          : > /tmp/rendered-comment.md
+          : > rendered-comment.md
           for pair in "${PILOTS[@]}"; do
             SRC="${pair%%|*}"; RENDERED="${pair##*|}"
-            NAME=$(basename "$(dirname "$RENDERED")")
+            NAME=$(basename "$(dirname "$(dirname "$RENDERED")")")
             kustomize build "$SRC" --enable-helm --load-restrictor=LoadRestrictionsNone > /tmp/dry.yaml
             if diff -q "$RENDERED" /tmp/dry.yaml > /dev/null; then
-              printf '#### rendered-manifests — `%s`\nmatches dry source\n\n' "$NAME" >> /tmp/rendered-comment.md
+              printf '#### rendered-manifests — `%s`\nmatches dry source\n\n' "$NAME" >> rendered-comment.md
             else
               DRIFTED=1
               yq eval-all '(.kind // "?")+"/"+(.metadata.namespace // "_")+"/"+(.metadata.name // "?")' /tmp/dry.yaml | sort -u > /tmp/dry-ids.txt
@@ -133,19 +133,19 @@ jobs:
                 echo '**added:**'
                 echo '```'; comm -23 /tmp/dry-ids.txt /tmp/rendered-ids.txt; echo '```'
                 echo ''
-              } >> /tmp/rendered-comment.md
+              } >> rendered-comment.md
               echo "::error::rendered manifests drift in $RENDERED"
             fi
           done
           echo "drifted=$DRIFTED" >> "$GITHUB_OUTPUT"
 
       - name: Comment rendered-manifests status on PR
-        if: github.event_name == 'pull_request' && hashFiles('/tmp/rendered-comment.md') != ''
+        if: github.event_name == 'pull_request' && hashFiles('rendered-comment.md') != ''
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const fs = require('fs');
-            const body = fs.readFileSync('/tmp/rendered-comment.md', 'utf8');
+            const body = fs.readFileSync('rendered-comment.md', 'utf8');
             const marker = 'rendered-manifests —';
             const { data: comments } = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number });
             const existing = comments.find(c => c.body.includes(marker));
