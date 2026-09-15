@@ -575,6 +575,23 @@ echo '    zpool clear <pool>           ZFS-Fehler quittieren nach Fix'
 echo '    pve-firewall stop            ⚠ Security · Runbook #6'
 """
 
+[tasks.render-diff]
+description = "Diff committed rendered/manifests.yaml against dry source (all piloted components)"
+run = """
+FAIL=0
+FRESH=$(mktemp)
+find kubernetes -path "*/rendered/manifests.yaml" > /tmp/render-diff-list.txt
+while IFS= read -r rendered; do
+  dir=$(dirname "$(dirname "$rendered")")
+  mise exec kustomize@5.5.0 helm@3.16.0 -- kustomize build "$dir/overlays/prod" --enable-helm --load-restrictor=LoadRestrictionsNone > "$FRESH"
+  if ! diff -u "$rendered" "$FRESH"; then
+    echo "DRIFT: $rendered"; FAIL=1
+  fi
+done < /tmp/render-diff-list.txt
+rm -f "$FRESH" /tmp/render-diff-list.txt
+exit $FAIL
+"""
+
 [tasks.help-gitops]
 description = "📖 SealedSecrets / ArgoCD / Kubeconfig"
 run = """

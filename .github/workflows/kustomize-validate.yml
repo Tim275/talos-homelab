@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   kustomize:
@@ -97,3 +98,63 @@ jobs:
             printf '  - %s\n' "${FAILED_DIRS[@]}"
             exit 1
           fi
+
+      - name: Install yq
+        run: |
+          VERSION="4.53.4"
+          curl -sL "https://github.com/mikefarah/yq/releases/download/v${VERSION}/yq_linux_amd64" -o /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
+      - name: Verify piloted rendered manifests
+        id: rendered
+        run: |
+          set +e
+          PILOTS=(
+            # "dry-source-overlay|rendered-manifests-file" — one line per pilot
+          )
+          DRIFTED=0
+          : > /tmp/rendered-comment.md
+          for pair in "${PILOTS[@]}"; do
+            SRC="${pair%%|*}"; RENDERED="${pair##*|}"
+            NAME=$(basename "$(dirname "$RENDERED")")
+            kustomize build "$SRC" --enable-helm --load-restrictor=LoadRestrictionsNone > /tmp/dry.yaml
+            if diff -q "$RENDERED" /tmp/dry.yaml > /dev/null; then
+              printf '#### rendered-manifests — `%s`\nmatches dry source\n\n' "$NAME" >> /tmp/rendered-comment.md
+            else
+              DRIFTED=1
+              yq eval-all '(.kind // "?")+"/"+(.metadata.namespace // "_")+"/"+(.metadata.name // "?")' /tmp/dry.yaml | sort -u > /tmp/dry-ids.txt
+              yq eval-all '(.kind // "?")+"/"+(.metadata.namespace // "_")+"/"+(.metadata.name // "?")' "$RENDERED" | sort -u > /tmp/rendered-ids.txt
+              {
+                printf '#### rendered-manifests — `%s`\n' "$NAME"
+                printf 'drift detected — run `mise run render-update-%s` and commit\n' "$NAME"
+                echo '**removed** (would be pruned if regenerated):'
+                echo '```'; comm -13 /tmp/dry-ids.txt /tmp/rendered-ids.txt; echo '```'
+                echo '**added:**'
+                echo '```'; comm -23 /tmp/dry-ids.txt /tmp/rendered-ids.txt; echo '```'
+                echo ''
+              } >> /tmp/rendered-comment.md
+              echo "::error::rendered manifests drift in $RENDERED"
+            fi
+          done
+          echo "drifted=$DRIFTED" >> "$GITHUB_OUTPUT"
+
+      - name: Comment rendered-manifests status on PR
+        if: github.event_name == 'pull_request' && hashFiles('/tmp/rendered-comment.md') != ''
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('/tmp/rendered-comment.md', 'utf8');
+            const marker = 'rendered-manifests —';
+            const { data: comments } = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number });
+            const existing = comments.find(c => c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body });
+            }
+
+      - name: Fail on rendered manifests drift
+        if: steps.rendered.outputs.drifted == '1'
+        run: exit 1
