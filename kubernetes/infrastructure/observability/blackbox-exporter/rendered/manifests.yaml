@@ -1,0 +1,269 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/instance: blackbox-exporter
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: prometheus-blackbox-exporter
+    app.kubernetes.io/version: v0.28.0
+    helm.sh/chart: prometheus-blackbox-exporter-11.17.2
+  name: blackbox-exporter-prometheus-blackbox-exporter
+  namespace: monitoring
+---
+apiVersion: v1
+data:
+  blackbox.yaml: |
+    modules:
+      dns_external:
+        dns:
+          preferred_ip_protocol: ip4
+          query_name: cloudflare.com
+          query_type: A
+          valid_rcodes:
+          - NXDOMAIN
+          - NOERROR
+        prober: dns
+        timeout: 5s
+      http_2xx:
+        http:
+          fail_if_not_ssl: false
+          fail_if_ssl: false
+          follow_redirects: true
+          method: GET
+          no_follow_redirects: false
+          preferred_ip_protocol: ip4
+          valid_http_versions:
+          - HTTP/1.1
+          - HTTP/2.0
+          valid_status_codes: []
+        prober: http
+        timeout: 5s
+      http_post_2xx:
+        http:
+          method: POST
+        prober: http
+        timeout: 5s
+      http_reachable:
+        http:
+          fail_if_not_ssl: false
+          fail_if_ssl: false
+          method: GET
+          no_follow_redirects: true
+          preferred_ip_protocol: ip4
+          valid_http_versions:
+          - HTTP/1.1
+          - HTTP/2.0
+          valid_status_codes:
+          - 200
+          - 201
+          - 202
+          - 204
+          - 301
+          - 302
+          - 303
+          - 307
+          - 308
+          - 401
+          - 403
+          - 405
+        prober: http
+        timeout: 5s
+      icmp:
+        icmp:
+          preferred_ip_protocol: ip4
+        prober: icmp
+        timeout: 5s
+      tcp_connect:
+        prober: tcp
+        timeout: 5s
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/instance: blackbox-exporter
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: prometheus-blackbox-exporter
+    app.kubernetes.io/version: v0.28.0
+    helm.sh/chart: prometheus-blackbox-exporter-11.17.2
+  name: blackbox-exporter-prometheus-blackbox-exporter
+  namespace: monitoring
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/instance: blackbox-exporter
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: prometheus-blackbox-exporter
+    app.kubernetes.io/version: v0.28.0
+    helm.sh/chart: prometheus-blackbox-exporter-11.17.2
+  name: blackbox-exporter-prometheus-blackbox-exporter
+  namespace: monitoring
+spec:
+  ports:
+  - name: http
+    port: 9115
+    protocol: TCP
+    targetPort: http
+  selector:
+    app.kubernetes.io/instance: blackbox-exporter
+    app.kubernetes.io/name: prometheus-blackbox-exporter
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/instance: blackbox-exporter
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: prometheus-blackbox-exporter
+    app.kubernetes.io/version: v0.28.0
+    helm.sh/chart: prometheus-blackbox-exporter-11.17.2
+  name: blackbox-exporter-prometheus-blackbox-exporter
+  namespace: monitoring
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: blackbox-exporter
+      app.kubernetes.io/name: prometheus-blackbox-exporter
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        checksum/config: c7f7b12b0392bff1aaba6783e05f9c306c6ccc86d874e5e51363fecc4c1b8488
+      labels:
+        app.kubernetes.io/instance: blackbox-exporter
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: prometheus-blackbox-exporter
+        app.kubernetes.io/version: v0.28.0
+        helm.sh/chart: prometheus-blackbox-exporter-11.17.2
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - args:
+        - --config.file=/config/blackbox.yaml
+        image: quay.io/prometheus/blackbox-exporter:v0.28.0
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /-/healthy
+            port: http
+        name: blackbox-exporter
+        ports:
+        - containerPort: 9115
+          name: http
+        readinessProbe:
+          httpGet:
+            path: /-/healthy
+            port: http
+        resources:
+          limits:
+            cpu: 200m
+            memory: 128Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsGroup: 1000
+          runAsNonRoot: true
+          runAsUser: 1000
+        volumeMounts:
+        - mountPath: /config
+          name: config
+      hostNetwork: false
+      restartPolicy: Always
+      serviceAccountName: blackbox-exporter-prometheus-blackbox-exporter
+      volumes:
+      - configMap:
+          name: blackbox-exporter-prometheus-blackbox-exporter
+        name: config
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  labels:
+    release: kube-prometheus-stack
+  name: external-connectivity
+  namespace: monitoring
+spec:
+  jobName: blackbox-external
+  module: http_2xx
+  prober:
+    url: blackbox-exporter-prometheus-blackbox-exporter.monitoring.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      labels:
+        env: external
+      static:
+      - https://1.1.1.1
+      - https://8.8.8.8
+      - https://github.com
+      - https://cloudflare.com
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  labels:
+    release: kube-prometheus-stack
+  name: external-dns
+  namespace: monitoring
+spec:
+  jobName: blackbox-dns
+  module: dns_external
+  prober:
+    url: blackbox-exporter-prometheus-blackbox-exporter.monitoring.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      labels:
+        env: cluster-dns
+      static:
+      - kube-dns.kube-system.svc.cluster.local:53
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  labels:
+    release: kube-prometheus-stack
+  name: homelab-public-services
+  namespace: monitoring
+spec:
+  jobName: blackbox-homelab
+  module: http_reachable
+  prober:
+    url: blackbox-exporter-prometheus-blackbox-exporter.monitoring.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      labels:
+        env: prod
+        type: public
+      static:
+      - https://argo.timourhomelab.org
+      - https://ceph.timourhomelab.org
+      - https://drova.timourhomelab.org
+      - https://grafana.timourhomelab.org
+      - https://hubble.timourhomelab.org
+      - https://iam.timourhomelab.org
+      - https://jaeger.timourhomelab.org
+      - https://kiali.timourhomelab.org
+      - https://kibana.timourhomelab.org
+      - https://lldap.timourhomelab.org
+      - https://n8n.timourhomelab.org
+      - https://openbao.timourhomelab.org
+      - https://redpanda.timourhomelab.org
+      - https://renovate.timourhomelab.org
+      - https://status.timourhomelab.org
+      - https://homepage.timourhomelab.org
+      - https://prometheus.timourhomelab.org
+      - https://alertmanager.timourhomelab.org
+      - https://forgejo.timourhomelab.org
