@@ -269,7 +269,7 @@ Zero-trust foundation, policy enforcement and compliance:
     <tr>
         <td><img width="32" src="https://avatars.githubusercontent.com/u/68448710?s=200&v=4"></td>
         <td><a href="https://kyverno.io/">Kyverno</a></td>
-        <td>Policy-as-code engine in Enforce mode — restrict-image-registries, disallow-privileged, no-host-namespaces, run-as-non-root, resource-limits</td>
+        <td>Policy-as-code engine — disallow-latest-tag + verify-drova-signatures in Enforce, resource-requests/limits in Audit</td>
     </tr>
     <tr>
         <td>🔏</td>
