@@ -1,0 +1,73 @@
+# Diese Alerts haben einen or-Zweig, der 0 oder 1 liefert statt einer Dauer.
+# Ohne Conditional rendert das als "0s lookup" bzw "1s since last success".
+rule_files:
+  - .rules.generated.yaml
+evaluation_interval: 1m
+
+tests:
+  # DNS-Probe gescheitert (probe_success=0) -> keine erfundene Dauer
+  - interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox-dns",instance="kube-dns:53"}'
+        values: '0x15'
+      - series: 'probe_dns_lookup_time_seconds{job="blackbox-dns",instance="kube-dns:53"}'
+        values: '0x15'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: ExternalDNSResolutionFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              priority: P2
+              component: dns
+              job: blackbox-dns
+              instance: kube-dns:53
+            exp_annotations:
+              dashboard_url: "https://grafana.timourhomelab.org/d/blackbox-exporter"
+              summary: "External DNS slow/failing: kube-dns:53 (Probe gescheitert)"
+              description: "Blackbox-Probe gegen CoreDNS: Lookup >5s oder gescheitert. Externe Aufloesung bricht, interne svc-DNS kann noch gehen."
+              action: "kubectl logs -n kube-system -l k8s-app=kube-dns; the probe tests CoreDNS resolving externally — check upstream/Gateway."
+
+  # Lookup wirklich langsam -> Dauer erscheint
+  - interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox-dns",instance="kube-dns:53"}'
+        values: '1x15'
+      - series: 'probe_dns_lookup_time_seconds{job="blackbox-dns",instance="kube-dns:53"}'
+        values: '8x15'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: ExternalDNSResolutionFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              priority: P2
+              component: dns
+              job: blackbox-dns
+              instance: kube-dns:53
+            exp_annotations:
+              dashboard_url: "https://grafana.timourhomelab.org/d/blackbox-exporter"
+              summary: "External DNS slow/failing: kube-dns:53 (8s lookup)"
+              description: "Blackbox-Probe gegen CoreDNS: Lookup >5s oder gescheitert. Externe Aufloesung bricht, interne svc-DNS kann noch gehen."
+              action: "kubectl logs -n kube-system -l k8s-app=kube-dns; the probe tests CoreDNS resolving externally — check upstream/Gateway."
+
+  # CronJob-Metrik fehlt ganz (absent) -> keine "1s"-Dauer
+  - interval: 1m
+    input_series:
+      - series: 'up{job="kube-state-metrics"}'
+        values: '1x40'
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: LLDAPBootstrapCronJobFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              priority: P2
+              component: identity
+              namespace: lldap
+              cronjob: lldap-bootstrap
+            exp_annotations:
+              dashboard_url: "https://grafana.timourhomelab.org/d/argocd-overview"
+              summary: "LLDAP bootstrap CronJob hasn't succeeded in 3h (kein Erfolgs-Zeitstempel vorhanden)"
+              description: "User reconciliation broken — Keycloak login may fail."
+              action: "kubectl get cronjob -n lldap; kubectl logs -n lldap -l cronjob=lldap-bootstrap"
