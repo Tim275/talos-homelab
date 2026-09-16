@@ -25,11 +25,8 @@ spec:
 
         - alert: RenovateOrphanPROpenerFailingRepeatedly
           expr: |
-            sum(kube_cronjob_status_last_successful_time{namespace="renovate-operator",cronjob="renovate-orphan-pr-opener"})
-            ==
-            0
-            OR
             (time() - sum(kube_cronjob_status_last_successful_time{namespace="renovate-operator",cronjob="renovate-orphan-pr-opener"})) > 3600
+            or absent(kube_cronjob_status_last_successful_time{namespace="renovate-operator",cronjob="renovate-orphan-pr-opener"})
           for: 30m
           labels:
             severity: warning
@@ -37,7 +34,7 @@ spec:
             priority: P3
           annotations:
             dashboard_url: "https://grafana.timourhomelab.org/d/argocd-overview"
-            summary: "orphan-pr-opener kein erfolgreicher Run in >1h ({{ $value | humanizeDuration }})"
+            summary: "orphan-pr-opener kein erfolgreicher Run in >1h{{ if gt $value 60.0 }} ({{ $value | humanizeDuration }}){{ else }} (kein Erfolgs-Zeitstempel vorhanden){{ end }}"
             description: "v43-Quirk-Workaround broken. Renovate PRs hängen ggf. als orphan branches ohne PR."
             action: "kubectl get cronjob,jobs -n renovate-operator | grep orphan; letzten Job-Pod loggen."
 
