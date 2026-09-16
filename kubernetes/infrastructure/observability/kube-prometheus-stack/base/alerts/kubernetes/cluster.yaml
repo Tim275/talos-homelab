@@ -17,7 +17,7 @@ spec:
             priority: P0
             component: kubernetes
           annotations:
-            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-cluster-overview"
+            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-apiserver"
             summary: "Kubernetes API server is down"
             description: "API server unreachable for >2 minutes. All cluster operations halted."
             action: "Check ctrl-0 (SPOF): 'talosctl health' + etcd/kubelet on the control plane; verify the Proxmox VM is up."
@@ -57,7 +57,7 @@ spec:
             priority: P0
             component: control-plane
           annotations:
-            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-cluster-overview"
+            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-views-nodes?var-node={{ $labels.node }}"
             summary: "Control plane node {{ $labels.node }} is down"
             description: "Single control-plane node (ctrl-0 = SPOF) offline — complete cluster outage."
             action: "{{ $labels.node }} offline = full outage (known SPOF); check the Proxmox VM + 'talosctl health'."
@@ -72,7 +72,7 @@ spec:
             priority: P0
             component: dns
           annotations:
-            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-cluster-overview"
+            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-coredns"
             summary: "CoreDNS has no healthy replicas"
             description: "CoreDNS down >2min — cluster DNS resolution broken, expect cascade failures."
             action: "kubectl get pods -n kube-system -l k8s-app=kube-dns + restart"
@@ -88,7 +88,7 @@ spec:
             component: dns
             priority: P2
           annotations:
-            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-cluster-overview"
+            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-coredns"
             summary: "CoreDNS upstream-forward unhealthy ({{ $value | humanize }} breaks/s)"
             description: "CoreDNS erreicht seine Upstream-DNS (forward zum Gateway) nicht → EXTERNE Auflösung bricht (interne svc-DNS evtl. noch ok). Das SERVFAIL-extern-Szenario nach Netz/upgrade-k8s-Changes."
             action: "kubectl logs -n kube-system -l k8s-app=kube-dns ; Node resolv.conf/Gateway prüfen"
@@ -103,7 +103,7 @@ spec:
             component: dns
             priority: P2
           annotations:
-            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-cluster-overview"
+            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-coredns"
             summary: "CoreDNS SERVFAIL-Rate hoch ({{ $value | humanizePercentage }})"
             description: ">5% der DNS-Antworten sind SERVFAIL — Auflösung schlägt fehl (Upstream tot, Policy-Drop Pod→CoreDNS, oder Misconfig)."
             action: "kubectl logs -n kube-system -l k8s-app=kube-dns; check upstream/Gateway + Cilium policy Pod→CoreDNS."
@@ -115,7 +115,7 @@ spec:
             component: dns
             priority: P2
           annotations:
-            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-cluster-overview"
+            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-coredns"
             summary: "CoreDNS plugin panic ({{ $value }})"
             description: "CoreDNS-Plugin gepanict — DNS instabil. kubectl logs -n kube-system -l k8s-app=kube-dns"
             action: "kubectl logs -n kube-system -l k8s-app=kube-dns --previous; identify the panicking plugin; restart CoreDNS."
@@ -141,7 +141,7 @@ spec:
             component: kubernetes
             priority: P2
           annotations:
-            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-cluster-overview"
+            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-views-nodes?var-node={{ $labels.node }}"
             summary: "Node {{ $labels.node }} NotReady (>5m)"
             description: "Kubelet meldet Node nicht Ready — Pods werden evicted/rescheduled, Kapazität weg. (ControlPlaneNodeDown deckt nur ctrl-0.) Check: kubectl describe node {{ $labels.node }}"
             action: "kubectl describe node {{ $labels.node }}; check kubelet (talosctl logs kubelet) + the node's Proxmox VM."
@@ -167,7 +167,7 @@ spec:
             component: kubernetes
             priority: P2
           annotations:
-            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-cluster-overview"
+            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-views-nodes?var-node={{ $labels.node }}"
             summary: "Node {{ $labels.node }} has memory pressure"
             description: "Node {{ $labels.node }} under memory pressure — pods may be evicted."
             action: "kubectl describe node {{ $labels.node }}; find memory-heavy pods ('kubectl top pods -A'); evict/reschedule."
@@ -180,7 +180,7 @@ spec:
             component: kubernetes
             priority: P2
           annotations:
-            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-cluster-overview"
+            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-views-nodes?var-node={{ $labels.node }}"
             summary: "Node {{ $labels.node }} has disk pressure"
             description: "Node {{ $labels.node }} under disk pressure — pods may be evicted."
             action: "kubectl describe node {{ $labels.node }}; clean node disk (images/logs) + check ephemeral-storage hogs."
@@ -195,7 +195,7 @@ spec:
             component: control-plane
             priority: P2
           annotations:
-            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-cluster-overview"
+            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-apiserver"
             summary: "kube-apiserver 5xx-rate {{ $value | humanizePercentage }} (threshold 5%)"
             description: "Many requests returning 5xx — check etcd, controller-manager, webhook-availability."
             action: "Check etcd health + controller-manager + webhook availability (a slow/failing webhook spikes apiserver 5xx)."
