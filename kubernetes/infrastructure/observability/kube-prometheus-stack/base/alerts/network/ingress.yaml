@@ -54,6 +54,19 @@ spec:
             description: "External access via Cloudflare Tunnel completely down — all public services unreachable."
             action: "kubectl -n cloudflared get pod -l app=cloudflared + logs; check the tunnel token secret + Cloudflare dashboard tunnel status."
 
+        - alert: CloudflaredNoEdgeConnections
+          expr: sum(cloudflared_tunnel_ha_connections) == 0
+          for: 5m
+          labels:
+            severity: critical
+            priority: P1
+            component: network
+          annotations:
+            dashboard_url: "https://grafana.timourhomelab.org/d/cloudflared"
+            summary: "cloudflared hält keine Verbindung zur Cloudflare-Edge"
+            description: "Die Tunnel-Pods laufen (CloudflaredAllDown feuert nicht), halten aber null HA-Verbindungen zur Edge. drova/n8n/homepage sind damit von aussen tot, waehrend Blackbox-Probe und Uptime-Kuma gruen bleiben — beide pruefen aus dem Cluster heraus und kommen gar nicht an Cloudflare vorbei. Normal sind 4 Verbindungen je Pod."
+            action: "kubectl -n cloudflared logs -l app=cloudflared --tail=50; Tunnel-Status im Cloudflare-Dashboard; Token-Secret pruefen."
+
     - name: ingress-ticket
       interval: 60s
       rules:
