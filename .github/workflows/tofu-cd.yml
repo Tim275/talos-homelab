@@ -39,9 +39,7 @@ env:
   ARM_USE_OIDC: true
 
 jobs:
-  # Ohne diesen Job lief die feste Matrix immer ueber alle drei Module: eine
-  # netbird-Aenderung loeste auch apply gegen cloudflare + uptime-kuma aus und haette
-  # dortigen Drift wortlos zurueckgedreht.
+  # ohne das lief die Matrix immer ueber alle Module
   changes:
     name: geaenderte Module
     runs-on: ubuntu-latest
@@ -64,8 +62,7 @@ jobs:
             workflow_dispatch) CHANGED="tofu/cloudflare/ tofu/netbird/ tofu/uptime-kuma/" ;;
             pull_request)      CHANGED=$(git diff --name-only "origin/$BASE...HEAD") ;;
             *)
-              # $BEFORE ist bei Branch-Erstellung lauter Nullen und nach Force-Push unzuverlaessig;
-              # ohne Fallback bricht der Schritt ab und es deployt still gar nichts
+              # $BEFORE ist bei Branch-Erstellung/Force-Push unbrauchbar
               if git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
                 CHANGED=$(git diff --name-only "$BEFORE" "$SHA")
               else
@@ -117,8 +114,7 @@ jobs:
           TF_VAR_uptimerobot_api_key: ${{ secrets.UPTIMEROBOT_API_KEY }}
         run: tofu plan -input=false -no-color -out=tfplan 2>&1 | tee plan_output.txt
 
-      # Hash statt Plan-Datei: die enthaelt Tokens im Klartext und duerfte nie als
-      # Artefakt hochgeladen werden (jeder mit Repo-Lesezugriff kaeme dran).
+      # kein Artefakt: die Plan-Datei enthaelt Tokens im Klartext
       - name: Plan-Hash
         id: hash
         working-directory: tofu/${{ matrix.module }}
@@ -191,8 +187,7 @@ jobs:
           echo "hash=$H" >> "$GITHUB_OUTPUT"
           echo "Plan-Hash beim apply: $H"
 
-      # Vergleicht gegen den Hash, den der Reviewer im PR gesehen hat. Weicht er ab,
-      # hat sich zwischen Review und Merge die Welt geaendert -> nicht anwenden.
+      # Abweichung = die Welt hat sich seit dem Review geaendert
       - name: Hash gegen den freigegebenen Plan pruefen
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
