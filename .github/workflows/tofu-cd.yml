@@ -37,20 +37,49 @@ env:
   ARM_USE_OIDC: true
 
 jobs:
+  # Ohne diesen Job lief die feste Matrix immer ueber alle drei Module: eine
+  # netbird-Aenderung loeste auch apply gegen cloudflare + uptime-kuma aus und haette
+  # dortigen Drift wortlos zurueckgedreht.
+  changes:
+    name: geaenderte Module
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - id: set
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          case "$EVENT" in
+            workflow_dispatch) CHANGED="tofu/cloudflare/ tofu/netbird/ tofu/uptime-kuma/" ;;
+            pull_request)      CHANGED=$(git diff --name-only "origin/$BASE...HEAD") ;;
+            *)                 CHANGED=$(git diff --name-only "$BEFORE" "$SHA") ;;
+          esac
+
+          LIST=""
+          for m in cloudflare netbird uptime-kuma; do
+            grep -q "^tofu/$m/" <<<"$CHANGED" && LIST="$LIST\"$m\","
+          done
+          echo "matrix=[${LIST%,}]" >> "$GITHUB_OUTPUT"
+          echo "betroffene Module: [${LIST%,}]"
+
   plan:
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.matrix != '[]'
     name: plan (${{ matrix.module }})
-    runs-on: ${{ matrix.runner }}
+    # uptime-kuma ist LAN-only und braucht den in-cluster Runner (ARC scale set "tofu")
+    runs-on: ${{ matrix.module == 'uptime-kuma' && 'tofu' || 'ubuntu-latest' }}
     strategy:
       matrix:
-        include:
-          - module: cloudflare
-            runner: ubuntu-latest
-          - module: netbird
-            runner: ubuntu-latest
-          # LAN-only: braucht den in-cluster Runner (ARC scale set "tofu")
-          - module: uptime-kuma
-            runner: tofu
+        module: ${{ fromJSON(needs.changes.outputs.matrix) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -96,23 +125,17 @@ jobs:
             }
 
   apply:
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    needs: changes
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && needs.changes.outputs.matrix != '[]'
     name: apply (${{ matrix.module }})
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.module == 'uptime-kuma' && 'tofu' || 'ubuntu-latest' }}
     environment: tofu-apply # Required-Reviewer-Gate, nur main
     concurrency:
       group: tofu-apply-${{ matrix.module }}
       cancel-in-progress: false # laufenden apply nie abbrechen
     strategy:
       matrix:
-        include:
-          - module: cloudflare
-            runner: ubuntu-latest
-          - module: netbird
-            runner: ubuntu-latest
-          # LAN-only: braucht den in-cluster Runner (ARC scale set "tofu")
-          - module: uptime-kuma
-            runner: tofu
+        module: ${{ fromJSON(needs.changes.outputs.matrix) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
