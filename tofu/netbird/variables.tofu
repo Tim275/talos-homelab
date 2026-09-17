@@ -19,6 +19,8 @@ variable "lan_targets" {
   type = map(string)
   default = {
     envoy_lb       = "192.168.0.152/32" # Envoy-Gateway — ALLE VPN-only Apps (grafana/argocd/kibana/...)
+    kube_api       = "192.168.0.100/32" # kube-apiserver VIP — kubectl (kubeconfig zeigt hierauf)
+    talos_ctrl0    = "192.168.0.101/32" # ctrl-0 — talosctl (:50000), Break-Glass fuer die Control-Plane
     proxmox_msa2   = "192.168.0.50/32"  # msa2proxmox — SSH
     proxmox_nipogi = "192.168.0.57/32"  # nipogi — SSH
     proxmox_pve    = "192.168.0.58/32"  # pve/hpdesk — SSH
