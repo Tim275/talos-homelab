@@ -61,7 +61,15 @@ jobs:
           case "$EVENT" in
             workflow_dispatch) CHANGED="tofu/cloudflare/ tofu/netbird/ tofu/uptime-kuma/" ;;
             pull_request)      CHANGED=$(git diff --name-only "origin/$BASE...HEAD") ;;
-            *)                 CHANGED=$(git diff --name-only "$BEFORE" "$SHA") ;;
+            *)
+              # $BEFORE ist bei Branch-Erstellung lauter Nullen und nach Force-Push unzuverlaessig;
+              # ohne Fallback bricht der Schritt ab und es deployt still gar nichts
+              if git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+                CHANGED=$(git diff --name-only "$BEFORE" "$SHA")
+              else
+                CHANGED=$(git diff --name-only "$SHA~1" "$SHA")
+              fi
+              ;;
           esac
 
           LIST=""
