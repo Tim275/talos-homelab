@@ -72,6 +72,7 @@ data "talos_machine_configuration" "this" {
       gateway          = var.cluster.gateway
       subnet_mask      = var.cluster.subnet_mask
       vip              = var.cluster.vip
+      ram_dedicated    = each.value.ram_dedicated
       extra_manifests  = jsonencode(local.extra_manifests)
       inline_manifests = jsonencode(terraform_data.cilium_bootstrap_inline_manifests.output)
     }) :

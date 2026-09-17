@@ -50,13 +50,6 @@ cluster:
       oidc-username-prefix: "oidc:"
       oidc-groups-claim: groups
       oidc-groups-prefix: "oidc-grp:"
-    resources:
-      requests:
-        cpu: 600m
-        memory: 3Gi
-      limits:
-        cpu: 2
-        memory: 6Gi # Talos-Default waere 8Gi, mehr als der Node allocatable hat
     auditPolicy:
       apiVersion: audit.k8s.io/v1
       kind: Policy
@@ -92,13 +85,16 @@ cluster:
         - level: Metadata
           omitStages:
             - "RequestReceived"
+    # request muss ueber dem echten Working-Set liegen, sonst ist der apiserver bei
+    # MemoryPressure Eviction-Kandidat (kubelet sortiert nach Verbrauch-ueber-Request, nicht nach QoS)
     resources:
       requests:
         cpu: 600m
-        memory: 3Gi
+        memory: ${floor(ram_dedicated / 2) - 1024}Mi
+      # kein cpu-Limit: Throttling des apiservers verzoegert jede Cluster-Operation
+      # memory-Limit nur, weil Talos GOMEMLIMIT daraus ableitet (95%) — sonst bremst die GC nie
       limits:
-        cpu: 2000m
-        memory: 8Gi
+        memory: ${floor(ram_dedicated / 2)}Mi
   etcd:
     extraArgs:
       listen-metrics-urls: http://0.0.0.0:2381
