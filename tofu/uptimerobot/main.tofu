@@ -1,4 +1,4 @@
-# geparkt — Entscheidung offen, siehe CLAUDE.md TODO
+# geparkt
 # resource "uptimerobot_integration" "slack" {
 #   name                     = "homelab-slack"
 #   type                     = "slack"
