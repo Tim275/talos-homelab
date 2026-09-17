@@ -45,7 +45,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set.outputs.matrix }}
-      any: ${{ steps.set.outputs.any }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -59,35 +58,28 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [ "$EVENT" = "workflow_dispatch" ]; then
-            CHANGED="tofu/cloudflare/ tofu/netbird/ tofu/uptime-kuma/"
-          elif [ "$EVENT" = "pull_request" ]; then
-            CHANGED=$(git diff --name-only "origin/$BASE...HEAD")
-          else
-            git cat-file -e "$BEFORE" 2>/dev/null \
-              && CHANGED=$(git diff --name-only "$BEFORE" "$SHA") \
-              || CHANGED=$(git diff --name-only "$SHA~1" "$SHA")
-          fi
+          case "$EVENT" in
+            workflow_dispatch) CHANGED="tofu/cloudflare/ tofu/netbird/ tofu/uptime-kuma/" ;;
+            pull_request)      CHANGED=$(git diff --name-only "origin/$BASE...HEAD") ;;
+            *)                 CHANGED=$(git diff --name-only "$BEFORE" "$SHA") ;;
+          esac
 
-          MATRIX='[]'
-          for pair in "cloudflare:ubuntu-latest" "netbird:ubuntu-latest" "uptime-kuma:tofu"; do
-            mod="${pair%%:*}"; run="${pair##*:}"
-            if grep -q "^tofu/$mod/" <<<"$CHANGED"; then
-              MATRIX=$(jq -c --arg m "$mod" --arg r "$run" '. + [{module:$m, runner:$r}]' <<<"$MATRIX")
-            fi
+          LIST=""
+          for m in cloudflare netbird uptime-kuma; do
+            grep -q "^tofu/$m/" <<<"$CHANGED" && LIST="$LIST\"$m\","
           done
-          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
-          [ "$MATRIX" = "[]" ] && echo "any=false" >> "$GITHUB_OUTPUT" || echo "any=true" >> "$GITHUB_OUTPUT"
-          echo "betroffene Module: $MATRIX"
+          echo "matrix=[${LIST%,}]" >> "$GITHUB_OUTPUT"
+          echo "betroffene Module: [${LIST%,}]"
 
   plan:
     needs: changes
-    if: github.event_name == 'pull_request' && needs.changes.outputs.any == 'true'
+    if: github.event_name == 'pull_request' && needs.changes.outputs.matrix != '[]'
     name: plan (${{ matrix.module }})
-    runs-on: ${{ matrix.runner }}
+    # uptime-kuma ist LAN-only und braucht den in-cluster Runner (ARC scale set "tofu")
+    runs-on: ${{ matrix.module == 'uptime-kuma' && 'tofu' || 'ubuntu-latest' }}
     strategy:
       matrix:
-        include: ${{ fromJSON(needs.changes.outputs.matrix) }}
+        module: ${{ fromJSON(needs.changes.outputs.matrix) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -134,16 +126,16 @@ jobs:
 
   apply:
     needs: changes
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && needs.changes.outputs.any == 'true'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && needs.changes.outputs.matrix != '[]'
     name: apply (${{ matrix.module }})
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.module == 'uptime-kuma' && 'tofu' || 'ubuntu-latest' }}
     environment: tofu-apply # Required-Reviewer-Gate, nur main
     concurrency:
       group: tofu-apply-${{ matrix.module }}
       cancel-in-progress: false # laufenden apply nie abbrechen
     strategy:
       matrix:
-        include: ${{ fromJSON(needs.changes.outputs.matrix) }}
+        module: ${{ fromJSON(needs.changes.outputs.matrix) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
