@@ -84,6 +84,26 @@ resource "netbird_policy" "users_to_lan" {
   }
 }
 
+# Access-Policy: users → Routing-Peers selbst (SSH + Proxmox-UI)
+# Traffic an die LAN-IP des aktiven Routers endet AUF dem Peer und wird nicht
+# weitergeleitet — die lan_resource-Policy greift dort nicht.
+resource "netbird_policy" "users_to_routers" {
+  name                  = "homelab-users-to-routers"
+  description           = "SSH + Proxmox-UI auf den Routing-Peers"
+  enabled               = true
+  source_posture_checks = [netbird_posture_check.min_client.id]
+
+  rule {
+    name          = "users-to-routers"
+    action        = "accept"
+    bidirectional = false
+    protocol      = "tcp"
+    ports         = ["22", "8006"]
+    sources       = [netbird_group.users.id]
+    destinations  = [netbird_group.routers.id]
+  }
+}
+
 # Setup-Key für die Routing-Peers (reusable → mehrere Peers + HA)
 resource "netbird_setup_key" "routers" {
   name        = "homelab-routing-peers"
