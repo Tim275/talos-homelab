@@ -154,9 +154,20 @@ otelcol.exporter.loki "talos" {
 }
 
 loki.process "talos" {
+	// otelcol.exporter.loki verpackt die Talos-Zeile in ein body-Feld,
+	// deshalb zweistufig: erst die Huelle, dann das eigentliche JSON
 	stage.json {
 		expressions = {
+			body = "body",
+		}
+	}
+
+	stage.json {
+		source = "body"
+
+		expressions = {
 			talos_service = "\"talos-service\"",
+			talos_level   = "\"talos-level\"",
 		}
 	}
 
@@ -164,13 +175,20 @@ loki.process "talos" {
 		values = {
 			source  = "talos",
 			cluster = "talos-homelab",
+			node    = sys.env("HOSTNAME"),
 		}
 	}
 
 	stage.labels {
 		values = {
 			talos_service = "",
+			level         = "talos_level",
 		}
+	}
+
+	// die eigentliche Zeile statt der OTLP-Huelle anzeigen
+	stage.output {
+		source = "body"
 	}
 
 	forward_to = [loki.write.default.receiver]
