@@ -163,14 +163,22 @@ spec:
 
         - alert: LokiIngestionOverloadDropping
           expr: |
-            sum by (reason) (rate(loki_discarded_samples_total{reason=~"rate_limited|per_stream_rate_limit"}[10m])) > 0
-          for: 15m
+            (
+              sum by (reason) (rate(loki_discarded_samples_total[30m]))
+                / scalar(clamp_min(sum(rate(loki_distributor_lines_received_total[30m])), 1))
+            ) > 0.01
+            and
+            (
+              sum by (reason) (rate(loki_discarded_samples_total[5m]))
+                / scalar(clamp_min(sum(rate(loki_distributor_lines_received_total[5m])), 1))
+            ) > 0.01
+          for: 10m
           labels:
             severity: warning
             component: observability
             priority: P2
           annotations:
             dashboard_url: "https://grafana.timourhomelab.org/d/loki-stack"
-            summary: "Loki dropping logs — {{ $labels.reason }} ({{ $value | humanize }} samples/s)"
-            description: "Loki is rejecting incoming logs for >15min ({{ $labels.reason }}) — a tenant is over ingestion_rate_mb or per_stream_rate_limit. Logs silently lost, no disk fills up."
+            summary: "Loki verwirft {{ $value | humanizePercentage }} der Logzeilen — {{ $labels.reason }}"
+            description: "Loki verwirft ueber 1 % der eingehenden Zeilen ({{ $labels.reason }}) — Tenant ueber ingestion_rate_mb oder per_stream_rate_limit. Zeilen sind weg, keine Platte laeuft voll. Anteil statt Absolutwert: 0,03 Zeilen/s bei 206/s ist kein Vorfall."
             action: "kubectl logs -n monitoring loki-0 | grep -i 'rate limit'; identify the noisy stream (namespace/pod) and fix the log spam or raise the per-tenant limit."
