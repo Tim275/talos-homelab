@@ -36,10 +36,35 @@ discovery.relabel "pod_logs" {
 		replacement  = "talos-homelab"
 		target_label = "cluster"
 	}
+
+	// /var/log/pods/<ns>_<pod>_<uid>/<container>/*.log
+	rule {
+		source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
+		separator     = "/"
+		action        = "replace"
+		replacement   = "/var/log/pods/*$1/*.log"
+		target_label  = "__path__"
+	}
 }
 
-loki.source.kubernetes "pods" {
-	targets    = discovery.relabel.pod_logs.output
+// Dateien statt loki.source.kubernetes: die K8s-Log-API liefert beim
+// Start die gesamte Historie, Loki lehnt alles aelter als die
+// Retention ab. Mit tail_from_end faengt Alloy bei jetzt an.
+local.file_match "pod_logs" {
+	path_targets = discovery.relabel.pod_logs.output
+}
+
+loki.source.file "pods" {
+	targets                = local.file_match.pod_logs.targets
+	tail_from_end          = true
+	on_positions_file_error = "restart_from_end"
+	forward_to             = [loki.process.cri.receiver]
+}
+
+// CRI-Format: "<ts> <stream> <F|P> <zeile>"
+loki.process "cri" {
+	stage.cri {}
+
 	forward_to = [loki.process.drop_noise.receiver]
 }
 
@@ -69,19 +94,8 @@ loki.process "enrich" {
 	forward_to = [loki.write.default.receiver]
 }
 
-// apiserver-Audit — nur auf Control-Plane-Nodes vorhanden
-local.file_match "kube_audit" {
-	path_targets = [{
-		__path__ = "/var/log/audit/kube/kube-apiserver*.log",
-		source   = "kube-audit",
-		cluster  = "talos-homelab",
-	}]
-}
-
-loki.source.file "kube_audit" {
-	targets    = local.file_match.kube_audit.targets
-	forward_to = [loki.write.default.receiver]
-}
+// kube-apiserver-Audit bleibt bei Vector: /var/log/audit ist 0700 root,
+// Alloy laeuft non-root mit readOnlyRootFilesystem und kaeme nicht hinein.
 
 // Hubble — nur Verdicts, die zählen. FORWARDED/TRACED flutet sonst
 // die Pipeline (ein Event pro TCP-Paket).
