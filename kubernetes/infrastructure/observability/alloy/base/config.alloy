@@ -119,42 +119,10 @@ loki.process "hubble_security" {
 	forward_to = [loki.write.default.receiver]
 }
 
-// Talos schickt Kernel- und Service-Logs an 127.0.0.1:5555
-// (machine.logging in common.yaml.tftpl) — braucht hostNetwork
-otelcol.receiver.tcplog "talos" {
-	listen_address = "127.0.0.1:5555"
-
-	output {
-		logs = [otelcol.exporter.loki.talos.input]
-	}
-}
-
-otelcol.exporter.loki "talos" {
-	forward_to = [loki.process.talos.receiver]
-}
-
-loki.process "talos" {
-	stage.json {
-		expressions = {
-			talos_service = "\"talos-service\"",
-		}
-	}
-
-	stage.static_labels {
-		values = {
-			source  = "talos",
-			cluster = "talos-homelab",
-		}
-	}
-
-	stage.labels {
-		values = {
-			talos_service = "",
-		}
-	}
-
-	forward_to = [loki.write.default.receiver]
-}
+// Talos-Logs bleiben vorerst bei Vector: der einzige Alloy-Weg waere
+// otelcol.receiver.tcplog, und der ist experimental. Dafuer den ganzen
+// Agent auf --stability.level=experimental zu setzen, senkt die Huerde
+// fuer JEDE kuenftige Komponente.
 
 loki.write "default" {
 	endpoint {
