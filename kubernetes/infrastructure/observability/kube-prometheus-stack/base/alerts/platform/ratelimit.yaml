@@ -1,0 +1,49 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-ratelimit
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+  - name: ratelimit
+    rules:
+    - alert: RateLimitServiceDown
+      expr: sum(up{job="envoy-ratelimit"}) == 0
+      for: 5m
+      labels:
+        severity: critical
+        component: gateway
+        priority: P1
+      annotations:
+        summary: Rate-Limit-Dienst ist weg — Envoy laesst alles durch
+        description: Der Envoy-Filter faellt offen aus. Kein Limit greift mehr, auch nicht auf den oeffentlichen Routen.
+    - alert: RateLimitRedisErrors
+      expr: sum(rate(ratelimit_service_should_rate_limit_error[5m])) > 0
+      for: 10m
+      labels:
+        severity: warning
+        component: gateway
+        priority: P2
+      annotations:
+        summary: Rate-Limit kann Redis nicht erreichen
+        description: Jeder fehlgeschlagene Aufruf wird durchgelassen. redis-gateway laeuft einzeln.
+    - alert: RateLimitRedisDisconnected
+      expr: sum(ratelimit_redis_pool_cx_active) == 0
+      for: 10m
+      labels:
+        severity: warning
+        component: gateway
+        priority: P2
+      annotations:
+        summary: Keine Redis-Verbindung im Rate-Limit-Pool
+    - alert: GatewayThrottlingClients
+      expr: sum(rate(ratelimit_service_rate_limit_over_limit[10m])) > 1
+      for: 15m
+      labels:
+        severity: warning
+        component: gateway
+        priority: P3
+      annotations:
+        summary: Gateway drosselt dauerhaft — Limit zu eng oder jemand klopft
+        description: Anhaltendes over_limit. Entweder ein Limit passt nicht zur Nutzung, oder da laeuft etwas gegen die oeffentlichen Routen.
