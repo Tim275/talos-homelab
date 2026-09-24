@@ -55,15 +55,15 @@ local.file_match "pod_logs" {
 }
 
 loki.source.file "pods" {
-	targets                = local.file_match.pod_logs.targets
-	tail_from_end          = true
+	targets                 = local.file_match.pod_logs.targets
+	tail_from_end           = true
 	on_positions_file_error = "restart_from_end"
-	forward_to             = [loki.process.cri.receiver]
+	forward_to              = [loki.process.cri.receiver]
 }
 
 // CRI-Format: "<ts> <stream> <F|P> <zeile>"
 loki.process "cri" {
-	stage.cri {}
+	stage.cri { }
 
 	forward_to = [loki.process.drop_noise.receiver]
 }
@@ -94,8 +94,23 @@ loki.process "enrich" {
 	forward_to = [loki.write.default.receiver]
 }
 
-// kube-apiserver-Audit bleibt bei Vector: /var/log/audit ist 0700 root,
-// Alloy laeuft non-root mit readOnlyRootFilesystem und kaeme nicht hinein.
+// nur die aktive Datei — jedes Rotate-Backup waere ein eigener Stream
+local.file_match "kube_audit" {
+	path_targets = [{
+		__path__ = "/var/log/audit/kube/kube-apiserver.log",
+		source   = "kube-audit",
+		cluster  = "talos-homelab",
+		node     = sys.env("HOSTNAME"),
+	}]
+}
+
+// Positions-Datei liegt im emptyDir, sonst zieht jeder Neustart die Historie nach
+loki.source.file "kube_audit" {
+	targets                 = local.file_match.kube_audit.targets
+	tail_from_end           = true
+	on_positions_file_error = "restart_from_end"
+	forward_to              = [loki.write.default.receiver]
+}
 
 // Hubble — nur Verdicts, die zählen. FORWARDED/TRACED flutet sonst
 // die Pipeline (ein Event pro TCP-Paket).
@@ -120,7 +135,7 @@ loki.process "hubble_security" {
 	}
 
 	stage.drop {
-		source = "verdict"
+		source     = "verdict"
 		expression = "^(FORWARDED|TRACED|REDIRECTED)$"
 	}
 
