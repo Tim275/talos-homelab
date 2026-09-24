@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alloy-collector
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alloy-collector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: alloy-collector
+    spec:
+      serviceAccountName: alloy
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: alloy-collector
+      containers:
+        - name: alloy
+          image: grafana/alloy:v1.19.2
+          args:
+            - run
+            - /etc/alloy/config-collector.alloy
+            - --storage.path=/tmp/alloy
+            - --server.http.listen-addr=0.0.0.0:12345
+            - --cluster.enabled=true
+            - --cluster.join-addresses=alloy-collector-cluster.monitoring.svc.cluster.local:12345
+          ports:
+            - name: http
+              containerPort: 12345
+            - name: otlp-grpc
+              containerPort: 4317
+            - name: otlp-http
+              containerPort: 4318
+          env:
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alloy
+            - name: tmp
+              mountPath: /tmp/alloy
+      volumes:
+        - name: config
+          configMap:
+            name: alloy-config
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alloy-collector
+  labels:
+    app.kubernetes.io/name: alloy-collector
+spec:
+  selector:
+    app.kubernetes.io/name: alloy-collector
+  ports:
+    - name: http
+      port: 12345
+      targetPort: http
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+    - name: otlp-http
+      port: 4318
+      targetPort: otlp-http
+---
+# headless, damit sich die Replicas per Gossip finden
+apiVersion: v1
+kind: Service
+metadata:
+  name: alloy-collector-cluster
+  labels:
+    app.kubernetes.io/name: alloy-collector
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: alloy-collector
+  ports:
+    - name: http
+      port: 12345
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: alloy-collector
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alloy-collector
