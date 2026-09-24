@@ -1,50 +1,5 @@
-// Zentraler Kollektor — Anwendungs-Telemetrie, nicht Node-Ebene.
-// Grafana nennt das "centralized collection service". Nichts mit
-// Envoy Gateway zu tun — kein Ingress, kein TLS, nur OTLP-Empfang.
-// Deployment statt StatefulSet: traces-only braucht kein WAL.
+// OTLP geht an den otel-collector — hier nur die Cluster-Events, einmal pro Cluster
 
-otelcol.receiver.otlp "default" {
-	grpc {
-		endpoint = "0.0.0.0:4317"
-	}
-
-	http {
-		endpoint = "0.0.0.0:4318"
-	}
-
-	output {
-		traces = [otelcol.processor.memory_limiter.default.input]
-	}
-}
-
-// vor dem Batcher, sonst OOM statt Drop unter Last
-otelcol.processor.memory_limiter "default" {
-	check_interval = "1s"
-	limit          = "400MiB"
-	spike_limit    = "100MiB"
-
-	output {
-		traces = [otelcol.processor.batch.default.input]
-	}
-}
-
-otelcol.processor.batch "default" {
-	output {
-		traces = [otelcol.exporter.otlp.tempo.input]
-	}
-}
-
-otelcol.exporter.otlp "tempo" {
-	client {
-		endpoint = "tempo-distributor.monitoring.svc.cluster.local:4317"
-
-		tls {
-			insecure = true
-		}
-	}
-}
-
-// Cluster-Events gehören genau EINMAL abgeholt, nicht pro Node
 loki.source.kubernetes_events "cluster" {
 	job_name   = "kubernetes-events"
 	forward_to = [loki.process.events.receiver]
