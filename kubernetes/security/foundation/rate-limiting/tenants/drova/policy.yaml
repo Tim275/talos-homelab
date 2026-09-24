@@ -2,57 +2,175 @@
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:
-  name: drova-rate-limit
+  name: drova-api-rate-limit
   namespace: drova
 spec:
   targetRefs:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
-      name: drova-app
+      name: drova-api
+  loadBalancer:
+    type: ConsistentHash
+    consistentHash:
+      type: SourceIP
   rateLimit:
     type: Global
     global:
       rules:
         - limit:
-            requests: 300
+            requests: 600
             unit: Minute
           clientSelectors:
             - sourceCIDR:
                 value: 0.0.0.0/0
                 type: Distinct
         - limit:
-            requests: 300
+            requests: 600
             unit: Minute
           clientSelectors:
             - sourceCIDR:
                 value: ::/0
                 type: Distinct
+  healthCheck:
+    active:
+      timeout: 3s
+      interval: 10s
+      unhealthyThreshold: 2
+      healthyThreshold: 1
+      type: HTTP
+      http:
+        path: /readyz
+        expectedStatuses: [200]
+  circuitBreaker:
+    maxConnections: 200
+    maxPendingRequests: 100
+    maxParallelRequests: 200
+    maxParallelRetries: 5
+  tcpKeepalive:
+    idleTime: 30s
+    interval: 5s
+    probes: 3
+  retry:
+    numRetries: 2
+    perRetry:
+      backOff:
+        baseInterval: 100ms
+        maxInterval: 1s
+    retryOn:
+      triggers: [connect-failure, refused-stream, reset-before-request, retriable-status-codes]
+      httpStatusCodes: [502, 503, 504]
+---
+# login/register/auth: enger als der Rest, das ist das Brute-Force-Ziel
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: drova-login-rate-limit
+  namespace: drova
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: drova-login
+  loadBalancer:
+    type: ConsistentHash
+    consistentHash:
+      type: SourceIP
+  rateLimit:
+    type: Global
+    global:
+      rules:
+        - limit:
+            requests: 30
+            unit: Minute
+          clientSelectors:
+            - sourceCIDR:
+                value: 0.0.0.0/0
+                type: Distinct
+        - limit:
+            requests: 30
+            unit: Minute
+          clientSelectors:
+            - sourceCIDR:
+                value: ::/0
+                type: Distinct
+  healthCheck:
+    active:
+      timeout: 3s
+      interval: 10s
+      unhealthyThreshold: 2
+      healthyThreshold: 1
+      type: HTTP
+      http:
+        path: /readyz
+        expectedStatuses: [200]
+  circuitBreaker:
+    maxConnections: 200
+    maxPendingRequests: 100
+    maxParallelRequests: 200
+    maxParallelRetries: 5
+  tcpKeepalive:
+    idleTime: 30s
+    interval: 5s
+    probes: 3
+  retry:
+    numRetries: 2
+    perRetry:
+      backOff:
+        baseInterval: 100ms
+        maxInterval: 1s
+    retryOn:
+      triggers: [connect-failure, refused-stream, reset-before-request, retriable-status-codes]
+      httpStatusCodes: [502, 503, 504]
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:
-  name: drova-jaeger-rate-limit
+  name: drova-frontend-rate-limit
   namespace: drova
 spec:
   targetRefs:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
-      name: drova-jaeger
+      name: drova-frontend
   rateLimit:
     type: Global
     global:
       rules:
         - limit:
-            requests: 60
+            requests: 1200
             unit: Minute
           clientSelectors:
             - sourceCIDR:
                 value: 0.0.0.0/0
                 type: Distinct
         - limit:
-            requests: 60
+            requests: 1200
             unit: Minute
           clientSelectors:
             - sourceCIDR:
                 value: ::/0
                 type: Distinct
+  healthCheck:
+    active:
+      timeout: 3s
+      interval: 10s
+      unhealthyThreshold: 2
+      healthyThreshold: 1
+      type: HTTP
+      http:
+        path: /
+        expectedStatuses: [200]
+  circuitBreaker:
+    maxConnections: 200
+    maxPendingRequests: 100
+    maxParallelRequests: 200
+    maxParallelRetries: 5
+  retry:
+    numRetries: 2
+    perRetry:
+      backOff:
+        baseInterval: 100ms
+        maxInterval: 1s
+    retryOn:
+      triggers: [connect-failure, refused-stream, reset-before-request, retriable-status-codes]
+      httpStatusCodes: [502, 503, 504]
