@@ -1,0 +1,76 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: alloy
+  labels:
+    prometheus: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alloy
+  endpoints:
+    - port: http
+      interval: 30s
+      path: /metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: alloy-collector
+  labels:
+    prometheus: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alloy-collector
+  endpoints:
+    - port: http
+      interval: 30s
+      path: /metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: alloy
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: alloy
+      rules:
+        - alert: AlloyDroppingLogs
+          expr: sum(rate(loki_write_dropped_entries_total[5m])) by (pod) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Alloy verwirft Logzeilen ({{ $labels.pod }})"
+            description: "Loki nimmt nicht an oder der Puffer läuft über. Zeilen sind weg, nicht verzögert."
+
+        - alert: AlloyWriteFailing
+          expr: |
+            sum(rate(loki_write_request_duration_seconds_count{status_code!~"2.."}[5m])) by (pod)
+              / sum(rate(loki_write_request_duration_seconds_count[5m])) by (pod) > 0.1
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Alloy: über 10 % der Loki-Writes schlagen fehl ({{ $labels.pod }})"
+
+        - alert: AlloyComponentsUnhealthy
+          expr: sum(alloy_component_controller_running_components{health_type!="healthy"}) by (pod) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Alloy hat ungesunde Komponenten ({{ $labels.pod }})"
+            description: "Eine Pipeline-Komponente wertet nicht aus — der Pod läuft trotzdem."
+
+        - alert: AlloyAbsent
+          expr: absent(up{job=~"alloy.*"} == 1)
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kein Alloy-Target mehr da"
+            description: "Nicht down, sondern verschwunden — Scrape-Config oder DaemonSet weg."
