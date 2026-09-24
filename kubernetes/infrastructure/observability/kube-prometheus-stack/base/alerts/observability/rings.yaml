@@ -1,0 +1,35 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: observability-rings
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+  - name: rings
+    rules:
+    - alert: RingHeartbeatStale
+      expr: |
+        time() - min by (job, name) (
+          {__name__=~"(tempo|loki|pyroscope)_ring_oldest_member_timestamp", state="ACTIVE"} > 0
+        ) > 600
+      for: 15m
+      labels:
+        severity: warning
+        component: observability
+        priority: P2
+      annotations:
+        summary: 'Ring {{ $labels.name }}: Heartbeat seit über 10 min veraltet ({{ $labels.job }})'
+        description: Der Pod bleibt Ready, der Eintrag bleibt ACTIVE — Leser verwerfen ihn trotzdem als unhealthy.
+    - alert: RingMemberUnhealthy
+      expr: |
+        max by (job, name) (
+          {__name__=~"(tempo|loki|pyroscope)_ring_members", state="Unhealthy"}
+        ) > 0
+      for: 15m
+      labels:
+        severity: warning
+        component: observability
+        priority: P2
+      annotations:
+        summary: 'Ring {{ $labels.name }}: Mitglied auf Unhealthy ({{ $labels.job }})'
