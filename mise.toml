@@ -97,6 +97,17 @@ echo "⚠️ Not Running Pods:"
 kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded
 """
 
+[tasks.bootstrap]
+description = "Cluster bootstrappen: ArgoCD, dann die drei Wurzel-Applications"
+confirm = "kubernetes/bootstrap gegen den aktuellen Cluster anwenden?"
+run = """
+kubectl apply -k kubernetes/bootstrap --server-side --force-conflicts 2>/dev/null || true
+kubectl wait --for=condition=Established --timeout=180s \
+  crd/applications.argoproj.io crd/applicationsets.argoproj.io crd/appprojects.argoproj.io
+kubectl apply -k kubernetes/bootstrap --server-side --force-conflicts
+kubectl -n argocd rollout status deploy/argocd-server --timeout=300s
+"""
+
 [tasks.apply-manifests]
 description = "Apply Kubernetes manifests"
 confirm = "kubectl apply -f kubernetes/ — wirklich anwenden?"
