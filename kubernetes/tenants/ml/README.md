@@ -22,7 +22,7 @@ Tenant (`namespace` + `resourcequota` + `limitrange` + `rbac`), gescoped auf die
 
 **Status:** Department-Struktur + Guardrails stehen (Namespace, Quota, LimitRange, RBAC).
 Tools kommen inkrementell — GPU-Workloads sind geblockt bis ein GPU-Node da ist
-(CPU-first Starter zuerst). Volle Landkarte: `notes/CLAUDE-MLOPS.md`.
+(CPU-first Starter zuerst).
 
 ## Ownership / RBAC
 
