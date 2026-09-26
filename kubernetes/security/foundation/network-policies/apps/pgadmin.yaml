@@ -1,0 +1,43 @@
+#
+# Egress auf 5432 steht vorausschauend drin: die Server-Connections werden in der
+# pgAdmin-UI angelegt, tauchen also erst in Hubble auf wenn jemand sie nutzt.
+#
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: pgadmin-lock
+  namespace: pgadmin
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: gateway
+    - fromEntities:
+        - host
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: drova
+        - matchLabels:
+            io.kubernetes.pod.namespace: keycloak
+        - matchLabels:
+            io.kubernetes.pod.namespace: n8n-prod
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
