@@ -43,7 +43,7 @@ tofu output -raw routing_peer_setup_key   # neuen Key holen
 mehr Aufwand, nur wenn du die laufenden Peers nicht neu-keyen willst.
 
 ## Peers anbinden (nach Apply)
-Setup-Key ist im Output (sensitive). Routing-Peer-Install: siehe `notes/CLAUDE-NETBIRD.md` §2.
+Setup-Key ist im Output (sensitive).
 
 ## Cloud vs Self-Hosted
 Gleicher Code — nur `netbird_management_url` ändern (Cloud-Default = api.netbird.io).
