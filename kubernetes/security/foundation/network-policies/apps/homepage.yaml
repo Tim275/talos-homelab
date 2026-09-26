@@ -1,0 +1,58 @@
+#
+# Erste App mit Default-Deny ausserhalb drova. Gewaehlt, weil Hubble ueber 6000 Flows
+# nur zwei Gegenstellen zeigt (gateway + host) und ein Fehler sofort sichtbar waere.
+#
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: homepage-default-deny-ingress
+  namespace: homepage
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: homepage
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: gateway
+    - fromEntities:
+        - host          # kubelet-Probes
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: homepage-egress-baseline
+  namespace: homepage
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: homepage
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+
+    - toEntities:
+        - kube-apiserver          # kubernetes-Widget
+
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: gateway
+
+    - toFQDNs:
+        - matchName: api.open-meteo.com
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
