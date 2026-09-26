@@ -23,7 +23,12 @@ spec:
             description: "Thermal shutdown imminent — host may power off. Check airflow / dust / fan."
             action: "PHYSICAL: clean dust + check fan/airflow on the host; reduce load until temp drops below throttle."
         - alert: HostNVMeTemperatureCritical
-          expr: max by (instance, chip) (node_hwmon_temp_celsius{chip=~"nvme.*"}) > 85
+          # nur Composite - Sensor 2 der 990 PRO liegt bauartbedingt ~20C hoeher
+          expr: |
+            max by (instance, chip) (
+              node_hwmon_temp_celsius{chip=~"nvme.*"}
+              and on (instance, chip, sensor) node_hwmon_sensor_label{label="Composite"}
+            ) > 85
           for: 15m
           labels:
             severity: warning
@@ -37,7 +42,12 @@ spec:
 
         # 85C is thermal-shutdown territory; Ceph slow-ops start well below that
         - alert: HostNVMeTemperatureWarning
-          expr: max by (instance, chip) (node_hwmon_temp_celsius{chip=~"nvme.*"}) > 70
+          # nur Composite - Sensor 2 der 990 PRO liegt bauartbedingt ~20C hoeher
+          expr: |
+            max by (instance, chip) (
+              node_hwmon_temp_celsius{chip=~"nvme.*"}
+              and on (instance, chip, sensor) node_hwmon_sensor_label{label="Composite"}
+            ) > 70
           for: 30m
           labels:
             severity: warning
@@ -46,8 +56,8 @@ spec:
           annotations:
             dashboard_url: "https://grafana.timourhomelab.org/d/k8s-node-overview"
             summary: "NVMe {{ $labels.chip }} on {{ $labels.instance }} at {{ $value }}°C"
-            description: "Sustained >70C. The Samsung 990 PRO on nipogi sits ~20C above its neighbour and is the usual source of CephSlowOps on osd.2/osd.4 — check here before blaming Ceph."
-            action: "smartctl -a /dev/nvmeN on the host; compare against the other NVMe. PHYSICAL: heatsink/airflow. Cross-check: does CephSlowOps fire at the same time?"
+            description: "Sustained >70C on the Composite sensor. A throttling NVMe is a common source of CephSlowOps — check the disk before blaming Ceph."
+            action: "smartctl -a /dev/nvmeN on the host; compare against the other NVMe in the same chassis. PHYSICAL: heatsink/airflow. Cross-check: does CephSlowOps fire at the same time? Which OSDs sit on this disk: ceph osd tree."
 
         # - alert: HypervisorSwapInUse
         #   expr: |
