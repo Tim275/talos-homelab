@@ -1,0 +1,26 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: network-policy-verdicts
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+  - name: policy-verdicts
+    rules:
+    - alert: NetworkPolicyDroppingClusterTraffic
+      # (extern) ist Scanner-Rauschen gegen die Host-Firewall, nur benannte Namespaces zaehlen
+      expr: |
+        sum by (source_namespace, destination_namespace) (
+          rate(hubble_policy_verdicts_total{action="dropped", source_namespace!="", destination_namespace!=""}[10m])
+        ) > 0
+      for: 10m
+      labels:
+        severity: warning
+        component: network
+        priority: P2
+      annotations:
+        dashboard_url: "https://grafana.timourhomelab.org/d/hubble"
+        summary: "NetworkPolicy verwirft {{ $labels.source_namespace }} → {{ $labels.destination_namespace }}"
+        description: "Eine Policy ist zu eng. Die Anwendung meldet meist nichts, sie wird nur langsam oder still falsch."
+        action: "hubble observe --verdict DROPPED --namespace {{ $labels.source_namespace }} zeigt Port und Ziel; danach die fehlende Regel ergaenzen."
