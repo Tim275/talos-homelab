@@ -26,7 +26,7 @@ kubectl delete -f waf-test.yaml
 
 ## Pass criteria → proceed to Phase 2
 - HTTP echo: 200
-- **WebSocket: upgrades and echoes** (if this fails, the header bypass doesn't save WS → use Plan B: separate WS listener, see `notes/CLAUDE-PLANNING.md`)
+- **WebSocket: upgrades and echoes** (if this fails, the header bypass doesn't save WS → use Plan B: separate WS listener)
 - SQLi probe: returns normally **and** appears as a Coraza detection in the logs
 
 Then enable `../base/waf/` (uncomment `- waf` in `../base/kustomization.yaml`), still `DetectionOnly`, and soak.
