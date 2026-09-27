@@ -76,7 +76,13 @@ jobs:
 
           LIST=""
           for m in cloudflare netbird uptime-kuma; do
-            [ -n "$(git diff --name-only "${RANGE[@]}" -- "tofu/$m/")" ] || continue
+            files=$(git diff --name-only "${RANGE[@]}" -- "tofu/$m/")
+            [ -n "$files" ] || continue
+            # ausserhalb von HCL kann '#' Nutzdaten sein (yaml, tftpl) — dort nicht filtern
+            if grep -qvE '\.(tofu|tf|hcl)$' <<<"$files"; then
+              LIST="$LIST\"$m\","
+              continue
+            fi
             # reine Kommentar-/Leerzeilen-Diffs loesen kein apply aus
             body=$(git diff -U0 "${RANGE[@]}" -- "tofu/$m/" \
               | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' \
