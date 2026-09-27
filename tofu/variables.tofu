@@ -94,6 +94,15 @@ variable "sealed_secrets_config" {
   default   = null
 }
 
+variable "openbao_seal_config" {
+  description = "OpenBao static seal key — null in CI"
+  type = object({
+    seal_key_path = string
+  })
+  sensitive = true
+  default   = null
+}
+
 variable "kubernetes_volumes" {
   description = "Kubernetes volumes configuration"
   type = map(

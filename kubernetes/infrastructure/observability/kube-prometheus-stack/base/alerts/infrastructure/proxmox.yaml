@@ -6,6 +6,32 @@ metadata:
     release: kube-prometheus-stack
 spec:
   groups:
+    - name: proxmox-capacity
+      interval: 300s
+      rules:
+        - alert: ProxmoxStorageFilling
+          expr: max by (id) (pve_disk_usage_bytes{id=~"storage/.*"} / pve_disk_size_bytes{id=~"storage/.*"}) > 0.75
+          for: 30m
+          labels:
+            severity: warning
+            priority: P2
+            component: hypervisor
+          annotations:
+            summary: "Proxmox storage {{ $labels.id }} at {{ $value | humanizePercentage }}"
+            description: "Thin provisioning: declared volume sizes exceed the pool. ZFS degrades above 80%, LVM-thin goes read-only at 100%."
+            action: "kubectl get pvc -A to see what grew; zfs list -t volume on the host; shrink retention or add disks."
+        - alert: ProxmoxStorageCritical
+          expr: max by (id) (pve_disk_usage_bytes{id=~"storage/.*"} / pve_disk_size_bytes{id=~"storage/.*"}) > 0.85
+          for: 10m
+          labels:
+            severity: critical
+            priority: P1
+            component: hypervisor
+          annotations:
+            summary: "Proxmox storage {{ $labels.id }} at {{ $value | humanizePercentage }}"
+            description: "Above 85% ZFS write performance collapses; LVM-thin at 100% turns volumes read-only and VMs corrupt."
+            action: "Free space now — delete old snapshots, shrink a zvol, or evacuate a VM."
+
     - name: proxmox-page
       interval: 60s
       rules:
