@@ -8,9 +8,29 @@ spec:
   groups:
     - name: trivy
       interval: 5m
-      # DORMANT: trivy-operator ist nicht deployed, trivy_image_vulnerabilities existiert nicht.
-      # Reaktivieren zusammen mit dem trivy-operator.
-      rules: []
+      rules:
+        - alert: TrivyCriticalCVEFound
+          expr: sum by (namespace, image_repository) (trivy_image_vulnerabilities{severity="Critical"}) > 0
+          for: 30m
+          labels:
+            severity: warning
+            priority: P2
+            component: compliance
+          annotations:
+            summary: "{{ $value }} kritische CVEs in {{ $labels.image_repository }}"
+            description: "Nur behebbare CVEs (ignoreUnfixed). Ein Update existiert also."
+            action: "kubectl get vulnerabilityreports -n {{ $labels.namespace }} — dann das image bumpen."
+        - alert: TrivyScannerSilent
+          expr: absent(trivy_image_vulnerabilities)
+          for: 2h
+          labels:
+            severity: warning
+            priority: P2
+            component: compliance
+          annotations:
+            summary: "Trivy liefert keine Daten mehr"
+            description: "Ohne diesen Scanner gibt es keine CVE-Erkennung fuer Images — Renovate kann das nicht ersetzen."
+            action: "kubectl -n trivy-system get pods; kubectl -n trivy-system logs deploy/trivy-operator"
       #         - alert: TrivyCriticalCVEFound
       #           expr: |
       #             sum by (namespace) (trivy_image_vulnerabilities{severity="Critical"}) > 0
