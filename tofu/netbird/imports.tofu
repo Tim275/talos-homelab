@@ -1,5 +1,3 @@
-# Import-Blocks für manuell im NetBird-Dashboard angelegte Ressourcen — tofu plan muss 0 Changes zeigen
-
 import {
   to = netbird_group.routers
   id = "d8k09pafadhs73daptpg"
@@ -20,10 +18,6 @@ import {
   id = "d8k09pafadhs73daptn0"
 }
 
-# netbird_network_resource.lan: kein Import-Block mehr — die alte /24-Resource
-# (d8k09pafadhs73daptn0/d8k09pafadhs73dapu00) wird durch `tofu apply` GELÖSCHT,
-# ersetzt durch die neuen for_each-Resources (lan_targets) ohne bestehende NetBird-ID
-
 import {
   to = netbird_network_router.lan
   id = "d8k09pafadhs73daptn0/d8k09pafadhs73dapu20"
@@ -33,8 +27,6 @@ import {
   to = netbird_policy.users_to_lan
   id = "d8k09pafadhs73dapu70"
 }
-
-# netbird_setup_key.routers: kein Import-Block mehr — State trägt bereits die aktuelle ID
 
 import {
   to = netbird_account_settings.hardening

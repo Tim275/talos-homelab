@@ -10,6 +10,17 @@ spec:
     - name: etcd
       interval: 1m
       rules:
+        - alert: EtcdDiskLatencyHigh
+          expr: histogram_quantile(0.99, sum by (le) (rate(etcd_disk_wal_fsync_duration_seconds_bucket[30m]))) > 0.010
+          for: 15m
+          labels:
+            severity: warning
+            priority: P2
+            component: etcd
+          annotations:
+            summary: "etcd WAL fsync p99 {{ $value | humanizeDuration }}"
+            description: "etcd shares rpool on msa2 with three Ceph OSDs. Above 10ms the apiserver slows on every write."
+            action: "cat /proc/pressure/io on the host; a defrag does NOT help here — check OSD load instead."
         - alert: etcdHighFsyncDurations
           expr: |
             histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket{job=~".*etcd.*"}[5m]))

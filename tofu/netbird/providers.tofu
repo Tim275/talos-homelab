@@ -1,5 +1,4 @@
 terraform {
-  # Separater State-Key — isoliert vom Cluster, kann Talos-VMs nie anfassen
   backend "azurerm" {
     resource_group_name  = "rg-tofu-state"
     storage_account_name = "tofustatehomelab"
@@ -19,7 +18,6 @@ terraform {
 }
 
 provider "netbird" {
-  token = var.netbird_api_token
-  # Cloud-Default: https://api.netbird.io. Self-hosted: eigene URL setzen.
+  token          = var.netbird_api_token
   management_url = var.netbird_management_url
 }

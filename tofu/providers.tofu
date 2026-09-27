@@ -34,12 +34,6 @@ provider "proxmox" {
   insecure = var.proxmox.insecure
 
   api_token = var.proxmox_api_token
-
-  ssh {
-    agent       = false
-    username    = "root"
-    private_key = file(pathexpand("~/.ssh/id_rsa_proxmox"))
-  }
 }
 
 provider "kubernetes" {
