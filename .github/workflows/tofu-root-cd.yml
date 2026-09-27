@@ -36,6 +36,8 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: plan (root)
     runs-on: tofu
+    outputs:
+      changed: ${{ steps.plan.outputs.changed }}
     steps:
       - name: checkout
         run: |
@@ -59,11 +61,19 @@ jobs:
         run: tofu init -input=false
 
       - name: tofu plan
+        id: plan
         working-directory: tofu
         env:
           TF_VAR_proxmox: ${{ secrets.PROXMOX_CONFIG }}
           TF_VAR_proxmox_api_token: ${{ secrets.PROXMOX_API_TOKEN }}
-        run: tofu plan -input=false -no-color | tee plan_output.txt
+        run: |
+          tofu plan -input=false -no-color -out=tfplan | tee plan_output.txt
+          # local_file = kubeconfig/talosconfig, auf einem frischen Clone immer "create"
+          n=$(tofu show -json tfplan | jq '[.resource_changes[]?
+                | select(.type != "local_file")
+                | select(.change.actions != ["no-op"] and .change.actions != ["read"])] | length')
+          echo "echte Ressourcen-Aenderungen: $n"
+          if [ "$n" -gt 0 ]; then echo "changed=true" >> "$GITHUB_OUTPUT"; else echo "changed=false" >> "$GITHUB_OUTPUT"; fi
 
       # kein gh im Runner-Image
       - name: comment plan on pr
@@ -102,7 +112,8 @@ jobs:
     # auch von Hand ausloesbar — das Freigabe-Gate bleibt unveraendert
     if: >-
       github.ref == 'refs/heads/main' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      needs.plan.outputs.changed == 'true'
     needs: plan
     name: apply (root)
     runs-on: tofu

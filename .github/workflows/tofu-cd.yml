@@ -59,22 +59,29 @@ jobs:
         run: |
           set -euo pipefail
           case "$EVENT" in
-            workflow_dispatch) CHANGED="tofu/cloudflare/ tofu/netbird/ tofu/uptime-kuma/" ;;
-            pull_request)      CHANGED=$(git diff --name-only "origin/$BASE...HEAD") ;;
+            workflow_dispatch)
+              echo 'matrix=["cloudflare","netbird","uptime-kuma"]' >> "$GITHUB_OUTPUT"
+              exit 0 ;;
+            pull_request) RANGE=("origin/$BASE...HEAD") ;;
             *)
               # $BEFORE ist bei Branch-Erstellung lauter Nullen und nach Force-Push unzuverlaessig;
               # ohne Fallback bricht der Schritt ab und es deployt still gar nichts
               if git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
-                CHANGED=$(git diff --name-only "$BEFORE" "$SHA")
+                RANGE=("$BEFORE" "$SHA")
               else
-                CHANGED=$(git diff --name-only "$SHA~1" "$SHA")
+                RANGE=("$SHA~1" "$SHA")
               fi
               ;;
           esac
 
           LIST=""
           for m in cloudflare netbird uptime-kuma; do
-            grep -q "^tofu/$m/" <<<"$CHANGED" && LIST="$LIST\"$m\","
+            [ -n "$(git diff --name-only "${RANGE[@]}" -- "tofu/$m/")" ] || continue
+            # reine Kommentar-/Leerzeilen-Diffs loesen kein apply aus
+            body=$(git diff -U0 "${RANGE[@]}" -- "tofu/$m/" \
+              | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' \
+              | sed -E 's/^[+-][[:space:]]*//' | grep -vE '^(#|//|$)' || true)
+            [ -n "$body" ] && LIST="$LIST\"$m\","
           done
           echo "matrix=[${LIST%,}]" >> "$GITHUB_OUTPUT"
           echo "betroffene Module: [${LIST%,}]"
