@@ -22,6 +22,17 @@ module "sealed-secrets" {
   cert = var.sealed_secrets_config
 }
 
+module "openbao" {
+  depends_on = [module.talos]
+  source     = "./bootstrap/openbao"
+
+  providers = {
+    kubernetes = kubernetes
+  }
+
+  seal = var.openbao_seal_config
+}
+
 module "proxmox_csi_plugin" {
   depends_on = [module.talos]
   source     = "./bootstrap/proxmox-csi-plugin"
