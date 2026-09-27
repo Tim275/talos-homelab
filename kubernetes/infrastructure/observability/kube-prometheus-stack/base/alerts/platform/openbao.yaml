@@ -10,7 +10,7 @@ spec:
       interval: 60s
       rules:
         - alert: OpenBaoNotReady
-          expr: kube_pod_container_status_ready{namespace="openbao"} == 0
+          expr: kube_pod_container_status_ready{namespace="openbao", pod=~"openbao-[0-9]+"} == 0
           for: 15m
           labels:
             severity: warning
@@ -19,5 +19,5 @@ spec:
           annotations:
             dashboard_url: "https://grafana.timourhomelab.org/d/openbao-metrics"
             summary: "OpenBao {{ $labels.pod }} nicht ready seit >15min"
-            description: "Meist versiegelt nach einem Neustart (Shamir, manuelles Unseal) — ohne Unseal serviert OpenBao keine Requests, neue verschluesselte PVCs (rook-ceph-block-encrypted) koennen dann nicht provisioniert werden."
-            action: "kubectl exec -n openbao openbao-0 -- bao status; falls Sealed=true: bao operator unseal mit dem hinterlegten Shamir-Key."
+            description: "Seit dem static seal entsiegelt sich OpenBao selbst. Startet er trotzdem nicht ready, fehlt meist das Secret openbao-seal-key oder die raft-Daten sind kaputt."
+            action: "kubectl -n openbao get secret openbao-seal-key; kubectl exec -n openbao openbao-0 -- bao status. Fehlt das Secret: tofu apply -target=module.openbao."
