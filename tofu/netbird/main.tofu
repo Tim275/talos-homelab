@@ -1,29 +1,27 @@
-# NetBird ZTNA Control-Plane (Netz/Policy/DNS/Keys) — nicht die Peer-Installs
-
 # Groups
 resource "netbird_group" "routers" {
-  name = "homelab-routers" # Routing-Peers (msa2proxmox, nipogi) landen hier via Setup-Key
+  name = "homelab-routers"
 }
 
 resource "netbird_group" "users" {
-  name = "homelab-users" # Client-Geräte (Laptop, Handy) die aufs LAN dürfen
+  name = "homelab-users"
 }
 
 resource "netbird_group" "lan_resource" {
-  name = "homelab-lan" # Tag-Gruppe für die LAN-Resource (Policy-Ziel)
+  name = "homelab-lan"
 }
 
 # Network
 resource "netbird_network" "homelab" {
   name        = "homelab"
-  description = "Homelab LAN — VPN-only Infra-Zugriff (grafana, argocd, kibana, ...)"
+  description = "Homelab LAN"
 }
 
 resource "netbird_network_resource" "lan" {
   for_each = var.lan_targets
 
   name        = "homelab-${each.key}"
-  description = "Einzelziel statt /24-Subnet — vermeidet Routing-Konflikt auf fremden Netzen (netbirdio/netbird#4401)"
+  description = "Homelab ${each.key}"
   network_id  = netbird_network.homelab.id
   address     = each.value
   groups      = [netbird_group.lan_resource.id]
@@ -32,20 +30,16 @@ resource "netbird_network_resource" "lan" {
 
 resource "netbird_network_router" "lan" {
   network_id  = netbird_network.homelab.id
-  peer_groups = [netbird_group.routers.id] # msa2 + nipogi → Failover
+  peer_groups = [netbird_group.routers.id]
   masquerade  = true
   metric      = 9999
   enabled     = true
 }
 
-# DNS macht der NetBird-Operator (Zone k8s.timourhomelab.org) — dieses Modul nur LAN-Routing
-
-# Account-Settings: Zero-Trust-Hardening
 resource "netbird_account_settings" "hardening" {
-  peer_approval_enabled         = true # neue Peers brauchen manuelle Freigabe
-  peer_login_expiration_enabled = true # User-Peers re-authen alle 30d
-  peer_login_expiration         = 2592000
-  # Rest unverändert gelassen (Live-Defaults)
+  peer_approval_enabled               = true
+  peer_login_expiration_enabled       = true
+  peer_login_expiration               = 2592000
   peer_inactivity_expiration_enabled  = false
   peer_inactivity_expiration          = 0
   regular_users_view_blocked          = false
@@ -56,10 +50,9 @@ resource "netbird_account_settings" "hardening" {
   routing_peer_dns_resolution_enabled = false
 }
 
-# Device-Posture: Mindest-Client-Version, bevor ein User-Gerät aufs LAN darf
 resource "netbird_posture_check" "min_client" {
   name        = "homelab-min-netbird-version"
-  description = "User-Geräte müssen NetBird-Client >= 0.72.0 fahren (Device-Health)"
+  description = "NetBird-Client >= 0.72.0"
 
   netbird_version_check {
     min_version = "0.72.0"
@@ -69,7 +62,7 @@ resource "netbird_posture_check" "min_client" {
 # Access-Policy: users → LAN-Resource
 resource "netbird_policy" "users_to_lan" {
   name                  = "homelab-users-to-lan"
-  description           = "Erlaubt homelab-users den Zugriff auf das LAN-Subnet"
+  description           = "users → LAN"
   enabled               = true
   source_posture_checks = [netbird_posture_check.min_client.id]
 
@@ -77,17 +70,16 @@ resource "netbird_policy" "users_to_lan" {
     name          = "users-to-lan"
     action        = "accept"
     bidirectional = true
-    # tcp statt all — Apps laufen über Envoy-Gateway (443), Rest ungenutzt
-    protocol     = "tcp"
-    sources      = [netbird_group.users.id]
-    destinations = [netbird_group.lan_resource.id]
+    protocol      = "tcp"
+    sources       = [netbird_group.users.id]
+    destinations  = [netbird_group.lan_resource.id]
   }
 }
 
 # Access-Policy: users → Routing-Peers selbst
 resource "netbird_policy" "users_to_routers" {
   name                  = "homelab-users-to-routers"
-  description           = "SSH + Proxmox-UI auf den Routing-Peers"
+  description           = "users → Routing-Peers"
   enabled               = true
   source_posture_checks = [netbird_posture_check.min_client.id]
 
@@ -102,12 +94,10 @@ resource "netbird_policy" "users_to_routers" {
   }
 }
 
-# Setup-Key für die Routing-Peers (reusable → mehrere Peers + HA)
 resource "netbird_setup_key" "routers" {
-  name        = "homelab-routing-peers"
-  type        = "reusable"
-  usage_limit = 0 # unlimited
-  auto_groups = [netbird_group.routers.id]
-  # Key läuft ab, verbundene Peers bleiben unberührt — nur neue Verbindungsversuche betroffen
+  name           = "homelab-routing-peers"
+  type           = "reusable"
+  usage_limit    = 0 # unlimited
+  auto_groups    = [netbird_group.routers.id]
   expiry_seconds = 7776000 # 90 Tage
 }

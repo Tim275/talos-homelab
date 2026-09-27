@@ -93,7 +93,6 @@ resource "proxmox_virtual_environment_vm" "this" {
     prevent_destroy       = true
   }
 
-  # Force serial creation to prevent SSH overload
   depends_on = [
     proxmox_virtual_environment_download_file.this
   ]
@@ -107,7 +106,6 @@ locals {
   }
 }
 
-# Proxmox setzt refreservation=size je ZFS-Zvol — verdoppelt den Platzbedarf, hier zurueckgesetzt
 resource "null_resource" "zfs_clear_refreservation" {
   for_each = var.nodes
 
