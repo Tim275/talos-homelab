@@ -10,7 +10,10 @@ spec:
       interval: 60s
       rules:
         - alert: CnpgPrimaryDown
-          expr: cnpg_pg_replication_in_recovery{role="primary"} == 1
+          expr: |
+            count by (namespace, cluster) (label_replace(max_over_time(cnpg_pg_replication_in_recovery[1h]), "cluster", "$1", "pod", "(.+)-[0-9]+"))
+            unless on (namespace, cluster)
+            count by (namespace, cluster) (label_replace(cnpg_pg_replication_in_recovery == 0, "cluster", "$1", "pod", "(.+)-[0-9]+"))
           for: 2m
           labels:
             severity: critical
