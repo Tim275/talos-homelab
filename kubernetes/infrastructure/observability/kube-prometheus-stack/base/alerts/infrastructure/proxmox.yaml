@@ -116,6 +116,19 @@ spec:
             description: "Cannot scrape Proxmox API — VM/cluster state not visible in Grafana."
             action: "Check the pve-exporter pod + the Proxmox API token; Grafana loses VM/cluster state meanwhile."
 
+        - alert: ProxmoxHostRebootLoop
+          expr: changes(node_boot_time_seconds{job="proxmox-host-node"}[7d]) > 2
+          for: 10m
+          labels:
+            severity: critical
+            component: hypervisor
+            priority: P1
+          annotations:
+            dashboard_url: "https://grafana.timourhomelab.org/d/proxmox-cluster"
+            summary: "Proxmox host {{ $labels.instance }} rebooted {{ $value }}x in 7 days"
+            description: "Ein einzelnes Reboot ist Rauschen, ein Muster ist ein Defekt. Vergleich: die anderen Hosts."
+            action: "ssh <host> 'last -x reboot | head; sysctl kernel.panic; systemctl is-active watchdog-mux'. Steht kernel.panic auf 0, kommt der Reset vom Watchdog, nicht vom Kernel — dann pvestatd-Log auf blockierende Storages pruefen."
+
         - alert: ProxmoxHostRebooted
           expr: (time() - node_boot_time_seconds{job="proxmox-host-node"}) < 600
           for: 1m
