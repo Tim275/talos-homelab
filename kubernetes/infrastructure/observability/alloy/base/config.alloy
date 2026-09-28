@@ -107,7 +107,21 @@ loki.source.file "kube_audit" {
 	targets                 = local.file_match.kube_audit.targets
 	tail_from_end           = true
 	on_positions_file_error = "restart_from_end"
-	forward_to              = [loki.write.default.receiver]
+	forward_to              = [loki.process.kube_audit_redact.receiver]
+}
+
+// wie vector: der Secret-Body gehoert nicht nach Loki, nur wer wann was geaendert hat
+loki.process "kube_audit_redact" {
+	stage.match {
+		selector = "{source=\"kube-audit\"} |= `\"kind\":\"Secret\"`"
+
+		stage.replace {
+			expression = "\"data\":\\{([^}]*)\\}"
+			replace    = ""
+		}
+	}
+
+	forward_to = [loki.write.default.receiver]
 }
 
 // Hubble — nur Verdicts, die zählen. FORWARDED/TRACED flutet sonst
