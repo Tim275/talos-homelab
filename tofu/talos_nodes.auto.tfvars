@@ -99,14 +99,14 @@ talos_nodes = {
   #   ceph_disk_size = 0
   # }
   # "ctrl-2" = {
-  #   host_node      = "host3"
+  #   host_node      = "pve"
   #   machine_type   = "controlplane"
   #   ip             = "192.168.0.106"
   #   mac_address    = "BC:24:11:2E:C8:B2"
   #   vm_id          = 1007
   #   cpu            = 4
   #   ram_dedicated  = 12288
-  #   datastore_id   = "local-zfs"
+  #   datastore_id   = "local-lvm"
   #   os_disk_size   = 50
   #   ceph_disk_size = 0
   # }
