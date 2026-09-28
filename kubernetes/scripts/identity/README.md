@@ -7,7 +7,7 @@ Self-Service-Workflow für Mitarbeiter via Keycloak + LLDAP + Resend SMTP.
 ```
 Admin                LLDAP              Keycloak             Mitarbeiter
   │                    │                   │                      │
-  │ onboard-user.sh    │                   │                      │
+  │ User + Gruppe      │                   │                      │
   ├───────────────────▶│ User erstellen    │                      │
   │                    │ + Group           │                      │
   │                                        │                      │
@@ -89,18 +89,13 @@ Im KC Admin-UI: `iam.timourhomelab.org/admin/master/console/` → Realm `kuberne
 
 ## Onboarding eines Mitarbeiters
 
-```bash
-./kubernetes/scripts/identity/onboard-user.sh max max@firma.de "Max Mustermann" engineers
-```
+1. User in LLDAP anlegen, Gruppe zuweisen
+2. In Keycloak die LDAP-Federation synchronisieren
+3. Am User setzen: `UPDATE_PASSWORD`, `CONFIGURE_TOTP`, `VERIFY_EMAIL`
+4. Keycloak schickt die Welcome-Mail über Resend
+5. User klickt den Link, durchläuft das Setup, kann sich einloggen
 
-Was passiert:
-1. User in LLDAP erstellt
-2. KC LDAP-Federation Sync
-3. KC requiredActions: UPDATE_PASSWORD + CONFIGURE_TOTP + VERIFY_EMAIL
-4. Resend sendet Welcome-Email an `max@firma.de`
-5. Max klickt Link → führt durch Setup → kann sich einloggen
-
-Email-Link ist **12h gültig**. Falls abgelaufen: Script nochmal laufen lassen.
+Der Link ist **12h gültig**. Danach die requiredActions in Keycloak neu setzen.
 
 ## Self-Service-URLs für Mitarbeiter
 
