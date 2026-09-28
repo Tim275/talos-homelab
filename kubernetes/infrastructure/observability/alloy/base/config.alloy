@@ -107,7 +107,18 @@ loki.source.file "kube_audit" {
 	targets                 = local.file_match.kube_audit.targets
 	tail_from_end           = true
 	on_positions_file_error = "restart_from_end"
-	forward_to              = [loki.write.default.receiver]
+	forward_to              = [loki.process.kube_audit_no_secret_bodies.receiver]
+}
+
+// Secret-Events mit Body nur nach ES, dort ohne Bodies
+loki.process "kube_audit_no_secret_bodies" {
+	stage.match {
+		selector            = "{source=\"kube-audit\"} |~ \"level.:.RequestResponse\" |~ \"resource.:.secrets\""
+		action              = "drop"
+		drop_counter_reason = "secret_body"
+	}
+
+	forward_to = [loki.write.default.receiver]
 }
 
 // Hubble — nur Verdicts, die zählen. FORWARDED/TRACED flutet sonst
