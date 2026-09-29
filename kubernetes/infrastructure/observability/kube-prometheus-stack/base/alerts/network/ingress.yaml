@@ -12,31 +12,31 @@ spec:
         - record: slo:edge_availability:ratio_rate5m
           expr: |
             1 - (
-              sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[5m]))
-              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total[5m])), 0.001)
+              sum(rate(envoy_cluster_upstream_rq_xx{namespace="gateway", envoy_cluster_name=~"httproute/(drova|n8n-prod|homepage)/.*", envoy_response_code_class="5"}[5m]))
+              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total{namespace="gateway", envoy_cluster_name=~"httproute/(drova|n8n-prod|homepage)/.*"}[5m])), 0.001)
             )
         - record: slo:edge_availability:ratio_rate30m
           expr: |
             1 - (
-              sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[30m]))
-              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total[30m])), 0.001)
+              sum(rate(envoy_cluster_upstream_rq_xx{namespace="gateway", envoy_cluster_name=~"httproute/(drova|n8n-prod|homepage)/.*", envoy_response_code_class="5"}[30m]))
+              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total{namespace="gateway", envoy_cluster_name=~"httproute/(drova|n8n-prod|homepage)/.*"}[30m])), 0.001)
             )
         - record: slo:edge_availability:ratio_rate1h
           expr: |
             1 - (
-              sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[1h]))
-              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total[1h])), 0.001)
+              sum(rate(envoy_cluster_upstream_rq_xx{namespace="gateway", envoy_cluster_name=~"httproute/(drova|n8n-prod|homepage)/.*", envoy_response_code_class="5"}[1h]))
+              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total{namespace="gateway", envoy_cluster_name=~"httproute/(drova|n8n-prod|homepage)/.*"}[1h])), 0.001)
             )
         - record: slo:edge_availability:ratio_rate6h
           expr: |
             1 - (
-              sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[6h]))
-              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total[6h])), 0.001)
+              sum(rate(envoy_cluster_upstream_rq_xx{namespace="gateway", envoy_cluster_name=~"httproute/(drova|n8n-prod|homepage)/.*", envoy_response_code_class="5"}[6h]))
+              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total{namespace="gateway", envoy_cluster_name=~"httproute/(drova|n8n-prod|homepage)/.*"}[6h])), 0.001)
             )
         - record: slo:edge_requests:rate5m
-          expr: sum(rate(envoy_cluster_upstream_rq_total[5m]))
+          expr: sum(rate(envoy_cluster_upstream_rq_total{namespace="gateway", envoy_cluster_name=~"httproute/(drova|n8n-prod|homepage)/.*"}[5m]))
         - record: slo:edge_requests:rate30m
-          expr: sum(rate(envoy_cluster_upstream_rq_total[30m]))
+          expr: sum(rate(envoy_cluster_upstream_rq_total{namespace="gateway", envoy_cluster_name=~"httproute/(drova|n8n-prod|homepage)/.*"}[30m]))
 
     - name: ingress-page
       interval: 60s
@@ -87,9 +87,9 @@ spec:
 
         - alert: EnvoyGateway5xxRateHigh
           expr: |
-            100 * sum(rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5"}[5m]))
+            100 * sum by (envoy_cluster_name) (rate(envoy_cluster_upstream_rq_xx{namespace="gateway", envoy_cluster_name=~"httproute/.*", envoy_response_code_class="5"}[5m]))
             /
-            clamp_min(sum(rate(envoy_cluster_upstream_rq_total[5m])), 0.001)
+            clamp_min(sum by (envoy_cluster_name) (rate(envoy_cluster_upstream_rq_total{namespace="gateway", envoy_cluster_name=~"httproute/.*"}[5m])), 0.001)
             > 5
           for: 5m
           labels:
@@ -98,7 +98,7 @@ spec:
             priority: P2
           annotations:
             dashboard_url: "https://grafana.timourhomelab.org/d/envoy-global"
-            summary: "Envoy Gateway 5xx rate >5% ({{ $value | humanize }}%)"
+            summary: "Envoy Gateway 5xx >5% auf {{ $labels.envoy_cluster_name }} ({{ $value | humanize }}%)"
             description: "Edge proxy seeing high upstream errors — backend services degraded, users see failures."
             action: "Find the failing upstream in the envoy-global dashboard; check that backend's pods/health + any recent deploy."
 
@@ -108,7 +108,7 @@ spec:
             and
             ((1 - slo:edge_availability:ratio_rate5m) > 0.072)
             and
-            slo:edge_requests:rate5m > 0.05
+            slo:edge_requests:rate5m > 0.01
           for: 2m
           labels:
             severity: critical
@@ -127,7 +127,7 @@ spec:
             and
             ((1 - slo:edge_availability:ratio_rate30m) > 0.03)
             and
-            slo:edge_requests:rate30m > 0.05
+            slo:edge_requests:rate30m > 0.01
           for: 15m
           labels:
             severity: warning
