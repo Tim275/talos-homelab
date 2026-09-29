@@ -38,22 +38,6 @@ spec:
             description: "Baseline was measured on pve's LENSE SSD (p50 105ms / p90 216ms). ctrl-0 moved back to msa2 since (verified 2026-09-16) — that baseline is stale, not re-measured on the new disk yet. This fires only on degradation beyond whatever the real current baseline is. AdmissionWebhookRejecting is the alert that catches the actual damage."
             action: "Check ctrl-0's etcd VM disk I/O; same root cause class as EtcdRequestLatencyHigh."
 
-        - alert: etcdHighFsyncDurations
-          expr: |
-            histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket{job=~".*etcd.*"}[5m]))
-            > 1
-          for: 10m
-          labels:
-            severity: critical
-            component: control-plane
-            priority: P1
-          annotations:
-            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/control-plane.md#etcdhighfsyncdurations"
-            summary: "etcd disk WAL fsync p99 {{ $value | humanizeDuration }} on {{ $labels.instance }}"
-            dashboard_url: "https://grafana.timourhomelab.org/d/etcd"
-            description: "Disk write latency critically high — API-server slowness/outage imminent."
-            action: "talosctl -n 192.168.0.101 read /proc/pressure/io; check increase(etcd_server_slow_apply_total[24h]) first, then which other VMs share the host disk."
-
         - alert: etcdHighCommitDurations
           expr: |
             histogram_quantile(0.99, rate(etcd_disk_backend_commit_duration_seconds_bucket{job=~".*etcd.*"}[5m]))
@@ -86,24 +70,6 @@ spec:
             dashboard_url: "https://grafana.timourhomelab.org/d/etcd"
             description: "etcd itself is returning errors to its gRPC clients (apiserver included)."
             action: "talosctl -n ctrl-0 etcd status; check etcd logs for the failing method."
-
-        - alert: etcdHighNumberOfFailedGRPCRequests
-          expr: |
-            100 * sum(rate(grpc_server_handled_total{job=~".*etcd.*", grpc_code=~"Unknown|FailedPrecondition|ResourceExhausted|Internal|Unavailable|DataLoss|DeadlineExceeded"}[5m])) without (grpc_type, grpc_code)
-              /
-            sum(rate(grpc_server_handled_total{job=~".*etcd.*"}[5m])) without (grpc_type, grpc_code)
-              > 5
-          for: 5m
-          labels:
-            severity: critical
-            component: control-plane
-            priority: P1
-          annotations:
-            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/control-plane.md#etcdhighnumberoffailedgrpcrequests"
-            summary: "etcd gRPC {{ $labels.grpc_method }} failure-rate {{ $value | humanizePercentage }}"
-            dashboard_url: "https://grafana.timourhomelab.org/d/etcd"
-            description: "etcd returning errors to gRPC clients at critical rate — apiserver operations failing."
-            action: "talosctl -n ctrl-0 etcd status; check etcd logs immediately."
 
         - alert: etcdDatabaseQuotaLowSpace
           expr: (last_over_time(etcd_mvcc_db_total_size_in_bytes{job=~".*etcd.*"}[5m]) / last_over_time(etcd_server_quota_backend_bytes{job=~".*etcd.*"}[5m]))*100 > 95
