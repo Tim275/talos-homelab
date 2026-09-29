@@ -58,7 +58,7 @@ Jeder P0/P1-Alarm verlinkt über `runbook_url` direkt auf seinen Abschnitt. Der 
 | [CephHealthError](storage.md#cephhealtherror) | P1 |
 | [CephMonQuorumAtRisk](storage.md#cephmonquorumatrisk) | P1 |
 | [CephOSDMajorityDown](storage.md#cephosdmajoritydown) | P1 |
-| [LogsDiskIOError](storage.md#logsdiskioerror) | P1 |
+| [LogsDiskIOError](storage.md#logsdiskioerror) | P2 |
 | [PVCCriticallyFull](storage.md#pvccriticallyfull) | P1 |
 | [VeleroNoRecentBackup](storage.md#veleronorecentbackup) | P2 |
 | [VeleroNoRecentWeeklyBackup](storage.md#veleronorecentweeklybackup) | P2 |
@@ -82,7 +82,7 @@ Jeder P0/P1-Alarm verlinkt über `runbook_url` direkt auf seinen Abschnitt. Der 
 | [ArgoCDAppsMassDeletion](platform.md#argocdappsmassdeletion) | P1 |
 | [CertExpiringIn7Days](platform.md#certexpiringin7days) | P2 |
 | [SealedSecretsCertExpiresIn14Days](platform.md#sealedsecretscertexpiresin14days) | P2 |
-| [LogsSealedSecretsDecryptFailure](platform.md#logssealedsecretsdecryptfailure) | P1 |
+| [LogsSealedSecretsDecryptFailure](platform.md#logssealedsecretsdecryptfailure) | P2 |
 | [LogsAuditAnonymousAccess](platform.md#logsauditanonymousaccess) | P1 |
 | [PrometheusPodMissing](platform.md#prometheuspodmissing) | P1 |
 | [AlertmanagerPodMissing](platform.md#alertmanagerpodmissing) | P1 |
