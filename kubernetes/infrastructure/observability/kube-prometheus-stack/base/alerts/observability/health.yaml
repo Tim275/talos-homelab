@@ -123,6 +123,36 @@ spec:
             description: "Log store unreachable >10min — log ingestion/query unavailable (metrics-alerting unaffected)."
             action: "kubectl -n monitoring get pod -l app.kubernetes.io/name=loki + logs; check its object-store (Ceph-RGW) backend."
 
+        - alert: LokiRuleEvaluationFailures
+          expr: sum by (rule_group) (increase(loki_prometheus_rule_evaluation_failures_total[10m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+            component: observability
+            priority: P2
+          annotations:
+            dashboard_url: "https://grafana.timourhomelab.org/d/loki-stack"
+            summary: "Loki Ruler kann Log-Regeln nicht auswerten ({{ $labels.rule_group }})"
+            description: "Die Log-Alarme dieser Gruppe sind still, nicht grün."
+            action: "kubectl -n monitoring logs -l app.kubernetes.io/component=single-binary --since=30m | grep -i 'rule'"
+
+        - alert: LokiRulerAlertingBroken
+          expr: |
+            (sum(rate(loki_prometheus_notifications_errors_total[5m])) / (sum(rate(loki_prometheus_notifications_sent_total[5m])) > 0)) > 0.03
+            or
+            sum(loki_prometheus_notifications_alertmanagers_discovered) == 0
+          for: 15m
+          labels:
+            severity: critical
+            component: observability
+            priority: P1
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/platform.md#alertmanagerclusterfailedtosendalerts"
+            dashboard_url: "https://grafana.timourhomelab.org/d/loki-stack"
+            summary: "Loki Ruler erreicht den Alertmanager nicht"
+            description: "Alle Log-Alarme gehen verloren, auch die P1. Metrik-Alarme sind nicht betroffen."
+            action: "kubectl -n monitoring logs -l app.kubernetes.io/component=single-binary --since=30m | grep -i notif"
+
         - alert: VectorPipelineDown
           expr: absent(up{job=~".*vector.*"}) or up{job=~".*vector.*"} == 0
           for: 10m
