@@ -77,6 +77,8 @@ Jeder P0/P1-Alarm verlinkt über `runbook_url` direkt auf seinen Abschnitt. Der 
 |---|---|
 | [KeycloakDown](platform.md#keycloakdown) | P1 |
 | [KeycloakBurnRateFast](platform.md#keycloakburnratefast) | P1 |
+| [N8NBurnRateFast](platform.md#n8nburnratefast) | P1 |
+| [N8NBurnRateSlow](platform.md#n8nburnratefast) | P1 |
 | [ArgoCDAppsMassDeletion](platform.md#argocdappsmassdeletion) | P1 |
 | [CertExpiringIn7Days](platform.md#certexpiringin7days) | P2 |
 | [SealedSecretsCertExpiresIn14Days](platform.md#sealedsecretscertexpiresin14days) | P2 |

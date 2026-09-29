@@ -28,6 +28,19 @@ kubectl cnpg status keycloak-db -n keycloak
 - DB-Verbindungsfehler im Log → Datenbank, nicht Keycloak.
 - Fehler nur beim LDAP-Login → LLDAP prüfen: `kubectl -n lldap get pods`
 
+## N8NBurnRateFast
+
+n8n.timourhomelab.org antwortet nicht mehr zuverlässig. Gemessen wird mit der Blackbox-Probe (alle 30 s), weil n8n kaum echte Anfragen hat. Gilt auch für N8NBurnRateSlow und N8NBurnRateTicket.
+
+```bash
+kubectl -n n8n-prod get pod
+kubectl -n n8n-prod logs deploy/n8n-main --tail 100
+kubectl cnpg status n8n-postgres -n n8n-prod
+```
+
+- n8n-main läuft, Probe scheitert trotzdem → HTTPRoute und Envoy Gateway prüfen: `kubectl -n n8n-prod get httproute`
+- Probe läuft im Cluster: sie sieht den Weg über Cloudflare nicht.
+
 ## ArgoCDAppsMassDeletion
 
 Die Zahl der ArgoCD-Apps ist in 30 min um mehr als 20 % gefallen. ApplicationSet gelöscht, Generator leer oder Kaskaden-Prune.
