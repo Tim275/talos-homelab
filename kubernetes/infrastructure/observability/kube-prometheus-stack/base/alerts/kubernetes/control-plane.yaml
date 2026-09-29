@@ -32,6 +32,7 @@ spec:
             component: control-plane
             priority: P2
           annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/control-plane.md#etcdhighfsyncdurations"
             summary: "etcd disk WAL fsync p99 {{ $value | humanizeDuration }} on {{ $labels.instance }}"
             dashboard_url: "https://grafana.timourhomelab.org/d/etcd"
             description: "Baseline was measured on pve's LENSE SSD (p50 105ms / p90 216ms). ctrl-0 moved back to msa2 since (verified 2026-09-16) — that baseline is stale, not re-measured on the new disk yet. This fires only on degradation beyond whatever the real current baseline is. AdmissionWebhookRejecting is the alert that catches the actual damage."
@@ -47,10 +48,11 @@ spec:
             component: control-plane
             priority: P1
           annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/control-plane.md#etcdhighfsyncdurations"
             summary: "etcd disk WAL fsync p99 {{ $value | humanizeDuration }} on {{ $labels.instance }}"
             dashboard_url: "https://grafana.timourhomelab.org/d/etcd"
             description: "Disk write latency critically high — API-server slowness/outage imminent."
-            action: "talosctl -n 192.168.0.101 read /proc/pressure/io and /proc/diskstats. ctrl-0 moved back to msa2 (verified 2026-09-16, see project_etcd_on_hoge_bottleneck memory) — etcd now writes to rpool (ZFS on LVM-thin on msa2's single NVMe), shared with worker-3/4/5. The pve/LENSE numbers above predate this move. etcd_server_slow_apply_total was chronically climbing on 2026-09-16 (1422/24h) — check that counter first."
+            action: "talosctl -n 192.168.0.101 read /proc/pressure/io; check increase(etcd_server_slow_apply_total[24h]) first, then which other VMs share the host disk."
 
         - alert: etcdHighCommitDurations
           expr: |
@@ -79,6 +81,7 @@ spec:
             component: control-plane
             priority: P2
           annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/control-plane.md#etcdhighnumberoffailedgrpcrequests"
             summary: "etcd gRPC {{ $labels.grpc_method }} failure-rate {{ $value | humanizePercentage }}"
             dashboard_url: "https://grafana.timourhomelab.org/d/etcd"
             description: "etcd itself is returning errors to its gRPC clients (apiserver included)."
@@ -96,6 +99,7 @@ spec:
             component: control-plane
             priority: P1
           annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/control-plane.md#etcdhighnumberoffailedgrpcrequests"
             summary: "etcd gRPC {{ $labels.grpc_method }} failure-rate {{ $value | humanizePercentage }}"
             dashboard_url: "https://grafana.timourhomelab.org/d/etcd"
             description: "etcd returning errors to gRPC clients at critical rate — apiserver operations failing."
@@ -109,6 +113,7 @@ spec:
             component: control-plane
             priority: P1
           annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/control-plane.md#etcddatabasequotalowspace"
             summary: "etcd database on {{ $labels.instance }} at {{ $value | humanizePercentage }} of quota"
             dashboard_url: "https://grafana.timourhomelab.org/d/etcd"
             description: "etcd stops accepting writes when the backend quota fills — full cluster write-outage."
@@ -153,6 +158,7 @@ spec:
             component: control-plane
             priority: P1
           annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/control-plane.md#admissionwebhookrejecting"
             dashboard_url: "https://grafana.timourhomelab.org/d/k8s-cluster-overview"
             summary: "{{ $labels.name }} rejecting admission requests ({{ $value | humanize }}/s, webhook unreachable)"
             description: "A failurePolicy=Fail webhook is refusing requests because the API server cannot reach it — not because a policy denied them. Every rejection is a create/update that did not happen. On 2026-09-12 this rejected 8305 requests in 24h and broke Velero PodVolumeBackups."
@@ -183,10 +189,11 @@ spec:
             component: control-plane
             priority: P1
           annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/control-plane.md#kubeschedulerdown"
             summary: "kube-scheduler has disappeared from Prometheus target discovery"
             dashboard_url: "https://grafana.timourhomelab.org/d/k8s-cluster-overview"
             description: "No new pods can be scheduled — existing pods keep running, but nothing new gets placed."
-            action: "talosctl -n ctrl-0 logs kube-scheduler; check the static pod manifest + container status."
+            action: "kubectl -n kube-system logs kube-scheduler-ctrl-0; without API: talosctl -n 192.168.0.101 containers -k | grep kube-scheduler, then talosctl logs -k <id>."
 
         - alert: KubeSchedulerInstanceUnreachable
           expr: up{job="kube-scheduler"} == 0
@@ -212,10 +219,11 @@ spec:
             component: control-plane
             priority: P1
           annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/control-plane.md#kubecontrollermanagerdown"
             summary: "kube-controller-manager has disappeared from Prometheus target discovery"
             dashboard_url: "https://grafana.timourhomelab.org/d/k8s-cluster-overview"
             description: "Reconcile loops stopped — Deployments/Jobs/ReplicaSets stop converging to desired state."
-            action: "talosctl -n ctrl-0 logs kube-controller-manager; check the static pod manifest + container status."
+            action: "kubectl -n kube-system logs kube-controller-manager-ctrl-0; without API: talosctl -n 192.168.0.101 containers -k | grep kube-controller-manager, then talosctl logs -k <id>."
 
         - alert: KubeControllerManagerInstanceUnreachable
           expr: up{job="kube-controller-manager"} == 0
