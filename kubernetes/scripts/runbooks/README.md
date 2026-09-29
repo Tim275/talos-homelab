@@ -1,5 +1,7 @@
 # Runbooks
 
+Nach einem Vorfall: [Postmortem-Vorlage](postmortem-template.md) · Wann Releases stoppen: [Error-Budget-Policy](error-budget-policy.md)
+
 Jeder P0/P1-Alarm verlinkt über `runbook_url` direkt auf seinen Abschnitt. Der Runbook-Button in Slack führt dorthin.
 
 ## Control Plane
@@ -10,13 +12,13 @@ Jeder P0/P1-Alarm verlinkt über `runbook_url` direkt auf seinen Abschnitt. Der 
 | [ControlPlaneNodeDown](control-plane.md#controlplanenodedown) | P0 |
 | [EtcdQuorumLoss](control-plane.md#etcdquorumloss) | P0 |
 | [CoreDNSDown](control-plane.md#corednsdown) | P0 |
-| [etcdHighFsyncDurations](control-plane.md#etcdhighfsyncdurations) | P1 |
-| [etcdHighNumberOfFailedGRPCRequests](control-plane.md#etcdhighnumberoffailedgrpcrequests) | P1 |
+| [etcdHighFsyncDurations](control-plane.md#etcdhighfsyncdurations) | P2 |
+| [etcdHighNumberOfFailedGRPCRequests](control-plane.md#etcdhighnumberoffailedgrpcrequests) | P2 |
 | [etcdDatabaseQuotaLowSpace](control-plane.md#etcddatabasequotalowspace) | P1 |
 | [AdmissionWebhookRejecting](control-plane.md#admissionwebhookrejecting) | P1 |
 | [KubeSchedulerDown](control-plane.md#kubeschedulerdown) | P1 |
 | [KubeControllerManagerDown](control-plane.md#kubecontrollermanagerdown) | P1 |
-| [KubeletScrapeTargetsManyDown](control-plane.md#kubeletscrapetargetsmanydown) | P1 |
+| [KubeletScrapeTargetsManyDown](control-plane.md#kubeletscrapetargetsmanydown) | P2 |
 
 ## Proxmox-Hosts
 
@@ -29,9 +31,9 @@ Jeder P0/P1-Alarm verlinkt über `runbook_url` direkt auf seinen Abschnitt. Der 
 | [HostRootFilesystemCritical](hosts.md#hostrootfilesystemcritical) | P1 |
 | [HostCPUTemperatureCritical](hosts.md#hostcputemperaturecritical) | P1 |
 | [HostBridgeDown](hosts.md#hostbridgedown) | P1 |
-| [SSDSmartHealthFailed](hosts.md#ssdsmarthealthfailed) | P1 |
-| [SSDCriticalWarning](hosts.md#ssdcriticalwarning) | P1 |
-| [SSDMediaErrors](hosts.md#ssdmediaerrors) | P1 |
+| [SSDSmartHealthFailed](hosts.md#ssdsmarthealthfailed) | P2 |
+| [SSDCriticalWarning](hosts.md#ssdcriticalwarning) | P2 |
+| [SSDMediaErrors](hosts.md#ssdmediaerrors) | P2 |
 
 ## Netzwerk
 
@@ -44,10 +46,10 @@ Jeder P0/P1-Alarm verlinkt über `runbook_url` direkt auf seinen Abschnitt. Der 
 | [CloudflaredNoEdgeConnections](network.md#cloudflarednoedgeconnections) | P1 |
 | [EnvoyEdgeSLOFastBurn](network.md#envoyedgeslofastburn) | P1 |
 | [CiliumAgentsCrashing](network.md#ciliumagentscrashing) | P1 |
-| [IstiodDown](network.md#istioddown) | P1 |
+| [IstiodDown](network.md#istioddown) | P2 |
 | [ZtunnelNodeDown](network.md#ztunnelnodedown) | P1 |
-| [NetBirdRoutingPeerDown](network.md#netbirdroutingpeerdown) | P1 |
-| [RateLimitServiceDown](network.md#ratelimitservicedown) | P1 |
+| [NetBirdRoutingPeerDown](network.md#netbirdroutingpeerdown) | P2 |
+| [RateLimitServiceDown](network.md#ratelimitservicedown) | P2 |
 
 ## Storage
 
@@ -58,15 +60,15 @@ Jeder P0/P1-Alarm verlinkt über `runbook_url` direkt auf seinen Abschnitt. Der 
 | [CephOSDMajorityDown](storage.md#cephosdmajoritydown) | P1 |
 | [LogsDiskIOError](storage.md#logsdiskioerror) | P1 |
 | [PVCCriticallyFull](storage.md#pvccriticallyfull) | P1 |
-| [VeleroNoRecentBackup](storage.md#veleronorecentbackup) | P1 |
-| [VeleroNoRecentWeeklyBackup](storage.md#veleronorecentweeklybackup) | P1 |
+| [VeleroNoRecentBackup](storage.md#veleronorecentbackup) | P2 |
+| [VeleroNoRecentWeeklyBackup](storage.md#veleronorecentweeklybackup) | P2 |
 
 ## Daten
 
 | Alarm | Priorität |
 |---|---|
 | [CnpgPrimaryDown](data.md#cnpgprimarydown) | P1 |
-| [CNPGBackupStale](data.md#cnpgbackupstale) | P1 |
+| [CNPGBackupStale](data.md#cnpgbackupstale) | P2 |
 | [KafkaOfflinePartitions](data.md#kafkaofflinepartitions) | P1 |
 
 ## Plattform
@@ -76,8 +78,8 @@ Jeder P0/P1-Alarm verlinkt über `runbook_url` direkt auf seinen Abschnitt. Der 
 | [KeycloakDown](platform.md#keycloakdown) | P1 |
 | [KeycloakBurnRateFast](platform.md#keycloakburnratefast) | P1 |
 | [ArgoCDAppsMassDeletion](platform.md#argocdappsmassdeletion) | P1 |
-| [CertExpiringIn7Days](platform.md#certexpiringin7days) | P1 |
-| [SealedSecretsCertExpiresIn14Days](platform.md#sealedsecretscertexpiresin14days) | P1 |
+| [CertExpiringIn7Days](platform.md#certexpiringin7days) | P2 |
+| [SealedSecretsCertExpiresIn14Days](platform.md#sealedsecretscertexpiresin14days) | P2 |
 | [LogsSealedSecretsDecryptFailure](platform.md#logssealedsecretsdecryptfailure) | P1 |
 | [LogsAuditAnonymousAccess](platform.md#logsauditanonymousaccess) | P1 |
 | [PrometheusPodMissing](platform.md#prometheuspodmissing) | P1 |
@@ -98,4 +100,4 @@ Jeder P0/P1-Alarm verlinkt über `runbook_url` direkt auf seinen Abschnitt. Der 
 | [DrovaTripServiceLatencyBurnRateFast](drova.md#latenz-burn) | P1 |
 | [DrovaDriverServiceLatencyBurnRateFast](drova.md#latenz-burn) | P1 |
 | [DrovaChatServiceLatencyBurnRateFast](drova.md#latenz-burn) | P1 |
-| [DrovaRpcHopFailing](drova.md#drovarpchopfailing) | P1 |
+| [DrovaRpcHopFailing](drova.md#drovarpchopfailing) | P2 |
