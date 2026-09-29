@@ -76,7 +76,7 @@ kubectl -n <ns> get pvc <pvc> -w
 
 ## VeleroNoRecentBackup
 
-Seit 24 h kein erfolgreiches Backup für eine existierende Schedule. RPO überschritten.
+Kein erfolgreiches Backup für eine existierende Schedule: tier0 seit 13 h, sonst seit 24 h. RPO überschritten. `PartiallyFailed` zählt nicht als Erfolg.
 
 ```bash
 kubectl -n velero get backups.velero.io --sort-by=.metadata.creationTimestamp | tail -10
@@ -91,6 +91,11 @@ kubectl -n velero logs -l name=velero --tail 100 | grep -i error
   ```bash
   kubectl -n velero get podvolumebackups -l velero.io/backup-name=<backup> --no-headers | wc -l
   ```
+- `PartiallyFailed`: welches Volume, steht in den PodVolumeBackups (`velero backup logs` scheitert hier an `SignatureDoesNotMatch` vom RGW):
+  ```bash
+  kubectl -n velero get podvolumebackups -l velero.io/backup-name=<backup> -o custom-columns=POD:.spec.pod.name,VOL:.spec.volume,PHASE:.status.phase
+  ```
+  Kurzlebige Job-Pods (z. B. `lldap-bootstrap`) gehören nicht ins Backup: Pod-Template-Label `velero.io/exclude-from-backup: "true"`.
 
 ## VeleroNoRecentWeeklyBackup
 
