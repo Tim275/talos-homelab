@@ -6,6 +6,22 @@ metadata:
     release: kube-prometheus-stack
 spec:
   groups:
+    - name: n8n-slo-recording
+      interval: 60s
+      rules:
+        - record: slo:n8n_availability:ratio_rate5m
+          expr: avg_over_time(probe_success{instance="https://n8n.timourhomelab.org"}[5m])
+        - record: slo:n8n_availability:ratio_rate30m
+          expr: avg_over_time(probe_success{instance="https://n8n.timourhomelab.org"}[30m])
+        - record: slo:n8n_availability:ratio_rate1h
+          expr: avg_over_time(probe_success{instance="https://n8n.timourhomelab.org"}[1h])
+        - record: slo:n8n_availability:ratio_rate6h
+          expr: avg_over_time(probe_success{instance="https://n8n.timourhomelab.org"}[6h])
+        - record: slo:n8n_availability:ratio_rate3d
+          expr: avg_over_time(probe_success{instance="https://n8n.timourhomelab.org"}[3d])
+        - record: slo:n8n:request_rate5m
+          expr: count_over_time(probe_success{instance="https://n8n.timourhomelab.org"}[5m]) / 300
+
     - name: n8n
       interval: 1m
       rules:
@@ -34,3 +50,69 @@ spec:
             summary: "n8n worker down"
             description: "n8n worker pool empty — async workflows queue up (Redis-backed)."
             action: "kubectl -n n8n-prod get pod -l app=n8n-worker + logs; async workflows queue in Redis until restored."
+
+    - name: n8n-slo-page
+      interval: 60s
+      rules:
+        - alert: N8NBurnRateFast
+          expr: |
+            (1 - slo:n8n_availability:ratio_rate5m) > (14.4 * (1 - 0.995))
+            and
+            (1 - slo:n8n_availability:ratio_rate1h) > (14.4 * (1 - 0.995))
+            and
+            slo:n8n:request_rate5m > 0.01
+          for: 2m
+          labels:
+            severity: critical
+            priority: P1
+            component: apps
+            slo: n8n-availability
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/platform.md#n8nburnratefast"
+            dashboard_url: "https://grafana.timourhomelab.org/d/n8n-health"
+            summary: "n8n: SLO fast burn, {{ $value | humanizePercentage }} der Probes schlagen fehl"
+            description: "n8n.timourhomelab.org antwortet nicht. Ziel 99,5 % ueber 30 Tage, Budget in rund zwei Tagen weg. SLI ist die Blackbox-Probe, weil n8n kaum echte Anfragen hat."
+            action: "kubectl -n n8n-prod get pod; kubectl -n n8n-prod logs deploy/n8n-main --tail 100"
+
+        - alert: N8NBurnRateSlow
+          expr: |
+            (1 - slo:n8n_availability:ratio_rate30m) > (6 * (1 - 0.995))
+            and
+            (1 - slo:n8n_availability:ratio_rate6h) > (6 * (1 - 0.995))
+            and
+            slo:n8n:request_rate5m > 0.01
+          for: 15m
+          labels:
+            severity: critical
+            priority: P1
+            component: apps
+            slo: n8n-availability
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/platform.md#n8nburnratefast"
+            dashboard_url: "https://grafana.timourhomelab.org/d/n8n-health"
+            summary: "n8n: SLO slow burn, {{ $value | humanizePercentage }} der Probes schlagen fehl"
+            description: "n8n faellt wiederholt aus. Ziel 99,5 % ueber 30 Tage, Budget in rund fuenf Tagen weg."
+            action: "kubectl -n n8n-prod get pod; kubectl -n n8n-prod logs deploy/n8n-main --tail 100"
+
+    - name: n8n-slo-ticket
+      interval: 60s
+      rules:
+        - alert: N8NBurnRateTicket
+          expr: |
+            (1 - slo:n8n_availability:ratio_rate6h) > (1 - 0.995)
+            and
+            (1 - slo:n8n_availability:ratio_rate3d) > (1 - 0.995)
+            and
+            slo:n8n:request_rate5m > 0.01
+          for: 15m
+          labels:
+            severity: warning
+            priority: P2
+            component: apps
+            slo: n8n-availability
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/platform.md#n8nburnratefast"
+            dashboard_url: "https://grafana.timourhomelab.org/d/n8n-health"
+            summary: "n8n: Fehlerbudget reicht nicht bis Monatsende ({{ $value | humanizePercentage }} Fehler)"
+            description: "Burn Rate ueber 1 ueber drei Tage. Kein Ausfall jetzt, aber das Budget ist bis Monatsende verbraucht."
+            action: "Dashboard pruefen, wiederkehrende kurze Ausfaelle suchen: kubectl -n n8n-prod get events --sort-by=.lastTimestamp"
