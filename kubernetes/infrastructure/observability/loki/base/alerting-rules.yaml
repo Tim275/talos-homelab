@@ -109,7 +109,7 @@ data:
               action: "Loki: {namespace=~\".+\"} |~ \"out of memory: killed process\" — zeigt Pod+Prozess. Dann kubectl top pods -A --sort-by=memory."
 
           - alert: LogsPanicDetected
-            expr: 'sum by (namespace, pod) (count_over_time({namespace=~".+", pod!~"loki.*"} |~ "(?i)(panic:|fatal error:|runtime error:)" [15m])) > 5'
+            expr: 'label_replace(sum by (namespace, pod) (count_over_time({namespace=~".+", pod!~"loki.*"} |~ "(?i)(panic:|fatal error:|runtime error:)" [15m])) > 5, "tenant", "$1", "namespace", "(drova)")'
             for: 10m
             labels: {severity: warning, component: platform, priority: P2, source: loki}
             annotations:
@@ -136,13 +136,20 @@ data:
               action: "kubectl logs -n argocd -l app.kubernetes.io/name=argocd-repo-server --since=15m"
 
           - alert: LogsErrorRateAnomaly
-            expr: 'sum by (namespace, pod) (count_over_time({namespace=~".+", pod!~"loki.*"} | json | __error__="" | level=~"(?i)error" [10m])) > 50'
+            expr: |
+              label_replace(
+                (sum by (namespace, container) (count_over_time({namespace=~".+", pod!~"loki.*"} | json | __error__="" | level=~"(?i)error" [10m])) > 50)
+                and
+                (sum by (namespace, container) (count_over_time({namespace=~".+", pod!~"loki.*"} | json | __error__="" | level=~"(?i)error" [10m]))
+                  > 3 * (sum by (namespace, container) (count_over_time({namespace=~".+", pod!~"loki.*"} | json | __error__="" | level=~"(?i)error" [10m] offset 1d))
+                    or sum by (namespace, container) (count_over_time({namespace=~".+", pod!~"loki.*"} | json | __error__="" | level=~"(?i)error" [10m])) * 0)),
+                "tenant", "$1", "namespace", "(drova)")
             for: 5m
             labels: {severity: warning, component: platform, priority: P2, source: loki}
             annotations:
-              summary: "Auffaellig viele Errors in {{ $labels.namespace }} ({{ $value }} in 10min)"
-              description: "Namespace laeuft, crasht nicht — kein spezifisches Muster der anderen Regeln passt, aber die Error-Rate im Log ist erhoeht. Baseline pro Namespace: lldap ~22, istio-system ~4 pro 10min (2026-09-06 gemessen)."
-              action: "stern -n {{ $labels.namespace }} . -i error --since 10m"
+              summary: "Fehler-Sprung in {{ $labels.namespace }}/{{ $labels.container }} ({{ $value }} in 10min)"
+              description: "Mehr als 50 Fehler in 10 min und mehr als dreimal so viele wie gestern um diese Zeit."
+              action: "stern -n {{ $labels.namespace }} . -c {{ $labels.container }} -i error --since 10m"
 
           - alert: LogsVolumeSpike
             expr: 'sum by (namespace, pod) (count_over_time({namespace=~".+", namespace!="velero"}[10m])) > 80000'
