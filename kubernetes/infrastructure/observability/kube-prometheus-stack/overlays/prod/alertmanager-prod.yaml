@@ -74,6 +74,36 @@ alertmanager:
             - alertname="InfoInhibitor"
           receiver: 'null'
         - matchers:
+            - alertname=~"AlertmanagerConfigInconsistent|AlertmanagerFailedReload|AlertmanagerMembersInconsistent|PrometheusBadConfig|PrometheusTargetSyncFailure|KubePersistentVolumeErrors"
+          receiver: 'jira-ticket'
+          group_wait: 1m
+          group_interval: 10m
+          repeat_interval: 12h
+          continue: true
+        - matchers:
+            - alertname=~"AlertmanagerConfigInconsistent|AlertmanagerFailedReload|AlertmanagerMembersInconsistent|PrometheusBadConfig|PrometheusTargetSyncFailure|KubePersistentVolumeErrors"
+          receiver: 'slack-default'
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 2h
+          mute_time_intervals:
+            - nachtruhe
+        - matchers:
+            - priority=~"p2|P2"
+          receiver: 'jira-ticket'
+          group_wait: 1m
+          group_interval: 10m
+          repeat_interval: 12h
+          continue: true
+        - matchers:
+            - severity="warning"
+            - priority=""
+          receiver: 'jira-ticket'
+          group_wait: 1m
+          group_interval: 10m
+          repeat_interval: 12h
+          continue: true
+        - matchers:
             - priority=~"p0|P0"
           receiver: 'telegram-oncall'
           group_wait: 10s
@@ -128,7 +158,7 @@ alertmanager:
           repeat_interval: 12h
         - matchers:
             - priority=~"p3|P3|p4|P4"
-          receiver: 'jira-p3'
+          receiver: 'jira-ticket'
           group_wait: 1m
           group_interval: 10m
           repeat_interval: 12h
@@ -300,13 +330,13 @@ alertmanager:
             color: '{{ template "slack.color" . }}'
             actions: *critical-actions
 
-      - name: 'jira-p3'
+      - name: 'jira-ticket'
         jira_configs:
           - api_url: https://timourmiagol.atlassian.net/rest/api/2/
             api_type: cloud
             project: SCRUM
             issue_type: Task
-            labels: ['alertmanager', 'p3']
+            labels: ['alertmanager', '{{ or .CommonLabels.priority "P2" | toLower }}']
             resolve_transition: Erledigt
             reopen_transition: Zu erledigen
             reopen_duration: 24h
