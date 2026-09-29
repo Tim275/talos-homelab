@@ -1,0 +1,404 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: slo-budget
+  namespace: grafana
+spec:
+  uid: slo-budget
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  allowCrossNamespaceImport: true
+  folder: Observability
+  json: |
+    {
+      "title": "SLO — Fehlerbudget",
+      "uid": "slo-budget",
+      "tags": [
+        "sre",
+        "slo"
+      ],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "refresh": "5m",
+      "time": {
+        "from": "now-15d",
+        "to": "now"
+      },
+      "templating": {
+        "list": []
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "table",
+          "title": "SLOs — Fenster 15 Tage (Prometheus-Retention)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "Fenster = 15 Tage, weil Prometheus nur 15 Tage aufbewahrt. Budget = (1 − Ziel) × 15 Tage. Burn Rate 1 heißt: das Budget reicht genau bis zum Fensterende. Verfügbarkeit traffic-gewichtet (gute ÷ alle Anfragen), n8n über die Blackbox-Probe.",
+          "gridPos": {
+            "x": 0,
+            "y": 0,
+            "w": 24,
+            "h": 9
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "label_replace(vector(0.995), \"slo\", \"keycloak\", \"\", \"\") or label_replace(vector(0.995), \"slo\", \"n8n\", \"\", \"\") or label_replace(vector(0.995), \"slo\", \"drova-api-gateway\", \"\", \"\") or label_replace(vector(0.995), \"slo\", \"drova-chat\", \"\", \"\") or label_replace(vector(0.995), \"slo\", \"drova-user\", \"\", \"\") or label_replace(vector(0.995), \"slo\", \"drova-trip\", \"\", \"\") or label_replace(vector(0.995), \"slo\", \"drova-driver\", \"\", \"\")",
+              "instant": true,
+              "range": false,
+              "format": "table",
+              "legendFormat": "{{slo}}"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "label_replace((((sum(increase(http_server_requests_seconds_count{namespace=\"keycloak\",uri=~\"/realms/.*\",outcome!=\"SERVER_ERROR\"}[15d]))) / ((sum(increase(http_server_requests_seconds_count{namespace=\"keycloak\",uri=~\"/realms/.*\"}[15d]))) > 0)) or vector(1)), \"slo\", \"keycloak\", \"\", \"\") or label_replace(avg_over_time(probe_success{instance=\"https://n8n.timourhomelab.org\"}[15d]), \"slo\", \"n8n\", \"\", \"\") or label_replace((((sum(increase(http_server_request_duration_seconds_count{service_name=\"api-gateway\",http_response_status_code!~\"5..\"}[15d]))) / ((sum(increase(http_server_request_duration_seconds_count{service_name=\"api-gateway\"}[15d]))) > 0)) or vector(1)), \"slo\", \"drova-api-gateway\", \"\", \"\") or label_replace((((sum(increase(http_server_request_duration_seconds_count{service_name=\"chat-service\",http_response_status_code!~\"5..\"}[15d]))) / ((sum(increase(http_server_request_duration_seconds_count{service_name=\"chat-service\"}[15d]))) > 0)) or vector(1)), \"slo\", \"drova-chat\", \"\", \"\") or label_replace((((sum(increase(http_server_request_duration_seconds_count{service_name=\"user-service\",http_response_status_code!~\"5..\"}[15d]))) / ((sum(increase(http_server_request_duration_seconds_count{service_name=\"user-service\"}[15d]))) > 0)) or vector(1)), \"slo\", \"drova-user\", \"\", \"\") or label_replace((((sum(increase(rpc_server_call_duration_seconds_count{service_name=\"trip-service\",rpc_response_status_code=\"OK\"}[15d]))) / ((sum(increase(rpc_server_call_duration_seconds_count{service_name=\"trip-service\"}[15d]))) > 0)) or vector(1)), \"slo\", \"drova-trip\", \"\", \"\") or label_replace((((sum(increase(rpc_server_call_duration_seconds_count{service_name=\"driver-service\",rpc_response_status_code=\"OK\"}[15d]))) / ((sum(increase(rpc_server_call_duration_seconds_count{service_name=\"driver-service\"}[15d]))) > 0)) or vector(1)), \"slo\", \"drova-driver\", \"\", \"\")",
+              "instant": true,
+              "range": false,
+              "format": "table",
+              "legendFormat": "{{slo}}"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "label_replace(clamp_min(1 - (1 - (((sum(increase(http_server_requests_seconds_count{namespace=\"keycloak\",uri=~\"/realms/.*\",outcome!=\"SERVER_ERROR\"}[15d]))) / ((sum(increase(http_server_requests_seconds_count{namespace=\"keycloak\",uri=~\"/realms/.*\"}[15d]))) > 0)) or vector(1))) / (1 - 0.995), -10), \"slo\", \"keycloak\", \"\", \"\") or label_replace(clamp_min(1 - (1 - avg_over_time(probe_success{instance=\"https://n8n.timourhomelab.org\"}[15d])) / (1 - 0.995), -10), \"slo\", \"n8n\", \"\", \"\") or label_replace(clamp_min(1 - (1 - (((sum(increase(http_server_request_duration_seconds_count{service_name=\"api-gateway\",http_response_status_code!~\"5..\"}[15d]))) / ((sum(increase(http_server_request_duration_seconds_count{service_name=\"api-gateway\"}[15d]))) > 0)) or vector(1))) / (1 - 0.995), -10), \"slo\", \"drova-api-gateway\", \"\", \"\") or label_replace(clamp_min(1 - (1 - (((sum(increase(http_server_request_duration_seconds_count{service_name=\"chat-service\",http_response_status_code!~\"5..\"}[15d]))) / ((sum(increase(http_server_request_duration_seconds_count{service_name=\"chat-service\"}[15d]))) > 0)) or vector(1))) / (1 - 0.995), -10), \"slo\", \"drova-chat\", \"\", \"\") or label_replace(clamp_min(1 - (1 - (((sum(increase(http_server_request_duration_seconds_count{service_name=\"user-service\",http_response_status_code!~\"5..\"}[15d]))) / ((sum(increase(http_server_request_duration_seconds_count{service_name=\"user-service\"}[15d]))) > 0)) or vector(1))) / (1 - 0.995), -10), \"slo\", \"drova-user\", \"\", \"\") or label_replace(clamp_min(1 - (1 - (((sum(increase(rpc_server_call_duration_seconds_count{service_name=\"trip-service\",rpc_response_status_code=\"OK\"}[15d]))) / ((sum(increase(rpc_server_call_duration_seconds_count{service_name=\"trip-service\"}[15d]))) > 0)) or vector(1))) / (1 - 0.995), -10), \"slo\", \"drova-trip\", \"\", \"\") or label_replace(clamp_min(1 - (1 - (((sum(increase(rpc_server_call_duration_seconds_count{service_name=\"driver-service\",rpc_response_status_code=\"OK\"}[15d]))) / ((sum(increase(rpc_server_call_duration_seconds_count{service_name=\"driver-service\"}[15d]))) > 0)) or vector(1))) / (1 - 0.995), -10), \"slo\", \"drova-driver\", \"\", \"\")",
+              "instant": true,
+              "range": false,
+              "format": "table",
+              "legendFormat": "{{slo}}"
+            },
+            {
+              "refId": "D",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "label_replace((1 - (1 - (((sum(increase(http_server_requests_seconds_count{namespace=\"keycloak\",uri=~\"/realms/.*\",outcome!=\"SERVER_ERROR\"}[15d]))) / ((sum(increase(http_server_requests_seconds_count{namespace=\"keycloak\",uri=~\"/realms/.*\"}[15d]))) > 0)) or vector(1))) / (1 - 0.995)) * ((1 - 0.995) * 15 * 1440), \"slo\", \"keycloak\", \"\", \"\") or label_replace((1 - (1 - avg_over_time(probe_success{instance=\"https://n8n.timourhomelab.org\"}[15d])) / (1 - 0.995)) * ((1 - 0.995) * 15 * 1440), \"slo\", \"n8n\", \"\", \"\") or label_replace((1 - (1 - (((sum(increase(http_server_request_duration_seconds_count{service_name=\"api-gateway\",http_response_status_code!~\"5..\"}[15d]))) / ((sum(increase(http_server_request_duration_seconds_count{service_name=\"api-gateway\"}[15d]))) > 0)) or vector(1))) / (1 - 0.995)) * ((1 - 0.995) * 15 * 1440), \"slo\", \"drova-api-gateway\", \"\", \"\") or label_replace((1 - (1 - (((sum(increase(http_server_request_duration_seconds_count{service_name=\"chat-service\",http_response_status_code!~\"5..\"}[15d]))) / ((sum(increase(http_server_request_duration_seconds_count{service_name=\"chat-service\"}[15d]))) > 0)) or vector(1))) / (1 - 0.995)) * ((1 - 0.995) * 15 * 1440), \"slo\", \"drova-chat\", \"\", \"\") or label_replace((1 - (1 - (((sum(increase(http_server_request_duration_seconds_count{service_name=\"user-service\",http_response_status_code!~\"5..\"}[15d]))) / ((sum(increase(http_server_request_duration_seconds_count{service_name=\"user-service\"}[15d]))) > 0)) or vector(1))) / (1 - 0.995)) * ((1 - 0.995) * 15 * 1440), \"slo\", \"drova-user\", \"\", \"\") or label_replace((1 - (1 - (((sum(increase(rpc_server_call_duration_seconds_count{service_name=\"trip-service\",rpc_response_status_code=\"OK\"}[15d]))) / ((sum(increase(rpc_server_call_duration_seconds_count{service_name=\"trip-service\"}[15d]))) > 0)) or vector(1))) / (1 - 0.995)) * ((1 - 0.995) * 15 * 1440), \"slo\", \"drova-trip\", \"\", \"\") or label_replace((1 - (1 - (((sum(increase(rpc_server_call_duration_seconds_count{service_name=\"driver-service\",rpc_response_status_code=\"OK\"}[15d]))) / ((sum(increase(rpc_server_call_duration_seconds_count{service_name=\"driver-service\"}[15d]))) > 0)) or vector(1))) / (1 - 0.995)) * ((1 - 0.995) * 15 * 1440), \"slo\", \"drova-driver\", \"\", \"\")",
+              "instant": true,
+              "range": false,
+              "format": "table",
+              "legendFormat": "{{slo}}"
+            },
+            {
+              "refId": "E",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "label_replace((1 - ((slo:keycloak_availability:ratio_rate1h == slo:keycloak_availability:ratio_rate1h) or vector(1))) / (1 - 0.995), \"slo\", \"keycloak\", \"\", \"\") or label_replace((1 - avg_over_time(probe_success{instance=\"https://n8n.timourhomelab.org\"}[1h])) / (1 - 0.995), \"slo\", \"n8n\", \"\", \"\") or label_replace((1 - ((slo:drova_api_gateway_availability:ratio_rate1h == slo:drova_api_gateway_availability:ratio_rate1h) or vector(1))) / (1 - 0.995), \"slo\", \"drova-api-gateway\", \"\", \"\") or label_replace((1 - ((slo:drova_chat_service_availability:ratio_rate1h == slo:drova_chat_service_availability:ratio_rate1h) or vector(1))) / (1 - 0.995), \"slo\", \"drova-chat\", \"\", \"\") or label_replace((1 - ((slo:drova_user_service_availability:ratio_rate1h == slo:drova_user_service_availability:ratio_rate1h) or vector(1))) / (1 - 0.995), \"slo\", \"drova-user\", \"\", \"\") or label_replace((1 - ((slo:drova_trip_service_availability:ratio_rate1h == slo:drova_trip_service_availability:ratio_rate1h) or vector(1))) / (1 - 0.995), \"slo\", \"drova-trip\", \"\", \"\") or label_replace((1 - ((slo:drova_driver_service_availability:ratio_rate1h == slo:drova_driver_service_availability:ratio_rate1h) or vector(1))) / (1 - 0.995), \"slo\", \"drova-driver\", \"\", \"\")",
+              "instant": true,
+              "range": false,
+              "format": "table",
+              "legendFormat": "{{slo}}"
+            },
+            {
+              "refId": "F",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "label_replace((1 - ((slo:keycloak_availability:ratio_rate6h == slo:keycloak_availability:ratio_rate6h) or vector(1))) / (1 - 0.995), \"slo\", \"keycloak\", \"\", \"\") or label_replace((1 - avg_over_time(probe_success{instance=\"https://n8n.timourhomelab.org\"}[6h])) / (1 - 0.995), \"slo\", \"n8n\", \"\", \"\") or label_replace((1 - ((slo:drova_api_gateway_availability:ratio_rate6h == slo:drova_api_gateway_availability:ratio_rate6h) or vector(1))) / (1 - 0.995), \"slo\", \"drova-api-gateway\", \"\", \"\") or label_replace((1 - ((slo:drova_chat_service_availability:ratio_rate6h == slo:drova_chat_service_availability:ratio_rate6h) or vector(1))) / (1 - 0.995), \"slo\", \"drova-chat\", \"\", \"\") or label_replace((1 - ((slo:drova_user_service_availability:ratio_rate6h == slo:drova_user_service_availability:ratio_rate6h) or vector(1))) / (1 - 0.995), \"slo\", \"drova-user\", \"\", \"\") or label_replace((1 - ((slo:drova_trip_service_availability:ratio_rate6h == slo:drova_trip_service_availability:ratio_rate6h) or vector(1))) / (1 - 0.995), \"slo\", \"drova-trip\", \"\", \"\") or label_replace((1 - ((slo:drova_driver_service_availability:ratio_rate6h == slo:drova_driver_service_availability:ratio_rate6h) or vector(1))) / (1 - 0.995), \"slo\", \"drova-driver\", \"\", \"\")",
+              "instant": true,
+              "range": false,
+              "format": "table",
+              "legendFormat": "{{slo}}"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {
+                  "slo": 0,
+                  "Value #A": 1,
+                  "Value #B": 2,
+                  "Value #C": 3,
+                  "Value #D": 4,
+                  "Value #E": 5,
+                  "Value #F": 6
+                },
+                "renameByName": {
+                  "slo": "SLO",
+                  "Value #A": "Ziel",
+                  "Value #B": "Verfügbarkeit",
+                  "Value #C": "Budget übrig",
+                  "Value #D": "Budget übrig (min)",
+                  "Value #E": "Burn 1h",
+                  "Value #F": "Burn 6h"
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Ziel"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Verfügbarkeit"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 3
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Budget übrig"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "red",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 0
+                        },
+                        {
+                          "color": "green",
+                          "value": 0.25
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Budget übrig (min)"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "m"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Burn 1h"
+                },
+                "properties": [
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 1
+                        },
+                        {
+                          "color": "red",
+                          "value": 6
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Burn 6h"
+                },
+                "properties": [
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 1
+                        },
+                        {
+                          "color": "red",
+                          "value": 6
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "sortBy": [
+              {
+                "displayName": "Budget übrig",
+                "desc": false
+              }
+            ]
+          }
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "Burn Rate pro Tag — über 1 verbraucht der Tag mehr als seinen Anteil",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 9,
+            "w": 24,
+            "h": 10
+          },
+          "targets": [
+            {
+              "refId": "G",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "label_replace((1 - (((sum(increase(http_server_requests_seconds_count{namespace=\"keycloak\",uri=~\"/realms/.*\",outcome!=\"SERVER_ERROR\"}[1d]))) / ((sum(increase(http_server_requests_seconds_count{namespace=\"keycloak\",uri=~\"/realms/.*\"}[1d]))) > 0)) or vector(1))) / (1 - 0.995), \"slo\", \"keycloak\", \"\", \"\") or label_replace((1 - avg_over_time(probe_success{instance=\"https://n8n.timourhomelab.org\"}[1d])) / (1 - 0.995), \"slo\", \"n8n\", \"\", \"\") or label_replace((1 - (((sum(increase(http_server_request_duration_seconds_count{service_name=\"api-gateway\",http_response_status_code!~\"5..\"}[1d]))) / ((sum(increase(http_server_request_duration_seconds_count{service_name=\"api-gateway\"}[1d]))) > 0)) or vector(1))) / (1 - 0.995), \"slo\", \"drova-api-gateway\", \"\", \"\") or label_replace((1 - (((sum(increase(http_server_request_duration_seconds_count{service_name=\"chat-service\",http_response_status_code!~\"5..\"}[1d]))) / ((sum(increase(http_server_request_duration_seconds_count{service_name=\"chat-service\"}[1d]))) > 0)) or vector(1))) / (1 - 0.995), \"slo\", \"drova-chat\", \"\", \"\") or label_replace((1 - (((sum(increase(http_server_request_duration_seconds_count{service_name=\"user-service\",http_response_status_code!~\"5..\"}[1d]))) / ((sum(increase(http_server_request_duration_seconds_count{service_name=\"user-service\"}[1d]))) > 0)) or vector(1))) / (1 - 0.995), \"slo\", \"drova-user\", \"\", \"\") or label_replace((1 - (((sum(increase(rpc_server_call_duration_seconds_count{service_name=\"trip-service\",rpc_response_status_code=\"OK\"}[1d]))) / ((sum(increase(rpc_server_call_duration_seconds_count{service_name=\"trip-service\"}[1d]))) > 0)) or vector(1))) / (1 - 0.995), \"slo\", \"drova-trip\", \"\", \"\") or label_replace((1 - (((sum(increase(rpc_server_call_duration_seconds_count{service_name=\"driver-service\",rpc_response_status_code=\"OK\"}[1d]))) / ((sum(increase(rpc_server_call_duration_seconds_count{service_name=\"driver-service\"}[1d]))) > 0)) or vector(1))) / (1 - 0.995), \"slo\", \"drova-driver\", \"\", \"\")",
+              "range": true,
+              "instant": false,
+              "legendFormat": "{{slo}}",
+              "interval": "1h"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 2,
+              "min": 0,
+              "custom": {
+                "thresholdsStyle": {
+                  "mode": "line"
+                },
+                "lineWidth": 2
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            }
+          }
+        }
+      ]
+    }
