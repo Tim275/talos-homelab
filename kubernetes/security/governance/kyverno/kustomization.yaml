@@ -10,7 +10,18 @@ helmCharts:
     includeCRDs: true
     valuesInline:
       admissionController:
-        replicas: 1
+        replicas: 3
+        podDisruptionBudget:
+          enabled: true
+          minAvailable: 1
+        topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: topology.kubernetes.io/zone
+            whenUnsatisfiable: DoNotSchedule
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/component: admission-controller
+                app.kubernetes.io/instance: kyverno
         startupProbe:
           httpGet:
             path: /health/liveness
@@ -37,7 +48,7 @@ helmCharts:
             matchExpressions:
               - key: kubernetes.io/metadata.name
                 operator: NotIn
-                values:  # failurePolicy Fail auf 1 Replica - Recovery-Pfad muss frei bleiben
+                values:  # failurePolicy Fail - Recovery-Pfad muss frei bleiben
                   - kube-system
                   - rook-ceph
                   - argocd
