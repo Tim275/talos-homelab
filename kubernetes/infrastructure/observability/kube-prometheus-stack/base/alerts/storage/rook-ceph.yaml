@@ -22,7 +22,20 @@ spec:
             description: "Rook-Ceph reports HEALTH_ERR — data integrity at risk."
             action: "Toolbox: 'ceph health detail' → root cause; often full OSD or inconsistent PG ('ceph pg repair <id>')."
 
-        - alert: CephQuorumLost
+        - alert: CephMonQuorumAtRisk
+          expr: ceph_health_detail{name="MON_DOWN"} == 1 and on() count(ceph_mon_quorum_status == 1) <= floor(count(ceph_mon_metadata) / 2) + 1
+          for: 30s
+          labels:
+            severity: critical
+            priority: P1
+            component: storage
+          annotations:
+            dashboard_url: "https://grafana.timourhomelab.org/d/ceph-cluster"
+            summary: "Ceph MON quorum at risk — one more MON down and the cluster stops"
+            description: "A MON is down and only the minimum quorum is left. Without quorum no I/O is possible and the mgr stops reporting, so RookCephMgrDown is the signal after that."
+            action: "Toolbox: 'ceph mon stat' + 'ceph quorum_status'; kubectl -n rook-ceph get pod -l app=rook-ceph-mon -o wide — check the node of the missing MON."
+
+        - alert: CephOSDMajorityDown
           expr: sum(ceph_osd_up) / count(ceph_osd_up) < 0.5
           for: 1m
           labels:
@@ -31,7 +44,7 @@ spec:
             component: storage
           annotations:
             dashboard_url: "https://grafana.timourhomelab.org/d/ceph-cluster"
-            summary: "Ceph lost quorum — majority of OSDs down ({{ $value | humanizePercentage }} up)"
+            summary: "Majority of Ceph OSDs down ({{ $value | humanizePercentage }} up)"
             description: "More than 50% of OSDs down — DATA LOSS RISK, storage unavailable."
             action: "kubectl -n rook-ceph get pod -l app=rook-ceph-osd; check node/disk of down OSDs; do NOT restart all OSDs at once."
 
