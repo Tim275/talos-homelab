@@ -27,38 +27,38 @@ data:
               action: "Loki: {namespace=\"kube-system\"} |~ \"process_kprobe\" |~ \"shadow|sudoers|authorized_keys\" | json ns=\"process_kprobe.process.pod.namespace\", pod=\"process_kprobe.process.pod.name\" — zeigt betroffenen Pod."
 
           - alert: LogsAuditPodExec
-            expr: 'sum by (kubernetes_namespace, kubernetes_name) (count_over_time({service_name="kube-audit"} |~ "pods/exec" | json [1h])) > 0'
+            expr: 'sum by (kubernetes_namespace, kubernetes_name) (count_over_time({source="kube-audit"} | json resource="objectRef.resource", subresource="objectRef.subresource", kubernetes_namespace="objectRef.namespace", kubernetes_name="objectRef.name" | resource="pods" | subresource="exec" [1h])) > 0'
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
               summary: "Shell in einem Pod geoeffnet ({{ $value }} in 1h)"
               description: "kubectl exec umgeht GitOps und hinterlaesst keine Spur im Repo. Im Normalbetrieb passiert das nie."
-              action: "Loki: {service_name=\"kube-audit\"} |~ \"pods/exec\" | json — user.name und kubernetes.namespace pruefen."
+              action: "Loki: {source=\"kube-audit\"} | json | objectRef_resource=\"pods\", objectRef_subresource=\"exec\" — user.username und objectRef.namespace pruefen."
 
           - alert: LogsAuditAnonymousAccess
-            expr: 'sum by (kubernetes_namespace, kubernetes_resource, kubernetes_name) (count_over_time({service_name="kube-audit"} |~ "system:anonymous" | json [1h])) > 0'
+            expr: 'sum by (kubernetes_namespace, kubernetes_resource, kubernetes_name) (count_over_time({source="kube-audit"} | json user="user.username", kubernetes_namespace="objectRef.namespace", kubernetes_resource="objectRef.resource", kubernetes_name="objectRef.name" | user="system:anonymous" [1h])) > 0'
             labels: {severity: critical, component: security, priority: P1, source: loki}
             annotations:
               summary: "Nicht authentifizierter API-Zugriff ({{ $value }} in 1h)"
               description: "Jemand spricht den apiserver ohne Identitaet an. Baseline ist exakt null."
-              action: "Loki: {service_name=\"kube-audit\"} |~ \"system:anonymous\" | json — sourceIPs und requestURI pruefen."
+              action: "Loki: {source=\"kube-audit\"} | json | user_username=\"system:anonymous\" — sourceIPs und requestURI pruefen."
 
           - alert: LogsAuditRBACChange
-            expr: 'sum by (user_name) (count_over_time({service_name="kube-audit"} |~ "clusterrolebindings|rolebindings" !~ "\"verb\":\"(get|list|watch)\"" | json user_name="[\"user.name\"]" | user_name!~"^system:.*" [1h])) > 0'
+            expr: 'sum by (user_name) (count_over_time({source="kube-audit"} | json user_name="user.username", resource="objectRef.resource", verb="verb" | resource=~"rolebindings|clusterrolebindings" | verb!~"get|list|watch" | user_name!~"^system:.*" [1h])) > 0'
             for: 2m
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
               summary: "Rechte-Vergabe ausserhalb von GitOps ({{ $value }} in 1h)"
               description: "Ein Mensch hat ein RoleBinding geaendert. Reconciler-Aenderungen sind ausgefiltert, Baseline ist null."
-              action: "Loki: {service_name=\"kube-audit\"} |~ \"rolebindings\" | json — verb pruefen."
+              action: "Loki: {source=\"kube-audit\"} | json | objectRef_resource=~\"rolebindings|clusterrolebindings\" — verb und user.username pruefen."
 
           - alert: LogsAuditHumanSecretAccess
-            expr: 'sum by (user_name) (count_over_time({service_name="kube-audit"} |~ "\"kubernetes.resource\":\"secrets\"" | json user_name="[\"user.name\"]" | user_name!~"^system:.*" [10m])) > 40'
+            expr: 'sum by (user_name) (count_over_time({source="kube-audit"} | json user_name="user.username", resource="objectRef.resource" | resource="secrets" | user_name!~"^system:.*" [10m])) > 40'
             for: 5m
             labels: {severity: warning, component: security, priority: P2, source: loki}
             annotations:
               summary: "Auffaellig viele Secret-Zugriffe durch Nutzer ({{ $value }} in 10min)"
               description: "ServiceAccounts sind ausgefiltert. Baseline liegt bei ~7 pro 10min — ein Vielfaches davon sieht nach Absammeln aus."
-              action: "Loki: {service_name=\"kube-audit\"} |~ \"secrets\" !~ \"serviceaccount\" | json — welche Secrets pruefen."
+              action: "Loki: {source=\"kube-audit\"} | json | objectRef_resource=\"secrets\" — welche Secrets pruefen."
 
           - alert: LogsNetBirdAccessChange
             expr: 'sum by (pod) (count_over_time({namespace="netbird", pod=~"netbird-audit-export.*"} |~ "\"activity_code\":\"(rule|policy|route|group|nameserver)\\." [1h])) > 0'
