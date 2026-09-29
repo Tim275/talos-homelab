@@ -8,31 +8,35 @@ metadata:
   namespace: drova
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
-  name: cnpg-dr-verify
+  name: cnpg-dr-verify-source
+  namespace: drova
 rules:
-  - apiGroups: [""]
-    resources: [namespaces, secrets, pods, pods/exec, configmaps, events]
-    verbs: [get, list, create, delete, watch]
   - apiGroups: [postgresql.cnpg.io]
-    resources: [clusters, backups]
-    verbs: [get, list, create, delete, watch]
+    resources: [backups]
+    verbs: [list]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [cnpg-drova-backup]
+    verbs: [get]
   - apiGroups: [barmancloud.cnpg.io]
     resources: [objectstores]
-    verbs: [get, list, create, delete]
+    resourceNames: [drova-backup-store]
+    verbs: [get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
-  name: cnpg-dr-verify
+  name: cnpg-dr-verify-source
+  namespace: drova
 subjects:
   - kind: ServiceAccount
     name: cnpg-dr-verify
     namespace: drova
 roleRef:
-  kind: ClusterRole
-  name: cnpg-dr-verify
+  kind: Role
+  name: cnpg-dr-verify-source
   apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: batch/v1
@@ -67,7 +71,7 @@ spec:
                 - |
                   set -uo pipefail
                   TS=$(date +%Y%m%d-%H%M)
-                  TEST_NS="dr-verify-${TS}"
+                  TEST_NS="dr-verify"
                   CLUSTER_NAME="drova-postgres-restore"
                   SOURCE_NS="drova"
                   SOURCE_CLUSTER="drova-postgres"
@@ -85,8 +89,9 @@ spec:
                   fi
                   echo "→ Latest backup: $LATEST"
 
-                  kubectl create ns $TEST_NS
-                  trap "kubectl delete ns $TEST_NS --wait=false 2>/dev/null || true" EXIT
+                  kubectl delete cluster -n $TEST_NS $CLUSTER_NAME --ignore-not-found --cascade=foreground --wait=true --timeout=10m \
+                    || { echo "✗ FAIL: alter Restore-Cluster laesst sich nicht entfernen"; exit 1; }
+                  trap "kubectl delete cluster -n $TEST_NS $CLUSTER_NAME --ignore-not-found --wait=false; kubectl delete objectstore.barmancloud.cnpg.io -n $TEST_NS drova-backup-store --ignore-not-found; kubectl delete secret -n $TEST_NS cnpg-drova-backup --ignore-not-found" EXIT
 
                   kubectl get secret -n $SOURCE_NS cnpg-drova-backup -o json | \
                     jq --arg ns "$TEST_NS" '.metadata = {name: .metadata.name, namespace: $ns}' | \
@@ -152,8 +157,6 @@ spec:
 
                   if [ "$PHASE" != "Cluster in healthy state" ]; then
                     echo "✗ FAIL: Restore nicht healthy (letzte phase: ${PHASE:-<leer>})"
-                    echo "→ CNPG-Operator (Restarts = häufigste Ursache):"
-                    kubectl get pods -n cnpg-system 2>/dev/null | head -5
                     echo "→ Events im Test-NS:"
                     kubectl get events -n $TEST_NS --sort-by=.metadata.creationTimestamp 2>/dev/null | tail -15
                     kubectl describe cluster -n $TEST_NS $CLUSTER_NAME 2>/dev/null | tail -25
