@@ -336,6 +336,8 @@ alertmanager:
             api_type: cloud
             project: SCRUM
             issue_type: Task
+            summary: '{{ template "jira.summary" . }}'
+            description: '{{ template "jira.description" . }}'
             labels: ['alertmanager', '{{ or .CommonLabels.priority "P2" | toLower }}']
             resolve_transition: Erledigt
             reopen_transition: Zu erledigen
@@ -441,4 +443,26 @@ alertmanager:
 
       {{ define "alert.dashboard_url" -}}
       {{ (index .Alerts 0).Annotations.dashboard_url }}
+      {{- end }}
+
+      {{ define "jira.summary" -}}
+      [{{ or .CommonLabels.priority "P2" }}] {{ .CommonLabels.alertname }}{{ with .CommonLabels.namespace }} · {{ . }}{{ end }}{{ if eq (len .Alerts.Firing) 1 }}{{ with (index .Alerts.Firing 0).Annotations.summary }} — {{ . }}{{ end }}{{ end }}
+      {{- end }}
+
+      {{ define "jira.description" -}}
+      h3. Was ist los
+      {{ range .Alerts.Firing }}* {{ .Annotations.summary }}
+      {{ end }}
+      {{ with (index .Alerts 0).Annotations.description }}{{ . }}
+      {{ end }}
+      h3. Was tun
+      {{ with (index .Alerts 0).Annotations.action }}{noformat}{{ . }}{noformat}{{ else }}Runbook lesen.{{ end }}
+
+      h3. Links
+      {{ with (index .Alerts 0).Annotations.runbook_url }}* [Runbook|{{ . }}]
+      {{ end }}{{ with (index .Alerts 0).Annotations.dashboard_url }}* [Dashboard|{{ . }}]
+      {{ end }}* [Abfrage in Prometheus|{{ (index .Alerts 0).GeneratorURL }}]
+      * [Stummschalten|{{ template "slack.silenceURL" . }}]
+
+      _{{ or .CommonLabels.priority "P2" }} · {{ .CommonLabels.severity }} · schließt sich selbst, wenn der Alarm endet_
       {{- end }}
