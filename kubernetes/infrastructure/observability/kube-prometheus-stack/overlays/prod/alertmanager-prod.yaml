@@ -39,6 +39,7 @@ alertmanager:
       - slack-webhook-security
       - watchdog-webhook-url
       - telegram-bot-token
+      - jira-api
     resources:
       requests:
         cpu: 50m
@@ -125,6 +126,13 @@ alertmanager:
           group_wait: 5m
           group_interval: 30m
           repeat_interval: 12h
+        - matchers:
+            - priority=~"p3|P3|p4|P4"
+          receiver: 'jira-p3'
+          group_wait: 1m
+          group_interval: 10m
+          repeat_interval: 12h
+          continue: true
         - matchers:
             - priority=~"p3|P3|p4|P4"
           receiver: 'slack-info'
@@ -291,6 +299,22 @@ alertmanager:
             text: '{{ template "slack.body" . }}'
             color: '{{ template "slack.color" . }}'
             actions: *critical-actions
+
+      - name: 'jira-p3'
+        jira_configs:
+          - api_url: https://timourmiagol.atlassian.net/rest/api/2/
+            api_type: cloud
+            project: SCRUM
+            issue_type: Task
+            labels: ['alertmanager', 'p3']
+            resolve_transition: Done
+            reopen_transition: To Do
+            reopen_duration: 24h
+            send_resolved: true
+            http_config:
+              basic_auth:
+                username_file: /etc/alertmanager/secrets/jira-api/user
+                password_file: /etc/alertmanager/secrets/jira-api/token
 
       - name: 'slack-info'
         slack_configs:
