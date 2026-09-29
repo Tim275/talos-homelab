@@ -9,6 +9,7 @@ Gilt für die Dienste unten. Budget = 100 % − SLO über die letzten 4 Wochen (
 | Edge (Envoy Gateway, öffentlich) | 99,5 % Verfügbarkeit | ~3 h 22 min | EnvoyEdgeSLOFastBurn / SlowBurn |
 | Keycloak (SSO) | 99,5 % Verfügbarkeit | ~3 h 22 min | KeycloakBurnRateFast / Slow |
 | drova (5 Dienste) | 99,5 % Verfügbarkeit, 99 % Latenz | ~3 h 22 min / ~6 h 43 min | Drova*BurnRate* |
+| n8n (öffentlich) | 99,5 % Verfügbarkeit, gemessen per Probe Gateway → n8n | ~3 h 22 min | N8NBurnRate* |
 
 ## Ziele
 
