@@ -45,6 +45,7 @@ Jeder P0/P1-Alarm verlinkt über `runbook_url` direkt auf seinen Abschnitt. Der 
 | [CloudflaredAllDown](network.md#cloudflaredalldown) | P1 |
 | [CloudflaredNoEdgeConnections](network.md#cloudflarednoedgeconnections) | P1 |
 | [EnvoyEdgeSLOFastBurn](network.md#envoyedgeslofastburn) | P1 |
+| [EnvoyEdgeSLOSlowBurn](network.md#envoyedgeslofastburn) | P1 |
 | [CiliumAgentsCrashing](network.md#ciliumagentscrashing) | P1 |
 | [IstiodDown](network.md#istioddown) | P2 |
 | [ZtunnelNodeDown](network.md#ztunnelnodedown) | P1 |
@@ -77,6 +78,7 @@ Jeder P0/P1-Alarm verlinkt über `runbook_url` direkt auf seinen Abschnitt. Der 
 |---|---|
 | [KeycloakDown](platform.md#keycloakdown) | P1 |
 | [KeycloakBurnRateFast](platform.md#keycloakburnratefast) | P1 |
+| [KeycloakBurnRateSlow](platform.md#keycloakburnratefast) | P1 |
 | [N8NBurnRateFast](platform.md#n8nburnratefast) | P1 |
 | [N8NBurnRateSlow](platform.md#n8nburnratefast) | P1 |
 | [ArgoCDAppsMassDeletion](platform.md#argocdappsmassdeletion) | P1 |
@@ -93,13 +95,23 @@ Jeder P0/P1-Alarm verlinkt über `runbook_url` direkt auf seinen Abschnitt. Der 
 | Alarm | Priorität |
 |---|---|
 | [DrovaApiGatewayBurnRateFast](drova.md#fehler-burn) | P1 |
+| [DrovaApiGatewayBurnRateSlow](drova.md#fehler-burn) | P1 |
 | [DrovaUserServiceBurnRateFast](drova.md#fehler-burn) | P1 |
+| [DrovaUserServiceBurnRateSlow](drova.md#fehler-burn) | P1 |
 | [DrovaTripServiceBurnRateFast](drova.md#fehler-burn) | P1 |
+| [DrovaTripServiceBurnRateSlow](drova.md#fehler-burn) | P1 |
 | [DrovaDriverServiceBurnRateFast](drova.md#fehler-burn) | P1 |
+| [DrovaDriverServiceBurnRateSlow](drova.md#fehler-burn) | P1 |
 | [DrovaChatServiceBurnRateFast](drova.md#fehler-burn) | P1 |
+| [DrovaChatServiceBurnRateSlow](drova.md#fehler-burn) | P1 |
 | [DrovaApiGatewayLatencyBurnRateFast](drova.md#latenz-burn) | P1 |
+| [DrovaApiGatewayLatencyBurnRateSlow](drova.md#latenz-burn) | P1 |
 | [DrovaUserServiceLatencyBurnRateFast](drova.md#latenz-burn) | P1 |
+| [DrovaUserServiceLatencyBurnRateSlow](drova.md#latenz-burn) | P1 |
 | [DrovaTripServiceLatencyBurnRateFast](drova.md#latenz-burn) | P1 |
+| [DrovaTripServiceLatencyBurnRateSlow](drova.md#latenz-burn) | P1 |
 | [DrovaDriverServiceLatencyBurnRateFast](drova.md#latenz-burn) | P1 |
+| [DrovaDriverServiceLatencyBurnRateSlow](drova.md#latenz-burn) | P1 |
 | [DrovaChatServiceLatencyBurnRateFast](drova.md#latenz-burn) | P1 |
+| [DrovaChatServiceLatencyBurnRateSlow](drova.md#latenz-burn) | P1 |
 | [DrovaRpcHopFailing](drova.md#drovarpchopfailing) | P2 |
