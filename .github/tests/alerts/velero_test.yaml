@@ -1,0 +1,59 @@
+rule_files:
+  - .rules.generated.yaml
+evaluation_interval: 1m
+tests:
+  # tier0 14 h ohne Erfolg → feuert; daily 14 h → noch nicht
+  - interval: 1m
+    input_series:
+      - series: 'velero_schedule_info{schedule="tier0-lldap",phase="Enabled"}'
+        values: '1x30'
+      - series: 'velero_schedule_info{schedule="daily-cluster",phase="Enabled"}'
+        values: '1x30'
+      - series: 'velero_backup_last_successful_timestamp{schedule="tier0-lldap"}'
+        values: '-50400x30'
+      - series: 'velero_backup_last_successful_timestamp{schedule="daily-cluster"}'
+        values: '-50400x30'
+      - series: 'velero_backup_attempt_total{schedule="tier0-lldap"}'
+        values: '0+1x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: VeleroNoRecentBackup
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              priority: P2
+              component: backup
+              schedule: tier0-lldap
+            exp_annotations:
+              runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/storage.md#veleronorecentbackup"
+              dashboard_url: "https://grafana.timourhomelab.org/d/velero-overview"
+              summary: "Kein erfolgreiches Velero-Backup für tier0-lldap seit 14h 20m 0s"
+              description: "RPO überschritten: tier0 nach 13 h (zwei 6-h-Läufe), sonst 24 h. PartiallyFailed zählt nicht als Erfolg."
+              action: "velero backup get ; velero backup logs <name> ; check RGW bucket quota + creds"
+
+  # Zeitplan ohne jeden Erfolg → nach 8 Tagen
+  - interval: 5m
+    input_series:
+      - series: 'velero_schedule_info{schedule="neu",phase="Enabled"}'
+        values: '1x2400'
+      - series: 'velero_schedule_info{schedule="alt",phase="Enabled"}'
+        values: '1x2400'
+      - series: 'velero_backup_last_successful_timestamp{schedule="alt"}'
+        values: '1x2400'
+    alert_rule_test:
+      - eval_time: 7d
+        alertname: VeleroScheduleNeverSucceeded
+        exp_alerts: []
+      - eval_time: 8d1h
+        alertname: VeleroScheduleNeverSucceeded
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              priority: P2
+              component: backup
+              schedule: neu
+              phase: Enabled
+            exp_annotations:
+              dashboard_url: "https://grafana.timourhomelab.org/d/velero-overview"
+              summary: "Velero-Zeitplan neu hat noch nie erfolgreich gesichert"
+              description: "Ohne Erfolg fehlt der Zeitstempel, VeleroNoRecentBackup sieht den Zeitplan dann nicht. 8 Tage decken Wochen-Zeitpläne ab."
