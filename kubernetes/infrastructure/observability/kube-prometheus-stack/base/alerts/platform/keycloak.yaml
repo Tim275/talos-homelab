@@ -6,6 +6,40 @@ metadata:
     release: kube-prometheus-stack
 spec:
   groups:
+    - name: keycloak-slo-recording
+      interval: 60s
+      rules:
+        - record: slo:keycloak_availability:ratio_rate5m
+          expr: |
+            (
+              sum(rate(http_server_requests_seconds_count{namespace="keycloak",uri=~"/realms/.*",outcome!="SERVER_ERROR"}[5m]))
+              /
+              sum(rate(http_server_requests_seconds_count{namespace="keycloak",uri=~"/realms/.*"}[5m]))
+            ) or vector(1)
+        - record: slo:keycloak_availability:ratio_rate30m
+          expr: |
+            (
+              sum(rate(http_server_requests_seconds_count{namespace="keycloak",uri=~"/realms/.*",outcome!="SERVER_ERROR"}[30m]))
+              /
+              sum(rate(http_server_requests_seconds_count{namespace="keycloak",uri=~"/realms/.*"}[30m]))
+            ) or vector(1)
+        - record: slo:keycloak_availability:ratio_rate1h
+          expr: |
+            (
+              sum(rate(http_server_requests_seconds_count{namespace="keycloak",uri=~"/realms/.*",outcome!="SERVER_ERROR"}[1h]))
+              /
+              sum(rate(http_server_requests_seconds_count{namespace="keycloak",uri=~"/realms/.*"}[1h]))
+            ) or vector(1)
+        - record: slo:keycloak_availability:ratio_rate6h
+          expr: |
+            (
+              sum(rate(http_server_requests_seconds_count{namespace="keycloak",uri=~"/realms/.*",outcome!="SERVER_ERROR"}[6h]))
+              /
+              sum(rate(http_server_requests_seconds_count{namespace="keycloak",uri=~"/realms/.*"}[6h]))
+            ) or vector(1)
+        - record: slo:keycloak:request_rate5m
+          expr: sum(rate(http_server_requests_seconds_count{namespace="keycloak",uri=~"/realms/.*"}[5m]))
+
     - name: keycloak-page
       interval: 60s
       rules:
@@ -24,22 +58,41 @@ spec:
             description: "All Keycloak replicas not ready — OIDC login broken cluster-wide (ArgoCD, Grafana, n8n, etc.)."
             action: "kubectl -n keycloak get pod -l app=keycloak + logs (watch OOMKill — 23x crashloop 2026-05-24); check the CNPG keycloak-db."
 
+        - alert: KeycloakBurnRateFast
+          expr: |
+            (1 - slo:keycloak_availability:ratio_rate5m) > (14.4 * (1 - 0.995))
+            and
+            (1 - slo:keycloak_availability:ratio_rate1h) > (14.4 * (1 - 0.995))
+            and
+            slo:keycloak:request_rate5m > 0.01
+          for: 2m
+          labels:
+            severity: critical
+            priority: P1
+            component: identity
+            slo: keycloak-availability
+          annotations:
+            dashboard_url: "https://grafana.timourhomelab.org/d/keycloak-health"
+            summary: "Keycloak: SLO fast burn {{ $value | humanizePercentage }} Serverfehler"
+            description: "Logins scheitern, obwohl Keycloak laeuft (DB, Cache, Upstream). Ziel 99,5 % ueber 30 Tage."
 
     - name: keycloak-ticket
       interval: 60s
       rules:
-        - alert: KeycloakHttp5xxRateHigh
+        - alert: KeycloakBurnRateSlow
           expr: |
-            sum by (namespace) (
-              rate(http_server_requests_seconds_count{namespace="keycloak",status=~"5.."}[5m])
-            ) > 0.5
-          for: 3m
+            (1 - slo:keycloak_availability:ratio_rate30m) > (6 * (1 - 0.995))
+            and
+            (1 - slo:keycloak_availability:ratio_rate6h) > (6 * (1 - 0.995))
+            and
+            slo:keycloak:request_rate5m > 0.01
+          for: 15m
           labels:
             severity: warning
-            component: identity
             priority: P2
+            component: identity
+            slo: keycloak-availability
           annotations:
             dashboard_url: "https://grafana.timourhomelab.org/d/keycloak-health"
-            summary: "Keycloak HTTP 5xx rate {{ $value | humanize }}/s"
-            description: "Sustained 5xx burst on the auth provider — login flows may be failing (DB, cache, or upstream issue)."
-            action: "kubectl -n keycloak logs -l app=keycloak --tail=100 | grep -iE 'error|ISPN'; check the CNPG keycloak-db."
+            summary: "Keycloak: SLO slow burn {{ $value | humanizePercentage }} Serverfehler"
+            description: "Logins scheitern, obwohl Keycloak laeuft (DB, Cache, Upstream). Ziel 99,5 % ueber 30 Tage."
