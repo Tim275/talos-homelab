@@ -155,3 +155,7 @@ sum by (integration, reason) (rate(alertmanager_notifications_failed_total[15m])
   ```bash
   kubectl -n monitoring get alertmanager kube-prometheus-stack-alertmanager -o jsonpath='{.status.conditions}'
   ```
+- Jira `can't find transition` → `resolve_transition`/`reopen_transition` suchen den Transition-Namen exakt. Status im Projekt umbenannt oder Workflow getauscht → Namen neu setzen. Aktuelle Namen:
+  ```bash
+  curl -su "$USER:$TOKEN" https://timourmiagol.atlassian.net/rest/api/2/issue/SCRUM-1/transitions | jq -r '.transitions[].name'
+  ```

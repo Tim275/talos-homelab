@@ -1,0 +1,58 @@
+rule_files:
+  - .rules.generated.yaml
+evaluation_interval: 1m
+tests:
+  # jira: eine Zustellung alle 5 min, jede scheitert
+  - interval: 1m
+    input_series:
+      - series: 'alertmanager_notifications_total{namespace="monitoring",pod="am-0",integration="jira",cluster="c"}'
+        values: '0+0.2x40'
+      - series: 'alertmanager_notifications_failed_total{namespace="monitoring",pod="am-0",integration="jira",cluster="c",reason="other"}'
+        values: '0+0.2x40'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: AlertmanagerFailedToSendAlerts
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              priority: P2
+              component: monitoring
+              namespace: monitoring
+              pod: am-0
+              integration: jira
+              cluster: c
+            exp_annotations:
+              dashboard_url: "https://grafana.timourhomelab.org/d/alertmanager-state"
+              summary: "Alertmanager am-0 failed to send notifications via jira"
+              description: "Alertmanager monitoring/am-0 failed to send 100% of notifications to jira."
+              action: "Check the jira integration (token/webhook); kubectl logs -n monitoring am-0."
+      - eval_time: 30m
+        alertname: AlertmanagerClusterFailedToSendAlerts
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              priority: P1
+              component: monitoring
+              integration: jira
+              cluster: c
+            exp_annotations:
+              runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/platform.md#alertmanagerclusterfailedtosendalerts"
+              dashboard_url: "https://grafana.timourhomelab.org/d/alertmanager-state"
+              summary: "All Alertmanager instances failed to send jira notifications"
+              description: "ALL Alertmanager instances failed to send 100% of jira notifications. Notification pipeline broken."
+              action: "ALL AMs failing jira — the token/webhook secret is broken cluster-wide; check + re-seal it."
+
+  # jira: Zustellungen laufen, nichts scheitert
+  - interval: 1m
+    input_series:
+      - series: 'alertmanager_notifications_total{namespace="monitoring",pod="am-0",integration="jira",cluster="c"}'
+        values: '0+0.2x40'
+      - series: 'alertmanager_notifications_failed_total{namespace="monitoring",pod="am-0",integration="jira",cluster="c",reason="other"}'
+        values: '0x40'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: AlertmanagerFailedToSendAlerts
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: AlertmanagerClusterFailedToSendAlerts
+        exp_alerts: []
