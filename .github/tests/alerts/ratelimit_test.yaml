@@ -1,0 +1,32 @@
+rule_files:
+  - .rules.generated.yaml
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'ratelimit_service_total_requests{pod="a"}'
+        values: '0+100x40'
+      - series: 'ratelimit_service_should_rate_limit_error{pod="a",err_type="redis_error"}'
+        values: '0+1x40'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: RateLimitRedisErrors
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'ratelimit_service_total_requests{pod="a"}'
+        values: '0+100x40'
+      - series: 'ratelimit_service_should_rate_limit_error{pod="a",err_type="redis_error"}'
+        values: '0+10x40'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: RateLimitRedisErrors
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              component: gateway
+            exp_annotations:
+              dashboard_url: "https://grafana.timourhomelab.org/d/envoy-global"
+              summary: "Rate-Limit-Pruefung scheitert fuer 10% der Anfragen"
+              description: "Diese Anfragen laufen ungebremst durch. Einzelne Abbrueche am Envoy-Timeout sind normal."
