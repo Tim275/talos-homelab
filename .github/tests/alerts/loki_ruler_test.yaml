@@ -1,0 +1,53 @@
+rule_files:
+  - .rules.generated.yaml
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'loki_prometheus_notifications_sent_total{pod="loki-0"}'
+        values: '0+10x40'
+      - series: 'loki_prometheus_notifications_errors_total{pod="loki-0"}'
+        values: '0+10x40'
+      - series: 'loki_prometheus_notifications_alertmanagers_discovered{pod="loki-0"}'
+        values: '1x40'
+      - series: 'loki_prometheus_rule_evaluation_failures_total{rule_group="logs-security"}'
+        values: '0+1x40'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: LokiRulerAlertingBroken
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              component: observability
+              priority: P1
+            exp_annotations:
+              runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/platform.md#alertmanagerclusterfailedtosendalerts"
+              dashboard_url: "https://grafana.timourhomelab.org/d/loki-stack"
+              summary: "Loki Ruler erreicht den Alertmanager nicht"
+              description: "Alle Log-Alarme gehen verloren, auch die P1. Metrik-Alarme sind nicht betroffen."
+              action: "kubectl -n monitoring logs -l app.kubernetes.io/component=single-binary --since=30m | grep -i notif"
+      - eval_time: 25m
+        alertname: LokiRuleEvaluationFailures
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              component: observability
+              priority: P2
+              rule_group: logs-security
+            exp_annotations:
+              dashboard_url: "https://grafana.timourhomelab.org/d/loki-stack"
+              summary: "Loki Ruler kann Log-Regeln nicht auswerten (logs-security)"
+              description: "Die Log-Alarme dieser Gruppe sind still, nicht grün."
+              action: "kubectl -n monitoring logs -l app.kubernetes.io/component=single-binary --since=30m | grep -i 'rule'"
+  - interval: 1m
+    input_series:
+      - series: 'loki_prometheus_notifications_sent_total{pod="loki-0"}'
+        values: '0+10x40'
+      - series: 'loki_prometheus_notifications_errors_total{pod="loki-0"}'
+        values: '0x40'
+      - series: 'loki_prometheus_notifications_alertmanagers_discovered{pod="loki-0"}'
+        values: '1x40'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: LokiRulerAlertingBroken
+        exp_alerts: []
