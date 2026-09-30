@@ -10,10 +10,13 @@ resource "kubernetes_secret_v1" "seal-key" {
   metadata {
     name      = "openbao-seal-key"
     namespace = "openbao"
+    labels = {
+      "velero.io/exclude-from-backup" = "true"
+    }
   }
 
   data = {
-    "BAO_SEAL_KEY" = var.seal != null ? trimspace(file("${path.root}/${var.seal.seal_key_path}")) : ""
+    "BAO_SEAL_KEY" = var.seal != null ? (fileexists("${path.root}/${var.seal.seal_key_path}") ? trimspace(file("${path.root}/${var.seal.seal_key_path}")) : "") : ""
   }
 
   # CI hat den key nicht
