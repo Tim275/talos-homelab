@@ -20,15 +20,18 @@ spec:
         summary: Rate-Limit-Dienst ist weg — Envoy laesst alles durch
         description: Der Envoy-Filter faellt offen aus. Kein Limit greift mehr, auch nicht auf den oeffentlichen Routen.
     - alert: RateLimitRedisErrors
-      expr: sum(rate(ratelimit_service_should_rate_limit_error[5m])) > 0
-      for: 10m
+      expr: |
+        sum(rate(ratelimit_service_should_rate_limit_error[15m]))
+          / (sum(rate(ratelimit_service_total_requests[15m])) > 0)
+          > 0.05
+      for: 15m
       labels:
         severity: warning
         component: gateway
       annotations:
         dashboard_url: "https://grafana.timourhomelab.org/d/envoy-global"
-        summary: Rate-Limit kann Redis nicht erreichen
-        description: Jeder fehlgeschlagene Aufruf wird durchgelassen. redis-gateway laeuft einzeln.
+        summary: "Rate-Limit-Pruefung scheitert fuer {{ $value | humanizePercentage }} der Anfragen"
+        description: Diese Anfragen laufen ungebremst durch. Einzelne Abbrueche am Envoy-Timeout sind normal.
     - alert: RateLimitRedisDisconnected
       expr: sum(ratelimit_redis_pool_cx_active) == 0
       for: 10m
