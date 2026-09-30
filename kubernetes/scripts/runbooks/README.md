@@ -2,116 +2,116 @@
 
 Nach einem Vorfall: [Postmortem-Vorlage](postmortem-template.md) · Wann Releases stoppen: [Error-Budget-Policy](error-budget-policy.md)
 
-Jeder P0/P1-Alarm verlinkt über `runbook_url` direkt auf seinen Abschnitt. Der Runbook-Button in Slack führt dorthin.
+Jeder Page-Alarm verlinkt über `runbook_url` direkt auf seinen Abschnitt. Der Runbook-Button in Slack führt dorthin.
 
 ## Control Plane
 
-| Alarm | Priorität |
+| Alarm | Stufe |
 |---|---|
-| [ClusterAPIServerDown](control-plane.md#clusterapiserverdown) | P0 |
-| [ControlPlaneNodeDown](control-plane.md#controlplanenodedown) | P0 |
-| [EtcdQuorumLoss](control-plane.md#etcdquorumloss) | P0 |
-| [CoreDNSDown](control-plane.md#corednsdown) | P0 |
-| [etcdHighFsyncDurations](control-plane.md#etcdhighfsyncdurations) | P2 |
-| [etcdHighNumberOfFailedGRPCRequests](control-plane.md#etcdhighnumberoffailedgrpcrequests) | P2 |
-| [etcdDatabaseQuotaLowSpace](control-plane.md#etcddatabasequotalowspace) | P1 |
-| [AdmissionWebhookRejecting](control-plane.md#admissionwebhookrejecting) | P1 |
-| [KubeSchedulerDown](control-plane.md#kubeschedulerdown) | P1 |
-| [KubeControllerManagerDown](control-plane.md#kubecontrollermanagerdown) | P1 |
-| [KubeletScrapeTargetsManyDown](control-plane.md#kubeletscrapetargetsmanydown) | P2 |
+| [ClusterAPIServerDown](control-plane.md#clusterapiserverdown) | Page |
+| [ControlPlaneNodeDown](control-plane.md#controlplanenodedown) | Page |
+| [EtcdQuorumLoss](control-plane.md#etcdquorumloss) | Page |
+| [CoreDNSDown](control-plane.md#corednsdown) | Page |
+| [etcdHighFsyncDurations](control-plane.md#etcdhighfsyncdurations) | Ticket |
+| [etcdHighNumberOfFailedGRPCRequests](control-plane.md#etcdhighnumberoffailedgrpcrequests) | Ticket |
+| [etcdDatabaseQuotaLowSpace](control-plane.md#etcddatabasequotalowspace) | Page |
+| [AdmissionWebhookRejecting](control-plane.md#admissionwebhookrejecting) | Page |
+| [KubeSchedulerDown](control-plane.md#kubeschedulerdown) | Page |
+| [KubeControllerManagerDown](control-plane.md#kubecontrollermanagerdown) | Page |
+| [KubeletScrapeTargetsManyDown](control-plane.md#kubeletscrapetargetsmanydown) | Ticket |
 
 ## Proxmox-Hosts
 
-| Alarm | Priorität |
+| Alarm | Stufe |
 |---|---|
-| [ProxmoxHostDown](hosts.md#proxmoxhostdown) | P0 |
-| [ProxmoxHostRebootLoop](hosts.md#proxmoxhostrebootloop) | P1 |
-| [ProxmoxStorageCritical](hosts.md#proxmoxstoragecritical) | P1 |
-| [ProxmoxZfsPoolCritical](hosts.md#proxmoxzfspoolcritical) | P1 |
-| [HostRootFilesystemCritical](hosts.md#hostrootfilesystemcritical) | P1 |
-| [HostCPUTemperatureCritical](hosts.md#hostcputemperaturecritical) | P1 |
-| [HostBridgeDown](hosts.md#hostbridgedown) | P1 |
-| [SSDSmartHealthFailed](hosts.md#ssdsmarthealthfailed) | P2 |
-| [SSDCriticalWarning](hosts.md#ssdcriticalwarning) | P2 |
-| [SSDMediaErrors](hosts.md#ssdmediaerrors) | P2 |
+| [ProxmoxHostDown](hosts.md#proxmoxhostdown) | Page |
+| [ProxmoxHostRebootLoop](hosts.md#proxmoxhostrebootloop) | Page |
+| [ProxmoxStorageCritical](hosts.md#proxmoxstoragecritical) | Page |
+| [ProxmoxZfsPoolCritical](hosts.md#proxmoxzfspoolcritical) | Page |
+| [HostRootFilesystemCritical](hosts.md#hostrootfilesystemcritical) | Page |
+| [HostCPUTemperatureCritical](hosts.md#hostcputemperaturecritical) | Page |
+| [HostBridgeDown](hosts.md#hostbridgedown) | Page |
+| [SSDSmartHealthFailed](hosts.md#ssdsmarthealthfailed) | Ticket |
+| [SSDCriticalWarning](hosts.md#ssdcriticalwarning) | Ticket |
+| [SSDMediaErrors](hosts.md#ssdmediaerrors) | Ticket |
 
 ## Netzwerk
 
-| Alarm | Priorität |
+| Alarm | Stufe |
 |---|---|
-| [InternetConnectivityLost](network.md#internetconnectivitylost) | P0 |
-| [HomelabEdgeDown](network.md#homelabedgedown) | P1 |
-| [LogsGatewayRoutesDisabled](network.md#logsgatewayroutesdisabled) | P1 |
-| [CloudflaredAllDown](network.md#cloudflaredalldown) | P1 |
-| [CloudflaredNoEdgeConnections](network.md#cloudflarednoedgeconnections) | P1 |
-| [EnvoyEdgeSLOFastBurn](network.md#envoyedgeslofastburn) | P1 |
-| [EnvoyEdgeSLOSlowBurn](network.md#envoyedgeslofastburn) | P1 |
-| [CiliumAgentsCrashing](network.md#ciliumagentscrashing) | P1 |
-| [IstiodDown](network.md#istioddown) | P2 |
-| [ZtunnelNodeDown](network.md#ztunnelnodedown) | P1 |
-| [NetBirdRoutingPeerDown](network.md#netbirdroutingpeerdown) | P2 |
-| [RateLimitServiceDown](network.md#ratelimitservicedown) | P2 |
+| [InternetConnectivityLost](network.md#internetconnectivitylost) | Page |
+| [HomelabEdgeDown](network.md#homelabedgedown) | Page |
+| [LogsGatewayRoutesDisabled](network.md#logsgatewayroutesdisabled) | Page |
+| [CloudflaredAllDown](network.md#cloudflaredalldown) | Page |
+| [CloudflaredNoEdgeConnections](network.md#cloudflarednoedgeconnections) | Page |
+| [EnvoyEdgeSLOFastBurn](network.md#envoyedgeslofastburn) | Page |
+| [EnvoyEdgeSLOSlowBurn](network.md#envoyedgeslofastburn) | Page |
+| [CiliumAgentsCrashing](network.md#ciliumagentscrashing) | Page |
+| [IstiodDown](network.md#istioddown) | Ticket |
+| [ZtunnelNodeDown](network.md#ztunnelnodedown) | Page |
+| [NetBirdRoutingPeerDown](network.md#netbirdroutingpeerdown) | Ticket |
+| [RateLimitServiceDown](network.md#ratelimitservicedown) | Ticket |
 
 ## Storage
 
-| Alarm | Priorität |
+| Alarm | Stufe |
 |---|---|
-| [CephHealthError](storage.md#cephhealtherror) | P1 |
-| [CephMonQuorumAtRisk](storage.md#cephmonquorumatrisk) | P1 |
-| [CephOSDMajorityDown](storage.md#cephosdmajoritydown) | P1 |
-| [LogsDiskIOError](storage.md#logsdiskioerror) | P2 |
-| [PVCCriticallyFull](storage.md#pvccriticallyfull) | P1 |
-| [VeleroNoRecentBackup](storage.md#veleronorecentbackup) | P2 |
-| [VeleroNoRecentWeeklyBackup](storage.md#veleronorecentweeklybackup) | P2 |
+| [CephHealthError](storage.md#cephhealtherror) | Page |
+| [CephMonQuorumAtRisk](storage.md#cephmonquorumatrisk) | Page |
+| [CephOSDMajorityDown](storage.md#cephosdmajoritydown) | Page |
+| [LogsDiskIOError](storage.md#logsdiskioerror) | Ticket |
+| [PVCCriticallyFull](storage.md#pvccriticallyfull) | Page |
+| [VeleroNoRecentBackup](storage.md#veleronorecentbackup) | Ticket |
+| [VeleroNoRecentWeeklyBackup](storage.md#veleronorecentweeklybackup) | Ticket |
 
 ## Daten
 
-| Alarm | Priorität |
+| Alarm | Stufe |
 |---|---|
-| [CnpgPrimaryDown](data.md#cnpgprimarydown) | P1 |
-| [CNPGBackupStale](data.md#cnpgbackupstale) | P2 |
-| [KafkaOfflinePartitions](data.md#kafkaofflinepartitions) | P1 |
+| [CnpgPrimaryDown](data.md#cnpgprimarydown) | Page |
+| [CNPGBackupStale](data.md#cnpgbackupstale) | Ticket |
+| [KafkaOfflinePartitions](data.md#kafkaofflinepartitions) | Page |
 
 ## Plattform
 
-| Alarm | Priorität |
+| Alarm | Stufe |
 |---|---|
-| [KeycloakDown](platform.md#keycloakdown) | P1 |
-| [KeycloakBurnRateFast](platform.md#keycloakburnratefast) | P1 |
-| [KeycloakBurnRateSlow](platform.md#keycloakburnratefast) | P1 |
-| [N8NBurnRateFast](platform.md#n8nburnratefast) | P1 |
-| [N8NBurnRateSlow](platform.md#n8nburnratefast) | P1 |
-| [ArgoCDAppsMassDeletion](platform.md#argocdappsmassdeletion) | P1 |
-| [CertExpiringIn7Days](platform.md#certexpiringin7days) | P2 |
-| [SealedSecretsCertExpiresIn14Days](platform.md#sealedsecretscertexpiresin14days) | P2 |
-| [LogsSealedSecretsDecryptFailure](platform.md#logssealedsecretsdecryptfailure) | P2 |
-| [LogsAuditAnonymousAccess](platform.md#logsauditanonymousaccess) | P1 |
-| [PrometheusPodMissing](platform.md#prometheuspodmissing) | P1 |
-| [AlertmanagerPodMissing](platform.md#alertmanagerpodmissing) | P1 |
-| [AlertmanagerClusterFailedToSendAlerts](platform.md#alertmanagerclusterfailedtosendalerts) | P1 |
+| [KeycloakDown](platform.md#keycloakdown) | Page |
+| [KeycloakBurnRateFast](platform.md#keycloakburnratefast) | Page |
+| [KeycloakBurnRateSlow](platform.md#keycloakburnratefast) | Page |
+| [N8NBurnRateFast](platform.md#n8nburnratefast) | Page |
+| [N8NBurnRateSlow](platform.md#n8nburnratefast) | Page |
+| [ArgoCDAppsMassDeletion](platform.md#argocdappsmassdeletion) | Page |
+| [CertExpiringIn7Days](platform.md#certexpiringin7days) | Ticket |
+| [SealedSecretsCertExpiresIn14Days](platform.md#sealedsecretscertexpiresin14days) | Ticket |
+| [LogsSealedSecretsDecryptFailure](platform.md#logssealedsecretsdecryptfailure) | Ticket |
+| [LogsAuditAnonymousAccess](platform.md#logsauditanonymousaccess) | Page |
+| [PrometheusPodMissing](platform.md#prometheuspodmissing) | Page |
+| [AlertmanagerPodMissing](platform.md#alertmanagerpodmissing) | Page |
+| [AlertmanagerClusterFailedToSendAlerts](platform.md#alertmanagerclusterfailedtosendalerts) | Page |
 
 ## Drova
 
-| Alarm | Priorität |
+| Alarm | Stufe |
 |---|---|
-| [DrovaApiGatewayBurnRateFast](drova.md#fehler-burn) | P1 |
-| [DrovaApiGatewayBurnRateSlow](drova.md#fehler-burn) | P1 |
-| [DrovaUserServiceBurnRateFast](drova.md#fehler-burn) | P1 |
-| [DrovaUserServiceBurnRateSlow](drova.md#fehler-burn) | P1 |
-| [DrovaTripServiceBurnRateFast](drova.md#fehler-burn) | P1 |
-| [DrovaTripServiceBurnRateSlow](drova.md#fehler-burn) | P1 |
-| [DrovaDriverServiceBurnRateFast](drova.md#fehler-burn) | P1 |
-| [DrovaDriverServiceBurnRateSlow](drova.md#fehler-burn) | P1 |
-| [DrovaChatServiceBurnRateFast](drova.md#fehler-burn) | P1 |
-| [DrovaChatServiceBurnRateSlow](drova.md#fehler-burn) | P1 |
-| [DrovaApiGatewayLatencyBurnRateFast](drova.md#latenz-burn) | P1 |
-| [DrovaApiGatewayLatencyBurnRateSlow](drova.md#latenz-burn) | P1 |
-| [DrovaUserServiceLatencyBurnRateFast](drova.md#latenz-burn) | P1 |
-| [DrovaUserServiceLatencyBurnRateSlow](drova.md#latenz-burn) | P1 |
-| [DrovaTripServiceLatencyBurnRateFast](drova.md#latenz-burn) | P1 |
-| [DrovaTripServiceLatencyBurnRateSlow](drova.md#latenz-burn) | P1 |
-| [DrovaDriverServiceLatencyBurnRateFast](drova.md#latenz-burn) | P1 |
-| [DrovaDriverServiceLatencyBurnRateSlow](drova.md#latenz-burn) | P1 |
-| [DrovaChatServiceLatencyBurnRateFast](drova.md#latenz-burn) | P1 |
-| [DrovaChatServiceLatencyBurnRateSlow](drova.md#latenz-burn) | P1 |
-| [DrovaRpcHopFailing](drova.md#drovarpchopfailing) | P2 |
+| [DrovaApiGatewayBurnRateFast](drova.md#fehler-burn) | Page |
+| [DrovaApiGatewayBurnRateSlow](drova.md#fehler-burn) | Page |
+| [DrovaUserServiceBurnRateFast](drova.md#fehler-burn) | Page |
+| [DrovaUserServiceBurnRateSlow](drova.md#fehler-burn) | Page |
+| [DrovaTripServiceBurnRateFast](drova.md#fehler-burn) | Page |
+| [DrovaTripServiceBurnRateSlow](drova.md#fehler-burn) | Page |
+| [DrovaDriverServiceBurnRateFast](drova.md#fehler-burn) | Page |
+| [DrovaDriverServiceBurnRateSlow](drova.md#fehler-burn) | Page |
+| [DrovaChatServiceBurnRateFast](drova.md#fehler-burn) | Page |
+| [DrovaChatServiceBurnRateSlow](drova.md#fehler-burn) | Page |
+| [DrovaApiGatewayLatencyBurnRateFast](drova.md#latenz-burn) | Page |
+| [DrovaApiGatewayLatencyBurnRateSlow](drova.md#latenz-burn) | Page |
+| [DrovaUserServiceLatencyBurnRateFast](drova.md#latenz-burn) | Page |
+| [DrovaUserServiceLatencyBurnRateSlow](drova.md#latenz-burn) | Page |
+| [DrovaTripServiceLatencyBurnRateFast](drova.md#latenz-burn) | Page |
+| [DrovaTripServiceLatencyBurnRateSlow](drova.md#latenz-burn) | Page |
+| [DrovaDriverServiceLatencyBurnRateFast](drova.md#latenz-burn) | Page |
+| [DrovaDriverServiceLatencyBurnRateSlow](drova.md#latenz-burn) | Page |
+| [DrovaChatServiceLatencyBurnRateFast](drova.md#latenz-burn) | Page |
+| [DrovaChatServiceLatencyBurnRateSlow](drova.md#latenz-burn) | Page |
+| [DrovaRpcHopFailing](drova.md#drovarpchopfailing) | Ticket |

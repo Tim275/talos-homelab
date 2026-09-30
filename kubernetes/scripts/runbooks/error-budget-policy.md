@@ -24,7 +24,7 @@ Gilt für die Dienste unten. Budget = 100 % − SLO über die letzten 4 Wochen (
 ## Wenn das Budget aufgebraucht ist
 
 - Innerhalb des SLO: Releases und Änderungen laufen normal weiter.
-- Budget der letzten 4 Wochen aufgebraucht: keine Releases und Änderungen am betroffenen Dienst außer P1-Fixes und Sicherheitsupdates, bis der Dienst wieder im SLO liegt. Automatische Updates für den Dienst pausieren.
+- Budget der letzten 4 Wochen aufgebraucht: keine Releases und Änderungen am betroffenen Dienst außer Fixes für akute Ausfälle und Sicherheitsupdates, bis der Dienst wieder im SLO liegt. Automatische Updates für den Dienst pausieren.
 - Die freie Zeit geht in die Zuverlässigkeit: Maßnahmen aus den Postmortems zuerst.
 
 ## Einzelne Ausfälle

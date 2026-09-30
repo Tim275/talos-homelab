@@ -56,7 +56,7 @@ talosctl -n 192.168.0.101 logs etcd --tail 100
 
 ## etcdHighFsyncDurations
 
-WAL-fsync p99 über 1 s (P1) bzw. 0,5 s (P2). etcd wartet auf die Platte, der apiserver wird langsam, Webhooks und Leader-Elections laufen in Timeouts.
+WAL-fsync p99 über 1 s (Page) bzw. 0,5 s (Ticket). etcd wartet auf die Platte, der apiserver wird langsam, Webhooks und Leader-Elections laufen in Timeouts.
 
 ```bash
 talosctl -n 192.168.0.101 read /proc/pressure/io
