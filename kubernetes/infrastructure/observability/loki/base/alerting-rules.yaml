@@ -71,12 +71,12 @@ data:
               action: "kubectl get clusterrolebinding,rolebinding -A -o wide | grep cluster-admin — unbekannt: Binding loeschen, Token des Users sperren."
 
           - alert: LogsAuditHumanPrivilegedPod
-            expr: 'sum by (user_name, kubernetes_namespace) (count_over_time({source="kube-audit"} |~ "\"privileged\":true|\"hostPath\"" | json user_name="user.username", resource="objectRef.resource", verb="verb", uri="requestURI", kubernetes_namespace="objectRef.namespace" | resource=~"pods|deployments|statefulsets|daemonsets" | verb=~"create|update|patch" | uri!~".*dryRun.*" | user_name!~"^system:.*" [10m])) > 0'
+            expr: 'sum by (user_name, kubernetes_namespace) (count_over_time({source="kube-audit"} |~ "\"privileged\":true|\"hostPath\"" | json user_name="user.username", resource="objectRef.resource", verb="verb", uri="requestURI", kubernetes_namespace="objectRef.namespace" | resource=~"pods|replicationcontrollers|deployments|statefulsets|daemonsets|replicasets|jobs|cronjobs" | verb=~"create|update|patch" | uri!~".*dryRun.*" | user_name!~"^system:.*" [10m])) > 0'
             for: 1m
             labels: {severity: warning, component: security, source: loki}
             annotations:
               summary: "{{ $labels.user_name }} schreibt privilegierten Workload in {{ $labels.kubernetes_namespace }}"
-              description: "privileged oder hostPath in Pod, Deployment, StatefulSet oder DaemonSet, von einem Menschen geschrieben (z. B. kubectl debug node). Controller und GitOps sind ausgefiltert."
+              description: "privileged oder hostPath in einem Pod oder einer Pod-Vorlage (Deployment, StatefulSet, DaemonSet, ReplicaSet, Job, CronJob), von einem Menschen geschrieben (z. B. kubectl debug node). Controller und GitOps sind ausgefiltert."
               action: "kubectl get pods -n {{ $labels.kubernetes_namespace }} -o wide — Pod und Zweck pruefen, unbekannt: loeschen und Zugang pruefen."
 
           - alert: LogsAuditLogSilent
