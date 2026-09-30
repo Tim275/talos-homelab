@@ -22,6 +22,19 @@ spec:
             description: "Container {{ $labels.container }} in CrashLoopBackOff >5min."
             action: "kubectl logs -n {{ $labels.namespace }} {{ $labels.pod }} --previous; describe for the crash reason; fix config/image/resources."
 
+        - alert: PodCrashLooping
+          expr: |
+            max_over_time(kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff", namespace="drova", pod!~"redpanda-console-.*|drova-kafka-kafka-exporter-.*"}[5m]) == 1
+          for: 5m
+          labels:
+            severity: critical
+            component: application
+          annotations:
+            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-pod-overview"
+            summary: "Revenue app pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+            description: "Container {{ $labels.container }} of the revenue app in CrashLoopBackOff >5min."
+            action: "kubectl logs -n {{ $labels.namespace }} {{ $labels.pod }} --previous; describe for the crash reason; fix config/image/resources."
+
         - alert: ContainerOOMKilled
           expr: increase(kube_pod_container_status_terminated_reason{reason="OOMKilled"}[15m]) > 0
           labels:
