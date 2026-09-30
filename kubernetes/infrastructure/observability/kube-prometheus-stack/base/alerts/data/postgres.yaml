@@ -40,9 +40,39 @@ spec:
             description: "Last backup older than 25h — RPO exceeded, data-loss risk on failure."
             action: "kubectl get backup -n {{ $labels.namespace }} ; check ScheduledBackup + barman plugin pod"
 
+        - alert: CNPGClusterHACritical
+          expr: |
+            max by (namespace, cluster) (label_replace(cnpg_pg_replication_streaming_replicas - cnpg_pg_replication_is_wal_receiver_up, "cluster", "$1", "pod", "(.+)-[0-9]+")) < 1
+            and on (namespace, cluster) cnpg_cluster_spec_instances > 1
+          for: 5m
+          labels:
+            severity: critical
+            component: data
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/data.md#cnpgclusterhacritical"
+            dashboard_url: "https://grafana.timourhomelab.org/d/cnpg-postgres"
+            summary: "CNPG ohne bereiten Standby: {{ $labels.namespace }}/{{ $labels.cluster }}"
+            description: "Kein Standby streamt mehr. Faellt der Primary aus, gibt es kein Failover-Ziel."
+            action: "kubectl cnpg status {{ $labels.cluster }} -n {{ $labels.namespace }}"
+
     - name: postgres-ticket
       interval: 60s
       rules:
+        - alert: CNPGClusterHAWarning
+          expr: |
+            max by (namespace, cluster) (label_replace(cnpg_pg_replication_streaming_replicas - cnpg_pg_replication_is_wal_receiver_up, "cluster", "$1", "pod", "(.+)-[0-9]+")) == 1
+            and on (namespace, cluster) cnpg_cluster_spec_instances > 2
+          for: 5m
+          labels:
+            severity: warning
+            component: data
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/data.md#cnpgclusterhawarning"
+            dashboard_url: "https://grafana.timourhomelab.org/d/cnpg-postgres"
+            summary: "CNPG nur noch mit einem Standby: {{ $labels.namespace }}/{{ $labels.cluster }}"
+            description: "Ein weiterer Ausfall und es gibt kein Failover-Ziel mehr."
+            action: "kubectl cnpg status {{ $labels.cluster }} -n {{ $labels.namespace }}"
+
         - alert: CnpgReplicationLagHigh
           expr: cnpg_pg_replication_lag > 30
           for: 5m

@@ -6,7 +6,7 @@ metadata:
     release: kube-prometheus-stack
 spec:
   groups:
-    - name: istio-page
+    - name: istio-ticket
       interval: 60s
       rules:
         - alert: IstiodDown
@@ -22,20 +22,19 @@ spec:
             description: "Keine xDS-Config/Cert-Ausstellung mehr; laufender ambient-Traffic laeuft weiter, neue Pods/Cert-Rotation blockiert."
             action: "kubectl -n istio-system rollout restart deploy/istiod; sail-operator Status pruefen."
         - alert: ZtunnelNodeDown
-          expr: sum(up{job=~".*ztunnel.*"} == 1) < 6
+          expr: |
+            kube_daemonset_status_desired_number_scheduled{namespace="istio-system",daemonset="ztunnel"}
+              - kube_daemonset_status_number_ready{namespace="istio-system",daemonset="ztunnel"} > 0
           for: 10m
           labels:
-            severity: critical
+            severity: warning
             component: network
           annotations:
             runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/network.md#ztunnelnodedown"
             dashboard_url: "https://grafana.timourhomelab.org/d/istio-ztunnel"
-            summary: "ztunnel fehlt auf mind. einem Worker ({{ $value }} von 6 up)"
+            summary: "ztunnel fehlt auf {{ $value }} Node(s)"
             description: "Ambient-mTLS-Datapath auf betroffenem Node tot — enrollte Pods dort verlieren Mesh-Traffic."
             action: "kubectl -n istio-system get pods -l app=ztunnel -o wide; DaemonSet-Events pruefen."
-    - name: istio-ticket
-      interval: 60s
-      rules:
         - alert: IstioRootCertExpiringSoon
           expr: (citadel_server_root_cert_expiry_timestamp - time()) < 30 * 24 * 3600
           for: 1h

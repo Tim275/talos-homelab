@@ -25,6 +25,23 @@ kubectl -n <ns> logs <pod> -c postgres --tail 50
 - keycloak-db und n8n-postgres haben nur eine Instanz, es gibt nichts zu befördern. Pod und PVC prüfen, notfalls aus Backup wiederherstellen.
 - PVC voll → [PVCCriticallyFull](storage.md#pvccriticallyfull)
 
+## CNPGClusterHACritical
+
+Der Primary läuft, aber kein Standby streamt mehr. Fällt der Primary jetzt aus, gibt es kein Failover-Ziel.
+
+```bash
+kubectl cnpg status <cluster> -n <ns>
+kubectl -n <ns> get pods -l cnpg.io/cluster=<cluster> -o wide
+kubectl -n <ns> get events --sort-by=.lastTimestamp | tail -20
+```
+
+- Replica hängt in Pending oder CrashLoop: Events und PVC prüfen. CNPG baut die Replica selbst neu auf, sobald der Pod laufen kann.
+- Gilt nur für Cluster mit mehr als einer Instanz.
+
+## CNPGClusterHAWarning
+
+Nur noch ein Standby streamt. Ein weiterer Ausfall → [CNPGClusterHACritical](#cnpgclusterhacritical), gleiche Befehle.
+
 ## CNPGBackupStale
 
 Seit 25 h kein erfolgreiches Backup. CNPG wiederholt eine fehlgeschlagene ScheduledBackup nicht, das RPO bleibt bis zum nächsten Cron-Lauf verletzt.
