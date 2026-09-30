@@ -116,6 +116,28 @@ spec:
             description: "CoreDNS-Plugin gepanict — DNS instabil. kubectl logs -n kube-system -l k8s-app=kube-dns"
             action: "kubectl logs -n kube-system -l k8s-app=kube-dns --previous; identify the panicking plugin; restart CoreDNS."
 
+        - alert: KubeletServingCertExpiring
+          expr: probe_ssl_earliest_cert_expiry{job="kubelet-serving-cert"} - time() < 30 * 86400
+          for: 1h
+          labels:
+            severity: warning
+            component: kubernetes
+          annotations:
+            summary: "Kubelet-Serving-Zertifikat auf {{ $labels.node }} läuft in {{ $value | humanizeDuration }} ab"
+            description: "Selbst signiert, 1 Jahr ab Installation, Talos rotiert es nicht."
+            action: "kubelet.crt und kubelet.key unter /var/lib/kubelet/pki löschen und kubelet neu starten, oder serverTLSBootstrap mit Approver einführen."
+
+        - alert: KubeletServingCertProbeFailing
+          expr: probe_success{job="kubelet-serving-cert"} == 0
+          for: 2h
+          labels:
+            severity: warning
+            component: kubernetes
+          annotations:
+            summary: "Kubelet-Zertifikat auf {{ $labels.node }} nicht lesbar"
+            description: "Ohne Probe fällt KubeletServingCertExpiring still aus."
+            action: "Blackbox-Exporter-Logs und Erreichbarkeit von Port 10250 prüfen."
+
         - alert: KubeStateMetricsDown
           expr: absent(kube_node_status_condition{condition="Ready"})
           for: 10m

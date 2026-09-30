@@ -1,0 +1,19 @@
+rule_files:
+  - .rules.generated.yaml
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'probe_ssl_earliest_cert_expiry{job="kubelet-serving-cert", node="worker-1"}'
+        values: '864000x180'
+      - series: 'probe_ssl_earliest_cert_expiry{job="kubelet-serving-cert", node="worker-2"}'
+        values: '5184000x180'
+    alert_rule_test:
+      - eval_time: 2h
+        alertname: KubeletServingCertExpiring
+        exp_alerts:
+          - exp_labels: {severity: warning, component: kubernetes, job: kubelet-serving-cert, node: worker-1}
+            exp_annotations:
+              summary: "Kubelet-Serving-Zertifikat auf worker-1 läuft in 9d 22h 0m 0s ab"
+              description: "Selbst signiert, 1 Jahr ab Installation, Talos rotiert es nicht."
+              action: "kubelet.crt und kubelet.key unter /var/lib/kubelet/pki löschen und kubelet neu starten, oder serverTLSBootstrap mit Approver einführen."

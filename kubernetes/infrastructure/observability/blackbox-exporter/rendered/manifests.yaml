@@ -76,6 +76,13 @@ data:
       tcp_connect:
         prober: tcp
         timeout: 5s
+      tls_connect:
+        prober: tcp
+        tcp:
+          tls: true
+          tls_config:
+            insecure_skip_verify: true
+        timeout: 5s
 kind: ConfigMap
 metadata:
   labels:
@@ -135,7 +142,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: c7f7b12b0392bff1aaba6783e05f9c306c6ccc86d874e5e51363fecc4c1b8488
+        checksum/config: 280876ae35d90ca745f402ccd78ad38c880db1bf49ab714030f901c59c4f383d
       labels:
         app.kubernetes.io/instance: blackbox-exporter
         app.kubernetes.io/managed-by: Helm
@@ -267,3 +274,29 @@ spec:
       - https://prometheus.timourhomelab.org
       - https://alertmanager.timourhomelab.org
       - https://forgejo.timourhomelab.org
+---
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  labels:
+    release: kube-prometheus-stack
+  name: kubelet-serving-cert
+  namespace: monitoring
+spec:
+  jobName: kubelet-serving-cert
+  kubernetesSDConfigs:
+  - role: Node
+  metricsPath: /probe
+  params:
+    module:
+    - tls_connect
+  relabelings:
+  - sourceLabels:
+    - __address__
+    targetLabel: __param_target
+  - sourceLabels:
+    - __meta_kubernetes_node_name
+    targetLabel: node
+  - replacement: blackbox-exporter-prometheus-blackbox-exporter.monitoring.svc.cluster.local:9115
+    targetLabel: __address__
+  scrapeInterval: 1h
