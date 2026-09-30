@@ -89,35 +89,14 @@ alertmanager:
           mute_time_intervals:
             - nachtruhe
         - matchers:
-            - priority=~"p2|P2"
-          receiver: 'jira-ticket'
-          group_wait: 1m
-          group_interval: 10m
-          repeat_interval: 12h
-          continue: true
-        - matchers:
             - severity="warning"
-            - priority=""
           receiver: 'jira-ticket'
           group_wait: 1m
           group_interval: 10m
           repeat_interval: 12h
           continue: true
         - matchers:
-            - priority=~"p0|P0"
-          receiver: 'telegram-oncall'
-          group_wait: 10s
-          group_interval: 1m
-          repeat_interval: 30m
-          continue: true
-        - matchers:
-            - priority=~"p0|P0"
-          receiver: 'slack-critical'
-          group_wait: 10s
-          group_interval: 1m
-          repeat_interval: 30m
-        - matchers:
-            - priority=~"p1|P1"
+            - severity="critical"
           receiver: 'telegram-oncall'
           group_wait: 10s
           group_interval: 2m
@@ -125,21 +104,6 @@ alertmanager:
           continue: true
         - matchers:
             - severity="critical"
-            - priority=""
-          receiver: 'telegram-oncall'
-          group_wait: 10s
-          group_interval: 2m
-          repeat_interval: 1h
-          continue: true
-        - matchers:
-            - priority=~"p1|P1"
-          receiver: 'slack-critical'
-          group_wait: 10s
-          group_interval: 2m
-          repeat_interval: 1h
-        - matchers:
-            - severity="critical"
-            - priority=""
           receiver: 'slack-critical'
           group_wait: 10s
           group_interval: 2m
@@ -156,21 +120,6 @@ alertmanager:
           group_wait: 5m
           group_interval: 30m
           repeat_interval: 12h
-        - matchers:
-            - priority=~"p3|P3|p4|P4"
-          receiver: 'jira-ticket'
-          group_wait: 1m
-          group_interval: 10m
-          repeat_interval: 12h
-          continue: true
-        - matchers:
-            - priority=~"p3|P3|p4|P4"
-          receiver: 'slack-info'
-          group_wait: 1m
-          group_interval: 10m
-          repeat_interval: 12h
-          mute_time_intervals:
-            - nachtruhe
         - matchers:
             - alertname="KubeNodeEviction"
           receiver: 'slack-default'
@@ -338,7 +287,7 @@ alertmanager:
             issue_type: Task
             summary: '{{ template "jira.summary" . }}'
             description: '{{ template "jira.description" . }}'
-            labels: ['alertmanager', '{{ or .CommonLabels.priority "P2" | toLower }}', '{{ or .CommonLabels.tenant "platform" }}']
+            labels: ['alertmanager', '{{ or .CommonLabels.tenant "platform" }}']
             resolve_transition: Erledigt
             reopen_transition: Zu erledigen
             reopen_duration: 24h
@@ -347,21 +296,6 @@ alertmanager:
               basic_auth:
                 username: timour.miagol@outlook.de
                 password_file: /etc/alertmanager/secrets/jira-api/token
-
-      - name: 'slack-info'
-        slack_configs:
-          - channel: '#alerts'
-            send_resolved: false
-            title: '{{ template "slack.title" . }}'
-            text: '{{ template "slack.body" . }}'
-            color: '{{ template "slack.color" . }}'
-            actions:
-              - type: button
-                text: 'Explore :mag:'
-                url: 'https://grafana.timourhomelab.org/explore'
-              - type: button
-                text: 'Silence :no_bell:'
-                url: '{{ template "slack.silenceURL" . }}'
 
   templateFiles:
     homelab.tmpl: |-
@@ -409,7 +343,7 @@ alertmanager:
 
       {{ define "slack.body" -}}
       {{ range .Alerts -}}
-      *Severity:* `{{ .Labels.severity | toUpper }}`{{ if .Labels.priority }}  ·  *Priority:* `{{ .Labels.priority | toUpper }}`{{ end }}{{ if .Labels.component }}  ·  *Component:* `{{ .Labels.component }}`{{ end }}
+      *Severity:* `{{ .Labels.severity | toUpper }}`{{ if .Labels.component }}  ·  *Component:* `{{ .Labels.component }}`{{ end }}
       {{ if .Labels.namespace }}*Namespace:* `{{ .Labels.namespace }}`  {{ end }}{{ template "resource.slack" . }}
 
       *Summary:* {{ .Annotations.summary }}
@@ -426,7 +360,7 @@ alertmanager:
       {{ range $i, $a := .Alerts -}}
       {{- if lt $i 5 -}}
       ━━━━━━━━━━━━━━━━━━━━
-      Severity: {{ .Labels.severity | toUpper }}{{ if .Labels.priority }} · Priority: {{ .Labels.priority | toUpper }}{{ end }}
+      Severity: {{ .Labels.severity | toUpper }}
       {{ if .Labels.namespace }}Namespace: {{ .Labels.namespace }}
       {{ end }}{{ template "resource.telegram" . }}
       Summary: {{ .Annotations.summary }}
@@ -446,7 +380,7 @@ alertmanager:
       {{- end }}
 
       {{ define "jira.summary" -}}
-      [{{ or .CommonLabels.priority "P2" }}] {{ .CommonLabels.alertname }}{{ with .CommonLabels.namespace }} · {{ . }}{{ end }}{{ if eq (len .Alerts.Firing) 1 }}{{ with (index .Alerts.Firing 0).Annotations.summary }} — {{ . }}{{ end }}{{ end }}
+      {{ .CommonLabels.alertname }}{{ with .CommonLabels.namespace }} · {{ . }}{{ end }}{{ if eq (len .Alerts.Firing) 1 }}{{ with (index .Alerts.Firing 0).Annotations.summary }} — {{ . }}{{ end }}{{ end }}
       {{- end }}
 
       {{ define "jira.description" -}}
@@ -464,5 +398,5 @@ alertmanager:
       {{ end }}* [Abfrage in Prometheus|{{ (index .Alerts 0).GeneratorURL }}]
       * [Stummschalten|{{ template "slack.silenceURL" . }}]
 
-      _{{ or .CommonLabels.priority "P2" }} · {{ .CommonLabels.severity }} · schließt sich selbst, wenn der Alarm endet_
+      _{{ .CommonLabels.severity }} · schließt sich selbst, wenn der Alarm endet_
       {{- end }}
