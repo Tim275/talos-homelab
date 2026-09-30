@@ -1,0 +1,30 @@
+rule_files:
+  - .rules.generated.yaml
+evaluation_interval: 1h
+tests:
+  # Zeitplan ohne jeden Erfolg → nach 8 Tagen
+  - interval: 1h
+    input_series:
+      - series: 'velero_schedule_info{schedule="neu",phase="Enabled"}'
+        values: '1x200'
+      - series: 'velero_schedule_info{schedule="alt",phase="Enabled"}'
+        values: '1x200'
+      - series: 'velero_backup_last_successful_timestamp{schedule="alt"}'
+        values: '1x200'
+    alert_rule_test:
+      - eval_time: 7d
+        alertname: VeleroScheduleNeverSucceeded
+        exp_alerts: []
+      - eval_time: 8d1h
+        alertname: VeleroScheduleNeverSucceeded
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              priority: P2
+              component: backup
+              schedule: neu
+              phase: Enabled
+            exp_annotations:
+              dashboard_url: "https://grafana.timourhomelab.org/d/velero-overview"
+              summary: "Velero-Zeitplan neu hat noch nie erfolgreich gesichert"
+              description: "Ohne Erfolg fehlt der Zeitstempel, VeleroNoRecentBackup sieht den Zeitplan dann nicht. 8 Tage decken Wochen-Zeitpläne ab."
