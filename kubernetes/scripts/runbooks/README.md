@@ -25,7 +25,7 @@ Jeder Page-Alarm verlinkt über `runbook_url` direkt auf seinen Abschnitt. Der R
 | Alarm | Stufe |
 |---|---|
 | [ProxmoxHostDown](hosts.md#proxmoxhostdown) | Page |
-| [ProxmoxHostRebootLoop](hosts.md#proxmoxhostrebootloop) | Page |
+| [ProxmoxHostRebootLoop](hosts.md#proxmoxhostrebootloop) | Ticket |
 | [ProxmoxStorageCritical](hosts.md#proxmoxstoragecritical) | Page |
 | [ProxmoxZfsPoolCritical](hosts.md#proxmoxzfspoolcritical) | Page |
 | [HostRootFilesystemCritical](hosts.md#hostrootfilesystemcritical) | Page |
