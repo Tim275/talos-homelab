@@ -97,6 +97,15 @@ data:
               description: "ServiceAccounts sind ausgefiltert. Baseline liegt bei ~7 pro 10min — ein Vielfaches davon sieht nach Absammeln aus."
               action: "Loki: {source=\"kube-audit\"} | json | objectRef_resource=\"secrets\" — welche Secrets pruefen."
 
+          - alert: LogsAuditEventsDeleted
+            expr: 'sum by (user_name, kubernetes_namespace) (count_over_time({source="kube-audit"} | json user_name="user.username", resource="objectRef.resource", verb="verb", uri="requestURI", kubernetes_namespace="objectRef.namespace" | resource="events" | verb=~"delete|deletecollection" | uri!~".*dryRun.*" | user_name!="system:serviceaccount:kube-system:namespace-controller" [10m])) > 0'
+            for: 1m
+            labels: {severity: warning, component: security, source: loki}
+            annotations:
+              summary: "{{ $labels.user_name }} loescht Events in {{ $labels.kubernetes_namespace }}"
+              description: "Events laufen von selbst ab, loeschen muss sie niemand. Namespace-Loeschung ist ausgefiltert."
+              action: "Loki: {source=\"kube-audit\"} | json | objectRef_resource=\"events\" — wer, wann, welcher Namespace; danach Audit-Log um diesen Zeitpunkt lesen."
+
           - alert: LogsNetBirdAccessChange
             expr: 'sum by (pod) (count_over_time({namespace="netbird", pod=~"netbird-audit-export.*"} |~ "\"activity_code\":\"(rule|policy|route|group|nameserver)\\." [1h])) > 0'
             labels: {severity: warning, component: security, source: loki}
