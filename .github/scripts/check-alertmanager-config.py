@@ -16,11 +16,14 @@ from pathlib import Path
 import yaml
 
 VALUES_GLOB = "**/alertmanager*.yaml"
+ROUTES = Path(".github/tests/alertmanager/routes.yaml")
 
 
 def extract_configs(tree: Path) -> list[tuple[Path, dict]]:
     found = []
     for path in sorted(tree.glob(VALUES_GLOB)):
+        if "/charts/" in str(path):
+            continue
         try:
             docs = list(yaml.safe_load_all(path.read_text()))
         except yaml.YAMLError as exc:
@@ -32,6 +35,27 @@ def extract_configs(tree: Path) -> list[tuple[Path, dict]]:
                 if isinstance(cfg, dict) and "route" in cfg:
                     found.append((path, cfg))
     return found
+
+
+def check_routes(path: Path, cfg_file: str) -> bool:
+    spec = yaml.safe_load(ROUTES.read_text())
+    if not str(path).endswith(spec["config"]):
+        return True
+    ok = True
+    for case in spec["cases"]:
+        labels = [f"{k}={v}" for k, v in case["labels"].items()]
+        result = subprocess.run(
+            ["amtool", "config", "routes", "test", f"--config.file={cfg_file}", *labels],
+            capture_output=True,
+            text=True,
+        )
+        got = result.stdout.strip()
+        want = ",".join(case["receivers"])
+        if result.returncode != 0 or got != want:
+            ok = False
+            print(f"FAIL route {case['labels']}: erwartet {want}, bekommen {got or result.stderr.strip()}")
+    print(f"{'OK  ' if ok else 'FAIL'} {path}  ({len(spec['cases'])} Routentests)")
+    return ok
 
 
 def main() -> int:
@@ -51,7 +75,10 @@ def main() -> int:
             capture_output=True,
             text=True,
         )
+        routes_ok = result.returncode != 0 or check_routes(path, tmp_path)
         Path(tmp_path).unlink(missing_ok=True)
+        if not routes_ok:
+            failed = True
         if result.returncode != 0:
             failed = True
             print(f"FAIL {path}")
