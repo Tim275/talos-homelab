@@ -103,7 +103,7 @@ kubectl -n istio-system rollout restart deploy istiod
 
 ## ZtunnelNodeDown
 
-Auf mindestens einem Worker fehlt ztunnel. Pods im Mesh auf diesem Node verlieren ihren Traffic.
+Auf mindestens einem Node fehlt ein bereiter ztunnel. Pods im Mesh auf diesem Node verlieren ihren Traffic.
 
 ```bash
 kubectl -n istio-system get pods -l app=ztunnel -o wide
