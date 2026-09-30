@@ -44,13 +44,40 @@ data:
               action: "Loki: {source=\"kube-audit\"} | json | user_username=\"system:anonymous\" — sourceIPs und requestURI pruefen."
 
           - alert: LogsAuditRBACChange
-            expr: 'sum by (user_name) (count_over_time({source="kube-audit"} | json user_name="user.username", resource="objectRef.resource", verb="verb" | resource=~"rolebindings|clusterrolebindings" | verb!~"get|list|watch" | user_name!~"^system:.*" [1h])) > 0'
+            expr: 'sum by (user_name) (count_over_time({source="kube-audit"} | json user_name="user.username", resource="objectRef.resource", verb="verb", role="requestObject.roleRef.name" | resource=~"rolebindings|clusterrolebindings" | verb!~"get|list|watch" | user_name!~"^system:.*" | role!="cluster-admin" [1h])) > 0'
             for: 2m
             labels: {severity: warning, component: security, source: loki}
             annotations:
               summary: "Rechte-Vergabe ausserhalb von GitOps ({{ $value }} in 1h)"
               description: "Ein Mensch hat ein RoleBinding geaendert. Reconciler-Aenderungen sind ausgefiltert, Baseline ist null."
               action: "Loki: {source=\"kube-audit\"} | json | objectRef_resource=~\"rolebindings|clusterrolebindings\" — verb und user.username pruefen."
+
+          - alert: LogsAuditClusterAdminBinding
+            expr: 'sum by (user_name, kubernetes_name) (count_over_time({source="kube-audit"} | json user_name="user.username", resource="objectRef.resource", verb="verb", kubernetes_name="objectRef.name", code="responseStatus.code", role="requestObject.roleRef.name" | resource=~"clusterrolebindings|rolebindings" | verb=~"create|update" | role="cluster-admin" | user_name!="system:serviceaccount:argocd:argocd-application-controller" | code=~"2.." [10m])) > 0'
+            for: 1m
+            labels: {severity: critical, component: security, source: loki}
+            annotations:
+              summary: "cluster-admin vergeben: {{ $labels.kubernetes_name }} durch {{ $labels.user_name }}"
+              description: "Volle Clusterrechte ausserhalb von GitOps. Nur ArgoCD ist ausgefiltert, auch Service-Accounts zaehlen. Baseline ist null."
+              action: "kubectl get clusterrolebinding,rolebinding -A -o wide | grep cluster-admin — unbekannt: Binding loeschen, Token des Users sperren."
+
+          - alert: LogsAuditHumanPrivilegedPod
+            expr: 'sum by (user_name, kubernetes_namespace) (count_over_time({source="kube-audit"} |~ "\"privileged\":true|\"hostPath\"" | json user_name="user.username", resource="objectRef.resource", verb="verb", kubernetes_namespace="objectRef.namespace" | resource="pods" | verb="create" | user_name!~"^system:.*" [10m])) > 0'
+            for: 1m
+            labels: {severity: warning, component: security, source: loki}
+            annotations:
+              summary: "{{ $labels.user_name }} startet privilegierten Pod in {{ $labels.kubernetes_namespace }}"
+              description: "privileged oder hostPath, von einem Menschen angelegt (z. B. kubectl debug node). Controller sind ausgefiltert."
+              action: "kubectl get pods -n {{ $labels.kubernetes_namespace }} -o wide — Pod und Zweck pruefen, unbekannt: loeschen und Zugang pruefen."
+
+          - alert: LogsAuditLogSilent
+            expr: 'absent_over_time({source="kube-audit"}[15m])'
+            for: 5m
+            labels: {severity: critical, component: security, source: loki}
+            annotations:
+              summary: "Seit 15 min kein API-Audit-Log in Loki"
+              description: "Ohne Audit-Log bleibt ein Einbruch unsichtbar. Meist Alloy auf ctrl-0 oder der Audit-Pfad."
+              action: "kubectl -n monitoring get pods -l app.kubernetes.io/name=alloy -o wide --field-selector spec.nodeName=ctrl-0; talosctl -n 192.168.0.101 read /var/log/audit/kube/kube-apiserver.log | tail -3"
 
           - alert: LogsAuditHumanSecretAccess
             expr: 'sum by (user_name) (count_over_time({source="kube-audit"} | json user_name="user.username", resource="objectRef.resource" | resource="secrets" | user_name!~"^system:.*" [10m])) > 40'
