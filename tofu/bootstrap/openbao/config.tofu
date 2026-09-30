@@ -10,6 +10,9 @@ resource "kubernetes_secret_v1" "seal-key" {
   metadata {
     name      = "openbao-seal-key"
     namespace = "openbao"
+    labels = {
+      "velero.io/exclude-from-backup" = "true"
+    }
   }
 
   data = {
