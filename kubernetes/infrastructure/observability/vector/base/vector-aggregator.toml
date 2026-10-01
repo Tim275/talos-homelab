@@ -435,3 +435,27 @@ type = "prometheus_exporter"
 inputs = ["internal_metrics", "coraza_metric"]
 address = "0.0.0.0:9090"
 default_namespace = "vector"
+
+# Audit-Log zusaetzlich ins WORM-Archiv
+[transforms.audit_archive_filter]
+type = "filter"
+inputs = ["enrich_logs"]
+condition = 'exists(.source) && .source == "kubernetes-audit"'
+
+[sinks.audit_archive]
+type = "aws_s3"
+inputs = ["audit_archive_filter"]
+endpoint = "http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80"
+region = "us-east-1"
+bucket = "audit-archive"
+key_prefix = "kube-audit/%Y/%m/%d/"
+compression = "gzip"
+encoding.codec = "json"
+framing.method = "newline_delimited"
+auth.access_key_id = "${AUDIT_ARCHIVE_ACCESS_KEY}"
+auth.secret_access_key = "${AUDIT_ARCHIVE_SECRET_KEY}"
+
+[sinks.audit_archive.buffer]
+type = "disk"
+max_size = 536870912
+when_full = "drop_newest"
