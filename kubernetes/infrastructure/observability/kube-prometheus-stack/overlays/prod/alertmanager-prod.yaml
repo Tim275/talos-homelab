@@ -229,7 +229,7 @@ alertmanager:
                 url: '{{ if (index .Alerts 0).Annotations.dashboard_url }}{{ template "alert.dashboard_url" . }}{{ else }}{{ if .CommonLabels.grafana_url }}{{ .CommonLabels.grafana_url }}{{ else }}https://grafana.timourhomelab.org{{ end }}{{ end }}'
               - type: button
                 text: 'Explore :mag:'
-                url: 'https://grafana.timourhomelab.org/explore'
+                url: '{{ template "explore.url" . }}'
               - type: button
                 text: 'Silence :no_bell:'
                 url: '{{ template "slack.silenceURL" . }}'
@@ -359,6 +359,14 @@ alertmanager:
 
       {{ define "alert.dashboard_url" -}}
       {{ (index .Alerts 0).Annotations.dashboard_url }}
+      {{- end }}
+
+      {{ define "explore.url" -}}
+      {{- if and (index .Alerts 0).Labels.namespace (index .Alerts 0).Labels.pod -}}
+      https://grafana.timourhomelab.org/explore?schemaVersion=1&orgId=1&panes={{ printf `{"ex":{"datasource":"loki","queries":[{"refId":"A","expr":"{namespace=\"%s\",pod=\"%s\"}","datasource":{"type":"loki","uid":"loki"}}],"range":{"from":"now-1h","to":"now"}}}` (index .Alerts 0).Labels.namespace (index .Alerts 0).Labels.pod | urlquery }}
+      {{- else -}}
+      https://grafana.timourhomelab.org/explore
+      {{- end -}}
       {{- end }}
 
       {{ define "jira.summary" -}}
