@@ -310,7 +310,7 @@ alertmanager:
       {{- else if .Labels.job_name }}*Resource:* `job/{{ .Labels.job_name }}`
       {{- else if $pod }}*Resource:* `pod/{{ $pod }}`
       {{- else if .Labels.node }}*Resource:* `node/{{ .Labels.node }}`
-      {{- else if .Labels.instance }}*Resource:* `instance/{{ .Labels.instance }}`
+      {{- else if and .Labels.instance (ne .Labels.job "kube-state-metrics") }}*Resource:* `instance/{{ .Labels.instance }}`
       {{- end -}}
       {{ end }}
 
@@ -323,7 +323,7 @@ alertmanager:
       {{- else if .Labels.job_name }}<b>Resource:</b> <code>job/{{ .Labels.job_name }}</code>
       {{- else if $pod }}<b>Resource:</b> <code>pod/{{ $pod }}</code>
       {{- else if .Labels.node }}<b>Resource:</b> <code>node/{{ .Labels.node }}</code>
-      {{- else if .Labels.instance }}<b>Resource:</b> <code>instance/{{ .Labels.instance }}</code>
+      {{- else if and .Labels.instance (ne .Labels.job "kube-state-metrics") }}<b>Resource:</b> <code>instance/{{ .Labels.instance }}</code>
       {{- end -}}
       {{ end }}
 
@@ -369,10 +369,11 @@ alertmanager:
       {{- $a := index .Alerts 0 -}}
       {{- $pod := "" }}{{ if and $a.Labels.pod (not (match "kube-state-metrics" $a.Labels.pod)) }}{{ $pod = $a.Labels.pod }}{{ end -}}
       {{- $ns := $a.Labels.namespace -}}
+      {{- $from := ($a.StartsAt.Add -3600000000000).UnixMilli -}}
       {{- if and $ns $pod -}}
-      https://grafana.timourhomelab.org/explore?schemaVersion=1&orgId=1&panes={{ printf `{"ex":{"datasource":"loki","queries":[{"refId":"A","expr":"{namespace=\"%s\",pod=\"%s\"}","datasource":{"type":"loki","uid":"loki"}}],"range":{"from":"%d","to":"now"}}}` $ns $pod $a.StartsAt.UnixMilli | urlquery }}
+      https://grafana.timourhomelab.org/explore?schemaVersion=1&orgId=1&panes={{ printf `{"ex":{"datasource":"loki","queries":[{"refId":"A","expr":"{namespace=\"%s\",pod=\"%s\"}","datasource":{"type":"loki","uid":"loki"}}],"range":{"from":"%d","to":"now"}}}` $ns $pod $from | urlquery }}
       {{- else if and $ns (not $a.Labels.node) -}}
-      https://grafana.timourhomelab.org/explore?schemaVersion=1&orgId=1&panes={{ printf `{"ex":{"datasource":"loki","queries":[{"refId":"A","expr":"{namespace=\"%s\"}","datasource":{"type":"loki","uid":"loki"}}],"range":{"from":"%d","to":"now"}}}` $ns $a.StartsAt.UnixMilli | urlquery }}
+      https://grafana.timourhomelab.org/explore?schemaVersion=1&orgId=1&panes={{ printf `{"ex":{"datasource":"loki","queries":[{"refId":"A","expr":"{namespace=\"%s\"}","datasource":{"type":"loki","uid":"loki"}}],"range":{"from":"%d","to":"now"}}}` $ns $from | urlquery }}
       {{- else -}}
       https://grafana.timourhomelab.org/explore
       {{- end -}}
