@@ -302,24 +302,28 @@ alertmanager:
       {{ end }}
 
       {{ define "resource.slack" -}}
+      {{- $pod := "" }}{{ if and .Labels.pod (not (match "kube-state-metrics" .Labels.pod)) }}{{ $pod = .Labels.pod }}{{ end -}}
       {{ if .Labels.deployment }}*Resource:* `deployment/{{ .Labels.deployment }}`
       {{- else if .Labels.statefulset }}*Resource:* `statefulset/{{ .Labels.statefulset }}`
       {{- else if .Labels.daemonset }}*Resource:* `daemonset/{{ .Labels.daemonset }}`
       {{- else if .Labels.persistentvolumeclaim }}*Resource:* `pvc/{{ .Labels.persistentvolumeclaim }}`
-      {{- else if .Labels.pod }}*Resource:* `pod/{{ .Labels.pod }}`
-      {{- else if .Labels.instance }}*Resource:* `instance/{{ .Labels.instance }}`
+      {{- else if .Labels.job_name }}*Resource:* `job/{{ .Labels.job_name }}`
+      {{- else if $pod }}*Resource:* `pod/{{ $pod }}`
       {{- else if .Labels.node }}*Resource:* `node/{{ .Labels.node }}`
+      {{- else if .Labels.instance }}*Resource:* `instance/{{ .Labels.instance }}`
       {{- end -}}
       {{ end }}
 
       {{ define "resource.telegram" -}}
+      {{- $pod := "" }}{{ if and .Labels.pod (not (match "kube-state-metrics" .Labels.pod)) }}{{ $pod = .Labels.pod }}{{ end -}}
       {{ if .Labels.deployment }}<b>Resource:</b> <code>deployment/{{ .Labels.deployment }}</code>
       {{- else if .Labels.statefulset }}<b>Resource:</b> <code>statefulset/{{ .Labels.statefulset }}</code>
       {{- else if .Labels.daemonset }}<b>Resource:</b> <code>daemonset/{{ .Labels.daemonset }}</code>
       {{- else if .Labels.persistentvolumeclaim }}<b>Resource:</b> <code>pvc/{{ .Labels.persistentvolumeclaim }}</code>
-      {{- else if .Labels.pod }}<b>Resource:</b> <code>pod/{{ .Labels.pod }}</code>
-      {{- else if .Labels.instance }}<b>Resource:</b> <code>instance/{{ .Labels.instance }}</code>
+      {{- else if .Labels.job_name }}<b>Resource:</b> <code>job/{{ .Labels.job_name }}</code>
+      {{- else if $pod }}<b>Resource:</b> <code>pod/{{ $pod }}</code>
       {{- else if .Labels.node }}<b>Resource:</b> <code>node/{{ .Labels.node }}</code>
+      {{- else if .Labels.instance }}<b>Resource:</b> <code>instance/{{ .Labels.instance }}</code>
       {{- end -}}
       {{ end }}
 
@@ -362,8 +366,13 @@ alertmanager:
       {{- end }}
 
       {{ define "explore.url" -}}
-      {{- if and (index .Alerts 0).Labels.namespace (index .Alerts 0).Labels.pod -}}
-      https://grafana.timourhomelab.org/explore?schemaVersion=1&orgId=1&panes={{ printf `{"ex":{"datasource":"loki","queries":[{"refId":"A","expr":"{namespace=\"%s\",pod=\"%s\"}","datasource":{"type":"loki","uid":"loki"}}],"range":{"from":"now-1h","to":"now"}}}` (index .Alerts 0).Labels.namespace (index .Alerts 0).Labels.pod | urlquery }}
+      {{- $a := index .Alerts 0 -}}
+      {{- $pod := "" }}{{ if and $a.Labels.pod (not (match "kube-state-metrics" $a.Labels.pod)) }}{{ $pod = $a.Labels.pod }}{{ end -}}
+      {{- $ns := $a.Labels.namespace -}}
+      {{- if and $ns $pod -}}
+      https://grafana.timourhomelab.org/explore?schemaVersion=1&orgId=1&panes={{ printf `{"ex":{"datasource":"loki","queries":[{"refId":"A","expr":"{namespace=\"%s\",pod=\"%s\"}","datasource":{"type":"loki","uid":"loki"}}],"range":{"from":"%d","to":"now"}}}` $ns $pod $a.StartsAt.UnixMilli | urlquery }}
+      {{- else if and $ns (not $a.Labels.node) -}}
+      https://grafana.timourhomelab.org/explore?schemaVersion=1&orgId=1&panes={{ printf `{"ex":{"datasource":"loki","queries":[{"refId":"A","expr":"{namespace=\"%s\"}","datasource":{"type":"loki","uid":"loki"}}],"range":{"from":"%d","to":"now"}}}` $ns $a.StartsAt.UnixMilli | urlquery }}
       {{- else -}}
       https://grafana.timourhomelab.org/explore
       {{- end -}}
