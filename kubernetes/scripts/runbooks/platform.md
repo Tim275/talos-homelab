@@ -159,3 +159,19 @@ sum by (integration, reason) (rate(alertmanager_notifications_failed_total[15m])
   ```bash
   curl -su "$USER:$TOKEN" https://timourmiagol.atlassian.net/rest/api/2/issue/SCRUM-1/transitions | jq -r '.transitions[].name'
   ```
+
+## LokiIngestionOverloadDropping
+
+Loki verwirft über 1 % der eingehenden Zeilen, auf dem 30-min- und dem 5-min-Fenster. Das Label `reason` nennt den Grund. Die Zeilen sind weg, und Log-Alarme sehen sie nicht. Es läuft keine Platte voll, ein Mandant überschreitet ein Limit.
+
+```promql
+sum by (reason, tenant) (rate(loki_discarded_samples_total[5m]))
+```
+```bash
+kubectl -n monitoring logs loki-0 -c loki --since=30m | grep -i 'rate limit'
+```
+
+- `rate_limited` → der Mandant liefert insgesamt zu viel (`limits_config.ingestion_rate_mb`, `ingestion_burst_size_mb`).
+- `per_stream_rate_limit` → ein einzelner Stream ist zu laut (`per_stream_rate_limit`, `per_stream_rate_limit_burst`).
+- Den lauten Stream finden: in Grafana Explore (Loki) `topk(10, sum by (namespace, pod) (rate({namespace=~".+"}[5m])))`. Verdächtig sind zuerst Tetragon, Hubble-Export und das Audit-Log.
+- Die Limits stehen in `kubernetes/infrastructure/observability/loki/base/values.yaml`. Erst die Quelle leiser machen, das Limit nur anheben, wenn die Last gewollt ist.

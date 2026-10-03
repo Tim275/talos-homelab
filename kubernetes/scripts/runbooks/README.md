@@ -25,6 +25,7 @@ Jeder Page-Alarm verlinkt über `runbook_url` direkt auf seinen Abschnitt. Der R
 | Alarm | Stufe |
 |---|---|
 | [ProxmoxHostDown](hosts.md#proxmoxhostdown) | Page |
+| [KubeMultipleNodesNotReady](hosts.md#kubemultiplenodesnotready) | Page |
 | [ProxmoxHostRebootLoop](hosts.md#proxmoxhostrebootloop) | Ticket |
 | [ProxmoxStorageCritical](hosts.md#proxmoxstoragecritical) | Page |
 | [ProxmoxZfsPoolCritical](hosts.md#proxmoxzfspoolcritical) | Page |
@@ -41,6 +42,7 @@ Jeder Page-Alarm verlinkt über `runbook_url` direkt auf seinen Abschnitt. Der R
 |---|---|
 | [InternetConnectivityLost](network.md#internetconnectivitylost) | Page |
 | [HomelabEdgeDown](network.md#homelabedgedown) | Page |
+| [HomelabPublicServiceDown](network.md#homelabpublicservicedown) | Page |
 | [LogsGatewayRoutesDisabled](network.md#logsgatewayroutesdisabled) | Page |
 | [CloudflaredAllDown](network.md#cloudflaredalldown) | Page |
 | [CloudflaredNoEdgeConnections](network.md#cloudflarednoedgeconnections) | Page |
@@ -89,6 +91,7 @@ Jeder Page-Alarm verlinkt über `runbook_url` direkt auf seinen Abschnitt. Der R
 | [PrometheusPodMissing](platform.md#prometheuspodmissing) | Page |
 | [AlertmanagerPodMissing](platform.md#alertmanagerpodmissing) | Page |
 | [AlertmanagerClusterFailedToSendAlerts](platform.md#alertmanagerclusterfailedtosendalerts) | Page |
+| [LokiIngestionOverloadDropping](platform.md#lokiingestionoverloaddropping) | Page |
 
 ## Drova
 
@@ -115,3 +118,4 @@ Jeder Page-Alarm verlinkt über `runbook_url` direkt auf seinen Abschnitt. Der R
 | [DrovaChatServiceLatencyBurnRateFast](drova.md#latenz-burn) | Page |
 | [DrovaChatServiceLatencyBurnRateSlow](drova.md#latenz-burn) | Page |
 | [DrovaRpcHopFailing](drova.md#drovarpchopfailing) | Ticket |
+| [PodCrashLooping](drova.md#podcrashlooping) | Page |

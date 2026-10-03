@@ -52,3 +52,22 @@ kubectl -n kube-system exec <cilium-pod> -c cilium-agent -- hubble observe --ver
 
 - `UNAVAILABLE` → Ziel hat keine Endpoints, oder Traffic wird verworfen (drova hat Default-Deny für Egress).
 - `DEADLINE_EXCEEDED` → Ziel zu langsam, siehe [Latenz-Burn](#latenz-burn).
+
+## PodCrashLooping
+
+Ein Container der Kunden-App im Namespace `drova` hängt seit 5 min in CrashLoopBackOff. Redpanda-Console und Kafka-Exporter sind ausgenommen. Eine zweite Regel mit demselben Namen (`warning`) gilt für alle anderen Namespaces, die Schritte sind dieselben.
+
+Solange andere Replicas ready sind, merken Nutzer meist nichts. Gepagt wird trotzdem, weil die Redundanz weg ist und ein Rollout oder Node-Neustart den Rest mitnehmen kann.
+
+```bash
+kubectl -n drova get pods -o wide | grep -v Running
+kubectl -n drova logs <pod> --previous --tail 80
+kubectl -n drova describe pod <pod> | grep -A8 'Last State'
+kubectl -n drova get events --sort-by=.lastTimestamp | tail -15
+```
+
+- Exit Code `137` oder `OOMKilled` → Memory-Limit gegen den echten Verbrauch prüfen: `kubectl top pods -n drova --sort-by=memory`.
+- Exit Code `1` oder `2` kurz nach dem Start → Konfiguration oder ein Secret fehlt, die Ursache steht im `--previous`-Log.
+- Das Log endet mit Verbindungsfehlern → eine Abhängigkeit ist weg: [CnpgPrimaryDown](data.md#cnpgprimarydown), [KafkaOfflinePartitions](data.md#kafkaofflinepartitions).
+- Pods verlieren nach einem Node-Reboot die Umleitung → [ZtunnelNodeDown](network.md#ztunnelnodedown).
+- Kurz nach einem Deploy → in `drova-gitops` zurückrollen (Revert), dann `drova-prod` manuell syncen.

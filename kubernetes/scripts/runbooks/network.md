@@ -16,6 +16,24 @@ kubectl -n cloudflared get pods
 - `direct response` im Log → [LogsGatewayRoutesDisabled](#logsgatewayroutesdisabled)
 - cloudflared ohne Edge-Verbindung → [CloudflaredNoEdgeConnections](#cloudflarednoedgeconnections)
 
+## HomelabPublicServiceDown
+
+Die Blackbox-Probe `homelab-public-services` bekommt von einem Dienst seit 5 min keine gültige HTTP-Antwort (verweigert, Timeout oder 5xx). Als Page gilt das nur für die Kunden-App `drova.timourhomelab.org`, nach 3 min. Die Probe läuft im Cluster und löst intern auf: Sie prüft Envoy Gateway → App, nicht den Weg über Cloudflare.
+
+```bash
+curl -sk -o /dev/null -w '%{http_code}\n' --resolve drova.timourhomelab.org:443:192.168.0.152 https://drova.timourhomelab.org/
+kubectl get httproute -A | grep drova
+kubectl -n drova get pods -o wide | grep -v Running
+kubectl -n gateway get pods
+```
+
+- Mehrere Dienste gleichzeitig → [HomelabEdgeDown](#homelabedgedown), der gemeinsame Weg ist kaputt.
+- `503` → Route ohne gesunden Backend. `kubectl -n drova get endpointslices`: keine Endpoints heißt Pods nicht ready, siehe [PodCrashLooping](drova.md#podcrashlooping).
+- `404` → HTTPRoute fehlt oder hängt nicht am Gateway `envoy-gateway` (`drova-frontend`, `drova-api`, `drova-login` im Namespace `drova`).
+- `000` oder Timeout → Gateway-Pods oder Load-Balancer-IP, siehe [LogsGatewayRoutesDisabled](#logsgatewayroutesdisabled).
+- 5xx aus der App → [Fehler-Burn](drova.md#fehler-burn).
+- Probe grün, Nutzer melden trotzdem einen Ausfall → der Weg über Cloudflare ist kaputt: [CloudflaredAllDown](#cloudflaredalldown).
+
 ## LogsGatewayRoutesDisabled
 
 Envoy Gateway konnte eine Extension- oder SecurityPolicy nicht auflösen und beantwortet betroffene Routen mit 500. Bei der WAF reicht ein einmal fehlgeschlagener WASM-Download, der Controller versucht es nicht erneut (envoyproxy/gateway#5619).
