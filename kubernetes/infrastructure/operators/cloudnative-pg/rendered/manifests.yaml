@@ -12,7 +12,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.19.0
+    controller-gen.kubebuilder.io/version: v0.20.0
     helm.sh/resource-policy: keep
   name: backups.postgresql.cnpg.io
 spec:
@@ -224,6 +224,11 @@ spec:
                     - key
                     - name
                     type: object
+                  useDefaultAzureCredentials:
+                    description: |-
+                      Use the default Azure authentication flow, which includes DefaultAzureCredential.
+                      This allows authentication using environment variables and managed identities.
+                    type: boolean
                 type: object
               backupId:
                 description: The ID of the Barman backup
@@ -320,6 +325,13 @@ spec:
                     type: string
                   podName:
                     description: The pod name
+                    type: string
+                  sessionID:
+                    description: |-
+                      The instance manager session ID. This is a unique identifier generated at instance manager
+                      startup and changes on every restart (including container reboots). Used to detect if
+                      the instance manager was restarted during long-running operations like backups, which
+                      would terminate any running backup process.
                     type: string
                 type: object
               majorVersion:
@@ -463,7 +475,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.19.0
+    controller-gen.kubebuilder.io/version: v0.20.0
     helm.sh/resource-policy: keep
   name: clusterimagecatalogs.postgresql.cnpg.io
 spec:
@@ -545,7 +557,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.19.0
+    controller-gen.kubebuilder.io/version: v0.20.0
     helm.sh/resource-policy: keep
   name: clusters.postgresql.cnpg.io
 spec:
@@ -1563,9 +1575,10 @@ spec:
                         operator:
                           description: |-
                             Operator represents a key's relationship to the value.
-                            Valid operators are Exists and Equal. Defaults to Equal.
+                            Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                             Exists is equivalent to wildcard for value, so that a pod can
                             tolerate all taints of a particular category.
+                            Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                           type: string
                         tolerationSeconds:
                           description: |-
@@ -1658,6 +1671,11 @@ spec:
                             - key
                             - name
                             type: object
+                          useDefaultAzureCredentials:
+                            description: |-
+                              Use the default Azure authentication flow, which includes DefaultAzureCredential.
+                              This allows authentication using environment variables and managed identities.
+                            type: boolean
                         type: object
                       data:
                         description: |-
@@ -2520,8 +2538,9 @@ spec:
                               integer)
                             type: string
                           targetTime:
-                            description: The target time as a timestamp in the RFC3339
-                              standard
+                            description: |-
+                              The target time as a timestamp in RFC3339 format or PostgreSQL timestamp format.
+                              Timestamps without an explicit timezone are interpreted as UTC.
                             type: string
                           targetXID:
                             description: The target transaction ID
@@ -3040,7 +3059,7 @@ spec:
                           resources:
                             description: |-
                               resources represents the minimum resources the volume should have.
-                              If RecoverVolumeExpansionFailure feature is enabled users are allowed to specify resource requirements
+                              Users are allowed to specify resource requirements
                               that are lower than previous value but must still be higher than capacity recorded in the
                               status field of the claim.
                               More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#resources
@@ -3244,6 +3263,11 @@ spec:
                               - key
                               - name
                               type: object
+                            useDefaultAzureCredentials:
+                              description: |-
+                                Use the default Azure authentication flow, which includes DefaultAzureCredential.
+                                This allows authentication using environment variables and managed identities.
+                              type: boolean
                           type: object
                         data:
                           description: |-
@@ -4945,7 +4969,7 @@ spec:
                         name:
                           description: The name of the extension, required
                           minLength: 1
-                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                          pattern: ^[a-z0-9]([-a-z0-9_]*[a-z0-9])?$
                           type: string
                       required:
                       - image
@@ -5733,6 +5757,24 @@ spec:
                               description: Kubelet's generated CSRs will be addressed
                                 to this signer.
                               type: string
+                            userAnnotations:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                userAnnotations allow pod authors to pass additional information to
+                                the signer implementation.  Kubernetes does not restrict or validate this
+                                metadata in any way.
+
+                                These values are copied verbatim into the `spec.unverifiedUserAnnotations` field of
+                                the PodCertificateRequest objects that Kubelet creates.
+
+                                Entries are subject to the same validation as object metadata annotations,
+                                with the addition that all keys must be domain-prefixed. No restrictions
+                                are placed on values, except an overall size limitation on the entire field.
+
+                                Signers should document the keys and values they support. Signers should
+                                deny requests that contain keys they do not recognize.
+                              type: object
                           required:
                           - keyType
                           - signerName
@@ -6374,7 +6416,7 @@ spec:
                       resources:
                         description: |-
                           resources represents the minimum resources the volume should have.
-                          If RecoverVolumeExpansionFailure feature is enabled users are allowed to specify resource requirements
+                          Users are allowed to specify resource requirements
                           that are lower than previous value but must still be higher than capacity recorded in the
                           status field of the claim.
                           More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#resources
@@ -6630,7 +6672,7 @@ spec:
                             resources:
                               description: |-
                                 resources represents the minimum resources the volume should have.
-                                If RecoverVolumeExpansionFailure feature is enabled users are allowed to specify resource requirements
+                                Users are allowed to specify resource requirements
                                 that are lower than previous value but must still be higher than capacity recorded in the
                                 status field of the claim.
                                 More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#resources
@@ -7038,7 +7080,7 @@ spec:
                       resources:
                         description: |-
                           resources represents the minimum resources the volume should have.
-                          If RecoverVolumeExpansionFailure feature is enabled users are allowed to specify resource requirements
+                          Users are allowed to specify resource requirements
                           that are lower than previous value but must still be higher than capacity recorded in the
                           status field of the claim.
                           More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#resources
@@ -7754,7 +7796,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.19.0
+    controller-gen.kubebuilder.io/version: v0.20.0
     helm.sh/resource-policy: keep
   name: databases.postgresql.cnpg.io
 spec:
@@ -8349,7 +8391,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.19.0
+    controller-gen.kubebuilder.io/version: v0.20.0
     helm.sh/resource-policy: keep
   name: failoverquorums.postgresql.cnpg.io
 spec:
@@ -8427,7 +8469,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.19.0
+    controller-gen.kubebuilder.io/version: v0.20.0
     helm.sh/resource-policy: keep
   name: imagecatalogs.postgresql.cnpg.io
 spec:
@@ -9228,7 +9270,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.19.0
+    controller-gen.kubebuilder.io/version: v0.20.0
     helm.sh/resource-policy: keep
   name: poolers.postgresql.cnpg.io
 spec:
@@ -11860,7 +11902,9 @@ spec:
                                   type: integer
                               type: object
                             resizePolicy:
-                              description: Resources resize policy for the container.
+                              description: |-
+                                Resources resize policy for the container.
+                                This field cannot be set on ephemeral containers.
                               items:
                                 description: ContainerResizePolicy represents resource
                                   resize policy for the container.
@@ -15083,7 +15127,9 @@ spec:
                                   type: integer
                               type: object
                             resizePolicy:
-                              description: Resources resize policy for the container.
+                              description: |-
+                                Resources resize policy for the container.
+                                This field cannot be set on ephemeral containers.
                               items:
                                 description: ContainerResizePolicy represents resource
                                   resize policy for the container.
@@ -15870,8 +15916,8 @@ spec:
                           will be made available to those containers which consume them
                           by name.
 
-                          This is an alpha field and requires enabling the
-                          DynamicResourceAllocation feature gate.
+                          This is a stable field but requires that the
+                          DynamicResourceAllocation feature gate is enabled.
 
                           This field is immutable.
                         items:
@@ -16330,9 +16376,10 @@ spec:
                             operator:
                               description: |-
                                 Operator represents a key's relationship to the value.
-                                Valid operators are Exists and Equal. Defaults to Equal.
+                                Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                                 Exists is equivalent to wildcard for value, so that a pod can
                                 tolerate all taints of a particular category.
+                                Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                               type: string
                             tolerationSeconds:
                               description: |-
@@ -17126,7 +17173,7 @@ spec:
                                         resources:
                                           description: |-
                                             resources represents the minimum resources the volume should have.
-                                            If RecoverVolumeExpansionFailure feature is enabled users are allowed to specify resource requirements
+                                            Users are allowed to specify resource requirements
                                             that are lower than previous value but must still be higher than capacity recorded in the
                                             status field of the claim.
                                             More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#resources
@@ -18012,6 +18059,24 @@ spec:
                                             description: Kubelet's generated CSRs
                                               will be addressed to this signer.
                                             type: string
+                                          userAnnotations:
+                                            additionalProperties:
+                                              type: string
+                                            description: |-
+                                              userAnnotations allow pod authors to pass additional information to
+                                              the signer implementation.  Kubernetes does not restrict or validate this
+                                              metadata in any way.
+
+                                              These values are copied verbatim into the `spec.unverifiedUserAnnotations` field of
+                                              the PodCertificateRequest objects that Kubelet creates.
+
+                                              Entries are subject to the same validation as object metadata annotations,
+                                              with the addition that all keys must be domain-prefixed. No restrictions
+                                              are placed on values, except an overall size limitation on the entire field.
+
+                                              Signers should document the keys and values they support. Signers should
+                                              deny requests that contain keys they do not recognize.
+                                            type: object
                                         required:
                                         - keyType
                                         - signerName
@@ -18437,6 +18502,42 @@ spec:
                         x-kubernetes-list-map-keys:
                         - name
                         x-kubernetes-list-type: map
+                      workloadRef:
+                        description: |-
+                          WorkloadRef provides a reference to the Workload object that this Pod belongs to.
+                          This field is used by the scheduler to identify the PodGroup and apply the
+                          correct group scheduling policies. The Workload object referenced
+                          by this field may not exist at the time the Pod is created.
+                          This field is immutable, but a Workload object with the same name
+                          may be recreated with different policies. Doing this during pod scheduling
+                          may result in the placement not conforming to the expected policies.
+                        properties:
+                          name:
+                            description: |-
+                              Name defines the name of the Workload object this Pod belongs to.
+                              Workload must be in the same namespace as the Pod.
+                              If it doesn't match any existing Workload, the Pod will remain unschedulable
+                              until a Workload object is created and observed by the kube-scheduler.
+                              It must be a DNS subdomain.
+                            type: string
+                          podGroup:
+                            description: |-
+                              PodGroup is the name of the PodGroup within the Workload that this Pod
+                              belongs to. If it doesn't match any existing PodGroup within the Workload,
+                              the Pod will remain unschedulable until the Workload object is recreated
+                              and observed by the kube-scheduler. It must be a DNS label.
+                            type: string
+                          podGroupReplicaKey:
+                            description: |-
+                              PodGroupReplicaKey specifies the replica key of the PodGroup to which this
+                              Pod belongs. It is used to distinguish pods belonging to different replicas
+                              of the same pod group. The pod group policy is applied separately to each replica.
+                              When set, it must be a DNS label.
+                            type: string
+                        required:
+                        - name
+                        - podGroup
+                        type: object
                     required:
                     - containers
                     type: object
@@ -18538,7 +18639,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.19.0
+    controller-gen.kubebuilder.io/version: v0.20.0
     helm.sh/resource-policy: keep
   name: publications.postgresql.cnpg.io
 spec:
@@ -18734,7 +18835,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.19.0
+    controller-gen.kubebuilder.io/version: v0.20.0
     helm.sh/resource-policy: keep
   name: scheduledbackups.postgresql.cnpg.io
 spec:
@@ -18926,7 +19027,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.19.0
+    controller-gen.kubebuilder.io/version: v0.20.0
     helm.sh/resource-policy: keep
   name: subscriptions.postgresql.cnpg.io
 spec:
@@ -19079,8 +19180,8 @@ metadata:
     app.kubernetes.io/instance: cloudnative-pg
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: cloudnative-pg
-    app.kubernetes.io/version: 1.28.0
-    helm.sh/chart: cloudnative-pg-0.27.0
+    app.kubernetes.io/version: 1.28.1
+    helm.sh/chart: cloudnative-pg-0.27.1
   name: cloudnative-pg
   namespace: cnpg-system
 ---
@@ -19147,8 +19248,8 @@ metadata:
     app.kubernetes.io/instance: cloudnative-pg
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: cloudnative-pg
-    app.kubernetes.io/version: 1.28.0
-    helm.sh/chart: cloudnative-pg-0.27.0
+    app.kubernetes.io/version: 1.28.1
+    helm.sh/chart: cloudnative-pg-0.27.1
   name: cloudnative-pg
 rules:
 - apiGroups:
@@ -19385,8 +19486,8 @@ metadata:
     app.kubernetes.io/instance: cloudnative-pg
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: cloudnative-pg
-    app.kubernetes.io/version: 1.28.0
-    helm.sh/chart: cloudnative-pg-0.27.0
+    app.kubernetes.io/version: 1.28.1
+    helm.sh/chart: cloudnative-pg-0.27.1
   name: cloudnative-pg-edit
 rules:
 - apiGroups:
@@ -19417,8 +19518,8 @@ metadata:
     app.kubernetes.io/instance: cloudnative-pg
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: cloudnative-pg
-    app.kubernetes.io/version: 1.28.0
-    helm.sh/chart: cloudnative-pg-0.27.0
+    app.kubernetes.io/version: 1.28.1
+    helm.sh/chart: cloudnative-pg-0.27.1
   name: cloudnative-pg-view
 rules:
 - apiGroups:
@@ -19535,8 +19636,8 @@ metadata:
     app.kubernetes.io/instance: cloudnative-pg
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: cloudnative-pg
-    app.kubernetes.io/version: 1.28.0
-    helm.sh/chart: cloudnative-pg-0.27.0
+    app.kubernetes.io/version: 1.28.1
+    helm.sh/chart: cloudnative-pg-0.27.1
   name: cloudnative-pg
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -19574,8 +19675,8 @@ metadata:
     app.kubernetes.io/instance: cloudnative-pg
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: cloudnative-pg
-    app.kubernetes.io/version: 1.28.0
-    helm.sh/chart: cloudnative-pg-0.27.0
+    app.kubernetes.io/version: 1.28.1
+    helm.sh/chart: cloudnative-pg-0.27.1
   name: cnpg-controller-manager-config
   namespace: cnpg-system
 ---
@@ -19584,30 +19685,30 @@ data:
   queries: |
     backends:
       query: |
-       SELECT sa.datname
-           , sa.usename
-           , sa.application_name
-           , states.state
-           , COALESCE(sa.count, 0) AS total
-           , COALESCE(sa.max_tx_secs, 0) AS max_tx_duration_seconds
-           FROM ( VALUES ('active')
-               , ('idle')
-               , ('idle in transaction')
-               , ('idle in transaction (aborted)')
-               , ('fastpath function call')
-               , ('disabled')
-               ) AS states(state)
-           LEFT JOIN (
-               SELECT datname
-                   , state
-                   , usename
-                   , COALESCE(application_name, '') AS application_name
-                   , COUNT(*)
-                   , COALESCE(EXTRACT (EPOCH FROM (max(now() - xact_start))), 0) AS max_tx_secs
-               FROM pg_catalog.pg_stat_activity
-               GROUP BY datname, state, usename, application_name
-           ) sa ON states.state = sa.state
-           WHERE sa.usename IS NOT NULL
+        SELECT sa.datname
+          , sa.usename
+          , sa.application_name
+          , states.state
+          , COALESCE(sa.count, 0) AS total
+          , COALESCE(sa.max_tx_secs, 0) AS max_tx_duration_seconds
+        FROM ( VALUES ('active')
+          , ('idle')
+          , ('idle in transaction')
+          , ('idle in transaction (aborted)')
+          , ('fastpath function call')
+          , ('disabled')
+          ) AS states(state)
+        LEFT JOIN (
+          SELECT datname
+            , state
+            , usename
+            , COALESCE(application_name, '') AS application_name
+            , COUNT(*)
+            , COALESCE(EXTRACT (EPOCH FROM (max(now() - xact_start))), 0) AS max_tx_secs
+          FROM pg_catalog.pg_stat_activity
+          GROUP BY datname, state, usename, application_name
+        ) sa ON states.state = sa.state
+        WHERE sa.usename IS NOT NULL
       metrics:
         - datname:
             usage: "LABEL"
@@ -19630,22 +19731,22 @@ data:
 
     backends_waiting:
       query: |
-       SELECT count(*) AS total
-       FROM pg_catalog.pg_locks blocked_locks
-       JOIN pg_catalog.pg_locks blocking_locks
-         ON blocking_locks.locktype = blocked_locks.locktype
-         AND blocking_locks.database IS NOT DISTINCT FROM blocked_locks.database
-         AND blocking_locks.relation IS NOT DISTINCT FROM blocked_locks.relation
-         AND blocking_locks.page IS NOT DISTINCT FROM blocked_locks.page
-         AND blocking_locks.tuple IS NOT DISTINCT FROM blocked_locks.tuple
-         AND blocking_locks.virtualxid IS NOT DISTINCT FROM blocked_locks.virtualxid
-         AND blocking_locks.transactionid IS NOT DISTINCT FROM blocked_locks.transactionid
-         AND blocking_locks.classid IS NOT DISTINCT FROM blocked_locks.classid
-         AND blocking_locks.objid IS NOT DISTINCT FROM blocked_locks.objid
-         AND blocking_locks.objsubid IS NOT DISTINCT FROM blocked_locks.objsubid
-         AND blocking_locks.pid != blocked_locks.pid
-       JOIN pg_catalog.pg_stat_activity blocking_activity ON blocking_activity.pid = blocking_locks.pid
-       WHERE NOT blocked_locks.granted
+        SELECT count(*) AS total
+        FROM pg_catalog.pg_locks blocked_locks
+        JOIN pg_catalog.pg_locks blocking_locks
+          ON blocking_locks.locktype = blocked_locks.locktype
+          AND blocking_locks.database IS NOT DISTINCT FROM blocked_locks.database
+          AND blocking_locks.relation IS NOT DISTINCT FROM blocked_locks.relation
+          AND blocking_locks.page IS NOT DISTINCT FROM blocked_locks.page
+          AND blocking_locks.tuple IS NOT DISTINCT FROM blocked_locks.tuple
+          AND blocking_locks.virtualxid IS NOT DISTINCT FROM blocked_locks.virtualxid
+          AND blocking_locks.transactionid IS NOT DISTINCT FROM blocked_locks.transactionid
+          AND blocking_locks.classid IS NOT DISTINCT FROM blocked_locks.classid
+          AND blocking_locks.objid IS NOT DISTINCT FROM blocked_locks.objid
+          AND blocking_locks.objsubid IS NOT DISTINCT FROM blocked_locks.objsubid
+          AND blocking_locks.pid != blocked_locks.pid
+        JOIN pg_catalog.pg_stat_activity blocking_activity ON blocking_activity.pid = blocking_locks.pid
+        WHERE NOT blocked_locks.granted
       metrics:
         - total:
             usage: "GAUGE"
@@ -19683,16 +19784,17 @@ data:
             description: "Time at which postgres started (based on epoch)"
 
     pg_replication:
-      query: "SELECT CASE WHEN (
-                NOT pg_catalog.pg_is_in_recovery()
-                OR pg_catalog.pg_last_wal_receive_lsn() = pg_catalog.pg_last_wal_replay_lsn())
-              THEN 0
-              ELSE GREATEST (0,
-                EXTRACT(EPOCH FROM (now() - pg_catalog.pg_last_xact_replay_timestamp())))
-              END AS lag,
-              pg_catalog.pg_is_in_recovery() AS in_recovery,
-              EXISTS (TABLE pg_stat_wal_receiver) AS is_wal_receiver_up,
-              (SELECT count(*) FROM pg_catalog.pg_stat_replication) AS streaming_replicas"
+      query: |
+        SELECT CASE WHEN (
+            NOT pg_catalog.pg_is_in_recovery()
+            OR pg_catalog.pg_last_wal_receive_lsn() = pg_catalog.pg_last_wal_replay_lsn())
+          THEN 0
+          ELSE GREATEST (0,
+            EXTRACT(EPOCH FROM (now() - pg_catalog.pg_last_xact_replay_timestamp())))
+          END AS lag,
+          pg_catalog.pg_is_in_recovery() AS in_recovery,
+          EXISTS (TABLE pg_stat_wal_receiver) AS is_wal_receiver_up,
+          (SELECT count(*) FROM pg_catalog.pg_stat_replication) AS streaming_replicas
       metrics:
         - lag:
             usage: "GAUGE"
@@ -19748,6 +19850,9 @@ data:
           , COALESCE(CAST(CAST('x'||pg_catalog.right(pg_catalog.split_part(last_failed_wal, '.', 1), 16) AS pg_catalog.bit(64)) AS pg_catalog.int8), -1) AS last_failed_wal_start_lsn
           , EXTRACT(EPOCH FROM stats_reset) AS stats_reset_time
         FROM pg_catalog.pg_stat_archiver
+      predicate_query: |
+        SELECT NOT pg_catalog.pg_is_in_recovery()
+          OR pg_catalog.current_setting('archive_mode') = 'always'
       metrics:
         - archived_count:
             usage: "COUNTER"
@@ -19960,20 +20065,20 @@ data:
     pg_stat_replication:
       primary: true
       query: |
-       SELECT usename
-         , COALESCE(application_name, '') AS application_name
-         , COALESCE(client_addr::text, '') AS client_addr
-         , COALESCE(client_port::text, '') AS client_port
-         , EXTRACT(EPOCH FROM backend_start) AS backend_start
-         , COALESCE(pg_catalog.age(backend_xmin), 0) AS backend_xmin_age
-         , pg_catalog.pg_wal_lsn_diff(pg_catalog.pg_current_wal_lsn(), sent_lsn) AS sent_diff_bytes
-         , pg_catalog.pg_wal_lsn_diff(pg_catalog.pg_current_wal_lsn(), write_lsn) AS write_diff_bytes
-         , pg_catalog.pg_wal_lsn_diff(pg_catalog.pg_current_wal_lsn(), flush_lsn) AS flush_diff_bytes
-         , COALESCE(pg_catalog.pg_wal_lsn_diff(pg_catalog.pg_current_wal_lsn(), replay_lsn),0) AS replay_diff_bytes
-         , COALESCE((EXTRACT(EPOCH FROM write_lag)),0)::float AS write_lag_seconds
-         , COALESCE((EXTRACT(EPOCH FROM flush_lag)),0)::float AS flush_lag_seconds
-         , COALESCE((EXTRACT(EPOCH FROM replay_lag)),0)::float AS replay_lag_seconds
-       FROM pg_catalog.pg_stat_replication
+        SELECT usename
+          , COALESCE(application_name, '') AS application_name
+          , COALESCE(client_addr::text, '') AS client_addr
+          , COALESCE(client_port::text, '') AS client_port
+          , EXTRACT(EPOCH FROM backend_start) AS backend_start
+          , COALESCE(pg_catalog.age(backend_xmin), 0) AS backend_xmin_age
+          , pg_catalog.pg_wal_lsn_diff(pg_catalog.pg_current_wal_lsn(), sent_lsn) AS sent_diff_bytes
+          , pg_catalog.pg_wal_lsn_diff(pg_catalog.pg_current_wal_lsn(), write_lsn) AS write_diff_bytes
+          , pg_catalog.pg_wal_lsn_diff(pg_catalog.pg_current_wal_lsn(), flush_lsn) AS flush_diff_bytes
+          , COALESCE(pg_catalog.pg_wal_lsn_diff(pg_catalog.pg_current_wal_lsn(), replay_lsn),0) AS replay_diff_bytes
+          , COALESCE((EXTRACT(EPOCH FROM write_lag)),0)::float AS write_lag_seconds
+          , COALESCE((EXTRACT(EPOCH FROM flush_lag)),0)::float AS flush_lag_seconds
+          , COALESCE((EXTRACT(EPOCH FROM replay_lag)),0)::float AS replay_lag_seconds
+        FROM pg_catalog.pg_stat_replication
       metrics:
         - usename:
             usage: "LABEL"
@@ -20033,13 +20138,13 @@ data:
     pg_extensions:
       query: |
         SELECT
-         current_database() as datname,
-         name as extname,
-         default_version,
-         installed_version,
-         CASE
-           WHEN default_version = installed_version THEN 0
-           ELSE 1
+          current_database() as datname,
+          name as extname,
+          default_version,
+          installed_version,
+          CASE
+            WHEN default_version = installed_version THEN 0
+            ELSE 1
         END AS update_available
         FROM pg_catalog.pg_available_extensions
         WHERE installed_version IS NOT NULL
@@ -20067,9 +20172,9 @@ metadata:
     app.kubernetes.io/instance: cloudnative-pg
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: cloudnative-pg
-    app.kubernetes.io/version: 1.28.0
+    app.kubernetes.io/version: 1.28.1
     cnpg.io/reload: ""
-    helm.sh/chart: cloudnative-pg-0.27.0
+    helm.sh/chart: cloudnative-pg-0.27.1
   name: cnpg-default-monitoring
   namespace: cnpg-system
 ---
@@ -20113,8 +20218,8 @@ metadata:
     app.kubernetes.io/instance: cloudnative-pg
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: cloudnative-pg
-    app.kubernetes.io/version: 1.28.0
-    helm.sh/chart: cloudnative-pg-0.27.0
+    app.kubernetes.io/version: 1.28.1
+    helm.sh/chart: cloudnative-pg-0.27.1
   name: cnpg-webhook-service
   namespace: cnpg-system
 spec:
@@ -20134,8 +20239,8 @@ metadata:
     app.kubernetes.io/instance: cloudnative-pg
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: cloudnative-pg
-    app.kubernetes.io/version: 1.28.0
-    helm.sh/chart: cloudnative-pg-0.27.0
+    app.kubernetes.io/version: 1.28.1
+    helm.sh/chart: cloudnative-pg-0.27.1
   name: cloudnative-pg
   namespace: cnpg-system
 spec:
@@ -20147,9 +20252,9 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: a7a9454c3851c81e79da208a196af23b3a925c9cbfa4bda358a04fd2cd1e9ac5
-        checksum/monitoring-config: 3a0c136e8aa14d2ead0c98ddf802fc6cae813ff43843a52d2bd10563a96c65aa
-        checksum/rbac: 38c8e90d05df8f3145ca62273f16b4b369d9d81442b60f1f63ac3df1cddc16d5
+        checksum/config: 41a3bad5593fe49346da18c09ee5c8b91cfa7ffa36eff2e7eec4be4ac9df433d
+        checksum/monitoring-config: 9d6c19452de04094e4742a1a33f31e02ec1f1f9b13c11c03566081a1accccaa5
+        checksum/rbac: 81247060781594a69c5f675ca467fc88da23b6b63db66c22a21d1d6e35a50eee
       labels:
         app.kubernetes.io/instance: cloudnative-pg
         app.kubernetes.io/name: cloudnative-pg
@@ -20167,19 +20272,19 @@ spec:
         - /manager
         env:
         - name: OPERATOR_IMAGE_NAME
-          value: ghcr.io/cloudnative-pg/cloudnative-pg:1.28.0
+          value: ghcr.io/cloudnative-pg/cloudnative-pg:1.28.1
         - name: OPERATOR_NAMESPACE
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
         - name: MONITORING_QUERIES_CONFIGMAP
           value: cnpg-default-monitoring
-        image: ghcr.io/cloudnative-pg/cloudnative-pg:1.28.0
+        image: ghcr.io/cloudnative-pg/cloudnative-pg:1.28.1
         imagePullPolicy: IfNotPresent
         livenessProbe:
           httpGet:
             path: /readyz
-            port: 9443
+            port: webhook-server
             scheme: HTTPS
           initialDelaySeconds: 3
         name: manager
@@ -20193,7 +20298,7 @@ spec:
         readinessProbe:
           httpGet:
             path: /readyz
-            port: 9443
+            port: webhook-server
             scheme: HTTPS
           initialDelaySeconds: 3
         resources:
@@ -20216,7 +20321,7 @@ spec:
           failureThreshold: 6
           httpGet:
             path: /readyz
-            port: 9443
+            port: webhook-server
             scheme: HTTPS
           periodSeconds: 5
         volumeMounts:
@@ -20380,8 +20485,8 @@ metadata:
     app.kubernetes.io/instance: cloudnative-pg
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: cloudnative-pg
-    app.kubernetes.io/version: 1.28.0
-    helm.sh/chart: cloudnative-pg-0.27.0
+    app.kubernetes.io/version: 1.28.1
+    helm.sh/chart: cloudnative-pg-0.27.1
   name: cnpg-mutating-webhook-configuration
 webhooks:
 - admissionReviewVersions:
@@ -20476,8 +20581,8 @@ metadata:
     app.kubernetes.io/instance: cloudnative-pg
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: cloudnative-pg
-    app.kubernetes.io/version: 1.28.0
-    helm.sh/chart: cloudnative-pg-0.27.0
+    app.kubernetes.io/version: 1.28.1
+    helm.sh/chart: cloudnative-pg-0.27.1
   name: cnpg-validating-webhook-configuration
 webhooks:
 - admissionReviewVersions:
