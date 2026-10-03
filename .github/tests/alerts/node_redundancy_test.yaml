@@ -1,0 +1,46 @@
+rule_files:
+  - .rules.generated.yaml
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_status_condition{condition="Ready",status="true",node="worker-1"}'
+        values: '0x10'
+      - series: 'kube_node_status_condition{condition="Ready",status="true",node="worker-2"}'
+        values: '0x10'
+      - series: 'kube_node_status_condition{condition="Ready",status="true",node="worker-3"}'
+        values: '1x10'
+      - series: 'kube_node_spec_unschedulable{node="worker-1"}'
+        values: '0x10'
+      - series: 'kube_node_spec_unschedulable{node="worker-2"}'
+        values: '0x10'
+      - series: 'kube_node_spec_unschedulable{node="worker-3"}'
+        values: '0x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: KubeMultipleNodesNotReady
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: KubeMultipleNodesNotReady
+        exp_alerts:
+          - exp_labels: {severity: critical, component: kubernetes}
+            exp_annotations:
+              dashboard_url: "https://grafana.timourhomelab.org/d/k8s-views-nodes"
+              summary: "2 Nodes NotReady (>5m)"
+              description: "Mehrere Nodes gleichzeitig weg, die Redundanz ist aufgebraucht. Gecordonte Nodes zaehlen nicht."
+              action: "kubectl get nodes; ein ganzer Proxmox-Host meldet sich als ProxmoxHostDown."
+
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_status_condition{condition="Ready",status="true",node="worker-1"}'
+        values: '0x10'
+      - series: 'kube_node_status_condition{condition="Ready",status="true",node="worker-2"}'
+        values: '0x10'
+      - series: 'kube_node_spec_unschedulable{node="worker-1"}'
+        values: '0x10'
+      - series: 'kube_node_spec_unschedulable{node="worker-2"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: KubeMultipleNodesNotReady
+        exp_alerts: []
