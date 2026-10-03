@@ -1,0 +1,75 @@
+apiVersion: ceph.rook.io/v1
+kind: CephObjectStoreUser
+metadata:
+  name: audit-archive
+spec:
+  store: homelab-objectstore
+  clusterNamespace: rook-ceph
+  displayName: "Audit-Archiv (WORM)"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: audit-archive-bucket
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        app: audit-archive-bucket
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: bucket
+          image: alpine/k8s:1.36.4@sha256:358ddfc2d6ff3f00dd461dbd79aaa6d6738709f225b8da0945bb63bd4dbc304e
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: AWS_DEFAULT_REGION
+              value: us-east-1
+            - name: ENDPOINT
+              value: http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-object-user-homelab-objectstore-audit-archive
+                  key: AccessKey
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-object-user-homelab-objectstore-audit-archive
+                  key: SecretKey
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              B=audit-archive
+              if ! aws s3api head-bucket --bucket $B --endpoint-url $ENDPOINT 2>/dev/null; then
+                aws s3api create-bucket --bucket $B --object-lock-enabled-for-bucket --endpoint-url $ENDPOINT
+              fi
+              # GOVERNANCE: im Notfall loeschbar, in Firmen COMPLIANCE
+              aws s3api put-object-lock-configuration --bucket $B --endpoint-url $ENDPOINT \
+                --object-lock-configuration '{"ObjectLockEnabled":"Enabled","Rule":{"DefaultRetention":{"Mode":"GOVERNANCE","Days":365}}}'
+              aws s3api put-bucket-lifecycle-configuration --bucket $B --endpoint-url $ENDPOINT \
+                --lifecycle-configuration '{"Rules":[{"ID":"nach-sperrfrist","Status":"Enabled","Filter":{"Prefix":""},"Expiration":{"Days":366},"NoncurrentVersionExpiration":{"NoncurrentDays":1}}]}'
+              echo probe > /tmp/probe
+              aws s3 cp /tmp/probe s3://$B/.worm-selftest --endpoint-url $ENDPOINT
+              VID=$(aws s3api list-object-versions --bucket $B --prefix .worm-selftest --endpoint-url $ENDPOINT --query 'Versions[0].VersionId' --output text)
+              if aws s3api delete-object --bucket $B --key .worm-selftest --version-id "$VID" --endpoint-url $ENDPOINT 2>/dev/null; then
+                echo "FEHLER: Objekt liess sich loeschen, Object Lock wirkt nicht"
+                exit 1
+              fi
+              echo "Object Lock wirkt: Loeschen verweigert"
