@@ -162,6 +162,22 @@ spec:
             description: "Kubelet meldet Node nicht Ready — Pods werden evicted/rescheduled, Kapazität weg. (ControlPlaneNodeDown deckt nur ctrl-0.) Check: kubectl describe node {{ $labels.node }}"
             action: "kubectl describe node {{ $labels.node }}; check kubelet (talosctl logs kubelet) + the node's Proxmox VM."
 
+        - alert: KubeMultipleNodesNotReady
+          expr: |
+            count(
+              kube_node_status_condition{condition="Ready",status="true"} == 0
+              and on (node) kube_node_spec_unschedulable == 0
+            ) >= 2
+          for: 5m
+          labels:
+            severity: critical
+            component: kubernetes
+          annotations:
+            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-views-nodes"
+            summary: "{{ $value }} Nodes NotReady (>5m)"
+            description: "Mehrere Nodes gleichzeitig weg, die Redundanz ist aufgebraucht. Gecordonte Nodes zaehlen nicht."
+            action: "kubectl get nodes; ein ganzer Proxmox-Host meldet sich als ProxmoxHostDown."
+
         - alert: ImagePullBackoff
           expr: kube_pod_container_status_waiting_reason{reason=~"ImagePullBackOff|ErrImagePull"} == 1
           for: 5m
