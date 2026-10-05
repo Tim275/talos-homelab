@@ -1,0 +1,39 @@
+rule_files:
+  - .rules.generated.yaml
+evaluation_interval: 1h
+tests:
+  - interval: 1h
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="velero", cronjob="etcd-snapshot"}'
+        values: '0x60'
+    alert_rule_test:
+      - eval_time: 30h
+        alertname: EtcdSnapshotStale
+        exp_alerts: []
+      - eval_time: 38h
+        alertname: EtcdSnapshotStale
+        exp_alerts:
+          - exp_labels: {severity: warning, component: backup}
+            exp_annotations:
+              dashboard_url: "https://grafana.timourhomelab.org/d/k8s-pod-overview?var-namespace=velero"
+              summary: "Letzter erfolgreicher etcd-Snapshot vor 1d 14h 0m 0s"
+              description: "Der tägliche Snapshot (02:10) fehlt. Geht ctrl-0 verloren, gibt es sonst keinen etcd-Stand."
+              action: "kubectl -n velero get cronjob,jobs -l app.kubernetes.io/name=etcd-snapshot; Logs der Container snapshot und upload"
+
+  - interval: 1h
+    input_series:
+      - series: 'up{job="irgendwas"}'
+        values: '1x60'
+    alert_rule_test:
+      - eval_time: 20h
+        alertname: EtcdSnapshotNeverSucceeded
+        exp_alerts: []
+      - eval_time: 28h
+        alertname: EtcdSnapshotNeverSucceeded
+        exp_alerts:
+          - exp_labels: {severity: warning, component: backup, namespace: velero, cronjob: etcd-snapshot}
+            exp_annotations:
+              dashboard_url: "https://grafana.timourhomelab.org/d/k8s-pod-overview?var-namespace=velero"
+              summary: "etcd-Snapshot-CronJob hat noch nie erfolgreich gelaufen"
+              description: "Kein Erfolgs-Zeitstempel seit über 26 h: CronJob fehlt oder der erste Lauf scheitert (Talos-API-Zugriff, OBC, Bucket)."
+              action: "kubectl -n velero get cronjob,jobs,obc,serviceaccounts.talos.dev; talosctl get machineconfig | grep -A5 kubernetesTalosAPIAccess"
