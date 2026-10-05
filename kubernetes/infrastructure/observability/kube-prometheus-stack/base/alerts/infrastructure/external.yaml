@@ -32,7 +32,7 @@ spec:
             severity: warning
             component: dns
           annotations:
-            dashboard_url: "https://grafana.timourhomelab.org/d/blackbox-exporter"
+            dashboard_url: "https://grafana.timourhomelab.org/d/blackbox-exporter?var-target={{ $labels.instance }}"
             summary: "External DNS slow/failing: {{ $labels.instance }}{{ if gt $value 0.0 }} ({{ $value | humanizeDuration }} lookup){{ else }} (Probe gescheitert){{ end }}"
             description: "Blackbox-Probe gegen CoreDNS: Lookup >5s oder gescheitert. Externe Aufloesung bricht, interne svc-DNS kann noch gehen."
             action: "kubectl logs -n kube-system -l k8s-app=kube-dns; the probe tests CoreDNS resolving externally — check upstream/Gateway."
@@ -44,7 +44,7 @@ spec:
             severity: warning
             component: ingress
           annotations:
-            dashboard_url: "https://grafana.timourhomelab.org/d/blackbox-exporter"
+            dashboard_url: "https://grafana.timourhomelab.org/d/blackbox-exporter?var-target={{ $labels.instance }}"
             summary: "External TLS cert expires in {{ $value | humanizeDuration }} (<14d): {{ $labels.instance }}"
             description: "Zertifikat eines oeffentlichen Endpunkts laeuft in unter 14 Tagen ab — nach Ablauf schlaegt TLS fuer Besucher fehl."
             action: "Check the cert for {{ $labels.instance }}; cert-manager (internal) or the external CA; <14d to expiry."
@@ -59,22 +59,22 @@ spec:
             severity: warning
             component: ingress
           annotations:
-            dashboard_url: "https://grafana.timourhomelab.org/d/blackbox-exporter"
+            dashboard_url: "https://grafana.timourhomelab.org/d/blackbox-exporter?var-target={{ $labels.instance }}"
             summary: "Homelab service unreachable: {{ $labels.instance }}"
             description: "Blackbox probe to {{ $labels.instance }} returned no valid HTTP response for >5min (refused/timeout/5xx)."
             action: "curl --resolve HOST:443:192.168.0.152 https://HOST/ ; check app pod + HTTPRoute + Envoy filter-chain."
 
         - alert: HomelabPublicServiceDown
-          expr: probe_success{job="blackbox-homelab", instance="https://drova.timourhomelab.org"} == 0
+          expr: probe_success{job="blackbox-homelab", instance=~"https://(drova|homepage)\\.timourhomelab\\.org"} == 0
           for: 3m
           labels:
             severity: critical
             component: ingress
           annotations:
-            dashboard_url: "https://grafana.timourhomelab.org/d/blackbox-exporter"
-            summary: "Revenue app unreachable: {{ $labels.instance }}"
-            description: "Blackbox probe to the revenue app returned no valid HTTP response for >3min (refused/timeout/5xx)."
-            action: "curl --resolve HOST:443:192.168.0.152 https://HOST/ ; check app pod + HTTPRoute + Envoy filter-chain."
+            dashboard_url: "https://grafana.timourhomelab.org/d/blackbox-exporter?var-target={{ $labels.instance }}"
+            summary: "Public service unreachable: {{ $labels.instance }}"
+            description: "Blackbox probe to {{ $labels.instance }} returned no valid HTTP response for >3min (refused/timeout/5xx)."
+            action: "Public URL gives 530 but curl --resolve HOST:443:192.168.0.152 https://HOST/ works -> kubectl -n cloudflared get pods,logs. Otherwise check app pod + HTTPRoute + Envoy filter-chain."
 
         - alert: HomelabEdgeDown
           expr: |
