@@ -21,4 +21,7 @@ provider "uptimekuma" {
   endpoint = var.uptime_kuma_url
   username = var.uptime_kuma_username
   password = var.uptime_kuma_password
+
+  per_attempt_timeout = "10s"
+  timeout             = "60s"
 }
