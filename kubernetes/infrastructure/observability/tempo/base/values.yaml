@@ -14,6 +14,13 @@ traces:
 
 metricsGenerator:
   enabled: true
+  extraArgs:
+    - -config.expand-env=true
+  extraEnvFrom:
+    - configMapRef:
+        name: tempo-traces  # BUCKET_NAME, BUCKET_HOST, BUCKET_PORT
+    - secretRef:
+        name: tempo-traces  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
   config:
     processor:
       local_blocks:
@@ -25,50 +32,17 @@ metricsGenerator:
       remote_write:
         - url: http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/write
 
-tempo:
-  storage:
-    trace:
-      backend: s3
-      s3:
-        bucket: tempo-traces
-        endpoint: rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80
-        access_key: ${AWS_ACCESS_KEY_ID}
-        secret_key: ${AWS_SECRET_ACCESS_KEY}
-        insecure: true  # HTTP endpoint (not HTTPS)
-        forcepathstyle: true  # Required for Ceph RGW
-
-  receivers:
-    jaeger:
-      protocols:
-        grpc:
-          endpoint: 0.0.0.0:14250
-        thrift_http:
-          endpoint: 0.0.0.0:14268
-        thrift_compact:
-          endpoint: 0.0.0.0:6831
-        thrift_binary:
-          endpoint: 0.0.0.0:6832
-    zipkin:
-      endpoint: 0.0.0.0:9411
-    otlp:
-      protocols:
-        grpc:
-          endpoint: 0.0.0.0:4317
-        http:
-          endpoint: 0.0.0.0:4318
-    opencensus:
-      endpoint: 0.0.0.0:55678
-
-  retention: 720h  # 30 days (same as Loki)
-  compactor:
-    compaction:
-      block_retention: 720h  # 30 days
-
-  query_frontend:
-    search:
-      max_duration: 0  # No limit on trace search duration
-
-
+# tempo-distributed ignoriert tempo.storage/retention (Schema des Single-Binary-Charts); Bucket und Keys aus der OBC tempo-traces
+storage:
+  trace:
+    backend: s3
+    s3:
+      bucket: ${BUCKET_NAME}
+      endpoint: rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80  # BUCKET_PORT der OBC ist 443 (TLS)
+      access_key: ${AWS_ACCESS_KEY_ID}
+      secret_key: ${AWS_SECRET_ACCESS_KEY}
+      insecure: true  # HTTP endpoint (not HTTPS)
+      forcepathstyle: true  # Required for Ceph RGW
 
 overrides:
   defaults:
@@ -96,17 +70,13 @@ distributor:
     limits:
       cpu: 500m
       memory: 1Gi
-  extraEnv:
-    - name: AWS_ACCESS_KEY_ID
-      valueFrom:
-        secretKeyRef:
-          name: tempo-s3-credentials
-          key: access_key_id
-    - name: AWS_SECRET_ACCESS_KEY
-      valueFrom:
-        secretKeyRef:
-          name: tempo-s3-credentials
-          key: secret_access_key
+  extraArgs:
+    - -config.expand-env=true
+  extraEnvFrom:
+    - configMapRef:
+        name: tempo-traces  # BUCKET_NAME, BUCKET_HOST, BUCKET_PORT
+    - secretRef:
+        name: tempo-traces  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
 
 ingester:
   replicas: 2
@@ -147,20 +117,19 @@ ingester:
     limits:
       cpu: 1000m
       memory: 2560Mi
-  extraEnv:
-    - name: AWS_ACCESS_KEY_ID
-      valueFrom:
-        secretKeyRef:
-          name: tempo-s3-credentials
-          key: access_key_id
-    - name: AWS_SECRET_ACCESS_KEY
-      valueFrom:
-        secretKeyRef:
-          name: tempo-s3-credentials
-          key: secret_access_key
+  extraArgs:
+    - -config.expand-env=true
+  extraEnvFrom:
+    - configMapRef:
+        name: tempo-traces  # BUCKET_NAME, BUCKET_HOST, BUCKET_PORT
+    - secretRef:
+        name: tempo-traces  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
 
 compactor:
   replicas: 1
+  config:
+    compaction:
+      block_retention: 720h  # 30 days (same as Loki)
   affinity: |
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
@@ -189,17 +158,13 @@ compactor:
     limits:
       cpu: 500m
       memory: 1Gi
-  extraEnv:
-    - name: AWS_ACCESS_KEY_ID
-      valueFrom:
-        secretKeyRef:
-          name: tempo-s3-credentials
-          key: access_key_id
-    - name: AWS_SECRET_ACCESS_KEY
-      valueFrom:
-        secretKeyRef:
-          name: tempo-s3-credentials
-          key: secret_access_key
+  extraArgs:
+    - -config.expand-env=true
+  extraEnvFrom:
+    - configMapRef:
+        name: tempo-traces  # BUCKET_NAME, BUCKET_HOST, BUCKET_PORT
+    - secretRef:
+        name: tempo-traces  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
 
 querier:
   replicas: 2
@@ -210,20 +175,23 @@ querier:
     limits:
       cpu: 1000m
       memory: 2Gi
-  extraEnv:
-    - name: AWS_ACCESS_KEY_ID
-      valueFrom:
-        secretKeyRef:
-          name: tempo-s3-credentials
-          key: access_key_id
-    - name: AWS_SECRET_ACCESS_KEY
-      valueFrom:
-        secretKeyRef:
-          name: tempo-s3-credentials
-          key: secret_access_key
+  extraArgs:
+    - -config.expand-env=true
+  extraEnvFrom:
+    - configMapRef:
+        name: tempo-traces  # BUCKET_NAME, BUCKET_HOST, BUCKET_PORT
+    - secretRef:
+        name: tempo-traces  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
 
 queryFrontend:
   replicas: 1
+  extraArgs:
+    - -config.expand-env=true
+  extraEnvFrom:
+    - configMapRef:
+        name: tempo-traces  # BUCKET_NAME, BUCKET_HOST, BUCKET_PORT
+    - secretRef:
+        name: tempo-traces  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
   affinity: |
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:

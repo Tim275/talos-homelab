@@ -34,7 +34,7 @@ spec:
             component: monitoring
           annotations:
             runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/platform.md#alertmanagerpodmissing"
-            dashboard_url: "https://grafana.timourhomelab.org/d/prometheus-stats"
+            dashboard_url: "https://grafana.timourhomelab.org/d/alertmanager-state"
             summary: "Alertmanager replica missing — gossip mesh degraded ({{ $value }} ready)"
             description: "Fewer ready AM pods than desired >10min. A single dead AM can stay invisible (HA majority). Fix: kubectl delete pod -n monitoring <name> --force."
             action: "kubectl delete pod -n monitoring -l app.kubernetes.io/name=alertmanager --force (a single dead AM hides behind HA majority)."
@@ -93,7 +93,6 @@ spec:
             severity: warning
             component: deployment
           annotations:
-            dashboard_url: "https://grafana.timourhomelab.org/d/prometheus-stats"
             summary: "Argo Rollout aborted — {{ $labels.namespace }}/{{ $labels.name }}"
             description: "Rollout in Abort/Error/Timeout >5min (AnalysisTemplate fail, canary health-check, image-pull). New release stuck; users on old version."
             action: "kubectl argo rollouts get rollout {{ $labels.name }} -n {{ $labels.namespace }}; check the AnalysisRun/canary; retry or abort."
@@ -106,7 +105,7 @@ spec:
             severity: warning
             component: ingress
           annotations:
-            dashboard_url: "https://grafana.timourhomelab.org/d/prometheus-stats"
+            dashboard_url: "https://grafana.timourhomelab.org/d/k8s-pod-overview?var-namespace=gateway&var-pod={{ $labels.pod }}"
             summary: "Envoy-gateway pod restart-loop ({{ $value }} in 1h, threshold 10)"
             description: "Repeated cold-starts hurt user-facing latency. If Reason=Completed: likely Talos-eviction race."
             action: "kubectl -n gateway describe pod -l app.kubernetes.io/name=envoy; if Reason=Completed it's a Talos-eviction race — check node pressure."
@@ -158,7 +157,7 @@ spec:
             severity: warning
             component: observability
           annotations:
-            dashboard_url: "https://grafana.timourhomelab.org/d/prometheus-stats"
+            dashboard_url: "https://grafana.timourhomelab.org/d/vector-throughput"
             summary: "Vector log-shipper {{ $labels.instance }} down"
             description: "Vector agent/aggregator down >10min — pod logs not shipped to Loki/Elasticsearch."
             action: "kubectl -n elastic-system get pod -l app.kubernetes.io/name=vector + logs; restart the agent/aggregator."
@@ -183,7 +182,7 @@ spec:
             severity: warning
             component: observability
           annotations:
-            dashboard_url: "https://grafana.timourhomelab.org/d/prometheus-stats"
+            dashboard_url: "https://grafana.timourhomelab.org/d/vector-throughput"
             summary: "Vector sink {{ $labels.component_id }} dropping events ({{ $value | humanize }}/s)"
             description: "Vector is discarding events at the {{ $labels.component_id }} sink for >15min — poison docs (ES mapping conflict), template-render failures or batch rejects. Logs silently lost. Check: kubectl logs -n elastic-system deploy/vector-aggregator | grep -v '^{' | grep ERROR"
             action: "kubectl logs -n elastic-system deploy/vector-aggregator | grep -v '^{' | grep ERROR — poison doc (ES mapping conflict) or sink backpressure; check ES disk/health."
