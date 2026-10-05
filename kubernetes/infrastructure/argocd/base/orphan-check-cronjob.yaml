@@ -75,13 +75,15 @@ spec:
 
                   # custom-columns statt -o json: 2 MB Text statt 36 MB JSON, kein Parser
                   COLS='K:.kind,NS:.metadata.namespace,N:.metadata.name,I:.metadata.labels.argocd\.argoproj\.io/instance,T:.metadata.annotations.argocd\.argoproj\.io/tracking-id'
+                  # je Kind einzeln (kubectl hält sonst alle Listen gleichzeitig im Speicher); sbomreports allein ~100 MB JSON
+                  export KUBECACHEDIR=/tmp/kube-cache
                   NS=$(kubectl api-resources --namespaced=true --verbs=list -o name \
-                       | grep -vE '^(events|pods|replicasets|endpoints|endpointslices|controllerrevisions|leases)' | paste -sd, -)
+                       | grep -vE '^(events|pods|replicasets|endpoints|endpointslices|controllerrevisions|leases|sbomreports)')
                   CL=$(kubectl api-resources --namespaced=false --verbs=list -o name \
-                       | grep -vE '^(componentstatuses|nodes|selfsubject|tokenreviews)' | paste -sd, -)
+                       | grep -vE '^(componentstatuses|nodes|selfsubject|tokenreviews|clustersbomreports)')
 
-                  { kubectl get "$NS" -A -o custom-columns="$COLS" --no-headers
-                    kubectl get "$CL"    -o custom-columns="$COLS" --no-headers; } \
+                  { for r in $NS; do kubectl get "$r" -A -o custom-columns="$COLS" --no-headers; done
+                    for r in $CL; do kubectl get "$r" -o custom-columns="$COLS" --no-headers; done; } \
                   | awk -v appfile=/tmp/apps.txt '
                       BEGIN { while ((getline a < appfile) > 0) if (a != "") app[a]=1 }
                       {
