@@ -12,7 +12,7 @@ resource "proxmox_virtual_environment_vm" "this" {
   stop_on_destroy = true
 
   machine       = "q35"
-  scsi_hardware = "virtio-scsi-single"
+  scsi_hardware = "virtio-scsi-pci" # Talos-Doku: nicht virtio-scsi-single (Bootstrap-Hang)
   bios          = "seabios"
 
   agent {
@@ -37,7 +37,7 @@ resource "proxmox_virtual_environment_vm" "this" {
   disk {
     datastore_id = each.value.datastore_id
     interface    = "scsi0"
-    iothread     = true
+    iothread     = false # wirkt nur mit virtio-scsi-single
     cache        = "writethrough"
     discard      = "on"
     ssd          = true
@@ -51,7 +51,7 @@ resource "proxmox_virtual_environment_vm" "this" {
     content {
       datastore_id = coalesce(each.value.ceph_disk_datastore, each.value.datastore_id)
       interface    = "scsi1"
-      iothread     = true
+      iothread     = false
       cache        = "none"
       discard      = "on"
       ssd          = true
@@ -89,7 +89,7 @@ resource "proxmox_virtual_environment_vm" "this" {
 
   lifecycle {
     create_before_destroy = false
-    ignore_changes        = [disk]
+    ignore_changes        = [disk, scsi_hardware] # laufende VMs unangetastet, Wechsel braucht Reboot
     prevent_destroy       = true
   }
 
