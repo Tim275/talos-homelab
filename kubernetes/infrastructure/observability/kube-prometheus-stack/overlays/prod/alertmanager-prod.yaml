@@ -350,7 +350,7 @@ alertmanager:
       {{ if .Labels.namespace }}Namespace: {{ .Labels.namespace }}
       {{ end }}{{ template "resource.telegram" . }}
       Summary: {{ .Annotations.summary }}
-      {{ if .Annotations.dashboard_url }}{{ .Annotations.dashboard_url }}{{ else }}https://grafana.timourhomelab.org{{ end }}
+      {{ if .Annotations.dashboard_url }}{{ template "dashboard.link" . }}{{ else }}https://grafana.timourhomelab.org{{ end }}
       {{ end -}}
       {{ end -}}
       {{ if gt (len .Alerts) 5 }}…and more alerts in this group (see Slack){{ end }}
@@ -361,8 +361,13 @@ alertmanager:
       {{- range $k, $v := .CommonLabels }}&matcher={{ $k }}%3D{{ $v | urlquery }}{{ end -}}
       {{- end }}
 
+      {{ define "dashboard.link" -}}
+      {{- $u := .Annotations.dashboard_url -}}
+      {{ $u }}{{ if match "^https://grafana\\.timourhomelab\\.org/d/" $u }}{{ if match "\\?" $u }}&{{ else }}?{{ end }}from={{ (.StartsAt.Add -3600000000000).UnixMilli }}&to=now{{ end }}
+      {{- end }}
+
       {{ define "alert.dashboard_url" -}}
-      {{ (index .Alerts 0).Annotations.dashboard_url }}
+      {{ template "dashboard.link" (index .Alerts 0) }}
       {{- end }}
 
       {{ define "explore.url" -}}
@@ -394,7 +399,7 @@ alertmanager:
 
       h3. Links
       {{ with (index .Alerts 0).Annotations.runbook_url }}* [Runbook|{{ . }}]
-      {{ end }}{{ with (index .Alerts 0).Annotations.dashboard_url }}* [Dashboard|{{ . }}]
+      {{ end }}{{ if (index .Alerts 0).Annotations.dashboard_url }}* [Dashboard|{{ template "alert.dashboard_url" . }}]
       {{ end }}* [Abfrage in Prometheus|{{ (index .Alerts 0).GeneratorURL }}]
       * [Stummschalten|{{ template "slack.silenceURL" . }}]
 
