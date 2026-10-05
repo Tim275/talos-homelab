@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Lint dashboard_url in PrometheusRules gegen die Dashboards im Repo.
 
+Gilt fuer die PrometheusRules und fuer defaultRules.additionalRule(Group)Annotations der Chart-Values.
+
 Pro Link auf Grafana:
 - die UID (/d/<uid>) muss als GrafanaDashboard im Repo existieren
 - jedes var-<name> muss in den Template-Variablen dieses Dashboards stehen
@@ -79,12 +81,27 @@ def iter_alert_links(root: Path):
                         yield path, rule["alert"], url
 
 
+def iter_chart_links(root: Path):
+    for path in sorted(root.rglob("values*.yaml")):
+        if "/charts/" in str(path):
+            continue
+        for doc in load_yaml_docs(path):
+            rules = doc.get("defaultRules")
+            if not isinstance(rules, dict):
+                continue
+            for key in ("additionalRuleGroupAnnotations", "additionalRuleAnnotations"):
+                for name, annotations in (rules.get(key) or {}).items():
+                    url = (annotations or {}).get("dashboard_url")
+                    if url:
+                        yield path, name, url
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "kubernetes")
     dashboards, errors = load_dashboards(root)
     unchecked = sorted(uid for uid, names in dashboards.items() if names is None)
     checked = 0
-    for path, alert, url in iter_alert_links(root):
+    for path, alert, url in [*iter_alert_links(root), *iter_chart_links(root)]:
         parsed = urlparse(url)
         if parsed.hostname != GRAFANA_HOST or not parsed.path.startswith("/d/"):
             continue
