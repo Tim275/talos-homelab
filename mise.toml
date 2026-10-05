@@ -101,10 +101,13 @@ kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeed
 description = "Cluster bootstrappen: ArgoCD, dann die drei Wurzel-Applications"
 confirm = "kubernetes/bootstrap gegen den aktuellen Cluster anwenden?"
 run = """
-kubectl apply -k kubernetes/bootstrap --server-side --force-conflicts 2>/dev/null || true
+set -eu
+OUT=$(mktemp)
+kustomize build --enable-helm kubernetes/bootstrap > "$OUT"
+kubectl apply --server-side --force-conflicts -f "$OUT" || echo "1. Lauf: CRDs fehlten noch, 2. Lauf folgt"
 kubectl wait --for=condition=Established --timeout=180s \
   crd/applications.argoproj.io crd/applicationsets.argoproj.io crd/appprojects.argoproj.io
-kubectl apply -k kubernetes/bootstrap --server-side --force-conflicts
+kubectl apply --server-side --force-conflicts -f "$OUT"
 kubectl -n argocd rollout status deploy/argocd-server --timeout=300s
 """
 
