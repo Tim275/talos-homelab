@@ -85,6 +85,19 @@ def main(root_arg: str) -> int:
             print(f"::error file={c}/kustomization.yaml::{c} is in no ApplicationSet")
             failed += 1
 
+    granted = set()
+    for g in root.rglob("*.yaml"):
+        if "/charts/" in str(g) or "/rendered/" in str(g):
+            continue
+        try:
+            for d in yaml.safe_load_all(g.read_text()):
+                if isinstance(d, dict) and d.get("kind") == "ReferenceGrant":
+                    granted |= {
+                        t.get("name") for t in d.get("spec", {}).get("to", []) if t.get("kind") == "Secret"
+                    }
+        except yaml.YAMLError:
+            continue
+
     for f in root.rglob("*.yaml"):
         if "/charts/" in str(f) or "/rendered/" in str(f):
             continue
@@ -103,7 +116,7 @@ def main(root_arg: str) -> int:
                 for d in (yaml.safe_load_all(g.read_text()) if g.suffix == ".yaml" else [])
                 if isinstance(d, dict) and d.get("kind") in ("Secret", "SealedSecret")
             }
-            for name in secret_names(doc) - owned:
+            for name in secret_names(doc) - owned - granted:
                 print(
                     f"::error file={f}::SecurityPolicy "
                     f"{doc['metadata']['name']} references secret {name}, "
