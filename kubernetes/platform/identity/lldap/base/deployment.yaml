@@ -6,6 +6,8 @@ metadata:
   labels:
     app.kubernetes.io/name: lldap
     app.kubernetes.io/version: "v0.6.3"
+  annotations:
+    secret.reloader.stakater.com/reload: lldap-ldaps-tls
 spec:
   replicas: 1  # Single instance for resource savings
   strategy:
@@ -37,10 +39,21 @@ spec:
             - name: ldap
               containerPort: 3890
               protocol: TCP
+            - name: ldaps
+              containerPort: 6360
+              protocol: TCP
             - name: http
               containerPort: 17170
               protocol: TCP
           env:
+            - name: LLDAP_LDAPS_OPTIONS__ENABLED
+              value: "true"
+            - name: LLDAP_LDAPS_OPTIONS__PORT
+              value: "6360"
+            - name: LLDAP_LDAPS_OPTIONS__CERT_FILE
+              value: /certs/tls.crt
+            - name: LLDAP_LDAPS_OPTIONS__KEY_FILE
+              value: /certs/tls.key
             - name: LLDAP_LDAP_BASE_DN
               valueFrom:
                 configMapKeyRef:
@@ -112,6 +125,9 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
+            - name: ldaps-tls
+              mountPath: /certs
+              readOnly: true
           resources:
             requests:
               cpu: 10m      # Ultra minimal für homelab
@@ -147,3 +163,6 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: lldap-data
+        - name: ldaps-tls
+          secret:
+            secretName: lldap-ldaps-tls
