@@ -147,3 +147,97 @@ spec:
             name: keycloak-realm-config
         - name: tmp
           emptyDir: {}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-config-cli-master
+  namespace: keycloak
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: config-cli
+          image: docker.io/adorsys/keycloak-config-cli:6.5.1-25
+          env:
+            - name: KEYCLOAK_URL
+              value: http://keycloak-service:8080
+            - name: KEYCLOAK_GRANTTYPE
+              value: client_credentials
+            - name: KEYCLOAK_LOGINREALM
+              value: master
+            - name: KEYCLOAK_CLIENTID
+              value: config-automation-master
+            - name: KEYCLOAK_CLIENTSECRET
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-config-automation-master-secret
+                  key: clientSecret
+            - name: KEYCLOAK_AVAILABILITYCHECK_ENABLED
+              value: "true"
+            - name: KEYCLOAK_AVAILABILITYCHECK_TIMEOUT
+              value: "120s"
+            - name: IMPORT_FILES_LOCATIONS
+              value: /config/realm-master.yaml
+            - name: IMPORT_VAR_SUBSTITUTION_ENABLED
+              value: "true"
+            - name: IMPORT_CACHE_ENABLED
+              value: "false"
+            - name: IMPORT_MANAGED_CLIENT
+              value: "no-delete"
+            - name: IMPORT_MANAGED_CLIENT_SCOPE
+              value: "no-delete"
+            - name: IMPORT_MANAGED_GROUP
+              value: "no-delete"
+            - name: IMPORT_MANAGED_ROLE
+              value: "no-delete"
+            - name: IMPORT_MANAGED_REQUIRED_ACTION
+              value: "no-delete"
+            - name: IMPORT_MANAGED_IDENTITY_PROVIDER
+              value: "no-delete"
+            - name: IMPORT_MANAGED_COMPONENT
+              value: "no-delete"
+            - name: IMPORT_MANAGED_SUB_COMPONENT
+              value: "no-delete"
+            - name: IMPORT_MANAGED_AUTHENTICATION_FLOW
+              value: "no-delete"
+            - name: CONFIG_AUTOMATION_MASTER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-config-automation-master-secret
+                  key: clientSecret
+          volumeMounts:
+            - name: realm
+              mountPath: /config
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+      volumes:
+        - name: realm
+          configMap:
+            name: keycloak-realm-config
+        - name: tmp
+          emptyDir: {}
