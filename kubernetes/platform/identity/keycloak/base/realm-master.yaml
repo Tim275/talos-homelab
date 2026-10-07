@@ -1,0 +1,62 @@
+realm: master
+bruteForceProtected: true
+failureFactor: 5
+waitIncrementSeconds: 60
+maxFailureWaitSeconds: 900
+eventsEnabled: true
+eventsExpiration: 2592000
+eventsListeners:
+  - jboss-logging
+adminEventsEnabled: true
+adminEventsDetailsEnabled: true
+browserFlow: browser-mfa
+authenticationFlows:
+  - alias: browser-mfa
+    description: Passwort und Einmalcode, beides Pflicht
+    providerId: basic-flow
+    topLevel: true
+    builtIn: false
+    authenticationExecutions:
+      - authenticator: auth-cookie
+        requirement: ALTERNATIVE
+        priority: 10
+        authenticatorFlow: false
+        userSetupAllowed: false
+      - flowAlias: browser-mfa-forms
+        requirement: ALTERNATIVE
+        priority: 20
+        authenticatorFlow: true
+        userSetupAllowed: false
+  - alias: browser-mfa-forms
+    description: erst Passwort, dann Einmalcode
+    providerId: basic-flow
+    topLevel: false
+    builtIn: false
+    authenticationExecutions:
+      - authenticator: auth-username-password-form
+        requirement: REQUIRED
+        priority: 10
+        authenticatorFlow: false
+        userSetupAllowed: false
+      - authenticator: auth-otp-form
+        requirement: REQUIRED
+        priority: 20
+        authenticatorFlow: false
+        userSetupAllowed: false
+clients:
+  - clientId: admin-cli
+    directAccessGrantsEnabled: false
+  - clientId: config-automation-master
+    enabled: true
+    protocol: openid-connect
+    publicClient: false
+    secret: $(CONFIG_AUTOMATION_MASTER_SECRET)
+    standardFlowEnabled: false
+    directAccessGrantsEnabled: false
+    serviceAccountsEnabled: true
+users:
+  - username: service-account-config-automation-master
+    enabled: true
+    serviceAccountClientId: config-automation-master
+    realmRoles:
+      - admin
