@@ -70,6 +70,32 @@ data:
               description: "Volle Clusterrechte ausserhalb von GitOps, auch per patch auf ein bestehendes Binding. Nur ArgoCD ist ausgefiltert, auch Service-Accounts zaehlen. Baseline ist null."
               action: "kubectl get clusterrolebinding,rolebinding -A -o wide | grep cluster-admin — unbekannt: Binding loeschen, Token des Users sperren."
 
+          - alert: LogsAuditBreakGlassUse
+            expr: 'sum by (user_name, user_agent) (count_over_time({source="kube-audit"} |= "system:masters" | json user_name="user.username", user_groups="user.groups", user_agent="userAgent" | user_groups=~".*system:masters.*" | user_name!="system:apiserver" | user_agent!~"HashiCorp/.* Terraform/.*" [10m])) > 0'
+            for: 1m
+            labels: {severity: critical, component: security, source: loki}
+            annotations:
+              summary: "Notzugang benutzt: {{ $labels.user_name }} ({{ $labels.user_agent }})"
+              description: "Anfrage mit system:masters, am RBAC vorbei. Im Alltag laeuft kubectl ueber OIDC, das Talos-Admin-Zertifikat ist nur Notzugang. Ausgefiltert: der API-Server selbst und tofu (eigener Alarm). Baseline ist null."
+              action: "Loki: {source=\"kube-audit\"} |= \"system:masters\" | json | user_username!=\"system:apiserver\" — Quell-IP und Anfragen pruefen. Nicht geplant: Zertifikat ist nicht widerrufbar, Kubernetes-CA rotieren (talosctl rotate-ca)."
+
+          - alert: LogsAuditBreakGlassAutomation
+            expr: 'sum by (user_name, source_ip) (count_over_time({source="kube-audit"} |= "system:masters" |= "Terraform" | json user_name="user.username", user_groups="user.groups", user_agent="userAgent", source_ip="sourceIPs[0]" | user_groups=~".*system:masters.*" | user_agent=~"HashiCorp/.* Terraform/.*" [1h])) > 0'
+            labels: {severity: warning, component: security, source: loki}
+            annotations:
+              summary: "tofu arbeitet mit dem Notzugang ({{ $labels.source_ip }})"
+              description: "tofu nutzt das Talos-Admin-Zertifikat (system:masters). Automatisierung gehoert nicht an den Notzugang; bis tofu einen eigenen ServiceAccount hat, meldet sich jeder Lauf hier statt als Page."
+              action: "Loki: {source=\"kube-audit\"} |= \"Terraform\" |= \"system:masters\" — welcher Lauf (tofu-cd, lokal); unbekannt: wie LogsAuditBreakGlassUse behandeln."
+
+          - alert: LogsKeycloakMasterRealmLogin
+            expr: 'sum by (client_id, user_name) (count_over_time({namespace="keycloak", container="keycloak"} |= "realmName=\"master\"" |= "type=\"LOGIN\"" | regexp "clientId=\"(?P<client_id>[^\"]*)\".*username=\"(?P<user_name>[^\"]*)\"" [10m])) > 0'
+            for: 1m
+            labels: {severity: critical, component: security, source: loki}
+            annotations:
+              summary: "Anmeldung im Keycloak-Realm master: {{ $labels.user_name }} ueber {{ $labels.client_id }}"
+              description: "Im Realm master meldet sich im Betrieb niemand an, Jobs nutzen Service-Accounts im Realm kubernetes. Jede Anmeldung ist Notzugang: geplanter Test, Notfall oder Einbruch."
+              action: "Loki: {namespace=\"keycloak\"} |= \"realmName=\\\"master\\\"\" |= \"LOGIN\" — ipAddress und clientId pruefen; unbekannt: Passwort des master-Admins wechseln, Sitzungen im Realm master beenden."
+
           - alert: LogsAuditHumanPrivilegedPod
             expr: 'sum by (user_name, kubernetes_namespace) (count_over_time({source="kube-audit"} |~ "\"privileged\":true|\"hostPath\"" | json user_name="user.username", resource="objectRef.resource", verb="verb", uri="requestURI", kubernetes_namespace="objectRef.namespace" | resource=~"pods|replicationcontrollers|deployments|statefulsets|daemonsets|replicasets|jobs|cronjobs" | verb=~"create|update|patch" | uri!~".*dryRun.*" | user_name!~"^system:.*" [10m])) > 0'
             for: 1m
