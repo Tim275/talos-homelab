@@ -19,7 +19,17 @@ metadata:
   annotations:
     secret.reloader.stakater.com/reload: keycloak-db-credentials,keycloak-admin
 spec:
-  instances: 1                              # 2026-05-16 — Reduced from 3 to 1 because cache=local + multi-pod breaks OIDC token-exchange (server-to-server calls don't follow sticky-session). Single-pod = no cluster-sync = stable. Trade: 30-60s downtime on pod restart. TODO: B-FULL External Infinispan Server for proper HA.
+  instances: 3
+  update:
+    strategy: Auto
+  scheduling:
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app: keycloak
   image: quay.io/keycloak/keycloak:26.7.5@sha256:37dbaf6f0722c9ec246335f36e1ef8b2e6cb960f7c27e0d8c615121a3d475a85   # renovate: docker=quay.io/keycloak/keycloak
   startOptimized: false                     # JIT optimization for first start
 
@@ -28,6 +38,9 @@ spec:
     host: keycloak-db-pooler.keycloak.svc.cluster.local
     port: 5432
     database: keycloak
+    poolMinSize: 20
+    poolInitialSize: 20
+    poolMaxSize: 20
     usernameSecret:
       name: keycloak-db-credentials
       key: username
@@ -112,13 +125,11 @@ spec:
       value: info
     - name: spi-events-listener-jboss-logging-error-level
       value: warn
-    - name: cache
-      value: local
 
   resources:
     requests:
       cpu: 150m      # krr: 2m real; limit bleibt 2 Kerne fuer Start/Login-Spitzen
-      memory: 1Gi    # 7d max 524Mi
+      memory: 1250Mi # 7d max 524Mi
     limits:
       cpu: 2
       memory: 3Gi
