@@ -11,16 +11,19 @@ variable "netbird_management_url" {
 }
 
 variable "lan_targets" {
-  type = map(string)
+  type = map(object({
+    address = string
+    ports   = list(string)
+  }))
   default = {
-    envoy_lb       = "192.168.0.152/32" # Envoy-Gateway
-    kube_api       = "192.168.0.100/32" # kube-apiserver VIP
-    talos_ctrl0    = "192.168.0.101/32" # ctrl-0, talosctl :50000
-    proxmox_msa2   = "192.168.0.50/32"  # msa2proxmox — SSH
-    proxmox_nipogi = "192.168.0.57/32"  # nipogi — SSH
-    proxmox_pve    = "192.168.0.58/32"  # pve/hpdesk — SSH
+    envoy_lb       = { address = "192.168.0.152/32", ports = ["80", "443"] }
+    kube_api       = { address = "192.168.0.100/32", ports = ["6443"] }
+    talos_ctrl0    = { address = "192.168.0.101/32", ports = ["50000"] }
+    proxmox_msa2   = { address = "192.168.0.50/32", ports = ["22", "8006"] }
+    proxmox_nipogi = { address = "192.168.0.57/32", ports = ["22", "8006"] }
+    proxmox_pve    = { address = "192.168.0.58/32", ports = ["22", "8006"] }
   }
-  description = "Ziel-IPs, die über NetBird erreichbar sind"
+  description = "Ziele im LAN mit den erlaubten TCP-Ports"
 }
 
 variable "dns_domain" {
