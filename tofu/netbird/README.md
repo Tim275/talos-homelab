@@ -14,16 +14,16 @@ erlaubt 22 und 8006 auf den Routing-Peers.
 
 ## Apply
 
-Manuell und lokal, vorher immer den Plan ansehen:
+Über `tofu-cd.yml`: Der PR zeigt den Plan als Kommentar, nach dem Merge wendet der
+Workflow ihn an (Environment `tofu-apply`, mit Freigabe). Lokal nur zum Planen:
 
 ```bash
 cd tofu/netbird
 export TF_VAR_netbird_api_token=<aus Secret netbird/netbird-mgmt-api-key>
 tofu plan
-tofu apply
 ```
 
-Danach vom Mac aus prüfen, dass die Ziele erreichbar sind.
+Nach dem Apply vom Mac aus prüfen, dass die Ziele erreichbar sind.
 
 ## Routing-Peer hinzufügen
 
