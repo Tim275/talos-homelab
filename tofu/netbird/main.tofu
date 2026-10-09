@@ -16,6 +16,14 @@ resource "netbird_group" "lan" {
   name     = "homelab-lan-${replace(each.key, ",", "-")}"
 }
 
+removed {
+  from = netbird_group.lan_resource
+
+  lifecycle {
+    destroy = false
+  }
+}
+
 # Network
 resource "netbird_network" "homelab" {
   name        = "homelab"
