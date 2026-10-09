@@ -43,6 +43,8 @@ resource "netbird_network_router" "lan" {
 
 resource "netbird_account_settings" "hardening" {
   peer_approval_enabled               = true
+  user_approval_required              = true
+  auto_update_version                 = "latest"
   peer_login_expiration_enabled       = true
   peer_login_expiration               = 2592000
   peer_inactivity_expiration_enabled  = false
