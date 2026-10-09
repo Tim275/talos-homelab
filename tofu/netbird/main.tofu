@@ -7,8 +7,13 @@ resource "netbird_group" "users" {
   name = "homelab-users"
 }
 
-resource "netbird_group" "lan_resource" {
-  name = "homelab-lan"
+locals {
+  lan_port_sets = toset([for t in var.lan_targets : join(",", t.ports)])
+}
+
+resource "netbird_group" "lan" {
+  for_each = local.lan_port_sets
+  name     = "homelab-lan-${replace(each.key, ",", "-")}"
 }
 
 # Network
@@ -23,8 +28,8 @@ resource "netbird_network_resource" "lan" {
   name        = "homelab-${each.key}"
   description = "Homelab ${each.key}"
   network_id  = netbird_network.homelab.id
-  address     = each.value
-  groups      = [netbird_group.lan_resource.id]
+  address     = each.value.address
+  groups      = [netbird_group.lan[join(",", each.value.ports)].id]
   enabled     = true
 }
 
@@ -38,6 +43,8 @@ resource "netbird_network_router" "lan" {
 
 resource "netbird_account_settings" "hardening" {
   peer_approval_enabled               = true
+  user_approval_required              = true
+  auto_update_version                 = "latest"
   peer_login_expiration_enabled       = true
   peer_login_expiration               = 2592000
   peer_inactivity_expiration_enabled  = false
@@ -61,19 +68,27 @@ resource "netbird_posture_check" "min_client" {
 
 # Access-Policy: users → LAN-Resource
 resource "netbird_policy" "users_to_lan" {
-  name                  = "homelab-users-to-lan"
-  description           = "users → LAN"
+  for_each = local.lan_port_sets
+
+  name                  = "homelab-users-to-lan-${replace(each.key, ",", "-")}"
+  description           = "users → LAN (${each.key})"
   enabled               = true
   source_posture_checks = [netbird_posture_check.min_client.id]
 
   rule {
-    name          = "users-to-lan"
+    name          = "users-to-lan-${replace(each.key, ",", "-")}"
     action        = "accept"
-    bidirectional = true
+    bidirectional = false
     protocol      = "tcp"
+    ports         = split(",", each.key)
     sources       = [netbird_group.users.id]
-    destinations  = [netbird_group.lan_resource.id]
+    destinations  = [netbird_group.lan[each.key].id]
   }
+}
+
+moved {
+  from = netbird_policy.users_to_lan
+  to   = netbird_policy.users_to_lan["80,443"]
 }
 
 # Access-Policy: users → Routing-Peers selbst
@@ -92,12 +107,4 @@ resource "netbird_policy" "users_to_routers" {
     sources       = [netbird_group.users.id]
     destinations  = [netbird_group.routers.id]
   }
-}
-
-resource "netbird_setup_key" "routers" {
-  name           = "homelab-routing-peers"
-  type           = "reusable"
-  usage_limit    = 0 # unlimited
-  auto_groups    = [netbird_group.routers.id]
-  expiry_seconds = 7776000 # 90 Tage
 }
