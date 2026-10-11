@@ -1,0 +1,93 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: n8n-tenant-app
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    platform.homelab/tenant: n8n
+    team: timour
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  n8n.tier: enabled
+                  environment: prod
+          - list:
+              elements:
+                - component: app
+                  appName: n8n-prod
+                  repoURL: https://github.com/Tim275/talos-homelab
+                  path: kubernetes/tenants/n8n-prod/app/overlays/prod
+                  namespace: n8n-prod
+                  wave: "60"
+  template:
+    metadata:
+      name: '{{.appName}}'
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        platform.homelab/tenant: n8n
+        platform.homelab/component: '{{.component}}'
+        team: timour
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{.wave}}'
+    spec:
+      project: apps
+      source:
+        repoURL: '{{.repoURL}}'
+        targetRevision: main
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: '{{.namespace}}'
+      ignoreDifferences:
+        - group: bitnami.com
+          kind: SealedSecret
+          jsonPointers:
+            - /metadata/annotations
+            - /metadata/labels
+        - group: postgresql.cnpg.io
+          kind: Cluster
+          managedFieldsManagers: [cnpg-controller-manager]
+        - group: redis.redis.opstreelabs.in
+          kind: Redis
+          jsonPointers:
+            - /spec/kubernetesConfig/updateStrategy
+            - /spec/redisExporter/port
+            - /spec/storage/volumeClaimTemplate/metadata
+            - /spec/storage/volumeClaimTemplate/status
+            - /spec/storage/volumeMount
+        - group: redis.redis.opstreelabs.in
+          kind: RedisReplication
+          jsonPointers:
+            - /spec/kubernetesConfig/updateStrategy
+            - /spec/redisExporter/port
+            - /spec/storage/volumeClaimTemplate/metadata
+            - /spec/storage/volumeClaimTemplate/status
+            - /spec/storage/volumeMount
+        - group: apps
+          kind: Deployment
+          name: n8n-worker
+          jsonPointers:
+            - /spec/replicas
+            - /spec/template/metadata/annotations
+      syncPolicy:
+        # automated: { prune: true, selfHeal: true }
+        syncOptions:
+          - CreateNamespace=false
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+          - ApplyOutOfSyncOnly=true
+        retry:
+          limit: 5
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }

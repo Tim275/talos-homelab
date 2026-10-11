@@ -2,7 +2,7 @@
 
 Namespace-isolierter Tenant für Drovas ML-Workloads. Gleiches Muster wie jeder andere
 Tenant (`namespace` + `resourcequota` + `limitrange` + `rbac`), gescoped auf die
-`ml`-Namespace, deployed über die `tenants-config` AppSet (Project `platform`, manual-sync).
+`ml`-Namespace, deployed über die `tenants-config-ml` AppSet (Project `ml`, manual-sync).
 
 ## Wofür (Drova-ML-Use-Cases)
 
@@ -32,7 +32,7 @@ Tools kommen inkrementell — GPU-Workloads sind geblockt bis ein GPU-Node da is
 
 ## Aktivieren
 
-`ml` ist bereits in der `tenants-config` AppSet verdrahtet. Deployen (manual-sync/DAX-Gate):
+`ml` ist bereits in der `tenants-config-ml` AppSet verdrahtet. Deployen (manual-sync/DAX-Gate):
 
 ```bash
 argocd app sync ml-config
