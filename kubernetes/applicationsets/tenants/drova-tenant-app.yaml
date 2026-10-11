@@ -1,0 +1,110 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: drova-tenant-app
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    platform.homelab/tenant: drova
+    team: timour
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  drova.tier: enabled
+                  environment: prod
+          - list:
+              elements:
+                - component: app
+                  appName: drova-prod
+                  repoURL: https://github.com/Tim275/drova-gitops
+                  path: overlays/production
+                  wave: "60"
+
+  template:
+    metadata:
+      name: '{{.appName}}'
+      labels:
+        app.kubernetes.io/managed-by: argocd
+        app.kubernetes.io/part-of: timour-homelab
+        platform.homelab/tenant: drova
+        platform.homelab/component: '{{.component}}'
+        team: timour
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{.wave}}'
+    spec:
+      project: apps
+      source:
+        repoURL: '{{.repoURL}}'
+        targetRevision: main
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: drova
+      ignoreDifferences:
+        - group: bitnami.com
+          kind: SealedSecret
+          jsonPointers:
+            - /metadata/annotations/kubectl.kubernetes.io~1last-applied-configuration
+            - /metadata/annotations
+            - /metadata/labels
+        - group: postgresql.cnpg.io
+          kind: Cluster
+          managedFieldsManagers:
+            - cnpg-controller-manager
+        - group: redis.redis.opstreelabs.in
+          kind: RedisReplication
+          jsonPointers:
+            - /spec/kubernetesConfig/updateStrategy
+            - /spec/redisExporter/port
+            - /spec/storage/volumeClaimTemplate/metadata
+            - /spec/storage/volumeClaimTemplate/status
+            - /spec/storage/volumeMount
+        - group: redis.redis.opstreelabs.in
+          kind: Redis
+          jsonPointers:
+            - /spec/kubernetesConfig/updateStrategy
+            - /spec/redisExporter/port
+            - /spec/storage/volumeClaimTemplate/metadata
+            - /spec/storage/volumeClaimTemplate/status
+            - /spec/storage/volumeMount
+        - group: argoproj.io
+          kind: Application
+          jqPathExpressions:
+            - .status
+        - group: argoproj.io
+          kind: Rollout
+          jsonPointers:
+            - /spec/replicas
+        - kind: Service
+          name: api-gateway-canary
+          jsonPointers:
+            - /spec/selector
+        - kind: Service
+          name: api-gateway-stable
+          jsonPointers:
+            - /spec/selector
+      syncPolicy:
+        syncOptions:
+          - CreateNamespace=false
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+          - ServerSideDiff=false
+          - ApplyOutOfSyncOnly=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
