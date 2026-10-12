@@ -1,0 +1,111 @@
+---
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: etcd-snapshots
+  namespace: velero
+  labels:
+    app.kubernetes.io/name: etcd-snapshot
+    app.kubernetes.io/part-of: backup-operations
+spec:
+  generateBucketName: etcd-snapshots
+  storageClassName: rook-ceph-bucket
+---
+apiVersion: talos.dev/v1alpha1
+kind: ServiceAccount
+metadata:
+  name: etcd-snapshot-talos
+  namespace: velero
+spec:
+  roles:
+    - os:etcd:backup
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: etcd-snapshot
+  namespace: velero
+  labels:
+    app.kubernetes.io/name: etcd-snapshot
+    app.kubernetes.io/part-of: backup-operations
+spec:
+  schedule: "10 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: etcd-snapshot
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            - name: snapshot
+              image: ghcr.io/siderolabs/talosctl:v1.13.2@sha256:6382e6f6f8b08ab7c5cc9f77446cfd79975fe0055c0a6d73455a9dc6a6c4b98d
+              args: [-e, 192.168.0.101, -n, 192.168.0.101, etcd, snapshot, /snap/etcd.snapshot]
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              resources:
+                requests: { cpu: 50m, memory: 128Mi }
+                limits: { memory: 512Mi }
+              volumeMounts:
+                - { name: snap, mountPath: /snap }
+                - { name: talos, mountPath: /.talos }
+                - { name: talos-secrets, mountPath: /var/run/secrets/talos.dev, readOnly: true }
+          containers:
+            - name: upload
+              image: alpine/k8s:1.36.4@sha256:358ddfc2d6ff3f00dd461dbd79aaa6d6738709f225b8da0945bb63bd4dbc304e
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              envFrom:
+                - configMapRef: { name: etcd-snapshots }
+                - secretRef: { name: etcd-snapshots }
+              env:
+                - { name: AWS_REGION, value: us-east-1 }
+                - { name: AWS_ENDPOINT_URL, value: "http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80" }
+                - { name: AWS_CONFIG_FILE, value: /tmp/aws-config }
+                - { name: AWS_REQUEST_CHECKSUM_CALCULATION, value: when_required }
+                - { name: AWS_RESPONSE_CHECKSUM_VALIDATION, value: when_required }
+              command: [/bin/sh, -c]
+              args:
+                - |
+                  set -eu
+                  f=/snap/etcd.snapshot
+                  [ "$(stat -c %s $f)" -gt 10000000 ] || { echo "Snapshot zu klein"; exit 1; }
+                  printf '[default]\ns3 =\n  addressing_style = path\n' > "$AWS_CONFIG_FILE"
+                  key="etcd-$(date -u +%Y%m%d-%H%M%S).snapshot.gz"
+                  gzip -c $f > $f.gz
+                  aws s3 cp $f.gz "s3://$BUCKET_NAME/$key"
+                  aws s3api put-bucket-lifecycle-configuration --bucket "$BUCKET_NAME" \
+                    --lifecycle-configuration '{"Rules":[{"ID":"expire","Status":"Enabled","Filter":{"Prefix":""},"Expiration":{"Days":14}}]}'
+                  aws s3 ls "s3://$BUCKET_NAME/$key"
+              resources:
+                requests: { cpu: 50m, memory: 128Mi }
+                limits: { memory: 512Mi }
+              volumeMounts:
+                - { name: snap, mountPath: /snap }
+                - { name: tmp, mountPath: /tmp }
+          volumes:
+            - name: snap
+              emptyDir: { sizeLimit: 1Gi }
+            - name: tmp
+              emptyDir: {}
+            - name: talos
+              emptyDir: {}
+            - name: talos-secrets
+              secret:
+                secretName: etcd-snapshot-talos
