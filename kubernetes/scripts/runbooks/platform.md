@@ -18,7 +18,7 @@ kubectl cnpg status keycloak-db -n keycloak
 
 ## KeycloakBurnRateFast
 
-Keycloak läuft, aber zu viele Anfragen enden mit 5xx. Das Fehlerbudget (99,5 % über 30 Tage) ist in rund zwei Tagen weg. Logins scheitern.
+Keycloak läuft, aber zu viele Anfragen enden mit 5xx. Das Fehlerbudget (99,5 % über 28 Tage) ist in rund zwei Tagen weg. Logins scheitern.
 
 ```bash
 kubectl -n keycloak logs -l app=keycloak --tail 200 | grep -iE "error|exception" | tail -20
