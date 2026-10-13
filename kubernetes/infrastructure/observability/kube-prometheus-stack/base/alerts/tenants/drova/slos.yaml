@@ -6,7 +6,7 @@ metadata:
     release: kube-prometheus-stack
 spec:
   groups:
-    # Target: 99.5% over 30d (Error budget: 3.6h/Monat)
+    # Target: 99.5% over 28d (Error budget: 3h22m)
     #
     #
     #
@@ -680,4 +680,252 @@ spec:
             runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/drova.md#latenz-burn"
             summary: "Drova driver-service: latency SLO slow burn {{ $value | humanizePercentage }} slower than 500ms (threshold 6%)"
             description: "Sustained >6% of gRPC calls over 500ms on both 30m AND 6h windows."
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-slo-burnrate"
+
+    - name: drova.slo.recording.3d
+      interval: 60s
+      rules:
+        - record: slo:drova_chat_service_availability:ratio_rate3d
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_count{http_route!~"/readyz|/health|/livez|/metrics",service_name="chat-service",http_response_status_code!~"5.."}[3d]))
+              /
+              (sum(rate(http_server_request_duration_seconds_count{http_route!~"/readyz|/health|/livez|/metrics",service_name="chat-service"}[3d])) > 0)
+            ) or vector(1)
+        - record: slo:drova_api_gateway_availability:ratio_rate3d
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_count{http_route!~"/readyz|/health|/livez|/metrics",service_name="api-gateway",http_response_status_code!~"5.."}[3d]))
+              /
+              (sum(rate(http_server_request_duration_seconds_count{http_route!~"/readyz|/health|/livez|/metrics",service_name="api-gateway"}[3d])) > 0)
+            ) or vector(1)
+        - record: slo:drova_user_service_availability:ratio_rate3d
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_count{http_route!~"/readyz|/health|/livez|/metrics",service_name="user-service",http_response_status_code!~"5.."}[3d]))
+              /
+              (sum(rate(http_server_request_duration_seconds_count{http_route!~"/readyz|/health|/livez|/metrics",service_name="user-service"}[3d])) > 0)
+            ) or vector(1)
+        - record: slo:drova_trip_service_availability:ratio_rate3d
+          expr: |
+            (
+              sum(rate(rpc_server_call_duration_seconds_count{rpc_method!~"grpc.health.v1.Health/.*",service_name="trip-service",rpc_response_status_code="OK"}[3d]))
+              /
+              (sum(rate(rpc_server_call_duration_seconds_count{rpc_method!~"grpc.health.v1.Health/.*",service_name="trip-service"}[3d])) > 0)
+            ) or vector(1)
+        - record: slo:drova_driver_service_availability:ratio_rate3d
+          expr: |
+            (
+              sum(rate(rpc_server_call_duration_seconds_count{rpc_method!~"grpc.health.v1.Health/.*",service_name="driver-service",rpc_response_status_code="OK"}[3d]))
+              /
+              (sum(rate(rpc_server_call_duration_seconds_count{rpc_method!~"grpc.health.v1.Health/.*",service_name="driver-service"}[3d])) > 0)
+            ) or vector(1)
+        - record: slo:drova_chat_service_latency:ratio_rate3d
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_bucket{http_route!~"/readyz|/health|/livez|/metrics",service_name="chat-service",le="0.5"}[3d]))
+              /
+              (sum(rate(http_server_request_duration_seconds_count{http_route!~"/readyz|/health|/livez|/metrics",service_name="chat-service"}[3d])) > 0)
+            ) or vector(1)
+        - record: slo:drova_api_gateway_latency:ratio_rate3d
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_bucket{http_route!~"/readyz|/health|/livez|/metrics",service_name="api-gateway",le="0.5"}[3d]))
+              /
+              (sum(rate(http_server_request_duration_seconds_count{http_route!~"/readyz|/health|/livez|/metrics",service_name="api-gateway"}[3d])) > 0)
+            ) or vector(1)
+        - record: slo:drova_user_service_latency:ratio_rate3d
+          expr: |
+            (
+              sum(rate(http_server_request_duration_seconds_bucket{http_route!~"/readyz|/health|/livez|/metrics",service_name="user-service",le="0.5"}[3d]))
+              /
+              (sum(rate(http_server_request_duration_seconds_count{http_route!~"/readyz|/health|/livez|/metrics",service_name="user-service"}[3d])) > 0)
+            ) or vector(1)
+        - record: slo:drova_trip_service_latency:ratio_rate3d
+          expr: |
+            (
+              sum(rate(rpc_server_call_duration_seconds_bucket{rpc_method!~"grpc.health.v1.Health/.*",service_name="trip-service",le="0.5"}[3d]))
+              /
+              (sum(rate(rpc_server_call_duration_seconds_count{rpc_method!~"grpc.health.v1.Health/.*",service_name="trip-service"}[3d])) > 0)
+            ) or vector(1)
+        - record: slo:drova_driver_service_latency:ratio_rate3d
+          expr: |
+            (
+              sum(rate(rpc_server_call_duration_seconds_bucket{rpc_method!~"grpc.health.v1.Health/.*",service_name="driver-service",le="0.5"}[3d]))
+              /
+              (sum(rate(rpc_server_call_duration_seconds_count{rpc_method!~"grpc.health.v1.Health/.*",service_name="driver-service"}[3d])) > 0)
+            ) or vector(1)
+
+    - name: drova.slo.ticket
+      interval: 1m
+      rules:
+        - alert: DrovaChatServiceBurnRateTicket
+          expr: |
+            (1 - slo:drova_chat_service_availability:ratio_rate6h) > (1 - 0.995)
+            and
+            (1 - slo:drova_chat_service_availability:ratio_rate3d) > (1 - 0.995)
+            and
+            slo:drova_chat_service:request_rate5m > 0.1
+          for: 15m
+          labels:
+            severity: warning
+            tenant: drova
+            slo: chat-service-availability
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/drova.md#fehler-burn"
+            summary: "Drova chat-service: availability SLO ticket burn {{ $value | humanizePercentage }} errors (1× — budget gone by end of window)"
+            description: "Burn rate above 1 on both 6h AND 3d windows. No outage now, but the 28d budget will not last."
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-slo-burnrate"
+        - alert: DrovaApiGatewayBurnRateTicket
+          expr: |
+            (1 - slo:drova_api_gateway_availability:ratio_rate6h) > (1 - 0.995)
+            and
+            (1 - slo:drova_api_gateway_availability:ratio_rate3d) > (1 - 0.995)
+            and
+            slo:drova_api_gateway:request_rate5m > 0.1
+          for: 15m
+          labels:
+            severity: warning
+            tenant: drova
+            slo: api-gateway-availability
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/drova.md#fehler-burn"
+            summary: "Drova api-gateway: availability SLO ticket burn {{ $value | humanizePercentage }} errors (1× — budget gone by end of window)"
+            description: "Burn rate above 1 on both 6h AND 3d windows. No outage now, but the 28d budget will not last."
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-slo-burnrate"
+        - alert: DrovaUserServiceBurnRateTicket
+          expr: |
+            (1 - slo:drova_user_service_availability:ratio_rate6h) > (1 - 0.995)
+            and
+            (1 - slo:drova_user_service_availability:ratio_rate3d) > (1 - 0.995)
+            and
+            slo:drova_user_service:request_rate5m > 0.1
+          for: 15m
+          labels:
+            severity: warning
+            tenant: drova
+            slo: user-service-availability
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/drova.md#fehler-burn"
+            summary: "Drova user-service: availability SLO ticket burn {{ $value | humanizePercentage }} errors (1× — budget gone by end of window)"
+            description: "Burn rate above 1 on both 6h AND 3d windows. No outage now, but the 28d budget will not last."
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-slo-burnrate"
+        - alert: DrovaTripServiceBurnRateTicket
+          expr: |
+            (1 - slo:drova_trip_service_availability:ratio_rate6h) > (1 - 0.995)
+            and
+            (1 - slo:drova_trip_service_availability:ratio_rate3d) > (1 - 0.995)
+            and
+            slo:drova_trip_service:request_rate5m > 0.1
+          for: 15m
+          labels:
+            severity: warning
+            tenant: drova
+            slo: trip-service-availability
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/drova.md#fehler-burn"
+            summary: "Drova trip-service: availability SLO ticket burn {{ $value | humanizePercentage }} errors (1× — budget gone by end of window)"
+            description: "Burn rate above 1 on both 6h AND 3d windows. No outage now, but the 28d budget will not last."
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-slo-burnrate"
+        - alert: DrovaDriverServiceBurnRateTicket
+          expr: |
+            (1 - slo:drova_driver_service_availability:ratio_rate6h) > (1 - 0.995)
+            and
+            (1 - slo:drova_driver_service_availability:ratio_rate3d) > (1 - 0.995)
+            and
+            slo:drova_driver_service:request_rate5m > 0.1
+          for: 15m
+          labels:
+            severity: warning
+            tenant: drova
+            slo: driver-service-availability
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/drova.md#fehler-burn"
+            summary: "Drova driver-service: availability SLO ticket burn {{ $value | humanizePercentage }} errors (1× — budget gone by end of window)"
+            description: "Burn rate above 1 on both 6h AND 3d windows. No outage now, but the 28d budget will not last."
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-slo-burnrate"
+        - alert: DrovaChatServiceLatencyBurnRateTicket
+          expr: |
+            (1 - slo:drova_chat_service_latency:ratio_rate6h) > (1 - 0.99)
+            and
+            (1 - slo:drova_chat_service_latency:ratio_rate3d) > (1 - 0.99)
+            and
+            slo:drova_chat_service:request_rate5m > 0.1
+          for: 15m
+          labels:
+            severity: warning
+            tenant: drova
+            slo: chat-service-latency
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/drova.md#latenz-burn"
+            summary: "Drova chat-service: latency SLO ticket burn {{ $value | humanizePercentage }} slower than 500ms (1× — budget gone by end of window)"
+            description: "Burn rate above 1 on both 6h AND 3d windows. No outage now, but the 28d budget will not last."
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-slo-burnrate"
+        - alert: DrovaApiGatewayLatencyBurnRateTicket
+          expr: |
+            (1 - slo:drova_api_gateway_latency:ratio_rate6h) > (1 - 0.99)
+            and
+            (1 - slo:drova_api_gateway_latency:ratio_rate3d) > (1 - 0.99)
+            and
+            slo:drova_api_gateway:request_rate5m > 0.1
+          for: 15m
+          labels:
+            severity: warning
+            tenant: drova
+            slo: api-gateway-latency
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/drova.md#latenz-burn"
+            summary: "Drova api-gateway: latency SLO ticket burn {{ $value | humanizePercentage }} slower than 500ms (1× — budget gone by end of window)"
+            description: "Burn rate above 1 on both 6h AND 3d windows. No outage now, but the 28d budget will not last."
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-slo-burnrate"
+        - alert: DrovaUserServiceLatencyBurnRateTicket
+          expr: |
+            (1 - slo:drova_user_service_latency:ratio_rate6h) > (1 - 0.99)
+            and
+            (1 - slo:drova_user_service_latency:ratio_rate3d) > (1 - 0.99)
+            and
+            slo:drova_user_service:request_rate5m > 0.1
+          for: 15m
+          labels:
+            severity: warning
+            tenant: drova
+            slo: user-service-latency
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/drova.md#latenz-burn"
+            summary: "Drova user-service: latency SLO ticket burn {{ $value | humanizePercentage }} slower than 500ms (1× — budget gone by end of window)"
+            description: "Burn rate above 1 on both 6h AND 3d windows. No outage now, but the 28d budget will not last."
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-slo-burnrate"
+        - alert: DrovaTripServiceLatencyBurnRateTicket
+          expr: |
+            (1 - slo:drova_trip_service_latency:ratio_rate6h) > (1 - 0.99)
+            and
+            (1 - slo:drova_trip_service_latency:ratio_rate3d) > (1 - 0.99)
+            and
+            slo:drova_trip_service:request_rate5m > 0.1
+          for: 15m
+          labels:
+            severity: warning
+            tenant: drova
+            slo: trip-service-latency
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/drova.md#latenz-burn"
+            summary: "Drova trip-service: latency SLO ticket burn {{ $value | humanizePercentage }} slower than 500ms (1× — budget gone by end of window)"
+            description: "Burn rate above 1 on both 6h AND 3d windows. No outage now, but the 28d budget will not last."
+            dashboard_url: "https://grafana.timourhomelab.org/d/drova-slo-burnrate"
+        - alert: DrovaDriverServiceLatencyBurnRateTicket
+          expr: |
+            (1 - slo:drova_driver_service_latency:ratio_rate6h) > (1 - 0.99)
+            and
+            (1 - slo:drova_driver_service_latency:ratio_rate3d) > (1 - 0.99)
+            and
+            slo:drova_driver_service:request_rate5m > 0.1
+          for: 15m
+          labels:
+            severity: warning
+            tenant: drova
+            slo: driver-service-latency
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/drova.md#latenz-burn"
+            summary: "Drova driver-service: latency SLO ticket burn {{ $value | humanizePercentage }} slower than 500ms (1× — budget gone by end of window)"
+            description: "Burn rate above 1 on both 6h AND 3d windows. No outage now, but the 28d budget will not last."
             dashboard_url: "https://grafana.timourhomelab.org/d/drova-slo-burnrate"
