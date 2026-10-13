@@ -1,6 +1,6 @@
 # Drova
 
-SLOs je Dienst über 30 Tage: 99,5 % Verfügbarkeit, 99 % der Anfragen unter 500 ms. Fast Burn = Budget wird 14,4× so schnell verbraucht, auf dem 5-min- und dem 1-h-Fenster gleichzeitig. Das Monatsbudget ist dann in rund zwei Tagen weg.
+SLOs je Dienst über 28 Tage: 99,5 % Verfügbarkeit, 99 % der Anfragen unter 500 ms. Fast Burn = Budget wird 14,4× so schnell verbraucht, auf dem 5-min- und dem 1-h-Fenster gleichzeitig. Das Monatsbudget ist dann in rund zwei Tagen weg.
 
 Dashboard: https://grafana.timourhomelab.org/d/drova-service-detail
 Deployt wird aus `Tim275/drova-gitops` (`overlays/production`) über die ArgoCD-App `drova-prod`, Sync manuell.
