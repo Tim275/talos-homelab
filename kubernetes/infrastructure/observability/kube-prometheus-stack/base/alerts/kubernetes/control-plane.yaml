@@ -19,8 +19,8 @@ spec:
           annotations:
             dashboard_url: "https://grafana.timourhomelab.org/d/etcd"
             summary: "etcd WAL fsync p99 {{ $value | humanizeDuration }}"
-            description: "etcd shares rpool on msa2 with three Ceph OSDs. Above 10ms the apiserver slows on every write."
-            action: "cat /proc/pressure/io on the host; a defrag does NOT help here — check OSD load instead."
+            description: "Above 10ms the apiserver slows on every write."
+            action: "Host from pve_guest_info{name=\"ctrl-0\"}; check /proc/pressure/io and per-disk busy there. A defrag does NOT help — look for write-heavy neighbours on the same disk."
         - alert: etcdHighFsyncDurations
           expr: |
             histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket{job=~".*etcd.*"}[5m]))
@@ -33,7 +33,7 @@ spec:
             runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/kubernetes/scripts/runbooks/control-plane.md#etcdhighfsyncdurations"
             summary: "etcd disk WAL fsync p99 {{ $value | humanizeDuration }} on {{ $labels.instance }}"
             dashboard_url: "https://grafana.timourhomelab.org/d/etcd"
-            description: "Baseline was measured on pve's LENSE SSD (p50 105ms / p90 216ms). ctrl-0 moved back to msa2 since (verified 2026-09-16) — that baseline is stale, not re-measured on the new disk yet. This fires only on degradation beyond whatever the real current baseline is. AdmissionWebhookRejecting is the alert that catches the actual damage."
+            description: "WAL fsync p99 above 500ms, far past EtcdDiskLatencyHigh. AdmissionWebhookRejecting is the alert that catches the actual damage."
             action: "Check ctrl-0's etcd VM disk I/O; same root cause class as EtcdRequestLatencyHigh."
 
         - alert: etcdHighCommitDurations
@@ -47,7 +47,7 @@ spec:
           annotations:
             summary: "etcd backend commit p99 {{ $value | humanizeDuration }} on {{ $labels.instance }}"
             dashboard_url: "https://grafana.timourhomelab.org/d/etcd"
-            description: "Baseline was measured on pve's LENSE SSD (p50 145ms / p90 422ms). ctrl-0 moved back to msa2 since (verified 2026-09-16) — that baseline is stale, not re-measured on the new disk yet."
+            description: "Backend commit p99 above 800ms; same root cause class as the WAL fsync alerts."
             action: "Check ctrl-0's etcd VM disk I/O."
 
         - alert: etcdHighNumberOfFailedGRPCRequests
