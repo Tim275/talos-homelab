@@ -31,12 +31,38 @@ LINK_CASES = [
 RENDER_ALL = ["slack.body", "telegram.body", "jira.summary", "jira.description"]
 
 
-def extract_templates(tree: Path) -> list[tuple[Path, dict]]:
-    found = []
+def merge(a, b):
+    if isinstance(a, dict) and isinstance(b, dict):
+        return {**a, **{k: merge(a[k], v) if k in a else v for k, v in b.items()}}
+    return b
+
+
+def load(path: Path) -> list:
+    try:
+        return list(yaml.safe_load_all(path.read_text()))
+    except yaml.YAMLError as exc:
+        print(f"FAIL {path}: kein gueltiges YAML: {exc}")
+        sys.exit(1)
+
+
+def values_files(tree: Path):
+    """Values wie Helm sie sieht: base/<datei> und darueber overlays/<env>/<datei>."""
     for path in sorted(tree.glob(VALUES_GLOB)):
         if "/charts/" in str(path):
             continue
-        for doc in yaml.safe_load_all(path.read_text()):
+        if path.parent.parent.name == "overlays" and (path.parents[2] / "base" / path.name).exists():
+            continue
+        overlays = sorted(path.parent.parent.glob(f"overlays/*/{path.name}")) if path.parent.name == "base" else []
+        if not overlays:
+            yield path, load(path)
+        for ov in overlays:
+            yield ov, [merge(load(path)[0] or {}, load(ov)[0] or {})]
+
+
+def extract_templates(tree: Path) -> list[tuple[Path, dict]]:
+    found = []
+    for path, docs in values_files(tree):
+        for doc in docs:
             if isinstance(doc, dict) and isinstance(doc.get("alertmanager"), dict):
                 files = doc["alertmanager"].get("templateFiles")
                 if files:
@@ -107,14 +133,7 @@ def check_templates(path: Path, files: dict) -> bool:
 
 def extract_configs(tree: Path) -> list[tuple[Path, dict]]:
     found = []
-    for path in sorted(tree.glob(VALUES_GLOB)):
-        if "/charts/" in str(path):
-            continue
-        try:
-            docs = list(yaml.safe_load_all(path.read_text()))
-        except yaml.YAMLError as exc:
-            print(f"FAIL {path}: kein gueltiges YAML: {exc}")
-            sys.exit(1)
+    for path, docs in values_files(tree):
         for doc in docs:
             if isinstance(doc, dict) and isinstance(doc.get("alertmanager"), dict):
                 cfg = doc["alertmanager"].get("config")

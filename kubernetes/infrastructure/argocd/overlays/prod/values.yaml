@@ -1,0 +1,89 @@
+configs:
+  cm:
+    url: https://argo.timourhomelab.org
+    oidc.config: |
+      name: Keycloak
+      issuer: https://iam.timourhomelab.org/realms/kubernetes
+      clientID: argocd
+      clientSecret: $argocd-oidc-secret:clientSecret
+      # der Keycloak-Client verlangt pkce.code.challenge.method S256
+      enablePKCEAuthentication: true
+      requestedScopes: ["openid", "profile", "email", "groups"]
+      requestedIDTokenClaims:
+        groups:
+          essential: true
+      logoutURL: https://iam.timourhomelab.org/realms/kubernetes/protocol/openid-connect/logout?id_token_hint={{token}}&post_logout_redirect_uri={{logoutRedirectURL}}
+controller:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 100m      # Homelab scale - reduced for bootstrap
+      memory: 1Gi    # INCREASED: 65 apps need more memory (was 512Mi)
+    limits:
+      cpu: 1000m     # Homelab scale - reduced CPU limit
+      memory: 8Gi    # INCREASED: 60+ apps cause OOMKilled (was 4Gi)
+dex:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+redis-ha:
+  replicas: 3
+  sentinel:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 300m
+        memory: 128Mi
+  redis:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+  haproxy:
+    replicas: 3  # HA for load balancer too!
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+server:
+  replicas: 2
+  certificate:
+    domain: argo.timourhomelab.org
+  resources:
+    requests:
+      cpu: 100m      # Homelab scale - reduced for bootstrap
+      memory: 128Mi  # Homelab scale - reduced memory
+    limits:
+      cpu: 500m      # Homelab scale - reduced CPU limit
+      memory: 1Gi    # Homelab scale - reduced memory limit
+repoServer:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 100m      # Homelab scale - reduced for bootstrap
+      memory: 256Mi  # Homelab scale - reduced memory
+    limits:
+      cpu: 1000m     # Increased: 70% throttling at 500m
+      memory: 1Gi    # Homelab scale - reduced memory limit
+  persistence:
+    size: 20Gi
+applicationSet:
+  replicas: 2  # HA configuration
+  resources:
+    requests:
+      cpu: 100m      # 7d: steady 2m, p99 6m, max 33m — 200m x2 Replicas waren ungenutzt
+      memory: 256Mi  # Higher baseline
+    limits:
+      # kein CPU-Limit: Reconcile-Bursts liefen in CFS-Throttling (1353/7d)
+      memory: 2Gi

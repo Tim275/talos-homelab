@@ -18,24 +18,11 @@ configs:
     create: true
     application.resourceTrackingMethod: annotation+label
     admin.enabled: true
-    url: https://argo.timourhomelab.org
     kustomize.buildOptions: --enable-helm --load-restrictor LoadRestrictionsNone
 
     exec.timeout: "300s"  # 5 minutes for kustomize build (default 90s)
 
 
-    oidc.config: |
-      name: Keycloak
-      issuer: https://iam.timourhomelab.org/realms/kubernetes
-      clientID: argocd
-      clientSecret: $argocd-oidc-secret:clientSecret
-      # der Keycloak-Client verlangt pkce.code.challenge.method S256
-      enablePKCEAuthentication: true
-      requestedScopes: ["openid", "profile", "email", "groups"]
-      requestedIDTokenClaims:
-        groups:
-          essential: true
-      logoutURL: https://iam.timourhomelab.org/realms/kubernetes/protocol/openid-connect/logout?id_token_hint={{token}}&post_logout_redirect_uri={{logoutRedirectURL}}
     timeout.reconciliation: "360s"        # Extended from 180s default
     timeout.reconciliation.jitter: "30s"   # Add jitter to prevent thundering herd
     timeout.hard.reconciliation: "600s"    # Hard limit for reconciliation
@@ -115,7 +102,6 @@ crds:
   keep: false
 
 controller:
-  replicas: 2
 
   # chart default only spreads over zones (soft) — both replicas ended up on worker-2
   topologySpreadConstraints:
@@ -130,21 +116,12 @@ controller:
     enabled: true
     minAvailable: 1
 
-  resources:
-    requests:
-      cpu: 100m      # Homelab scale - reduced for bootstrap
-      memory: 1Gi    # INCREASED: 65 apps need more memory (was 512Mi)
-    limits:
-      cpu: 1000m     # Homelab scale - reduced CPU limit
-      memory: 8Gi    # INCREASED: 60+ apps cause OOMKilled (was 4Gi)
 
   metrics:
     enabled: true
     serviceMonitor:
       enabled: true
       namespace: argocd
-      additionalLabels:
-        release: kube-prometheus-stack  # Ensure Prometheus discovery
       interval: 30s
       scrapeTimeout: 10s
 
@@ -219,12 +196,6 @@ controller:
 
 dex:
   enabled: false
-  resources:
-    requests:
-      cpu: 10m
-      memory: 32Mi
-    limits:
-      memory: 128Mi
 
 
 redis:
@@ -243,27 +214,12 @@ redis-ha:
   serviceTest:
     enabled: false
 
-  replicas: 3
 
   sentinel:
     quorum: 2  # Need 2 out of 3 sentinels to agree on failover
 
-    resources:
-      requests:
-        cpu: 25m
-        memory: 64Mi
-      limits:
-        cpu: 300m
-        memory: 128Mi
 
   redis:
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 1Gi
 
     config:
       maxmemory-policy: "allkeys-lru"  # LRU eviction
@@ -275,14 +231,6 @@ redis-ha:
 
   haproxy:
     enabled: true
-    replicas: 3  # HA for load balancer too!
-    resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        cpu: 200m
-        memory: 256Mi
 
   hardAntiAffinity: true  # Never run 2 Redis on same node
 
@@ -291,11 +239,8 @@ redis-ha:
     serviceMonitor:
       enabled: true
       namespace: argocd
-      additionalLabels:
-        release: kube-prometheus-stack
 
 server:
-  replicas: 2
 
   pdb:
     enabled: true
@@ -311,14 +256,11 @@ server:
     serviceMonitor:
       enabled: true
       namespace: argocd
-      additionalLabels:
-        release: kube-prometheus-stack
       interval: 30s
       scrapeTimeout: 10s
 
   certificate:
     enabled: false  # Disabled until cert-manager is deployed
-    domain: argo.timourhomelab.org
     issuer:
       group: cert-manager.io
       kind: ClusterIssuer
@@ -327,13 +269,6 @@ server:
       algorithm: ECDSA
       size: 256
 
-  resources:
-    requests:
-      cpu: 100m      # Homelab scale - reduced for bootstrap
-      memory: 128Mi  # Homelab scale - reduced memory
-    limits:
-      cpu: 500m      # Homelab scale - reduced CPU limit
-      memory: 1Gi    # Homelab scale - reduced memory limit
 
   extraEnv:
     - name: ARGOCD_ENABLE_GRPC_TIME_HISTOGRAM
@@ -355,7 +290,6 @@ server:
     enabled: false  # Disabled per user request - use kubectl port-forward
 
 repoServer:
-  replicas: 2
 
   env:
     - name: ARGOCD_EXEC_TIMEOUT
@@ -413,18 +347,9 @@ repoServer:
     serviceMonitor:
       enabled: true
       namespace: argocd
-      additionalLabels:
-        release: kube-prometheus-stack
       interval: 30s
       scrapeTimeout: 10s
 
-  resources:
-    requests:
-      cpu: 100m      # Homelab scale - reduced for bootstrap
-      memory: 256Mi  # Homelab scale - reduced memory
-    limits:
-      cpu: 1000m     # Increased: 70% throttling at 500m
-      memory: 1Gi    # Homelab scale - reduced memory limit
 
   extraEnv:
     - name: TMPDIR
@@ -467,8 +392,6 @@ repoServer:
 
   persistence:
     enabled: false  # Disable for bootstrap - use emptyDir
-    size: 20Gi
-    storageClassName: rook-cephblock-enterprise
     accessModes:
       - ReadWriteOnce
   extraContainers:
@@ -525,27 +448,17 @@ repoServer:
 
 applicationSet:
 
-  replicas: 2  # HA configuration
 
   pdb:
     enabled: true
     minAvailable: 1
 
-  resources:
-    requests:
-      cpu: 100m      # 7d: steady 2m, p99 6m, max 33m — 200m x2 Replicas waren ungenutzt
-      memory: 256Mi  # Higher baseline
-    limits:
-      # kein CPU-Limit: Reconcile-Bursts liefen in CFS-Throttling (1353/7d)
-      memory: 2Gi
 
   metrics:
     enabled: true
     serviceMonitor:
       enabled: true
       namespace: argocd
-      additionalLabels:
-        release: kube-prometheus-stack
 
   extraEnv:
     - name: ARGOCD_APPLICATIONSET_CONTROLLER_PARALLELISM_LIMIT

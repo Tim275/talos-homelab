@@ -1,4 +1,38 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+namespace: infisical
+commonLabels:
+  app.kubernetes.io/name: infisical
+  app.kubernetes.io/component: secrets-management
+  app.kubernetes.io/part-of: platform-identity
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "17"
+
 resources:
   - ../../base
+  - infisical-secrets-sealed.yaml
+  - redis-secret-sealed.yaml
+
+components:
+  - ../../components/rook-ceph
+
+helmCharts:
+  - name: infisical-standalone
+    repo: https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/
+    version: "1.7.5"
+    releaseName: infisical
+    namespace: infisical
+    valuesFile: ../../base/infisical-standalone-values.yaml
+    additionalValuesFiles:
+      - infisical-standalone-values.yaml
+  - name: secrets-operator
+    repo: https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/
+    version: "0.11.1"
+    releaseName: infisical-secrets-operator
+    namespace: infisical
+    valuesFile: ../../base/secrets-operator-values.yaml
+    additionalValuesFiles:
+      - secrets-operator-values.yaml
+
+patches:
+  - path: sizing.yaml

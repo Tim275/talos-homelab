@@ -37,13 +37,6 @@ metricsGenerator:
 storage:
   trace:
     backend: s3
-    s3:
-      bucket: ${BUCKET_NAME}
-      endpoint: rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80  # BUCKET_PORT der OBC ist 443 (TLS)
-      access_key: ${AWS_ACCESS_KEY_ID}
-      secret_key: ${AWS_SECRET_ACCESS_KEY}
-      insecure: true  # HTTP endpoint (not HTTPS)
-      forcepathstyle: true  # Required for Ceph RGW
 
 overrides:
   defaults:
@@ -63,14 +56,6 @@ overrides:
 per_tenant_overrides: {}
 
 distributor:
-  replicas: 2
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 1Gi
   extraArgs:
     - -config.expand-env=true
   extraEnvFrom:
@@ -80,7 +65,6 @@ distributor:
         name: tempo-traces  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
 
 ingester:
-  replicas: 2
   maxUnavailable: 1
   affinity: |
     podAntiAffinity:
@@ -109,15 +93,6 @@ ingester:
     replication_factor: 2
   persistence:
     enabled: true
-    size: 10Gi
-    storageClass: rook-ceph-block-obs
-  resources:
-    requests:
-      cpu: 100m
-      memory: 512Mi
-    limits:
-      cpu: 1000m
-      memory: 2560Mi
   extraArgs:
     - -config.expand-env=true
   extraEnvFrom:
@@ -127,10 +102,6 @@ ingester:
         name: tempo-traces  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
 
 compactor:
-  replicas: 1
-  config:
-    compaction:
-      block_retention: 720h  # 30 days (same as Loki)
   affinity: |
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
@@ -152,13 +123,6 @@ compactor:
               - key: topology.kubernetes.io/zone
                 operator: NotIn
                 values: [nipogi]
-  resources:
-    requests:
-      cpu: 50m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 1Gi
   extraArgs:
     - -config.expand-env=true
   extraEnvFrom:
@@ -168,14 +132,6 @@ compactor:
         name: tempo-traces  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
 
 querier:
-  replicas: 2
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi   # 7d max 106Mi
-    limits:
-      cpu: 1000m
-      memory: 2Gi
   extraArgs:
     - -config.expand-env=true
   extraEnvFrom:
@@ -185,7 +141,6 @@ querier:
         name: tempo-traces  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
 
 queryFrontend:
-  replicas: 1
   extraArgs:
     - -config.expand-env=true
   extraEnvFrom:
@@ -214,17 +169,9 @@ queryFrontend:
               - key: topology.kubernetes.io/zone
                 operator: NotIn
                 values: [nipogi]
-  resources:
-    requests:
-      cpu: 50m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 1Gi
 
 gateway:
   enabled: true
-  replicas: 1
   affinity: |
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
@@ -246,19 +193,10 @@ gateway:
               - key: topology.kubernetes.io/zone
                 operator: NotIn
                 values: [nipogi]
-  resources:
-    requests:
-      cpu: 25m
-      memory: 32Mi
-    limits:
-      cpu: 250m
-      memory: 256Mi
 
 metaMonitoring:
   serviceMonitor:
     enabled: true
-    labels:
-      release: kube-prometheus-stack  # Required for Prometheus Operator discovery
     interval: 30s
     scrapeTimeout: 10s
 

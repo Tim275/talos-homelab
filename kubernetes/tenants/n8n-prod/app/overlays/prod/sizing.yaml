@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: n8n-main
+  namespace: n8n-prod
+spec:
+  replicas: 1  # ALWAYS 1 - No leader election in N8N!
+  template:
+    spec:
+      containers:
+        - name: n8n
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"     # Homelab: reduced from 500m
+            limits:
+              memory: "750Mi"
+              cpu: "500m"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: n8n-webhook
+  namespace: n8n-prod
+spec:
+  replicas: 1  # Homelab: reduced from 2 to save resources
+  template:
+    spec:
+      containers:
+        - name: n8n-webhook
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"     # Homelab: reduced from 500m
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: n8n-worker
+  namespace: n8n-prod
+spec:
+  replicas: 1  # Save resources - HPA can scale up if needed
+  template:
+    spec:
+      containers:
+        - name: n8n-worker
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"     # Homelab: reduced from 1000m
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"    # Can burst when needed
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: n8n-import-credentials
+  namespace: n8n-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: import
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: n8n-import-workflows
+  namespace: n8n-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: import
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

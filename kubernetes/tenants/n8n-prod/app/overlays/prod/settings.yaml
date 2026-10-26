@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: n8n-configmap
+  namespace: n8n-prod
+data:
+  N8N_HOST: "n8n.timourhomelab.org"
+  N8N_EDITOR_BASE_URL: "https://n8n.timourhomelab.org"
+  WEBHOOK_URL: "https://n8n.timourhomelab.org/"
+  N8N_SMTP_SENDER: "n8n <no-reply@timourhomelab.org>"
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: n8n-prod
+  namespace: n8n-prod
+  annotations:
+    gethomepage.dev/href: https://n8n.timourhomelab.org/
+    gethomepage.dev/siteMonitor: https://n8n.timourhomelab.org/
+spec:
+  hostnames:
+    - "n8n.timourhomelab.org"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: "/rest/push"
+      backendRefs:
+        - name: n8n
+          port: 5678
+          weight: 100
+      timeouts:
+        request: 0s
+        backendRequest: 0s
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set:
+              - name: Origin
+                value: "https://n8n.timourhomelab.org"
+
+    - matches:
+        - path:
+            type: PathPrefix
+            value: "/webhook"
+        - path:
+            type: PathPrefix
+            value: "/webhook-waiting"
+      backendRefs:
+        - name: n8n-webhook
+          port: 5678
+          weight: 100
+
+    - matches:
+        - path:
+            type: PathPrefix
+            value: "/"
+      backendRefs:
+        - name: n8n
+          port: 5678
+          weight: 100

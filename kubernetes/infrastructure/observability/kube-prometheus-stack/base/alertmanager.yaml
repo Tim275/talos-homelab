@@ -1,0 +1,193 @@
+alertmanager:
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+  alertmanagerSpec:
+    topologySpreadConstraints:
+      # hart: nie zwei Replicas auf demselben Node
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        matchLabelKeys: [pod-template-hash]
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: alertmanager
+            alertmanager: kube-prometheus-stack-alertmanager
+      # weich: 3 Replicas auf 3 Zonen ist bei belegten Nodes nicht erfuellbar —
+      # DoNotSchedule liess die dritte Replica dauerhaft Pending
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: ScheduleAnyway
+        matchLabelKeys: [pod-template-hash]
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: alertmanager
+            alertmanager: kube-prometheus-stack-alertmanager
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+    secrets:
+      - slack-webhook-url
+      - slack-webhook-critical
+      - slack-webhook-security
+      - watchdog-webhook-url
+      - telegram-bot-token
+      - jira-api
+
+  config:
+    global:
+      resolve_timeout: 5m
+      slack_api_url_file: /etc/alertmanager/secrets/slack-webhook-url/url
+
+    templates:
+      - '/etc/alertmanager/config/*.tmpl'
+
+    route:
+      receiver: 'slack-default'
+      group_by: ['alertname', 'namespace', 'severity']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+
+      routes:
+        - matchers:
+            - alertname="Watchdog"
+          receiver: 'watchdog-heartbeat'
+          group_wait: 0s
+          group_interval: 1m
+          repeat_interval: 1m
+        - matchers:
+            - alertname="InfoInhibitor"
+          receiver: 'null'
+        - matchers:
+            - severity="info"
+          receiver: 'null'
+        - matchers:
+            - severity="warning"
+          receiver: 'jira-ticket'
+          group_wait: 1m
+          group_interval: 10m
+          repeat_interval: 12h
+          continue: true
+        - matchers:
+            - severity="critical"
+          receiver: 'telegram-oncall'
+          group_wait: 10s
+          group_interval: 2m
+          repeat_interval: 1h
+          continue: true
+        - matchers:
+            - severity="critical"
+          receiver: 'slack-critical'
+          group_wait: 10s
+          group_interval: 2m
+          repeat_interval: 1h
+          continue: true
+        - matchers:
+            - component=~"security|kyverno|trivy|identity|compliance"
+          receiver: 'slack-security'
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 720h
+        - matchers:
+            - alertname=~"TargetDown|KubeDeploymentReplicasMismatch|KubeJobFailed"
+          receiver: 'slack-default'
+          group_wait: 5m
+          group_interval: 30m
+          repeat_interval: 720h
+          mute_time_intervals:
+            - nachtruhe
+        - matchers:
+            - severity="warning"
+          receiver: 'slack-default'
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 720h
+          mute_time_intervals:
+            - nachtruhe
+    time_intervals:
+      - name: nachtruhe
+        time_intervals:
+          - times:
+              - start_time: '22:00'
+                end_time: '24:00'
+              - start_time: '00:00'
+                end_time: '07:00'
+            location: Europe/Berlin
+
+    inhibit_rules:
+      - source_matchers:
+          - severity="critical"
+        target_matchers:
+          - severity="warning"
+        equal: ['alertname', 'namespace']
+      - source_matchers:
+          - severity="critical"
+        target_matchers:
+          - severity="info"
+        equal: ['alertname', 'namespace']
+
+      - source_matchers:
+          - alertname=~"ClusterAPIServerDown|ControlPlaneNodeDown"
+        target_matchers:
+          - severity="warning"
+
+      - source_matchers:
+          - alertname=~"ClusterAPIServerDown|ControlPlaneNodeDown|EtcdQuorumLoss"
+        target_matchers:
+          - alertname=~"ClusterAPIServerDown|ControlPlaneNodeDown|EtcdQuorumLoss|CoreDNSDown|KeycloakDown|KubeStateMetricsDown|CiliumNodeUnreachable"
+
+      - source_matchers:
+          - alertname="ProxmoxHostDown"
+        target_matchers:
+          - alertname=~"KubeNodeNotReady|KubeMultipleNodesNotReady|CiliumNodeUnreachable|PodNotReady|PodCrashLooping|ImagePullBackoff|ContainerOOMKilled|PrometheusTargetDown|VectorPipelineDown|GatusEndpointDown|GatusEndpointSlow|TalosNodeRebootedRecently|NodeMemoryPressure|NodeDiskPressure|CephOSDDown|CephOSDFlapping|CephSlowOps|CephPGsNotActive|EnvoyGatewayNoEndpoints"
+
+      - source_matchers:
+          - alertname="InternetConnectivityLost"
+        target_matchers:
+          - alertname=~"CloudflaredAllDown|ExternalDNSResolutionFailed"
+
+      - source_matchers:
+          - alertname="HostNVMeTemperatureWarning"
+        target_matchers:
+          - alertname=~"CephSlowOps|EtcdRequestLatencyHigh"
+
+      - source_matchers:
+          - alertname=~"CephHealthError|CephOSDMajorityDown|CephMonQuorumAtRisk"
+        target_matchers:
+          - alertname=~"CephOSDDown|CephOSDNearFull|CephPGsNotActive|CephSlowOps|CephMonClockSkew|CephOSDFlapping"
+
+      - source_matchers:
+          - alertname="EnvoyEdgeSLOFastBurn"
+        target_matchers:
+          - alertname=~"EnvoyEdgeSLOSlowBurn|EnvoyGateway5xxRateHigh"
+
+      - source_matchers:
+          - alertname="KeycloakDown"
+        target_matchers:
+          - alertname="KeycloakHttp5xxRateHigh"
+        equal: ['namespace']
+
+      - source_matchers:
+          - alertname="CnpgPrimaryDown"
+        target_matchers:
+          - alertname="CnpgReplicationLagHigh"
+        equal: ['namespace']
+
+      - source_matchers:
+          - alertname="KafkaQuorumLeaderless"
+        target_matchers:
+          - alertname=~"KafkaUnderMinISR|KafkaConsumerLagCritical"
+
+      - source_matchers:
+          - alertname="VeleroDown"
+        target_matchers:
+          - alertname=~"VeleroNoRecentBackup|VeleroNoRecentWeeklyBackup|VeleroBackupPartialFailure"
+
+      - source_matchers:
+          - alertname="CoreDNSDown"
+        target_matchers:
+          - alertname=~"CoreDNSHighSERVFAIL|CoreDNSForwardUnhealthy|ExternalDNSResolutionFailed"
+
+

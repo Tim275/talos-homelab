@@ -1,0 +1,76 @@
+apiVersion: k8s.keycloak.org/v2beta1
+kind: Keycloak
+metadata:
+  name: keycloak
+  namespace: keycloak
+spec:
+  instances: 3
+  resources:
+    requests:
+      cpu: 150m      # krr: 2m real; limit bleibt 2 Kerne fuer Start/Login-Spitzen
+      memory: 1250Mi # 7d max 524Mi
+    limits:
+      cpu: 2
+      memory: 3Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-config-cli
+  namespace: keycloak
+spec:
+  template:
+    spec:
+      containers:
+        - name: config-cli
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-config-cli-master
+  namespace: keycloak
+spec:
+  template:
+    spec:
+      containers:
+        - name: config-cli
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: keycloak-realm-export
+  namespace: keycloak
+spec:
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: keycloak-realm-export
+  namespace: keycloak
+spec:
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: export
+              resources:
+                requests: {cpu: 50m, memory: 256Mi}
+                limits: {cpu: 500m, memory: 512Mi}
