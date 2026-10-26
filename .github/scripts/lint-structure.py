@@ -39,6 +39,23 @@ def appset_paths(root: Path) -> set[str]:
     return paths
 
 
+def reachable(repo: Path, paths: set[str]) -> set[str]:
+    """Directories an ApplicationSet path builds through resources/components."""
+    top = repo.resolve()
+    seen, todo = set(), [repo / p for p in paths]
+    while todo:
+        d = todo.pop().resolve()
+        k = d / "kustomization.yaml"
+        if d in seen or not k.is_file():
+            continue
+        seen.add(d)
+        data = yaml.safe_load(k.read_text()) or {}
+        for r in (data.get("resources") or []) + (data.get("components") or []):
+            if (d / r).is_dir():
+                todo.append(d / r)
+    return {str(x.relative_to(top)) for x in seen if x.is_relative_to(top)}
+
+
 def secret_names(doc: dict) -> set[str]:
     """Secret names a SecurityPolicy points at. targetRefs are routes, not secrets."""
     spec = doc.get("spec", {})
@@ -79,9 +96,10 @@ def main(root_arg: str) -> int:
             print(f"::error::{p} has no kustomization.yaml")
             failed += 1
 
+    claimed = declared | reachable(repo, declared)
     for c in sorted(comps):
         rel = str(c)
-        if not any(p == rel or p.startswith(rel + "/") for p in declared):
+        if not any(p == rel or p.startswith(rel + "/") for p in claimed):
             print(f"::error file={c}/kustomization.yaml::{c} is in no ApplicationSet")
             failed += 1
 
@@ -108,7 +126,9 @@ def main(root_arg: str) -> int:
         for doc in docs:
             if not isinstance(doc, dict) or doc.get("kind") != "SecurityPolicy":
                 continue
-            comp = f.parent.parent if f.parent.name == "base" else f.parent
+            comp = next((d for d in f.parents if (d / "base").is_dir() or (d / "overlays").is_dir()), None)
+            if comp is None:
+                comp = f.parent.parent if f.parent.name == "base" else f.parent
             owned = {
                 d.get("metadata", {}).get("name")
                 for g in comp.rglob("*.yaml")

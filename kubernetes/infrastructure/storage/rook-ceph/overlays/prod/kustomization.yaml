@@ -1,4 +1,65 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+namespace: rook-ceph
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "4"
+
 resources:
   - ../../base
+
+components:
+  - ../../components/envoy-gateway
+  - ../../components/kube-prometheus-stack
+
+helmCharts:
+  - name: rook-ceph
+    repo: https://charts.rook.io/release
+    version: v1.20.7
+    releaseName: rook-ceph
+    namespace: rook-ceph
+    includeCRDs: true
+    valuesFile: ../../base/values.yaml
+    additionalValuesFiles:
+      - values.yaml
+  - name: ceph-csi-drivers
+    repo: https://ceph.github.io/ceph-csi-operator
+    version: 1.0.5
+    releaseName: ceph-csi-drivers
+    namespace: rook-ceph
+    includeCRDs: false
+    valuesFile: ../../base/csi-drivers-values.yaml
+    additionalValuesFiles:
+      - csi-drivers-values.yaml
+
+patches:
+  - target:
+      kind: CustomResourceDefinition
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          argocd.argoproj.io/sync-wave: "-10"
+          argocd.argoproj.io/sync-options: ServerSideApply=true,Prune=false
+
+  - target:
+      kind: Deployment
+      name: rook-ceph-operator
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          argocd.argoproj.io/sync-wave: "-5"
+          argocd.argoproj.io/sync-options: Prune=false
+
+  - target:
+      kind: CephCluster
+      name: rook-ceph
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          argocd.argoproj.io/sync-wave: "0"
+          argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+
+  - path: sizing.yaml
+  - path: settings.yaml

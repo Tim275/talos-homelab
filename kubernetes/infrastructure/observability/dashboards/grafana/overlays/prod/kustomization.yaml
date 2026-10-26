@@ -1,4 +1,32 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+
 resources:
   - ../../base
+  - oidc-sealed.yaml
+  - grafana-datasource-env.yaml
+
+components:
+  - ../../components/envoy-gateway
+  - ../../components/rook-ceph
+
+patches:
+  - path: sizing.yaml
+  - path: settings.yaml
+  - target:
+      group: grafana.integreatly.org
+      version: v1beta1
+      kind: Grafana
+      name: grafana
+      namespace: grafana
+    patch: |
+      # 7d: p95 380Mi, max 480Mi against a 512Mi limit
+      - op: add
+        path: /spec/deployment/spec/template/spec/containers/0/resources
+        value:
+          limits:
+            cpu: 500m
+            memory: 1Gi
+          requests:
+            cpu: 100m
+            memory: 512Mi

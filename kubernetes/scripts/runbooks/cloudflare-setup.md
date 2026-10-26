@@ -213,7 +213,7 @@ Wenn Cloudflare-Account gehackt/gelöscht/locked-out:
        --from-literal=token="<new-token>" \
        --dry-run=client -o yaml | \
      kubeseal --cert "$CERT" --format yaml --scope strict \
-       > kubernetes/platform/ingress/cloudflared/base/sealed-credentials.yaml
+       > kubernetes/infrastructure/ingress/cloudflared/overlays/prod/sealed-credentials.yaml
    git push → ArgoCD synct → Tunnel live
 
 RTO total: ~45min wenn Tunnels noch im Cluster definiert sind.

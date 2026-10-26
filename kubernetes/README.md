@@ -15,6 +15,11 @@ kubernetes/
 └── security · projects · clusters · scripts
 ```
 
+Every component has three parts:
+- `base/` is the same everywhere: plain Kubernetes objects, the component's own technology, shared Helm values.
+- `components/<technology>/` plugs it into another platform technology (envoy-gateway, rook-ceph, kube-prometheus-stack, cert-manager, cilium, cnpg). Swapping a technology means swapping that folder.
+- `overlays/prod/` is prod only: chart version and prod values, SealedSecrets, hostnames (`settings.yaml`), replicas and resources (`sizing.yaml`), and which components this cluster uses (`components:` for manifests, `additionalValuesFiles` for charts).
+
 ## Bootstrap
 
 ```sh
@@ -51,7 +56,7 @@ Or via OIDC: https://argocd.timourhomelab.org
 
 ## New tenant
 
-1. `tenants/<name>/` (namespace + resourcequota + limitrange + rbac + data subdirs)
-2. add `<name>` to `tenants/kustomization.yaml` + `tenants-config.yaml` AppSet list
+1. `tenants/<name>/base/` (namespace + resourcequota + limitrange + rbac), quota and limit values in `overlays/prod/sizing.yaml`, data subdirs as their own components
+2. add `<name>/overlays/prod` to `tenants/kustomization.yaml` + `<name>` to the `tenants-config.yaml` AppSet list
 3. add `applicationsets/tenants/<name>-tenant.yaml`
 4. commit + push → ArgoCD reconciles

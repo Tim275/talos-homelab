@@ -1,24 +1,8 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-commonAnnotations:
-  argocd.argoproj.io/sync-wave: "1"
-
-namespace: gateway
-
-helmCharts:
-  - name: gateway-helm
-    repo: oci://docker.io/envoyproxy
-    version: 1.9.2
-    releaseName: eg
-    namespace: gateway
-    includeCRDs: true
-    valuesFile: values.yaml
 
 resources:
   - namespace.yaml  # MUST stay in source — chart has createNamespace:false; sonst pruned ArgoCD die ns + killt den gateway
-  - sealed-cloudflare-api-token.yaml
-  - cloudflare-issuer.yaml
-  - certificate-timourhomelab.yaml
   - envoy-gatewayclass.yaml
   - envoy-proxy-config.yaml  # EnvoyProxy CR — replicas=2 for HA
   - gateway.yaml
@@ -27,24 +11,3 @@ resources:
   - pdb.yaml  # PodDisruptionBudgets — Talos-upgrade-resilience
   - podmonitor.yaml
   - waf  # Coraza WAF, gateway-wide, DetectionOnly. drova-safe via SecResponseBodyAccess Off (rig-verified drova frontend 200 through Coraza, SQLi 942100 detected, WS 101). failOpen. Rollback: re-comment + merge -> ArgoCD prunes.
-labels:
-  - pairs:
-      app.kubernetes.io/part-of: network-infrastructure
-
-#   - target:
-#       group: apiextensions.k8s.io
-#       version: v1
-#       kind: CustomResourceDefinition
-#       name: envoyproxies.gateway.envoyproxy.io
-#     patch: |-
-#       - op: remove
-#         path: /metadata/annotations/controller-gen.kubebuilder.io~1version
-#   - target:
-#       group: apiextensions.k8s.io
-#       version: v1
-#       kind: CustomResourceDefinition
-#       name: httproutes.gateway.networking.k8s.io
-#     patch: |-
-#       - op: remove
-#         path: /metadata/annotations/controller-gen.kubebuilder.io~1version
-

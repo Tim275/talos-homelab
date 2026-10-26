@@ -9,7 +9,6 @@ metadata:
 spec:
   mode: deployment
   image: docker.io/jaegertracing/jaeger:2.22.0@sha256:836b967b5abcf1f7758066aa6b348619267a2f1459f72d472840570f9bd88a17   # renovate: docker=docker.io/jaegertracing/jaeger
-  replicas: 2  # HA: 2 replicas (ES backend handles durability)
 
   env:
     - name: ES_USERNAME
@@ -114,13 +113,6 @@ spec:
       protocol: TCP
       targetPort: 14269
 
-  resources:
-    limits:
-      cpu: 1000m
-      memory: 3Gi
-    requests:
-      cpu: 100m       # krr: 4m real, Trace-Spitzen bursten
-      memory: 384Mi   # 7d max 136Mi
 
   podAnnotations:
     sidecar.istio.io/inject: "false"
@@ -163,31 +155,3 @@ kind: ConfigMap
 metadata:
   name: jaeger-ui-config
   namespace: jaeger
-data:
-  ui-config.json: |
-    {
-      "dependencies": {
-        "menuEnabled": true
-      },
-      "monitor": {
-        "menuEnabled": true,
-        "emptyState": {
-          "mainTitle": "Service Performance Monitoring (SPM)",
-          "subTitle": "Get started with RED metrics (Rate, Error, Duration) for your services"
-        }
-      },
-      "linkPatterns": [
-        {
-          "type": "logs",
-          "key": "customer_id",
-          "url": "/search?service={{ .service }}&tags=customer_id:{{ .value }}",
-          "text": "View logs for customer {{ .value }}"
-        },
-        {
-          "type": "logs",
-          "key": "trace_id",
-          "url": "https://grafana.timourhomelab.org/explore?left=%7B%22datasource%22:%22loki%22,%22queries%22:%5B%7B%22expr%22:%22%7Btrace_id%3D%5C%22{{ .value }}%5C%22%7D%22%7D%5D%7D",
-          "text": "View logs for trace {{ .value }}"
-        }
-      ]
-    }
