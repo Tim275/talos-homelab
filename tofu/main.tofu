@@ -11,17 +11,6 @@ module "talos" {
   skip_cluster_health = var.skip_cluster_health
 }
 
-module "sealed-secrets" {
-  depends_on = [module.talos]
-  source     = "./bootstrap/sealed-secrets"
-
-  providers = {
-    kubernetes = kubernetes
-  }
-
-  cert = var.sealed_secrets_config
-}
-
 module "openbao" {
   depends_on = [module.talos]
   source     = "./bootstrap/openbao"
@@ -30,7 +19,8 @@ module "openbao" {
     kubernetes = kubernetes
   }
 
-  seal = var.openbao_seal_config
+  values           = var.openbao_bootstrap_values
+  etcd_client_cert = module.talos.etcd_client_cert
 }
 
 module "proxmox_csi_plugin" {

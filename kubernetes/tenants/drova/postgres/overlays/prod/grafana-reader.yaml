@@ -1,0 +1,46 @@
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: drova-postgres-grafana-reader-password
+  namespace: drova
+spec:
+  refreshInterval: 1h
+  updatePolicy: IfNotExists
+  secretStoreRefs:
+  - name: openbao
+    kind: ClusterSecretStore
+  selector:
+    generatorRef:
+      apiVersion: generators.external-secrets.io/v1alpha1
+      kind: ClusterGenerator
+      name: password
+  data:
+  - match:
+      secretKey: password
+      remoteRef:
+        remoteKey: drova/drova-postgres-grafana-reader
+        property: password
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: drova-postgres-grafana-reader
+  namespace: drova
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao
+    kind: ClusterSecretStore
+  target:
+    name: drova-postgres-grafana-reader
+    template:
+      type: kubernetes.io/basic-auth
+      engineVersion: v2
+      data:
+        username: grafana_reader
+        password: '{{ .password }}'
+  data:
+  - secretKey: password
+    remoteRef:
+      key: drova/drova-postgres-grafana-reader
+      property: password

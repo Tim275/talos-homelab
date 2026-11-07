@@ -1,5 +1,13 @@
-variable "seal" {
+variable "values" {
+  type      = map(string)
+  sensitive = true
+}
+
+variable "etcd_client_cert" {
   type = object({
-    seal_key_path = string
+    ca   = string
+    cert = string
+    key  = string
   })
+  sensitive = true
 }

@@ -1,0 +1,44 @@
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: kiali-basic-auth-password
+  namespace: istio-system
+spec:
+  refreshInterval: 1h
+  updatePolicy: IfNotExists
+  secretStoreRefs:
+  - name: openbao
+    kind: ClusterSecretStore
+  selector:
+    generatorRef:
+      apiVersion: generators.external-secrets.io/v1alpha1
+      kind: ClusterGenerator
+      name: password
+  data:
+  - match:
+      secretKey: password
+      remoteRef:
+        remoteKey: istio-system/kiali-basic-auth
+        property: password
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: kiali-basic-auth
+  namespace: istio-system
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao
+    kind: ClusterSecretStore
+  target:
+    name: kiali-basic-auth
+    template:
+      engineVersion: v2
+      data:
+        .htpasswd: '{{ htpasswd "admin" .password "bcrypt" }}'
+  data:
+  - secretKey: password
+    remoteRef:
+      key: istio-system/kiali-basic-auth
+      property: password
