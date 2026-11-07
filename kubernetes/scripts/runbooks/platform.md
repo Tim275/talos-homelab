@@ -72,38 +72,6 @@ kubectl -n cert-manager logs deploy/cert-manager --tail 100 | grep -i <name>
 - Meist hängt die ACME-Challenge (DNS-Token, Rate-Limit). Erst die Ursache in Order/Challenge beheben.
 - Danach neu ausstellen lassen: das TLS-Secret des Zertifikats löschen, cert-manager stellt dann sofort neu aus.
 
-## SealedSecretsCertExpiresIn14Days
-
-Das Verschlüsselungszertifikat von sealed-secrets läuft in weniger als 14 Tagen ab. Danach kann niemand mehr neue Secrets versiegeln, Entschlüsseln geht weiter.
-
-```bash
-kubectl -n sealed-secrets get secret -l sealedsecrets.bitnami.com/sealed-secrets-key
-openssl x509 -in tofu/bootstrap/sealed-secrets/certificate/sealed-secrets-2026.crt -noout -enddate
-```
-
-- Neues Schlüsselpaar in `tofu/bootstrap/sealed-secrets/` als zusätzlichen aktiven Key anlegen, Controller neu starten, Secrets neu versiegeln, dann das Datum in der Regel nachziehen.
-- Den alten Key nicht löschen, er entschlüsselt die bestehenden SealedSecrets.
-- Nicht mit einem abgelaufenen `.crt` versiegeln, kubeseal lehnt das ab.
-
-## LogsSealedSecretsDecryptFailure
-
-Der Controller kann SealedSecrets nicht entschlüsseln. Betrifft potenziell jedes Secret im Cluster.
-
-```bash
-kubectl -n sealed-secrets logs deploy/sealed-secrets-controller --since=15m | grep -iE "decrypt|unseal"
-kubectl get sealedsecrets -A | grep -v True
-```
-
-- Einzelnes SealedSecret mit `no key could decrypt` → wurde mit einem Key versiegelt, der nicht mehr im Ring ist. Mit dem aktuellen Zertifikat neu versiegeln:
-  ```bash
-  kubectl create secret generic <name> -n <ns> --from-literal=k=v --dry-run=client -o yaml \
-    | kubeseal --cert tofu/bootstrap/sealed-secrets/certificate/sealed-secrets-2026.crt --format yaml --scope strict
-  ```
-- Alle SealedSecrets betroffen → Key-Secrets im Namespace fehlen. Nur dieses Modul anwenden, nicht den ganzen Root-Plan (der fasst sonst die Machine-Config aller Nodes an):
-  ```bash
-  cd tofu && tofu apply -target=module.sealed-secrets -parallelism=1
-  ```
-
 ## LogsAuditAnonymousAccess
 
 Jemand spricht den apiserver ohne Identität an. Baseline ist null.

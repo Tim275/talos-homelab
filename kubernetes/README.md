@@ -18,7 +18,7 @@ kubernetes/
 Every component has three parts:
 - `base/` is the same everywhere: plain Kubernetes objects, the component's own technology, shared Helm values.
 - `components/<technology>/` plugs it into another platform technology (envoy-gateway, rook-ceph, kube-prometheus-stack, cert-manager, cilium, cnpg). Swapping a technology means swapping that folder.
-- `overlays/prod/` is prod only: chart version and prod values, SealedSecrets, hostnames (`settings.yaml`), replicas and resources (`sizing.yaml`), and which components this cluster uses (`components:` for manifests, `additionalValuesFiles` for charts).
+- `overlays/prod/` is prod only: chart version and prod values, ExternalSecrets, hostnames (`settings.yaml`), replicas and resources (`sizing.yaml`), and which components this cluster uses (`components:` for manifests, `additionalValuesFiles` for charts).
 
 ## Bootstrap
 
@@ -38,13 +38,10 @@ Apply twice — first pass installs the CRDs, second the CRs that reference them
 ## Components individually (optional — ArgoCD does this otherwise)
 
 ```sh
-kustomize build --enable-helm --load-restrictor LoadRestrictionsNone kubernetes/infrastructure/secrets/sealed-secrets/overlays/prod | kubectl apply -f -
 kustomize build --enable-helm --load-restrictor LoadRestrictionsNone kubernetes/infrastructure/network/cilium/overlays/prod         | kubectl apply -f -
 kustomize build --enable-helm --load-restrictor LoadRestrictionsNone kubernetes/infrastructure/storage/rook-ceph/overlays/prod      | kubectl apply --server-side -f -
 kustomize build --enable-helm --load-restrictor LoadRestrictionsNone kubernetes/infrastructure/argocd/overlays/prod                 | kubectl apply --server-side -f -
 ```
-
-sealed-secrets first — it ships the `sealedsecrets.bitnami.com` CRD that cilium (hubble-oidc) and rook-ceph reference. Wrong order → `NotFound` on the SealedSecret (ArgoCD retries past this, a manual apply does not).
 
 ## ArgoCD login
 

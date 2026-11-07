@@ -84,16 +84,6 @@ variable "talos_nodes" {
   }
 }
 
-variable "sealed_secrets_config" {
-  description = "Sealed secrets certificate configuration — null in CI"
-  type = object({
-    certificate_path     = string
-    certificate_key_path = string
-  })
-  sensitive = true
-  default   = null
-}
-
 variable "openbao_seal_config" {
   description = "OpenBao static seal key — null in CI"
   type = object({
@@ -101,6 +91,13 @@ variable "openbao_seal_config" {
   })
   sensitive = true
   default   = null
+}
+
+variable "openbao_bootstrap_values" {
+  description = "Fremdwerte fuer OpenBao, Key <ns>.<secret>.<key> — leer in CI"
+  type        = map(string)
+  sensitive   = true
+  default     = {}
 }
 
 variable "kubernetes_volumes" {

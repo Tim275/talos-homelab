@@ -130,11 +130,11 @@ def main(root_arg: str) -> int:
             if comp is None:
                 comp = f.parent.parent if f.parent.name == "base" else f.parent
             owned = {
-                d.get("metadata", {}).get("name")
+                (d.get("spec", {}).get("target") or {}).get("name") or d.get("metadata", {}).get("name")
                 for g in comp.rglob("*.yaml")
                 if "/charts/" not in str(g)
                 for d in (yaml.safe_load_all(g.read_text()) if g.suffix == ".yaml" else [])
-                if isinstance(d, dict) and d.get("kind") in ("Secret", "SealedSecret")
+                if isinstance(d, dict) and d.get("kind") in ("Secret", "ExternalSecret")
             }
             for name in secret_names(doc) - owned - granted:
                 print(
