@@ -84,6 +84,15 @@ variable "talos_nodes" {
   }
 }
 
+variable "openbao_seal_config" {
+  description = "OpenBao static seal key — null in CI"
+  type = object({
+    seal_key_path = string
+  })
+  sensitive = true
+  default   = null
+}
+
 variable "openbao_bootstrap_values" {
   description = "Fremdwerte fuer OpenBao, Key <ns>.<secret>.<key> — leer in CI"
   type        = map(string)
