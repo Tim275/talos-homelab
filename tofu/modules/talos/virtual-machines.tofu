@@ -43,7 +43,7 @@ resource "proxmox_virtual_environment_vm" "this" {
     ssd          = true
     file_format  = "raw"
     size         = each.value.os_disk_size
-    file_id      = proxmox_virtual_environment_download_file.this["${each.value.host_node}_${each.value.update == true ? local.update_image_id : local.image_id}"].id
+    file_id      = proxmox_download_file.this["${each.value.host_node}_${each.value.update == true ? local.update_image_id : local.image_id}"].id
   }
 
   dynamic "disk" {
@@ -94,6 +94,6 @@ resource "proxmox_virtual_environment_vm" "this" {
   }
 
   depends_on = [
-    proxmox_virtual_environment_download_file.this
+    proxmox_download_file.this
   ]
 }

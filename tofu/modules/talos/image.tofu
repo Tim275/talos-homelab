@@ -22,7 +22,7 @@ data "http" "updated_schematic_id" {
   request_body = local.update_schematic
 }
 
-resource "proxmox_virtual_environment_download_file" "this" {
+resource "proxmox_download_file" "this" {
   for_each = toset(distinct([for k, v in var.nodes : "${v.host_node}_${v.update == true ? local.update_image_id : local.image_id}"]))
 
   node_name    = split("_", each.key)[0]

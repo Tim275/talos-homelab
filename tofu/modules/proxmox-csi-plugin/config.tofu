@@ -12,14 +12,16 @@ resource "proxmox_virtual_environment_role" "csi" {
 resource "proxmox_virtual_environment_user" "kubernetes-csi" {
   user_id = "kubernetes-csi@pve"
   comment = "User for Proxmox CSI Plugin"
-  acl {
-    path      = "/"
-    propagate = true
-    role_id   = proxmox_virtual_environment_role.csi.role_id
-  }
 }
 
-resource "proxmox_virtual_environment_user_token" "kubernetes-csi-token" {
+resource "proxmox_acl" "kubernetes-csi" {
+  user_id   = proxmox_virtual_environment_user.kubernetes-csi.user_id
+  role_id   = proxmox_virtual_environment_role.csi.role_id
+  path      = "/"
+  propagate = true
+}
+
+resource "proxmox_user_token" "kubernetes-csi-token" {
   comment               = "Token for Proxmox CSI Plugin"
   token_name            = "csi"
   user_id               = proxmox_virtual_environment_user.kubernetes-csi.user_id
@@ -48,8 +50,8 @@ resource "kubernetes_secret" "proxmox-csi-plugin" {
 clusters:
 - url: "${var.proxmox.endpoint}/api2/json"
   insecure: ${var.proxmox.insecure}
-  token_id: "${proxmox_virtual_environment_user_token.kubernetes-csi-token.id}"
-  token_secret: "${element(split("=", proxmox_virtual_environment_user_token.kubernetes-csi-token.value), length(split("=", proxmox_virtual_environment_user_token.kubernetes-csi-token.value)) - 1)}"
+  token_id: "${proxmox_user_token.kubernetes-csi-token.id}"
+  token_secret: "${element(split("=", proxmox_user_token.kubernetes-csi-token.value), length(split("=", proxmox_user_token.kubernetes-csi-token.value)) - 1)}"
   region: ${var.proxmox.cluster_name}
 EOF
   }
