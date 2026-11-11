@@ -52,6 +52,7 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
 - [Drova](https://github.com/Tim275/drova-gitops): Ride-sharing microservices showcase.
 - [Forgejo](https://forgejo.org/): Self-hosted Git.
 - [Uptime Kuma](https://uptime.kuma.pet/): Status page.
+- [Excalidraw](https://excalidraw.com/): Whiteboard.
 
 ## 🗃️ Folder Structure
 
