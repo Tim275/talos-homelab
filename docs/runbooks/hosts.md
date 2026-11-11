@@ -31,6 +31,26 @@ kubectl get nodes -o wide
   ```
 - Nicht `qm reset` als Erstes. Erst `qm status <vmid>`, dann `talosctl -n <node-ip> reboot`.
 
+## KubeMultipleNodesNotReady
+
+Zwei oder mehr Nodes seit 5 min NotReady, gecordonte zählen nicht. Die Redundanz ist aufgebraucht, ein weiterer Ausfall nimmt Workloads mit. Fällt ein ganzer Proxmox-Host aus, meldet sich zusätzlich [ProxmoxHostDown](#proxmoxhostdown) und unterdrückt diesen Alarm.
+
+```bash
+kubectl get nodes -L topology.kubernetes.io/zone -o wide
+kubectl describe node <node> | grep -A8 Conditions
+kubectl get pods -A -o wide --field-selector spec.nodeName=<node> | grep -v Running
+talosctl -n <node-ip> health
+```
+
+- Das Zonen-Label ist der Proxmox-Host. Alle betroffenen Nodes in derselben Zone → Host oder Netzwerk dieses Hosts: [ProxmoxHostDown](#proxmoxhostdown).
+- Nodes aus mehreren Zonen → Cluster-Netz oder Control Plane: [ControlPlaneNodeDown](control-plane.md#controlplanenodedown), [CiliumAgentsCrashing](network.md#ciliumagentscrashing).
+- Node erreichbar, kubelet aber NotReady:
+  ```bash
+  talosctl -n <node-ip> service kubelet
+  talosctl -n <node-ip> dmesg | tail -50
+  ```
+- Nicht alle Nodes sofort neu starten. Erst klären, ob Host oder Netz die Ursache sind, sonst starten die VMs gegen dieselbe Störung neu. Reihenfolge wie bei ProxmoxHostDown.
+
 ## ProxmoxHostRebootLoop
 
 Host ist in 7 Tagen mehr als zweimal neu gestartet. Ein Reboot ist Rauschen, ein Muster ist ein Defekt.
