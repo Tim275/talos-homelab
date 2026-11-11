@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postfix-relay
+  namespace: mail
+  labels:
+    app: postfix-relay
+spec:
+  selector:
+    matchLabels:
+      app: postfix-relay
+  template:
+    metadata:
+      labels:
+        app: postfix-relay
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postfix
+          image: boky/postfix:v5.1.0-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: submission
+              containerPort: 587
+          env:
+            - name: POSTFIX_mynetworks
+              value: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+            # - name: RELAYHOST
+            #   value: "smtp-relay.brevo.com:587"
+            # - name: RELAYHOST_USERNAME
+            #   valueFrom: { secretKeyRef: { name: postfix-upstream, key: username } }
+            # - name: RELAYHOST_PASSWORD
+            #   valueFrom: { secretKeyRef: { name: postfix-upstream, key: password } }
+          livenessProbe:
+            tcpSocket:
+              port: 587
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: 587
+            initialDelaySeconds: 10
+            periodSeconds: 15

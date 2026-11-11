@@ -1,0 +1,116 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-argocd
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: argocd-ticket
+      interval: 60s
+      rules:
+        - alert: ArgoCDRepoServerRestartsHigh
+          expr: increase(kube_pod_container_status_restarts_total{namespace="argocd", pod=~"argocd-repo-server-.*"}[15m]) > 2
+          for: 5m
+          labels:
+            severity: warning
+            component: platform
+          annotations:
+            dashboard_url: "/d/k8s-pod-overview?var-namespace={{ $labels.namespace }}&var-pod={{ $labels.pod }}"
+            summary: "argocd-repo-server restartet ungewöhnlich oft ({{ $labels.pod }}, {{ $value }} in 15min)"
+            description: "Der lokale git-Cache liegt auf emptyDir — ein Restart mitten im Schreiben kann ihn korrumpieren ('index file smaller than expected') und ArgoCD für alle Apps blind für Drift machen, ohne dass es sonst auffällt."
+            action: "kubectl get applications -n argocd -o json | jq -r '.items[] | select(.status.conditions[]?.type==\"ComparisonError\") | .metadata.name'; bei Treffern: kubectl rollout restart deployment/argocd-repo-server -n argocd (emptyDir-Cache wird dabei frisch geklont)."
+
+        - alert: ArgoCDControllerDown
+          expr: absent(up{job="argocd-application-controller-metrics"}) or up{job="argocd-application-controller-metrics"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: platform
+          annotations:
+            dashboard_url: "/d/argocd-overview"
+            summary: "ArgoCD application-controller down"
+            description: "GitOps reconciliation halted >5min — no auto-deploy/self-heal until restored."
+            action: "kubectl -n argocd rollout restart statefulset/argocd-application-controller; check its logs + resource limits."
+
+        - alert: ArgoCDApplicationSetControllerDown
+          expr: sum(up{job="argocd-applicationset-controller-metrics"}) == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: platform
+          annotations:
+            dashboard_url: "/d/argocd-overview"
+            summary: "ArgoCD applicationset-controller down (beide Replicas)"
+            description: "AppSet-Generierung steht >5min — neue/geänderte List-Einträge erzeugen keine Applications, Fehler nur im Controller-Log sichtbar."
+            action: "kubectl -n argocd rollout restart deployment/argocd-applicationset-controller; kubectl -n argocd logs deploy/argocd-applicationset-controller | tail."
+
+        - alert: ArgoCDAppsMassDeletion
+          expr: |
+            count(argocd_app_info)
+              /
+            (count(argocd_app_info offset 30m) > 0)
+              < 0.8
+          for: 5m
+          labels:
+            severity: critical
+            component: platform
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/platform.md#argocdappsmassdeletion"
+            dashboard_url: "/d/argocd-overview"
+            summary: "ArgoCD Apps massenhaft verschwunden ({{ $value | humanizePercentage }} der Vor-30min-Zahl übrig)"
+            description: "App-Anzahl fiel in 30min um >20% — AppSet gelöscht / Generator leer / Kaskaden-Prune läuft. Sofort prüfen."
+            action: "kubectl get applicationsets -n argocd; kubectl -n argocd logs deploy/argocd-applicationset-controller | tail -50; letzter Merge auf kubernetes/applicationsets/?"
+
+        - alert: ArgoCDAppUnhealthy
+          expr: argocd_app_info{health_status=~"Degraded|Missing", name!~"lldap|drova-postgres"} == 1
+          for: 30m
+          labels:
+            severity: warning
+            component: platform
+          annotations:
+            dashboard_url: "/d/argocd-overview?var-application={{ $labels.name }}&var-health_status=$__all&var-sync_status=$__all"
+            summary: "ArgoCD app unhealthy: {{ $labels.name }} ({{ $labels.health_status }})"
+            description: "App resources Degraded/Missing >30min — distinct from expected manual-sync drift. Check the app."
+            action: "argocd app get {{ $labels.name }} (or kubectl describe app -n argocd {{ $labels.name }}); check the failing resource."
+
+        - alert: LLDAPBootstrapCronJobFailing
+          expr: |
+            (time() - kube_cronjob_status_last_successful_time{namespace="lldap",cronjob="lldap-bootstrap"}) > 10800
+            or absent(kube_cronjob_status_last_successful_time{namespace="lldap",cronjob="lldap-bootstrap"})
+          for: 30m
+          labels:
+            severity: warning
+            component: identity
+          annotations:
+            dashboard_url: "/d/k8s-pod-overview?var-namespace=lldap"
+            summary: "LLDAP bootstrap CronJob hasn't succeeded in 3h{{ if gt $value 60.0 }} ({{ $value | humanizeDuration }} since last success){{ else }} (kein Erfolgs-Zeitstempel vorhanden){{ end }}"
+            description: "User reconciliation broken — Keycloak login may fail."
+            action: "kubectl get cronjob -n lldap; kubectl logs -n lldap -l cronjob=lldap-bootstrap"
+
+        - alert: LLDAPDown
+          expr: kube_deployment_status_replicas_available{namespace="lldap",deployment="lldap"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: identity
+          annotations:
+            dashboard_url: "/d/k8s-pod-overview?var-namespace=lldap"
+            summary: "LLDAP directory down — Keycloak LDAP federation will fail"
+            description: "lldap Deployment has 0 available replicas >5min → LDAP-backed Keycloak logins start failing (SSO impact)."
+            action: "kubectl -n lldap get pod,deploy; kubectl -n lldap logs deploy/lldap; check its PVC/SQLite + the node."
+
+        - alert: ArgoCDAppOutOfSyncTooLong
+          # Diese fuenf drifteten in 7d zu >50% dauerhaft (Operator mutiert eigene CRs);
+          # sie gehoeren per ignoreDifferences gefixt, nicht hier alarmiert.
+          expr: argocd_app_info{sync_status="OutOfSync", name!~"drova-redis|n8n-redis|drova|n8n-app|drova-postgres"} == 1
+          for: 24h
+          labels:
+            severity: warning
+            component: gitops
+          annotations:
+            dashboard_url: "https://argo.timourhomelab.org/applications"
+            summary: "{{ $labels.name }} steht seit 24h OutOfSync"
+            description: "Gemergte Aenderungen sind nicht ausgerollt. Bei den manual-sync-Apps (DAX-Gate) ist OutOfSync kurzzeitig normal — ueber 24h heisst es vergessen. Genau so lag v0.22.11 stundenlang unbemerkt herum."
+            action: "kubectl -n argocd patch application {{ $labels.name }} --type merge -p '{\"operation\":{\"sync\":{\"revision\":\"main\"}}}'"
+

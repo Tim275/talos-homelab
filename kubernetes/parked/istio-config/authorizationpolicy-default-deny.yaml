@@ -1,0 +1,38 @@
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all
+  namespace: istio-system
+spec:
+  {} # Empty spec = deny all by default
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-order-to-payment
+  namespace: order-management
+spec:
+  selector:
+    matchLabels:
+      app: payment-service
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/order-management/sa/order-service"]
+      to:
+        - operation:
+            methods: ["POST"]
+            paths: ["/api/v1/payments/*"]
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-health-checks
+  namespace: order-management
+spec:
+  action: ALLOW
+  rules:
+    - to:
+        - operation:
+            paths: ["/health", "/ready", "/live"]

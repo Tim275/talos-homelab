@@ -1,0 +1,75 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: n8n-tenant-app
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  n8n.tier: enabled
+                  environment: prod
+          - list:
+              elements:
+                - { name: n8n-app, path: kubernetes/tenants/n8n/app/overlays/prod, namespace: n8n }
+  template:
+    metadata:
+      name: '{{.name}}'
+      labels:
+        app.kubernetes.io/name: '{{.name}}'
+        app.kubernetes.io/part-of: n8n-tenant-app
+        app.kubernetes.io/managed-by: argocd
+    spec:
+      project: apps
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: main
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: '{{.namespace}}'
+      ignoreDifferences:
+        - group: postgresql.cnpg.io
+          kind: Cluster
+          managedFieldsManagers:
+          - cnpg-controller-manager
+        - group: redis.redis.opstreelabs.in
+          kind: Redis
+          jsonPointers:
+          - /spec/kubernetesConfig/updateStrategy
+          - /spec/redisExporter/port
+          - /spec/storage/volumeClaimTemplate/metadata
+          - /spec/storage/volumeClaimTemplate/status
+          - /spec/storage/volumeMount
+        - group: redis.redis.opstreelabs.in
+          kind: RedisReplication
+          jsonPointers:
+          - /spec/kubernetesConfig/updateStrategy
+          - /spec/redisExporter/port
+          - /spec/storage/volumeClaimTemplate/metadata
+          - /spec/storage/volumeClaimTemplate/status
+          - /spec/storage/volumeMount
+        - group: apps
+          kind: Deployment
+          name: n8n-worker
+          jsonPointers:
+          - /spec/replicas
+          - /spec/template/metadata/annotations
+      syncPolicy:
+        syncOptions:
+          - CreateNamespace=false
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+          - ApplyOutOfSyncOnly=true
+        retry:
+          limit: -1
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }

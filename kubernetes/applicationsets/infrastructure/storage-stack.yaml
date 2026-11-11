@@ -1,0 +1,53 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: storage-stack
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  storage.tier: enabled
+                  environment: prod
+          - list:
+              elements:
+                - { name: rook-ceph,               path: kubernetes/infrastructure/storage/rook-ceph/rendered,                    namespace: rook-ceph }
+                - { name: rook-ceph-rgw,           path: kubernetes/infrastructure/storage/rook-ceph-rgw/overlays/prod,           namespace: rook-ceph }
+                - { name: velero,                  path: kubernetes/infrastructure/storage/velero/overlays/prod,                  namespace: velero }
+                - { name: velero-schedules,        path: kubernetes/infrastructure/storage/velero-schedules/overlays/prod,        namespace: velero }
+                - { name: csi-snapshot-controller, path: kubernetes/infrastructure/storage/csi-snapshot-controller/overlays/prod, namespace: kube-system }
+  template:
+    metadata:
+      name: '{{.name}}'
+      labels:
+        app.kubernetes.io/name: '{{.name}}'
+        app.kubernetes.io/part-of: storage-stack
+        app.kubernetes.io/managed-by: argocd
+    spec:
+      project: infrastructure
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: main
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated: { prune: True, selfHeal: True }
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+          - ApplyOutOfSyncOnly=true
+        retry:
+          limit: -1
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }

@@ -1,0 +1,461 @@
+# Vector Aggregator Configuration - Central log processor (replaces Fluentd)
+# Runs as Deployment with 2 replicas
+
+data_dir = "/vector-data-dir"
+
+[api]
+enabled = true
+address = "0.0.0.0:8686"
+
+# Receive from Vector Agents
+[sources.vector_agents]
+type = "vector"
+address = "0.0.0.0:6000"
+version = "2"
+
+# Proxmox syslog input
+[sources.proxmox_syslog]
+type = "syslog"
+address = "0.0.0.0:5140"
+mode = "udp"
+
+# Direct Talos etcd logs from control plane - DISABLED (talosctl not available in container)
+# [sources.talos_etcd_logs]
+# type = "exec"
+# mode = "scheduled"
+# command = ["talosctl", "-n", "192.168.68.101", "logs", "etcd", "--tail"]
+# scheduled.exec_interval_secs = 30
+
+# Direct Talos kubelet logs from workers (sample from worker-1) - DISABLED (talosctl not available in container)
+# [sources.talos_kubelet_logs]
+# type = "exec"
+# mode = "scheduled"
+# command = ["talosctl", "-n", "192.168.68.103", "logs", "kubelet", "--tail"]
+# scheduled.exec_interval_secs = 30
+
+# Process Proxmox logs and add metadata
+[transforms.process_proxmox_logs]
+type = "remap"
+inputs = ["proxmox_syslog"]
+source = '''
+.source = "proxmox"
+.cluster = "talos-homelab"
+.datacenter = "homelab"
+.node_type = "hypervisor"
+
+# ELASTIC BEST PRACTICE: Namespace differentiation by hostname
+# Extract hostname from syslog metadata to differentiate hosts
+.proxmox_hostname = if exists(.hostname) {
+  downcase(string!(.hostname))
+} else if contains(string!(.message), "nipogi") {
+  "nipogi"
+} else if contains(string!(.message), "minisforum") {
+  "minisforum"
+} else {
+  "unknown"
+}
+
+# Set namespace for data stream routing (Elastic Standard)
+.namespace_suffix = .proxmox_hostname
+'''
+
+# Process Talos system logs from direct talosctl access - DISABLED (talosctl not available in container)
+# [transforms.process_talos_system_logs]
+# type = "remap"
+# inputs = ["talos_etcd_logs", "talos_kubelet_logs"]
+# source = '''
+# .source = "talos-direct"
+# .cluster = "talos-homelab"
+# .environment = "production"
+#
+# # ELASTIC BEST PRACTICE: Node role separation (control-plane vs workers)
+# # Detect node role based on IP address
+# if exists(.node_ip) {
+#   .node_ip = .node_ip
+# } else {
+#   .node_ip = "192.168.68.101"  # Default to control plane
+# }
+#
+# # Determine node role from IP (control-plane: .101, workers: .103-.108)
+# .node_role = if .node_ip == "192.168.68.101" {
+#   "control-plane"
+# } else if match(string!(.node_ip), r'^192\.168\.68\.10[3-8]$') {
+#   "worker"
+# } else {
+#   "unknown"
+# }
+#
+# # Detect log type and assign service name
+# if contains(string!(.message), "etcd") || exists(.component) && .component == "etcd" {
+#   .service_name = "etcd"
+# } else if contains(string!(.message), "kubelet") {
+#   .service_name = "kubelet"
+# } else {
+#   .service_name = "talos-system"
+# }
+#
+# # Set namespace for data stream routing (node role differentiation)
+# .namespace_suffix = .node_role
+# '''
+
+# Parse and enrich all logs - SERVICE-BASED
+[transforms.enrich_logs]
+type = "remap"
+inputs = ["vector_agents", "process_proxmox_logs"]
+source = '''
+# Set default namespace_suffix if not already set
+if !exists(.namespace_suffix) {
+  .namespace_suffix = "default"
+}
+
+# FIX: Remove nested Kubernetes labels that break Elasticsearch
+# Labels like app.kubernetes.io/name cause ES parsing errors
+del(.kubernetes.pod_labels)
+del(.kubernetes.namespace_labels)
+del(.kubernetes.node_labels)
+del(.kubernetes.pod_annotations)
+
+# Tetragon events embed the same label problem nested in their pod metadata:
+# plain "app" vs dotted "app.kubernetes.io/*" keys collide in ES (object vs value)
+del(.process_exec.process.pod.pod_labels)
+del(.process_exec.parent.pod.pod_labels)
+del(.process_exit.process.pod.pod_labels)
+del(.process_exit.parent.pod.pod_labels)
+del(.process_kprobe.process.pod.pod_labels)
+del(.process_kprobe.parent.pod.pod_labels)
+del(.process_tracepoint.process.pod.pod_labels)
+del(.process_tracepoint.parent.pod.pod_labels)
+
+# Add timestamp if missing
+if !exists(.timestamp) {
+  .timestamp = now()
+}
+
+# Standardize log level.
+# Frueher ein Substring-Test auf "ERROR" — dadurch galt CoreDNS' NOERROR-Rcode als
+# Fehler und produzierte 39k falsche error-Zeilen/h. Jetzt nur explizite
+# Level-Marker: [ERROR], level=error, "level":"error", klog E0806, log4j "TS ERROR [...]".
+if exists(.level) {
+  .level = downcase(to_string(.level) ?? "info")
+} else if match(to_string(.message) ?? "", r'(?i)(\[(error|fatal)\]|\blevel="?(error|fatal)\b|"level"\s*:\s*"(error|fatal)"|^E[0-9]{4} |^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}\S*\s+(error|fatal)\b)') {
+  .level = "error"
+} else if match(to_string(.message) ?? "", r'(?i)(\[warn(ing)?\]|\blevel="?warn(ing)?\b|"level"\s*:\s*"warn(ing)?"|^W[0-9]{4} |^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}\S*\s+warn(ing)?\b)') {
+  .level = "warn"
+} else {
+  .level = "info"
+}
+
+# TIER-0: Service-Based Index Routing
+.namespace = to_string(.kubernetes.namespace) ?? "unknown"
+
+# OMS (Order Management System) - 7 Service-Specific Indices
+# Backend: gateway, orders, payments, stock, kitchen
+# Frontend: customer-app, kitchen-display
+
+# Extract pod name for OMS service detection
+pod_name = to_string(.kubernetes.pod_name) ?? ""
+
+# Service-based routing (use service_name for routing, not service which is ECS nested object)
+.service_name = if .namespace == "oms" {
+  # OMS Service Detection based on pod name prefix
+  if starts_with(pod_name, "gateway") {
+    "oms-gateway"
+  } else if starts_with(pod_name, "orders") {
+    "oms-orders"
+  } else if starts_with(pod_name, "payments") {
+    "oms-payments"
+  } else if starts_with(pod_name, "stock") {
+    "oms-stock"
+  } else if starts_with(pod_name, "kitchen-display") {
+    "oms-kitchen-display"
+  } else if starts_with(pod_name, "kitchen") {
+    "oms-kitchen"
+  } else if starts_with(pod_name, "customer-app") {
+    "oms-customer-app"
+  } else {
+    # Fallback for other OMS pods (mongodb, rabbitmq, etc.)
+    "oms-infra"
+  }
+# Tetragon runs IN kube-system — this pod-name check MUST precede the kube-system
+# namespace branch, else tetragon events get filed under "kube-system" instead of
+# their own "tetragon" stream (was muddling ~1.4GB of runtime-security into kube-system).
+} else if starts_with(to_string(.kubernetes.pod_name) ?? "", "tetragon") {
+  "tetragon"
+} else if .namespace == "kube-system" {
+  "kube-system"
+} else if .namespace == "rook-ceph" {
+  "rook-ceph"
+} else if .namespace == "argocd" {
+  "argocd"
+} else if .namespace == "cert-manager" {
+  "cert-manager"
+} else if .namespace == "istio-system" {
+  "istio"
+} else if .namespace == "monitoring" {
+  "monitoring"
+} else if .namespace == "n8n" {
+  "n8n"
+} else if .namespace == "n8n-dev" {
+  "n8n-dev"
+} else if .namespace == "kafka" {
+  "kafka"
+} else if .namespace == "elastic-system" {
+  "elastic-system"
+} else if .namespace == "cnpg-system" {
+  "cloudnative-pg"
+} else if exists(.source) && .source == "kubernetes-audit" {
+  "kube-audit"
+} else if exists(.source) && .source == "hubble" {
+  "hubble-drops"
+} else if exists(.source) && .source == "talos" {
+  to_string(.service_name) ?? "talos-kernel"
+} else if .namespace == "gateway" {
+  "envoy-access"
+} else {
+  # Fallback: use namespace as service_name
+  .namespace
+}
+
+# Map Severity (critical/warn/info/debug)
+.severity = if .level == "error" || .level == "fatal" || .level == "critical" {
+  "critical"
+} else if .level == "warn" || .level == "warning" {
+  "warn"
+} else if .level == "debug" || .level == "trace" {
+  "debug"
+} else {
+  "info"
+}
+
+# ECS-Compliant Field Mappings
+
+# ECS version
+."ecs.version" = "8.17"
+
+# Rename @timestamp for ECS compliance
+."@timestamp" = .timestamp
+
+# ECS log.level (normalized)
+."log.level" = .level
+
+# ECS service.name (primary identifier)
+."service.name" = .service_name
+
+# ECS service.environment
+."service.environment" = "production"
+
+# Add cluster metadata (custom fields)
+.cluster = "talos-homelab"
+.datacenter = "homelab"
+.environment = "production"
+
+# OpenTelemetry Tracing Support
+
+# Extract trace.id from headers/metadata (if exists)
+if exists(.trace_id) {
+  ."trace.id" = string!(.trace_id)
+} else if exists(.traceId) {
+  ."trace.id" = string!(.traceId)
+} else if exists(.headers."X-Trace-Id") {
+  ."trace.id" = string!(.headers."X-Trace-Id")
+}
+
+# Extract transaction.id (if exists)
+if exists(.transaction_id) {
+  ."transaction.id" = string!(.transaction_id)
+} else if exists(.transactionId) {
+  ."transaction.id" = string!(.transactionId)
+}
+
+# Extract span.id (if exists)
+if exists(.span_id) {
+  ."span.id" = string!(.span_id)
+} else if exists(.spanId) {
+  ."span.id" = string!(.spanId)
+}
+
+# Structured Logging Support
+
+# If log is JSON, preserve structured fields
+if exists(.workflow_id) {
+  ."workflow.id" = string!(.workflow_id)
+}
+
+if exists(.user_id) {
+  ."user.id" = string!(.user_id)
+}
+
+# .error muss weg: der Punkt-Key macht daraus in ES ein Objekt, das skalare Original
+# kollidiert damit im selben Doc ("can't merge a non object mapping") und ES lehnt ab —
+# Vector verwirft dann den GANZEN Batch (~1650 Events pro Poison-Doc).
+if exists(.error) {
+  ."error.message" = string!(.error)
+  del(.error)
+}
+
+# Loki labels template {{ kubernetes.pod_name }} + {{ kubernetes.container_name }} — non-pod
+# events (proxmox/talos syslog, kube-audit) lack these → label-render fails → Loki silently
+# DROPS the event (root cause of VectorSinkDroppingEvents). Default so every event ships.
+if !exists(.kubernetes.pod_name) { .kubernetes.pod_name = "none" }
+if !exists(.kubernetes.container_name) { .kubernetes.container_name = "none" }
+
+# ES data-stream dataset/namespace: non-empty, lowercase, [a-z0-9_.-] only — sonst template_failed / bulk-reject
+.service_name = downcase(to_string(.service_name))
+.service_name = replace(.service_name, r'[^a-z0-9_.-]', "-")
+if .service_name == "" { .service_name = "unknown" }
+.namespace_suffix = downcase(to_string(.namespace_suffix) ?? "default")
+.namespace_suffix = replace(.namespace_suffix, r'[^a-z0-9_.-]', "-")
+if .namespace_suffix == "" { .namespace_suffix = "default" }
+'''
+
+# Sample logs to reduce volume (optional)
+# Vector semantics: rate = N keeps 1 out of every N events.
+# rate=100 silently dropped 99% of all logs (drova/lldap/spire never reached
+# ES or Loki). rate=1 keeps everything — the Hubble flood that motivated
+# sampling is now filtered at the agent (security verdicts only).
+[transforms.sample_logs]
+type = "sample"
+inputs = ["enrich_logs"]
+rate = 1
+key_field = ".kubernetes.pod"  # Sample per pod
+
+# ES bekommt nur Audit/Compliance-NS, Loki bekommt weiterhin alle Pod-Logs.
+# Spart ~70% ES-Storage + halbiert Index-Shards.
+[transforms.filter_sensitive_for_es]
+type = "filter"
+inputs = ["sample_logs"]
+# includes() statt ||-Kette — manche VRL-Parser lehnen ||-Zeilenfortsetzung in (...) ab.
+# Tetragon bewusst ausgeschlossen (info-level ~15GB) — bleibt 1:1 in Loki.
+# Re-include: || (exists(.kubernetes.pod_name) && starts_with(string!(.kubernetes.pod_name), "tetragon"))
+condition = '(exists(.kubernetes.pod_namespace) && includes(["drova","drova-prod","keycloak","lldap","argocd","cert-manager","kyverno","security","cilium-spire","cnpg-system","velero","gateway","netbird","n8n","kafka","cloudbeaver","audiobookshelf-prod","redis-operator-system"], .kubernetes.pod_namespace)) || (exists(.source) && .source == "kubernetes-audit") || (exists(.source) && .source == "hubble")'
+
+# ES-VOLUME-SCHUTZ: laute INFO-Quellen (kafka/n8n) auf 1/5 samplen.
+# WARN/CRITICAL + alle anderen NS bleiben 1:1 (exclude). Loki bekommt weiter alles.
+[transforms.sample_noisy_for_es]
+type = "sample"
+inputs = ["filter_sensitive_for_es"]
+rate = 5
+key_field = ".kubernetes.pod"
+exclude = '''
+.severity != "info" || !(exists(.kubernetes.pod_namespace) && includes(["kafka","n8n"], .kubernetes.pod_namespace))
+'''
+
+# ELASTICSEARCH SINK - DATA STREAMS + ECS (sensitive NS only)
+[sinks.elasticsearch]
+type = "elasticsearch"
+inputs = ["sample_noisy_for_es"]
+endpoints = ["https://production-cluster-es-http.elastic-system.svc.cluster.local:9200"]
+mode = "data_stream"  # ← DATA STREAMS! (automatic rollover)
+data_stream.type = "logs"
+data_stream.dataset = "{{ service_name }}.{{ severity }}"  # Uses .service_name for routing
+data_stream.namespace = "{{ namespace_suffix }}"  # ← ELASTIC BEST PRACTICE: Dynamic namespace!
+api_version = "v8"
+
+# Authentication
+[sinks.elasticsearch.auth]
+strategy = "basic"
+user = "elastic"
+password = "${ELASTICSEARCH_PASSWORD}"  # Set via secret
+
+# TLS configuration
+[sinks.elasticsearch.tls]
+verify_certificate = false  # For self-signed certs
+verify_hostname = false
+
+# Buffer configuration
+[sinks.elasticsearch.buffer]
+type = "disk"
+max_size = 268435488  # 256MB buffer
+when_full = "drop_newest"
+
+[sinks.elasticsearch.batch]
+max_bytes = 10485760  # 10MB batches
+timeout_secs = 10
+
+[sinks.elasticsearch.request]
+timeout_secs = 60
+retry_attempts = 3
+
+# LOKI SINK - Grafana log storage
+# Loki-Sink entfernt: Alloy liefert die Logs seit 2026-09-24.
+# Beide parallel trieben per_stream_rate_limit auf 133m samples/s.
+# sample_logs bleibt, der ES-Pfad haengt daran.
+
+[sources.internal_logs]
+type = "internal_logs"
+
+[sinks.console]
+type = "console"
+inputs = ["internal_logs"]
+encoding.codec = "json"
+target = "stdout"
+
+# Coraza has no metrics of its own — derive waf_coraza_detections_total from its
+# log lines. Additive branch off enrich_logs (a failure here can't touch ES/Loki).
+[transforms.coraza_extract]
+type = "remap"
+inputs = ["enrich_logs"]
+source = '''
+msg = to_string(.message) ?? ""
+.is_coraza_detection = false
+if contains(msg, "] Coraza: ") && (contains(msg, "Coraza: Warning") || contains(msg, "Coraza: Access denied")) {
+  m = parse_regex(msg, r'\[id "(?P<rule_id>\d+)"\]') ?? null
+  if m != null {
+    .coraza_rule_id = m.rule_id
+    .is_coraza_detection = true
+    .coraza_action = if contains(msg, "Access denied") { "denied" } else { "warning" }
+  }
+}
+'''
+
+[transforms.coraza_filter]
+type = "filter"
+inputs = ["coraza_extract"]
+condition = '.is_coraza_detection == true'
+
+[transforms.coraza_metric]
+type = "log_to_metric"
+inputs = ["coraza_filter"]
+
+[[transforms.coraza_metric.metrics]]
+type = "counter"
+field = "coraza_rule_id"
+name = "coraza_detections_total"
+namespace = "waf"
+tags.rule_id = "{{ coraza_rule_id }}"
+tags.action = "{{ coraza_action }}"
+
+# PROMETHEUS EXPORTER - Vector Internal Metrics + Coraza WAF counter
+[sources.internal_metrics]
+type = "internal_metrics"
+
+# Expose internal metrics via Prometheus exporter
+[sinks.prometheus_exporter]
+type = "prometheus_exporter"
+inputs = ["internal_metrics", "coraza_metric"]
+address = "0.0.0.0:9090"
+default_namespace = "vector"
+
+# Audit-Log zusaetzlich ins WORM-Archiv
+[transforms.audit_archive_filter]
+type = "filter"
+inputs = ["enrich_logs"]
+condition = 'exists(.source) && .source == "kubernetes-audit"'
+
+[sinks.audit_archive]
+type = "aws_s3"
+inputs = ["audit_archive_filter"]
+endpoint = "http://rook-ceph-rgw-homelab-objectstore.rook-ceph.svc:80"
+region = "us-east-1"
+bucket = "audit-archive"
+key_prefix = "kube-audit/%Y/%m/%d/"
+compression = "gzip"
+encoding.codec = "json"
+framing.method = "newline_delimited"
+auth.access_key_id = "${AUDIT_ARCHIVE_ACCESS_KEY}"
+auth.secret_access_key = "${AUDIT_ARCHIVE_SECRET_KEY}"
+
+[sinks.audit_archive.buffer]
+type = "disk"
+max_size = 536870912
+when_full = "drop_newest"

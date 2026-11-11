@@ -1,0 +1,86 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: drova-tenant-app
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  drova.tier: enabled
+                  environment: prod
+          - list:
+              elements:
+                - { name: drova-prod, path: overlays/production, namespace: drova, repoURL: https://github.com/Tim275/drova-gitops }
+  template:
+    metadata:
+      name: '{{.name}}'
+      labels:
+        app.kubernetes.io/name: '{{.name}}'
+        app.kubernetes.io/part-of: drova-tenant-app
+        app.kubernetes.io/managed-by: argocd
+    spec:
+      project: apps
+      source:
+        repoURL: '{{.repoURL}}'
+        targetRevision: main
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: '{{.namespace}}'
+      ignoreDifferences:
+        - group: postgresql.cnpg.io
+          kind: Cluster
+          managedFieldsManagers:
+          - cnpg-controller-manager
+        - group: redis.redis.opstreelabs.in
+          kind: RedisReplication
+          jsonPointers:
+          - /spec/kubernetesConfig/updateStrategy
+          - /spec/redisExporter/port
+          - /spec/storage/volumeClaimTemplate/metadata
+          - /spec/storage/volumeClaimTemplate/status
+          - /spec/storage/volumeMount
+        - group: redis.redis.opstreelabs.in
+          kind: Redis
+          jsonPointers:
+          - /spec/kubernetesConfig/updateStrategy
+          - /spec/redisExporter/port
+          - /spec/storage/volumeClaimTemplate/metadata
+          - /spec/storage/volumeClaimTemplate/status
+          - /spec/storage/volumeMount
+        - group: argoproj.io
+          kind: Application
+          jqPathExpressions:
+          - .status
+        - group: argoproj.io
+          kind: Rollout
+          jsonPointers:
+          - /spec/replicas
+        - kind: Service
+          name: api-gateway-canary
+          jsonPointers:
+          - /spec/selector
+        - kind: Service
+          name: api-gateway-stable
+          jsonPointers:
+          - /spec/selector
+      syncPolicy:
+        syncOptions:
+          - CreateNamespace=false
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+          - ServerSideDiff=false
+          - ApplyOutOfSyncOnly=true
+        retry:
+          limit: -1
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }

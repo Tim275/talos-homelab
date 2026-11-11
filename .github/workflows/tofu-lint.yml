@@ -1,0 +1,82 @@
+name: tofu-lint
+
+on:
+  pull_request:
+    paths:
+      - "tofu/**/*.tofu"
+      - "tofu/**/*.tf"
+      - "tofu/modules/talos/inline-manifests/**"
+
+permissions:
+  contents: read
+
+jobs:
+  inline-manifests:
+    name: inline-manifests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: geaenderte inline-manifests melden
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          CHANGED=$(git diff --name-only "$BASE" "$HEAD" -- tofu/modules/talos/inline-manifests/)
+          [ -n "$CHANGED" ] || { echo "keine inline-manifests beruehrt"; exit 0; }
+          NODES=$(grep -cE '^\s*"[a-z0-9-]+" = \{' tofu/stacks/cluster/talos_nodes.auto.tfvars)
+          {
+            echo "#### inline-manifests geaendert"
+            echo
+            echo "Diese Dateien werden **byteweise** in die Talos machine config eingebettet."
+            echo "Jede Aenderung — auch ein Kommentar oder eine Leerzeile — laesst den Plan"
+            echo "die machine config aller **${NODES}** Node-Definitionen als geaendert anzeigen."
+            echo
+            echo '```'
+            echo "$CHANGED"
+            echo '```'
+            echo
+            echo "Talos wendet inline-manifests nur beim Bootstrap an und *veraendert bestehende"
+            echo "Ressourcen nie* — ein Rollout aus einer reinen Kommentaraenderung bewirkt im"
+            echo "Cluster also nichts, kostet aber eine Apply-Freigabe."
+          } > c.md
+          jq -Rs '{body: .}' < c.md > c.json
+          curl -sS -X POST -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/$PR/comments" \
+            -d @c.json -o /dev/null
+          echo "Kommentar gesetzt fuer: $CHANGED"
+
+  fmt-validate:
+    name: fmt + validate
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: ["cluster", "cloudflare", "netbird", "uptime-kuma", "state"]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+        with:
+          tofu_version: "v1.12.6"
+
+      - name: tofu fmt -check
+        if: matrix.module == 'cluster'
+        working-directory: tofu
+        run: tofu fmt -check -recursive
+
+      - name: tofu validate
+        working-directory: tofu/stacks/${{ matrix.module }}
+        # -backend=false: kein Azure-Login noetig, nur Syntax/Schema-Check.
+        # Kein Provider-Token noetig (kein plan/apply) -> keine Secrets in CI.
+        run: |
+          tofu init -backend=false -input=false
+          tofu validate

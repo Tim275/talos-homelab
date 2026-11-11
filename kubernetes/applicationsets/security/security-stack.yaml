@@ -1,0 +1,56 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: security-stack
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  argocd.argoproj.io/secret-type: cluster
+                  environment: prod
+          - list:
+              elements:
+                - { name: rbac,                path: kubernetes/security/foundation/rbac/overlays/prod,                namespace: argocd }
+                - { name: rate-limiting,       path: kubernetes/security/foundation/rate-limiting/overlays/prod,       namespace: argocd }
+                - { name: kube-bench,          path: kubernetes/security/compliance/kube-bench/overlays/prod,          namespace: security }
+                - { name: kyverno-policies,    path: kubernetes/security/compliance/kyverno-policies/overlays/prod,    namespace: kyverno }
+                - { name: tetragon,            path: kubernetes/security/compliance/tetragon/overlays/prod,            namespace: kube-system }
+                - { name: tetragon-namespaced, path: kubernetes/security/compliance/tetragon-namespaced/overlays/prod, namespace: drova }
+                - { name: trivy,               path: kubernetes/security/compliance/trivy/overlays/prod,               namespace: trivy-system }
+                - { name: kyverno,             path: kubernetes/security/governance/kyverno/overlays/prod,             namespace: kyverno }
+  template:
+    metadata:
+      name: '{{.name}}'
+      labels:
+        app.kubernetes.io/name: '{{.name}}'
+        app.kubernetes.io/part-of: security-stack
+        app.kubernetes.io/managed-by: argocd
+    spec:
+      project: security
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: main
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated: { prune: True, selfHeal: True }
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+          - ApplyOutOfSyncOnly=true
+        retry:
+          limit: -1
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }

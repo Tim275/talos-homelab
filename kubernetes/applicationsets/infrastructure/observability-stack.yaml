@@ -1,0 +1,74 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: observability-stack
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  observability.tier: enabled
+                  environment: prod
+          - list:
+              elements:
+                - { name: kube-prometheus-stack,   path: kubernetes/infrastructure/observability/kube-prometheus-stack/overlays/prod,   namespace: monitoring }
+                - { name: metrics-server,          path: kubernetes/infrastructure/observability/metrics-server/overlays/prod,          namespace: kube-system }
+                - { name: blackbox-exporter,       path: kubernetes/infrastructure/observability/blackbox-exporter/rendered,            namespace: monitoring }
+                - { name: pve-exporter,            path: kubernetes/infrastructure/observability/pve-exporter/overlays/prod,            namespace: monitoring }
+                - { name: prometheus-edge,         path: kubernetes/infrastructure/observability/prometheus-edge/overlays/prod,         namespace: monitoring }
+                - { name: netbird-exporter,        path: kubernetes/infrastructure/observability/netbird-exporter/overlays/prod,        namespace: monitoring }
+                - { name: netbird-audit,           path: kubernetes/infrastructure/observability/netbird-audit/overlays/prod,           namespace: netbird }
+                - { name: kiali,                   path: kubernetes/infrastructure/observability/kiali/overlays/prod,                   namespace: istio-system }
+                - { name: elasticsearch,           path: kubernetes/infrastructure/observability/elasticsearch/overlays/prod,           namespace: elastic-system }
+                - { name: loki,                    path: kubernetes/infrastructure/observability/loki/overlays/prod,                    namespace: monitoring }
+                - { name: vector,                  path: kubernetes/infrastructure/observability/vector/overlays/prod,                  namespace: monitoring }
+                - { name: alloy,                   path: kubernetes/infrastructure/observability/alloy/overlays/prod,                   namespace: monitoring }
+                - { name: kibana,                  path: kubernetes/infrastructure/observability/kibana/overlays/prod,                  namespace: elastic-system }
+                - { name: tempo,                   path: kubernetes/infrastructure/observability/tempo/overlays/prod,                   namespace: monitoring }
+                - { name: jaeger,                  path: kubernetes/infrastructure/observability/jaeger/overlays/prod,                  namespace: jaeger }
+                - { name: opentelemetry-collector, path: kubernetes/infrastructure/observability/opentelemetry-collector/overlays/prod, namespace: opentelemetry }
+                - { name: grafana,                 path: kubernetes/infrastructure/observability/grafana/overlays/prod,                 namespace: grafana }
+                - { name: hubble,                  path: kubernetes/infrastructure/observability/hubble/overlays/prod,                  namespace: kube-system }
+                - { name: homepage,                path: kubernetes/infrastructure/observability/homepage/overlays/prod,                namespace: homepage }
+                - { name: alerting,                path: kubernetes/infrastructure/observability/alerting/overlays/prod,                namespace: monitoring }
+  template:
+    metadata:
+      name: '{{.name}}'
+      labels:
+        app.kubernetes.io/name: '{{.name}}'
+        app.kubernetes.io/part-of: observability-stack
+        app.kubernetes.io/managed-by: argocd
+    spec:
+      project: infrastructure
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: main
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: '{{.namespace}}'
+      ignoreDifferences:
+        - group: monitoring.coreos.com
+          kind: ServiceMonitor
+          jsonPointers:
+          - /metadata/annotations
+          - /metadata/labels
+      syncPolicy:
+        automated: { prune: True, selfHeal: True }
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+          - ApplyOutOfSyncOnly=true
+        retry:
+          limit: -1
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }

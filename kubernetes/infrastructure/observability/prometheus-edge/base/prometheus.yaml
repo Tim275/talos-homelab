@@ -1,0 +1,68 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus-edge
+  namespace: monitoring
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: edge
+  namespace: monitoring
+spec:
+  serviceAccountName: prometheus-edge
+  scrapeInterval: 30s
+  evaluationInterval: 30s
+  externalLabels:
+    tier: edge
+    cluster: prod-talos
+  additionalScrapeConfigs:
+    name: edge-scrape-configs
+    key: prometheus-additional.yaml
+  alerting:
+    alertmanagers:
+      - namespace: monitoring
+        name: alertmanager-edge
+        port: http-web
+        apiVersion: v2
+  ruleSelector:
+    matchLabels:
+      prometheus: edge
+  ruleNamespaceSelector: {}
+  serviceMonitorSelector:
+    matchLabels:
+      prometheus: edge
+  podMonitorSelector:
+    matchLabels:
+      prometheus: edge
+  probeSelector:
+    matchLabels:
+      prometheus: edge
+  scrapeConfigSelector:
+    matchLabels:
+      prometheus: edge
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 2000
+  storage:
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+          - ReadWriteOnce
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-edge
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus-edge
+spec:
+  selector:
+    app.kubernetes.io/instance: edge
+    app.kubernetes.io/name: prometheus
+  ports:
+    - name: http-web
+      port: 9090
+      targetPort: 9090

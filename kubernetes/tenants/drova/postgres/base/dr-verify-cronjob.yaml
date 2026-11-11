@@ -1,0 +1,188 @@
+#
+#
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cnpg-dr-verify
+  namespace: drova
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cnpg-dr-verify-source
+  namespace: drova
+rules:
+  - apiGroups: [postgresql.cnpg.io]
+    resources: [backups]
+    verbs: [list]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [cnpg-drova-backup]
+    verbs: [get]
+  - apiGroups: [barmancloud.cnpg.io]
+    resources: [objectstores]
+    resourceNames: [drova-backup-store]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cnpg-dr-verify-source
+  namespace: drova
+subjects:
+  - kind: ServiceAccount
+    name: cnpg-dr-verify
+    namespace: drova
+roleRef:
+  kind: Role
+  name: cnpg-dr-verify-source
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cnpg-dr-verify
+  namespace: drova
+spec:
+  schedule: "30 4 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2   # retry transient fails (Ceph/RGW unstable during a thermal event → restore can't pull backup) before alerting
+      ttlSecondsAfterFinished: 86400
+      activeDeadlineSeconds: 3600    # 1h max — DR-restore takes ~10min, but CNPG-init can stall
+      template:
+        spec:
+          serviceAccountName: cnpg-dr-verify
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            fsGroup: 65534
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: verify
+              image: docker.io/bitnamilegacy/kubectl:1.33.4@sha256:ed0b31a0508da84ee655c5c6e01bd3897fc56ad6cf69debb27fa1893a06d2246
+              command: [/bin/bash, -c]
+              args:
+                - |
+                  set -uo pipefail
+                  TS=$(date +%Y%m%d-%H%M)
+                  TEST_NS="dr-verify"
+                  CLUSTER_NAME="drova-postgres-restore"
+                  SOURCE_NS="drova"
+                  SOURCE_CLUSTER="drova-postgres"
+
+                  echo "═══ CNPG DR-Verify Run ${TS} ═══"
+
+                  LATEST=$(kubectl get backups.postgresql.cnpg.io -n $SOURCE_NS \
+                    --sort-by=.metadata.creationTimestamp \
+                    -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.status.phase}{"\n"}{end}' 2>/dev/null \
+                    | grep '|completed$' | tail -1 | cut -d'|' -f1)
+
+                  if [ -z "$LATEST" ]; then
+                    echo "✗ FAIL: kein completed CNPG-backup für $SOURCE_CLUSTER"
+                    exit 1
+                  fi
+                  echo "→ Latest backup: $LATEST"
+
+                  kubectl delete cluster -n $TEST_NS $CLUSTER_NAME --ignore-not-found --cascade=foreground --wait=true --timeout=10m \
+                    || { echo "✗ FAIL: alter Restore-Cluster laesst sich nicht entfernen"; exit 1; }
+                  trap "kubectl delete cluster -n $TEST_NS $CLUSTER_NAME --ignore-not-found --wait=false; kubectl delete objectstore.barmancloud.cnpg.io -n $TEST_NS drova-backup-store --ignore-not-found; kubectl delete secret -n $TEST_NS cnpg-drova-backup --ignore-not-found" EXIT
+
+                  kubectl get secret -n $SOURCE_NS cnpg-drova-backup -o json | \
+                    jq --arg ns "$TEST_NS" '.metadata = {name: .metadata.name, namespace: $ns}' | \
+                    kubectl apply -f -
+
+                  kubectl get objectstore.barmancloud.cnpg.io -n $SOURCE_NS drova-backup-store -o json | \
+                    jq --arg ns "$TEST_NS" '.metadata = {name: .metadata.name, namespace: $ns} | del(.status)' | \
+                    kubectl apply -f -
+
+                  cat <<EOF | kubectl apply -f -
+                  apiVersion: postgresql.cnpg.io/v1
+                  kind: Cluster
+                  metadata:
+                    name: $CLUSTER_NAME
+                    namespace: $TEST_NS
+                  spec:
+                    instances: 1
+                    imageName: ghcr.io/cloudnative-pg/postgresql:16.4-22
+                    storage:
+                      size: 5Gi
+                      storageClass: rook-ceph-block-enterprise
+                    bootstrap:
+                      recovery:
+                        source: drova-postgres-source
+                        database: drova
+                        owner: drova
+                    externalClusters:
+                      - name: drova-postgres-source
+                        plugin:
+                          name: barman-cloud.cloudnative-pg.io
+                          parameters:
+                            barmanObjectName: drova-backup-store
+                            serverName: drova-postgres
+                  EOF
+
+                  echo "→ Waiting for restore (max 25min)..."
+                  PHASE=""
+                  GONE=0
+                  for i in $(seq 1 150); do
+                    if kubectl get cluster -n $TEST_NS $CLUSTER_NAME >/dev/null 2>&1; then
+                      GONE=0
+                      PHASE=$(kubectl get cluster -n $TEST_NS $CLUSTER_NAME -o jsonpath='{.status.phase}' 2>/dev/null)
+                      echo "  [$(date +%H:%M:%S)] phase: ${PHASE:-<leer>}"
+                      if [ "$PHASE" = "Cluster in healthy state" ]; then
+                        break
+                      fi
+                      case "$PHASE" in
+                        *"Unable to create"*|*Failed*)
+                          echo "✗ ABBRUCH: Cluster in Fehler-Phase"
+                          break
+                          ;;
+                      esac
+                    else
+                      GONE=$((GONE + 1))
+                      echo "  [$(date +%H:%M:%S)] Cluster-CR nicht abfragbar ($GONE/3)"
+                      if [ $GONE -ge 3 ]; then
+                        echo "✗ ABBRUCH: Restore-Cluster verschwunden (Operator-Restart?)"
+                        break
+                      fi
+                    fi
+                    sleep 10
+                  done
+
+                  if [ "$PHASE" != "Cluster in healthy state" ]; then
+                    echo "✗ FAIL: Restore nicht healthy (letzte phase: ${PHASE:-<leer>})"
+                    echo "→ Events im Test-NS:"
+                    kubectl get events -n $TEST_NS --sort-by=.metadata.creationTimestamp 2>/dev/null | tail -15
+                    kubectl describe cluster -n $TEST_NS $CLUSTER_NAME 2>/dev/null | tail -25
+                    exit 1
+                  fi
+
+                  DB_COUNT=$(kubectl exec -n $TEST_NS ${CLUSTER_NAME}-1 -c postgres -- \
+                    psql -U postgres -At -c "SELECT count(*) FROM pg_database WHERE datname LIKE 'drova%';" 2>/dev/null)
+
+                  if [ "$DB_COUNT" -ge 4 ]; then
+                    echo "✅ SUCCESS: $DB_COUNT drova databases restored from $LATEST"
+                    echo "RTO: ~$(($i * 10))s | Backup-Source: $LATEST"
+                    exit 0
+                  else
+                    echo "✗ FAIL: Expected 4+ drova-* databases, got $DB_COUNT"
+                    exit 1
+                  fi
+              env:
+                - name: PYTHONUNBUFFERED
+                  value: "1"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: false
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - { name: tmp, mountPath: /tmp }
+          volumes:
+            - { name: tmp, emptyDir: { sizeLimit: 64Mi } }

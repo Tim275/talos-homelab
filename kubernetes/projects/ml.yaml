@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: ml
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/part-of: timour-homelab
+    app.kubernetes.io/layer: ml
+    team: timour
+spec:
+  description: "ML Department - Training, Serving, Experiment-Tracking"
+
+  syncWindows:
+    - kind: deny
+      schedule: '0 2 * * *'
+      duration: 3h
+      timeZone: Europe/Berlin
+      applications:
+        - '*'
+      manualSync: true
+
+  sourceRepos:
+    - 'https://github.com/Tim275/talos-homelab'
+
+  destinations:
+    - namespace: ml
+      server: https://kubernetes.default.svc
+
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+
+  roles:
+    - name: ml-operator
+      description: "Operational access to ml workloads"
+      policies:
+        - p, proj:ml:ml-operator, applications, get, ml/*, allow
+        - p, proj:ml:ml-operator, applications, sync, ml/*, allow
+      groups:
+        - sre-team

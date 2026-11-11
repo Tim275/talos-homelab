@@ -1,0 +1,54 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: core-stack
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  argocd.argoproj.io/secret-type: cluster
+                  environment: prod
+          - list:
+              elements:
+                - { name: openbao-operator, path: kubernetes/infrastructure/secrets/openbao-operator/rendered,      namespace: openbao-operator-system, appProject: infrastructure }
+                - { name: openbao,          path: kubernetes/infrastructure/secrets/openbao/overlays/prod,          namespace: openbao,                 appProject: infrastructure }
+                - { name: external-secrets, path: kubernetes/infrastructure/secrets/external-secrets/overlays/prod, namespace: external-secrets,        appProject: infrastructure }
+                - { name: cert-manager,     path: kubernetes/infrastructure/certificates/cert-manager/rendered,     namespace: cert-manager,            appProject: infrastructure }
+                - { name: postfix,          path: kubernetes/infrastructure/mail/postfix/overlays/prod,             namespace: mail,                    appProject: infrastructure }
+                - { name: argocd,           path: kubernetes/infrastructure/argocd/overlays/prod,                   namespace: argocd,                  appProject: argocd }
+  template:
+    metadata:
+      name: '{{.name}}'
+      labels:
+        app.kubernetes.io/name: '{{.name}}'
+        app.kubernetes.io/part-of: core-stack
+        app.kubernetes.io/managed-by: argocd
+    spec:
+      project: '{{.appProject}}'
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: main
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated: { prune: True, selfHeal: True }
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+          - ApplyOutOfSyncOnly=true
+        retry:
+          limit: -1
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }

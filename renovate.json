@@ -1,0 +1,425 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+
+  "extends": [
+    "config:best-practices",
+    ":maintainLockFilesWeekly",
+    "docker:enableMajor",
+    "helpers:pinGitHubActionDigests",
+    "group:monorepos",
+    "group:recommended"
+  ],
+
+  "configMigration": true,
+  "forkProcessing": "disabled",
+  "platformCommit": "disabled",
+  "platformAutomerge": false,
+  "automerge": false,
+
+  "internalChecksAsSuccess": true,
+  "rebaseWhen": "auto",
+  "recreateWhen": "always",
+  "rebaseLabel": "rebase",
+  "keepUpdatedLabel": "rebase-always",
+  "stopUpdatingLabel": "stop-updating",
+  "semanticCommits": "enabled",
+  "rangeStrategy": "bump",
+
+  "separateMinorPatch": true,
+  "separateMultipleMajor": true,
+  "fetchChangeLogs": "branch",
+
+  "gitIgnoredAuthors": [
+    "tim275@users.noreply.github.com"
+  ],
+
+  "assigneesFromCodeOwners": true,
+  "reviewersFromCodeOwners": false,
+
+  "postUpdateOptions": [
+    "gomodTidy",
+    "gomodUpdateImportPaths",
+    "helmUpdateSubChartArchives"
+  ],
+
+  "timezone": "Europe/Berlin",
+  "prConcurrentLimit": 10,
+  "prHourlyLimit": 5,
+
+  "major": {
+    "dependencyDashboardApproval": true
+  },
+
+  "dependencyDashboard": true,
+  "dependencyDashboardApproval": false,
+  "dependencyDashboardTitle": "🔄 Renovate Dashboard",
+  "dependencyDashboardLabels": ["renovate"],
+  "dependencyDashboardOSVVulnerabilitySummary": "all",
+  "osvVulnerabilityAlerts": true,
+
+  "labels": ["renovate"],
+  "prHeader": "📦 Dependency Update — review CHANGELOG before merge.",
+  "prBodyColumns": [
+    "Package",
+    "Update",
+    "Type",
+    "New value",
+    "Pending",
+    "References"
+  ],
+
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["renovate", "security"],
+    "schedule": ["at any time"],
+    "automerge": false,
+    "minimumReleaseAge": "0 days",
+    "prCreation": "immediate"
+  },
+
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 5am on sunday"],
+    "automerge": false
+  },
+
+  "kubernetes": {
+    "managerFilePatterns": ["/kubernetes/.+\\.ya?ml$/"]
+  },
+  "terraform": {
+    "managerFilePatterns": ["/\\.tf$/", "/\\.tofu$/"]
+  },
+  "kustomize": {
+    "managerFilePatterns": ["/(^|/)kustomization\\.ya?ml(\\.j2)?$/"]
+  },
+
+  "ignorePaths": [
+    "**/charts/**",
+    "kubernetes/projects/**",
+    "kubernetes/applicationsets/**",
+    "kubernetes/clusters/**",
+    "kubernetes/parked/**"
+  ],
+
+  "packageRules": [
+    {
+      "description": "SICHTBAR, aber nur per Dashboard-Freigabe — Talos OS image (manual upgrade via talosctl)",
+      "matchPackageNames": [
+        "/siderolabs/talos/",
+        "/siderolabs/installer/",
+        "/siderolabs/imager/"
+      ],
+      "dependencyDashboardApproval": true,
+      "automerge": false,
+      "addLabels": ["manual-review-required", "talosctl"]
+    },
+    {
+      "description": "SICHTBAR, aber nur per Dashboard-Freigabe — Kubelet image (version-coupled to Talos+K8s, upgrade via talosctl)",
+      "matchPackageNames": ["/siderolabs/kubelet/"],
+      "dependencyDashboardApproval": true,
+      "automerge": false,
+      "addLabels": ["manual-review-required", "talosctl"]
+    },
+    {
+      "description": "SICHTBAR, aber nur per Dashboard-Freigabe — Kubernetes-core (manual via talosctl upgrade-k8s)",
+      "matchPackageNames": [
+        "/^kubernetes$/",
+        "/^k8s.io/",
+        "/registry.k8s.io/kube-/",
+        "/etcd-io/etcd/"
+      ],
+      "dependencyDashboardApproval": true,
+      "automerge": false,
+      "addLabels": ["manual-review-required", "talosctl"]
+    },
+    {
+      "description": "SICHTBAR, aber nur per Dashboard-Freigabe — Talos-pinned system tooling (cri-tools/cni/containerd)",
+      "matchPackageNames": ["/cri-tools/", "/cni-plugins/", "/containerd/"],
+      "dependencyDashboardApproval": true,
+      "automerge": false,
+      "addLabels": ["manual-review-required", "talosctl"]
+    },
+    {
+      "description": "SICHTBAR, aber nur per Dashboard-Freigabe — tfvars version-coupling fields",
+      "matchFileNames": [
+        "tofu/stacks/cluster/talos_cluster.auto.tfvars",
+        "tofu/stacks/cluster/talos_image.auto.tfvars"
+      ],
+      "matchDepNames": ["kubernetes_version", "talos_machine_config_version"],
+      "dependencyDashboardApproval": true,
+      "automerge": false,
+      "addLabels": ["manual-review-required", "talosctl"]
+    },
+    {
+      "description": "SICHTBAR, aber nur per Dashboard-Freigabe — Tofu-Provider-Updates (Lock-Files committed → manuell via tofu providers lock, kein PR-Lärm)",
+      "matchDatasources": ["terraform-provider"],
+      "dependencyDashboardApproval": true,
+      "automerge": false,
+      "addLabels": ["manual-review-required", "tofu-lock"]
+    },
+
+    {
+      "description": "Ceph-Image: PR ja, automerge NIE. Version muss zu Rooks unterstuetzter Matrix passen, deshalb zusammen mit dem rook-ceph-Chart pruefen und mergen.",
+      "matchPackageNames": ["/ceph/ceph/"],
+      "automerge": false,
+      "minimumReleaseAge": "21 days",
+      "addLabels": ["manual-review-required", "rook-matrix"]
+    },
+    {
+      "description": "setup-opentofu liest die Versionen aus get.opentofu.org/tofu/api.json, dort fehlt 1.12.7",
+      "matchDepNames": ["opentofu"],
+      "matchDepTypes": ["uses-with"],
+      "allowedVersions": "!/^v?1\\.12\\.7$/"
+    },
+
+    {
+      "description": "pinDigests off: config:best-practices pulls in docker:pinDigests, which has failed the pin-dependencies group on every run since May — one unpinnable dep (gateway-helm version:, ghcr.io/renovatebot/renovate in a regex manager) kills all 21 updates in the group. Renovate cannot pin a digest into a version: field. Supply-chain pinning is done via explicit @sha256 in the manifests instead",
+      "matchPackageNames": ["*"],
+      "pinDigests": false
+    },
+
+    {
+      "description": "Registry override: Grafana Helm Charts (Loki/Tempo/Mimir/etc)",
+      "matchDatasources": ["helm"],
+      "matchPackageNames": [
+        "tempo-distributed",
+        "grafana",
+        "promtail",
+        "grafana-operator",
+        "mimir-distributed"
+      ],
+      "registryUrls": ["https://grafana.github.io/helm-charts"]
+    },
+    {
+      "description": "GROUP: Cilium project (must upgrade together)",
+      "groupName": "cilium",
+      "matchPackageNames": [
+        "/cilium/cilium/",
+        "/cilium/hubble/",
+        "/cilium/cilium-cli/"
+      ]
+    },
+    {
+      "description": "GROUP: Argo project",
+      "groupName": "argo-project",
+      "matchPackageNames": [
+        "/argoproj/argo-cd/",
+        "/argoproj/argo-rollouts/",
+        "/argoproj/argo-events/",
+        "/argoproj/argo-workflows/",
+        "/argo-cd$/",
+        "/argo-rollouts$/"
+      ]
+    },
+    {
+      "description": "GROUP: Rook+Ceph (same project, must upgrade together)",
+      "groupName": "rook-ceph",
+      "matchPackageNames": ["/rook/", "/ceph/"]
+    },
+    {
+      "description": "GROUP: Velero suite (plugin-coupled)",
+      "groupName": "velero-suite",
+      "matchPackageNames": [
+        "/velero/velero/",
+        "/velero/velero-plugin-/",
+        "/vmware-tanzu/velero/"
+      ]
+    },
+    {
+      "description": "GROUP: CloudNativePG suite",
+      "groupName": "cnpg-suite",
+      "matchPackageNames": [
+        "/cloudnative-pg/cloudnative-pg/",
+        "/cloudnative-pg/plugin-barman-cloud/",
+        "/cloudnative-pg/cnpg-i/"
+      ]
+    },
+    {
+      "description": "GROUP: Strimzi Kafka",
+      "groupName": "strimzi-kafka",
+      "matchPackageNames": [
+        "/strimzi/strimzi-kafka-operator/",
+        "/strimzi/operator/"
+      ]
+    },
+    {
+      "description": "GROUP: Keycloak",
+      "groupName": "keycloak",
+      "matchPackageNames": [
+        "/keycloak/keycloak/",
+        "/keycloak/keycloak-operator/",
+        "/keycloak-operator$/"
+      ]
+    },
+    {
+      "description": "GROUP: cert-manager mit CRDs",
+      "groupName": "cert-manager",
+      "matchPackageNames": ["/^cert-manager$/", "cert-manager/cert-manager"]
+    },
+    {
+      "description": "GROUP: external-secrets mit CRDs",
+      "groupName": "external-secrets",
+      "matchPackageNames": ["/^external-secrets$/", "external-secrets/external-secrets"]
+    },
+    {
+      "description": "GROUP: Envoy Gateway mit CRDs",
+      "groupName": "envoy-gateway",
+      "matchPackageNames": ["/^gateway-helm$/", "/^gateway-crds-helm$/"]
+    },
+    {
+      "description": "GROUP: kube-prometheus-stack mit CRDs",
+      "groupName": "kube-prometheus-stack",
+      "matchPackageNames": ["/^kube-prometheus-stack$/", "/^prometheus-operator-crds$/"]
+    },
+    {
+      "description": "GROUP: GitHub Actions (batch low-blast-radius CI updates)",
+      "groupName": "github-actions",
+      "matchManagers": ["github-actions"]
+    },
+
+    {
+      "description": "Type-label: digest (hash-pin, no behavior change)",
+      "matchUpdateTypes": ["digest"],
+      "minimumReleaseAge": "0 days",
+      "automerge": false,
+      "addLabels": ["digest"]
+    },
+    {
+      "description": "Type-label: patch (2d soak)",
+      "matchUpdateTypes": ["patch"],
+      "minimumReleaseAge": "2 days",
+      "automerge": false,
+      "addLabels": ["patch"]
+    },
+    {
+      "description": "Type-label: minor (5d soak)",
+      "matchUpdateTypes": ["minor"],
+      "minimumReleaseAge": "5 days",
+      "automerge": false,
+      "addLabels": ["minor"]
+    },
+    {
+      "description": "Type-label: major (7d soak)",
+      "matchUpdateTypes": ["major"],
+      "minimumReleaseAge": "7 days",
+      "addLabels": ["major", "manual-review-required"]
+    },
+    {
+      "description": "ghcr, quay, registry.k8s.io liefern keinen Release-Zeitstempel",
+      "matchDatasources": ["docker"],
+      "minimumReleaseAgeBehaviour": "timestamp-optional"
+    },
+
+    {
+      "description": "Extra soak: critical-infrastructure (21d for patch/minor/major). 2026-05-16 disaster: Strimzi 0.51 auto-merged after 14d soak, broke Kafka prod — NEVER auto-merge critical-infra. Bare names = helm charts (matchen sonst nicht, Gap gefunden 2026-07-21: cilium-helm-PRs liefen ohne critical-Label).",
+      "matchPackageNames": [
+        "/cilium/cilium/",
+        "/cert-manager/cert-manager/",
+        "/cloudnative-pg/cloudnative-pg/",
+        "/argoproj/argo-cd/",
+        "/kyverno/kyverno/",
+        "/keycloak/keycloak/",
+        "/strimzi/strimzi-kafka-operator/",
+        "/rook/rook/",
+        "/^cilium$/",
+        "/^cert-manager$/",
+        "/^cloudnative-pg$/",
+        "/^argo-cd$/",
+        "/^kyverno$/",
+        "/^strimzi-kafka-operator$/",
+        "/^rook-ceph$/",
+        "/^gateway-helm$/",
+        "/^gateway-crds-helm$/"
+      ],
+      "matchUpdateTypes": ["patch", "minor", "major"],
+      "minimumReleaseAge": "21 days",
+      "automerge": false,
+      "addLabels": ["critical-infrastructure", "manual-review-required"]
+    },
+    {
+      "description": "Keycloak patch: Sicherheitsfixes nicht 21 Tage warten lassen",
+      "matchPackageNames": [
+        "/keycloak/keycloak/",
+        "/keycloak/keycloak-operator/",
+        "/keycloak-operator$/"
+      ],
+      "matchUpdateTypes": ["patch"],
+      "minimumReleaseAge": "2 days"
+    },
+    {
+      "description": "Extra soak: stateful databases (14d for patch/minor/major)",
+      "matchPackageNames": [
+        "/postgresql/",
+        "/postgres/",
+        "/mysql/",
+        "/mongodb/",
+        "/redis/",
+        "/elasticsearch/",
+        "/influxdb/"
+      ],
+      "matchUpdateTypes": ["patch", "minor", "major"],
+      "minimumReleaseAge": "14 days",
+      "automerge": false,
+      "addLabels": ["manual-review-required", "stateful-database"]
+    }
+  ],
+
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Generic renovate comments (supports inline registry= and versioning= hints)",
+      "managerFilePatterns": [
+        "/\\.tf$/",
+        "/\\.tofu$/",
+        "/\\.tftpl$/",
+        "/\\.tfvars$/",
+        "/\\.yaml$/",
+        "/\\.yml$/",
+        "/\\.sh$/"
+      ],
+      "matchStrings": [
+        "(?<currentValue>[\\w+\\.\\-]*)['\",;]*\\s*#\\s*renovate:\\s*(?<datasource>\\S+)=(?<depName>\\S+)(?:\\s+registry=(?<registryUrl>\\S+))?(?:\\s+versioning=(?<versioning>\\S+))?"
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": "Talos Docker images in k8s manifests (BLOCKED via packageRules)",
+      "managerFilePatterns": ["/\\.yaml$/"],
+      "matchStrings": [
+        "image:\\s*(?:ghcr\\.io/)?siderolabs/talos:(?<currentValue>v?[\\d.]+)"
+      ],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "ghcr.io/siderolabs/talos"
+    },
+    {
+      "customType": "regex",
+      "description": "Container images in tofu/ tftpl files (Cilium values, inline-manifests)",
+      "managerFilePatterns": ["/tofu/.*\\.(yaml|yml|tftpl)$/"],
+      "matchStrings": [
+        "image:\\s*(?<depName>(?:[\\w.-]+\\/)?[\\w.-]+\\/[\\w.-]+):(?<currentValue>v?[\\w.-]+)"
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "LLDAP release image tags",
+      "managerFilePatterns": ["/lldap/.*\\.yaml$/"],
+      "matchStrings": [
+        "image:\\s*lldap/lldap:(?<currentValue>v\\d+\\.\\d+\\.\\d+-alpine-rootless)"
+      ],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "lldap/lldap",
+      "versioningTemplate": "regex:^v(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-alpine-rootless$"
+    },
+    {
+      "customType": "regex",
+      "description": "CRD-Quellen in kubernetes/crds",
+      "managerFilePatterns": ["/^kubernetes/crds/kustomization\\.yaml$/"],
+      "matchStrings": [
+        "https://github\\.com/(?<depName>cert-manager/cert-manager)/releases/download/(?<currentValue>v[\\d.]+)/",
+        "https://raw\\.githubusercontent\\.com/(?<depName>external-secrets/external-secrets)/(?<currentValue>v[\\d.]+)/"
+      ],
+      "datasourceTemplate": "github-releases"
+    }
+  ]
+}

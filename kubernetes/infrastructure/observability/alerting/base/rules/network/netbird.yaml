@@ -1,0 +1,50 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: network-netbird
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: netbird-page
+      interval: 60s
+      rules:
+        - alert: NetBirdRoutingPeerDown
+          expr: min by (peer_name) (netbird_peer_connection_status_by_name{peer_name=~"msa2proxmox|nipogi"}) == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: network
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/network.md#netbirdroutingpeerdown"
+            dashboard_url: "/d/netbird-api-exporter"
+            summary: "NetBird routing-peer {{ $labels.peer_name }} offline"
+            description: "Host-Routing-Peer (msa2/nipogi) disconnected → LAN-Route 192.168.0.0/24 tot → alle VPN-only-Apps unerreichbar."
+            action: "NetBird-Agent am Proxmox-Host prüfen (`ssh <host> systemctl status netbird`); Setup-Key ist ephemeral=false → Peer sollte nicht gelöscht sein."
+    - name: netbird-ticket
+      interval: 60s
+      rules:
+        - alert: NetBirdExporterDown
+          expr: absent(up{job="netbird-exporter"}) or up{job="netbird-exporter"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            component: network
+          annotations:
+            dashboard_url: "/d/netbird-api-exporter"
+            summary: "NetBird-API-Exporter down — VPN-Health blind"
+            description: "netbird-api-exporter nicht scrapebar → keine Peer/Route/Policy-Metriken. NetBird-Health ungemonitort."
+            action: "kubectl -n monitoring logs deploy/netbird-exporter; Token netbird-exporter-token / netbird-mgmt-api-key gültig?"
+        # Quote über alle Peers ist hier nicht aussagekraeftig: Laptop offline = 33% bei 3 echten
+        # Peers, dazu Karteileichen des geparkten netbird-operator. NetBirdRoutingPeerDown deckt
+        # den echten Ausfall praezise ab.
+        # - alert: NetBirdManyPeersDisconnected
+        #   expr: (sum(netbird_peers_connected{connected="false"}) / clamp_min(sum(netbird_peers), 1)) > 0.6
+        #   for: 15m
+        #   labels:
+        #     severity: warning
+        #     component: network
+        #   annotations:
+        #     summary: "Mehrheit der NetBird-Peers offline ({{ $value | humanizePercentage }})"
+        #     description: "> 60% der Peers disconnected — mögliches NetBird-Cloud/Signal-Problem oder breiter Client-Ausfall."
+        #     action: "NetBird-Dashboard-Status + api.netbird.io erreichbar? cilium host-firewall 51820/UDP offen?"

@@ -1,0 +1,453 @@
+
+global:
+  priorityClassName: platform-critical
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+
+configs:
+  # CRITICAL: Secret Management
+  # - server.secretkey (for session encryption)
+  # - admin.password (initial admin password)
+  # - webhook.github.secret, etc.
+  secret:
+    createSecret: true
+
+  cm:
+    create: true
+    application.resourceTrackingMethod: annotation+label
+    admin.enabled: true
+    kustomize.buildOptions: --enable-helm --load-restrictor LoadRestrictionsNone
+    resource.customizations.health.openbao.org_OpenBaoCluster: |
+      hs = {status = "Progressing", message = "Waiting for OpenBao"}
+      if obj.status ~= nil then
+        if obj.status.phase == "Failed" then
+          hs.status = "Degraded"
+          hs.message = "OpenBaoCluster failed"
+        elseif obj.status.phase == "Running" and obj.status.initialized == true then
+          hs.status = "Healthy"
+          hs.message = "OpenBao running and initialized"
+        end
+      end
+      return hs
+
+    exec.timeout: "300s"  # 5 minutes for kustomize build (default 90s)
+
+
+    timeout.reconciliation: "360s"        # Extended from 180s default
+    timeout.reconciliation.jitter: "30s"   # Add jitter to prevent thundering herd
+    timeout.hard.reconciliation: "600s"    # Hard limit for reconciliation
+
+  cmp:
+    create: true
+    plugins:
+      kustomize-build-with-helm:
+        generate:
+          command: [ sh, -c ]
+          args: [ kustomize build --enable-helm ]
+
+  params:
+    controller.diff.server.side: true
+    server.insecure: true
+    server.grpc.web: true
+    controller.ignore.orphaned.resources: true
+    application.resource-tracking-method: annotation+label
+
+    reposerver.git.request.timeout: "300s"      # Git request timeout
+    reposerver.git.lfs.support: "true"          # Enable Git LFS support
+    reposerver.cache.enable: "true"             # Enable cache but with controls
+    reposerver.cache.expiration: "10m"          # Very short global cache expiration
+
+
+    controller.repo.server.timeout.seconds: "600"    # Increased from 300s
+    server.repo.server.timeout.seconds: "600"        # Match controller timeout
+    controller.operation.processors: "25"            # Optimized for 1000+ apps
+    controller.status.processors: "50"               # Optimized for 1000+ apps
+
+    controller.kubectl.parallelism.limit: "20"       # Prevent API server overload
+    controller.k8s.client.qps: "50"                  # API request rate limit
+    controller.k8s.client.burst: "100"               # API burst rate limit
+
+    reposerver.parallelism.limit: "10"               # Increased from 1 for better throughput
+    repo.cache.expiration: "1h"                      # Reduced from 24h for faster updates
+    controller.cache.default.expiration: "60m"       # Cache optimization
+
+
+    controller.app.state.cache.expiration: "1h"           # Application state cache TTL
+    controller.revision-cache-expiration: "300s"          # Git revision cache for rapid sync
+    controller.diff.cache.expiration: "300s"              # Diff result caching
+    controller.manifest.generation.cache.expiration: "1h" # Manifest generation cache
+    controller.app.operation.cache.expiration: "300s"     # Operation result cache
+
+    controller.app.resync: "180"                          # Application resync interval (seconds)
+    controller.app.hard.resync: "86400"                   # Hard resync once per day
+    controller.self.heal.timeout.seconds: "300"           # Self-heal operation timeout
+    controller.status.hard.resync: "3600"                 # Status hard resync (1 hour)
+
+    reposerver.git.lfs.cache.expiration: "1h"             # Git LFS cache TTL
+    reposerver.helm.cache.expiration: "1h"                # Helm cache optimization
+    reposerver.disable.compression: "false"               # Enable compression for bandwidth
+
+    controller.git.attempts.count: "3"               # Retry failed git operations
+    controller.enable.proxy.extension: "false"       # Disable if not needed
+
+    application.sync.wave.delay: "2"                 # Seconds between sync waves
+    application.operation.retry.backoff.duration: "5s"  # Retry backoff
+    application.operation.retry.backoff.factor: "2"     # Exponential backoff
+    application.operation.retry.backoff.maxDuration: "3m" # Max retry wait
+
+
+    application.finalizer.timeout: "60s"                 # Max 1 minute finalizer wait
+    applicationset.finalizer.timeout: "60s"              # Max 1 minute finalizer wait
+    controller.finalizer.timeout: "60s"                  # Global finalizer timeout
+    application.deletion.propagation: "background"       # Fast background deletion
+    controller.enable.prune: "true"                      # Enable resource pruning
+    controller.prune.propagation.policy: "foreground"    # Immediate deletion
+
+    reposerver.cache.disable.on.deletion: "true"         # Disable cache during deletion
+    controller.refresh.after.deletion: "true"            # Force refresh after delete
+    application.sync.retry.limit: "0"                    # No retry during deletion
+
+crds:
+  install: true
+  keep: false
+
+controller:
+
+  # chart default only spreads over zones (soft) — both replicas ended up on worker-2
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: DoNotSchedule
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: argocd-application-controller
+
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: argocd
+      interval: 30s
+      scrapeTimeout: 10s
+
+  extraEnv:
+    - name: ARGOCD_EXEC_TIMEOUT
+      value: "600"                           # Increased for complex operations
+    - name: ARGOCD_RECONCILIATION_TIMEOUT
+      value: "600"                           # Extended reconciliation timeout
+    - name: ARGOCD_HARD_RECONCILIATION_TIMEOUT
+      value: "900"                           # Hard limit
+
+    - name: ARGOCD_K8S_CLIENT_QPS
+      value: "50"                            # High QPS for performance
+    - name: ARGOCD_K8S_CLIENT_BURST
+      value: "100"                           # Burst capacity
+
+    - name: ARGOCD_GIT_ATTEMPTS_COUNT
+      value: "3"                             # Retry failed git operations
+    - name: ARGOCD_GIT_RETRY_DURATION
+      value: "1s"                            # Git retry interval
+
+    - name: ARGOCD_CONTROLLER_REPLICAS
+      value: "2"                             # Match replica count
+
+    - name: GOGC
+      value: "50"                            # ULTRA aggressive GC - prevent memory hangs
+    - name: GOMEMLIMIT
+      value: "8GiB"                          # INCREASED: Match memory limit (was 4GiB)
+
+
+    - name: ARGOCD_CONTROLLER_HEARTBEAT_TIME
+      value: "30s"                           # Restart if no heartbeat for 30s
+    - name: ARGOCD_CONTROLLER_LIVENESS_PROBE_TIMEOUT
+      value: "60s"                           # Force restart if stuck for 60s
+    - name: ARGOCD_CONTROLLER_OPERATION_TIMEOUT
+      value: "300s"                          # Kill hanging operations after 5min
+    - name: ARGOCD_CONTROLLER_SELF_HEAL_TIMEOUT
+      value: "120s"                          # Self-heal timeout
+    - name: ARGOCD_CONTROLLER_DISABLE_COMPRESSION
+      value: "true"                          # Prevent compression hangs
+
+
+    - name: ARGOCD_APPLICATION_TREE_SHARD_SIZE
+      value: "100"
+
+
+    - name: ARGOCD_APP_STATE_CACHE_EXPIRATION
+      value: "1h"                            # Application state cache optimization
+    - name: ARGOCD_CONTROLLER_DIFF_CACHE_EXPIRATION
+      value: "5m"                            # Diff result cache for faster comparisons
+    - name: ARGOCD_CONTROLLER_MANIFEST_GENERATION_CACHE_EXPIRATION
+      value: "1h"                            # Manifest cache for Helm/Kustomize
+    - name: ARGOCD_CONTROLLER_REVISION_CACHE_EXPIRATION
+      value: "5m"                            # Git revision cache for rapid sync
+    - name: ARGOCD_CONTROLLER_APP_RESYNC_PERIOD
+      value: "180s"                          # Application resync interval
+    - name: ARGOCD_CONTROLLER_APP_HARD_RESYNC_PERIOD
+      value: "24h"                           # Hard resync once per day
+    - name: ARGOCD_CONTROLLER_STATUS_HARD_RESYNC_PERIOD
+      value: "1h"                            # Status hard resync frequency
+
+dex:
+  enabled: false
+
+
+redis:
+  enabled: false  # Disable single Redis - using redis-ha chart below
+
+#  redis-ha: 3 nodes + sentinel auto-failover
+
+redis-ha:
+  enabled: true
+
+  tests:
+    enabled: false  # No test pods during bootstrap
+
+  configmapTest:
+    enabled: false
+  serviceTest:
+    enabled: false
+
+
+  sentinel:
+    quorum: 2  # Need 2 out of 3 sentinels to agree on failover
+
+
+  redis:
+
+    config:
+      maxmemory-policy: "allkeys-lru"  # LRU eviction
+      save: ""                         # No persistence - pure cache
+      appendonly: "no"                 # No AOF
+      tcp-keepalive: "300"             # Connection stability
+      maxclients: "10000"              # Max connections
+      timeout: "300"                   # 5min idle timeout
+
+  haproxy:
+    enabled: true
+
+  hardAntiAffinity: true  # Never run 2 Redis on same node
+
+  exporter:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: argocd
+
+server:
+
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+  service:
+    type: ClusterIP  # No LoadBalancer - use Ingress instead
+    # loadBalancerIP: "192.168.68.160"  # Disabled - no LoadBalancer
+    servicePortHttpsAppProtocol: kubernetes.io/h2c
+
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: argocd
+      interval: 30s
+      scrapeTimeout: 10s
+
+  certificate:
+    enabled: false  # Disabled until cert-manager is deployed
+    issuer:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: cloudflare-cluster-issuer
+    privateKey:
+      algorithm: ECDSA
+      size: 256
+
+
+  extraEnv:
+    - name: ARGOCD_ENABLE_GRPC_TIME_HISTOGRAM
+      value: "true"
+
+
+    - name: ARGOCD_SERVER_CONNECTION_STATUS_CACHE_EXPIRATION
+      value: "1m"                          # Short connection cache - prevent connection hangs
+    - name: ARGOCD_SERVER_DISABLE_AUTH
+      value: "false"                       # Keep auth but prevent auth hangs
+    - name: ARGOCD_SERVER_GRPC_KEEPALIVE_TIME
+      value: "30s"                         # GRPC keepalive
+    - name: ARGOCD_SERVER_GRPC_KEEPALIVE_TIMEOUT
+      value: "5s"                          # GRPC keepalive timeout
+    - name: ARGOCD_SERVER_MAX_CONCURRENT_LOGIN_REQUESTS_COUNT
+      value: "50"                          # Limit concurrent login requests
+
+  ingress:
+    enabled: false  # Disabled per user request - use kubectl port-forward
+
+repoServer:
+
+  env:
+    - name: ARGOCD_EXEC_TIMEOUT
+      value: "3m"
+
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8084"
+    prometheus.io/path: "/metrics"
+
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+
+
+  readinessProbe:
+    initialDelaySeconds: 30  # Wait 30s before first check (was 10s)
+    periodSeconds: 10        # Check every 10s
+    timeoutSeconds: 5        # Timeout after 5s
+    successThreshold: 1      # 1 success = ready
+    failureThreshold: 5      # 5 failures before marking unhealthy (was 3)
+  livenessProbe:
+    initialDelaySeconds: 60  # Wait 60s before first check (was 30s)
+    periodSeconds: 30        # Check every 30s
+    timeoutSeconds: 10       # Timeout after 10s
+    successThreshold: 1
+    failureThreshold: 3      # 3 failures = restart
+
+  volumes:
+    - name: cmp-kustomize-build-with-helm
+      configMap:
+        name: argocd-cmp-cm
+    - name: cmp-tmp
+      emptyDir:
+        sizeLimit: 2Gi  # Limit tmp space
+    - name: repo-cache
+      emptyDir:
+        sizeLimit: 5Gi
+    - name: repo-tmp
+      emptyDir:
+        sizeLimit: 5Gi
+        medium: Memory  # In-memory for speed
+
+  volumeMounts:
+    - name: repo-cache
+      mountPath: /repo-cache      # Custom cache directory
+    - name: repo-tmp
+      mountPath: /repo-tmp        # Fix: use unique mount path
+
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: argocd
+      interval: 30s
+      scrapeTimeout: 10s
+
+
+  extraEnv:
+    - name: TMPDIR
+      value: "/repo-tmp"                   # Fix: match updated mount path
+    - name: ARGOCD_EXEC_TIMEOUT
+      value: "600"                         # Extended execution timeout
+    - name: ARGOCD_GIT_ATTEMPTS_COUNT
+      value: "3"                           # Git retry count
+    - name: ARGOCD_REPO_SERVER_PARALLELISM_LIMIT
+      value: "10"                          # Parallel manifest generation
+
+    - name: ARGOCD_ENABLE_GRPC_TIME_HISTOGRAM
+      value: "true"
+
+    - name: GOGC
+      value: "80"                          # Aggressive GC for memory efficiency
+    - name: GOMEMLIMIT
+      value: "3GiB"                        # Go memory limit
+
+    - name: GIT_CONFIG_GLOBAL
+      value: "/repo-cache/.gitconfig"      # Custom git config location
+
+    - name: ARGOCD_REPO_CACHE_EXPIRATION
+      value: "1h"                          # Faster cache invalidation
+
+    - name: ARGOCD_REPO_SERVER_DISABLE_CACHE
+      value: "false"                       # Keep cache but with short expiration
+    - name: ARGOCD_REPO_SERVER_CACHE_EXPIRATION
+      value: "10m"                         # Very short cache expiration to prevent stale refs
+    - name: ARGOCD_REPO_SERVER_STRICT_TLS
+      value: "false"                       # Allow non-strict TLS for faster git operations
+
+
+    - name: ARGOCD_REPO_SERVER_TIMEOUT_SECONDS
+      value: "120"                         # Kill hanging git operations after 2min
+    - name: ARGOCD_REPO_SERVER_GIT_REQUEST_TIMEOUT
+      value: "90s"                         # Git operation timeout
+    - name: ARGOCD_REPO_SERVER_DISABLE_TLS_VERIFY
+      value: "false"                       # Prevent TLS verification hangs
+
+  persistence:
+    enabled: false  # Disable for bootstrap - use emptyDir
+    accessModes:
+      - ReadWriteOnce
+  extraContainers:
+    - name: kustomize-build-with-helm
+      command:
+        - argocd-cmp-server
+      image: >-
+        {{ default .Values.global.image.repository .Values.repoServer.image.repository }}:{{
+        default (include "argo-cd.defaultTag" .) .Values.repoServer.image.tag }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop: [ ALL ]
+      volumeMounts:
+        - name: plugins
+          mountPath: /home/argocd/cmp-server/plugins
+        - name: cmp-kustomize-build-with-helm
+          mountPath: /home/argocd/cmp-server/config/plugin.yaml
+          subPath: kustomize-build-with-helm.yaml
+        - mountPath: /tmp
+          name: cmp-tmp
+  #
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: argocd-repo-server
+            topologyKey: kubernetes.io/hostname
+
+applicationSet:
+
+
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: argocd
+
+  extraEnv:
+    - name: ARGOCD_APPLICATIONSET_CONTROLLER_PARALLELISM_LIMIT
+      value: "10"      # Process multiple ApplicationSets in parallel
+
+# REVERTED: Keep redis-secret-init enabled (default behavior)
+redisSecretInit:
+  enabled: true  # Keep default - auto-creates argocd-redis secret

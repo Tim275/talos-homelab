@@ -1,0 +1,46 @@
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: jaeger-basic-auth-password
+  namespace: jaeger
+  annotations:
+    argocd.argoproj.io/sync-wave: '-1'
+spec:
+  refreshInterval: 1h
+  updatePolicy: IfNotExists
+  secretStoreRefs:
+  - name: openbao
+    kind: ClusterSecretStore
+  selector:
+    generatorRef:
+      apiVersion: generators.external-secrets.io/v1alpha1
+      kind: ClusterGenerator
+      name: password
+  data:
+  - match:
+      secretKey: password
+      remoteRef:
+        remoteKey: jaeger/jaeger-basic-auth
+        property: password
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: jaeger-basic-auth
+  namespace: jaeger
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao
+    kind: ClusterSecretStore
+  target:
+    name: jaeger-basic-auth
+    template:
+      engineVersion: v2
+      data:
+        .htpasswd: '{{ htpasswd "jaeger" .password "bcrypt" }}'
+  data:
+  - secretKey: password
+    remoteRef:
+      key: jaeger/jaeger-basic-auth
+      property: password

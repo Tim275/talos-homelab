@@ -1,0 +1,126 @@
+#
+#   - StatefulSet "keycloak"
+#   - Service "keycloak-service" (HTTP on 8080)
+#   - Service "keycloak-discovery" (JGroups headless)
+#   - PodDisruptionBudget
+#
+#
+# Reload: pods auto-restart when keycloak-db-credentials Secret rotates (via Stakater Reloader).
+---
+apiVersion: k8s.keycloak.org/v2beta1
+kind: Keycloak
+metadata:
+  name: keycloak
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/component: oidc-provider
+    app.kubernetes.io/part-of: platform-identity
+  annotations:
+    secret.reloader.stakater.com/reload: keycloak-db-credentials,keycloak-admin
+spec:
+  update:
+    strategy: Auto
+  scheduling:
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app: keycloak
+  image: quay.io/keycloak/keycloak:26.7.5@sha256:37dbaf6f0722c9ec246335f36e1ef8b2e6cb960f7c27e0d8c615121a3d475a85   # renovate: docker=quay.io/keycloak/keycloak
+  startOptimized: false                     # JIT optimization for first start
+
+  db:
+    vendor: postgres
+    host: keycloak-db-pooler.keycloak.svc.cluster.local
+    port: 5432
+    database: keycloak
+    poolMinSize: 20
+    poolInitialSize: 20
+    poolMaxSize: 20
+    usernameSecret:
+      name: keycloak-db-credentials
+      key: username
+    passwordSecret:
+      name: keycloak-db-credentials
+      key: password
+
+  hostname:
+    strict: true                            # sonst baut KC Reset-Links aus dem Host-Header
+
+  ingress:
+    enabled: false                          # Exposed via Envoy Gateway HTTPRoute, not the operator's legacy Ingress
+
+  http:
+    httpEnabled: true                       # Envoy Gateway terminates TLS, KC speaks HTTP internally
+    httpPort: 8080
+
+  proxy:
+    headers: xforwarded                     # Trust X-Forwarded-* headers from Envoy
+
+  truststores:
+    ldap-ca:
+      secret:
+        name: keycloak-ldap-ca              # LDAPS zu LLDAP
+
+  unsupported:
+    podTemplate:
+      spec:
+        priorityClassName: platform-critical
+        containers:
+          - env:
+              - name: LLDAP_BIND_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: keycloak-lldap-admin
+                    key: svc-bind-password
+              - name: ARGOCD_CLIENT_SECRET
+                valueFrom:
+                  secretKeyRef:
+                    name: argocd-oidc-client-secret
+                    key: clientSecret
+              - name: GRAFANA_CLIENT_SECRET
+                valueFrom:
+                  secretKeyRef:
+                    name: keycloak-grafana-client-secret
+                    key: clientSecret
+              - name: KUBECTL_CLIENT_SECRET
+                valueFrom:
+                  secretKeyRef:
+                    name: keycloak-kubectl-client-secret
+                    key: clientSecret
+              - name: SMTP_USER
+                valueFrom:
+                  secretKeyRef:
+                    name: keycloak-smtp
+                    key: user
+              - name: SMTP_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: keycloak-smtp
+                    key: password
+              - name: SMTP_FROM
+                valueFrom:
+                  secretKeyRef:
+                    name: keycloak-smtp
+                    key: from
+              - name: SMTP_REPLY_TO
+                valueFrom:
+                  secretKeyRef:
+                    name: keycloak-smtp
+                    key: replyTo
+
+  additionalOptions:
+    - name: log-level
+      value: INFO
+    - name: spi-sticky-session-encoder-infinispan-should-attach-route
+      value: "false"
+    - name: metrics-enabled
+      value: "true"
+    - name: spi-events-listener-jboss-logging-success-level
+      value: info
+    - name: spi-events-listener-jboss-logging-error-level
+      value: warn
+

@@ -1,0 +1,35 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: monitoring
+
+resources:
+  - ../../base
+  - telegram-bot.yaml
+  - jira-api.yaml
+  - watchdog-webhook.yaml
+  - etcd-client-cert.yaml
+
+components:
+  - ../../components/envoy-gateway
+  - ../../components/cilium
+
+helmCharts:
+  - name: kube-prometheus-stack
+    repo: https://prometheus-community.github.io/helm-charts
+    namespace: monitoring
+    version: 88.6.5
+    releaseName: kube-prometheus-stack
+    valuesFile: ../../base/values.yaml
+    additionalValuesFiles:
+      - ../../components/rook-ceph/values.yaml
+      - values.yaml
+      - ../../base/alertmanager.yaml
+      - ../../components/rook-ceph/alertmanager.yaml
+      - alertmanager.yaml
+
+patches:
+  # /livez delegiert an den Apiserver — ein Apiserver-Hakler killt sonst KSM und
+  # reisst genau dann die kube_*-Metriken weg, wenn man sie braucht. /healthz ist
+  # das Selbst-Signal.
+  - path: ksm-liveness-patch.yaml
+  - path: settings.yaml

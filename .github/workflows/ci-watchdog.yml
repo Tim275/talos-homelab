@@ -1,0 +1,39 @@
+name: ci-watchdog
+
+on:
+  workflow_run:
+    workflows:
+      - alert-baseline
+      - alert-lint
+      - gitleaks
+      - kustomize-validate
+      - renovate-validate
+      - tofu-cd
+      - tofu-drift
+      - tofu-root-cd
+      - yaml-lint
+    types: [completed]
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  notify:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Slack
+        env:
+          WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+          NAME: ${{ github.event.workflow_run.name }}
+          TRIGGER: ${{ github.event.workflow_run.event }}
+          URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            msg="CI-Waechter: Testnachricht"
+          else
+            msg="CI rot auf main: $NAME ($TRIGGER) $URL"
+          fi
+          jq -n --arg t "$msg" '{text: $t}' | curl -fsS -X POST -H 'Content-type: application/json' --data @- "$WEBHOOK"

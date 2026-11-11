@@ -1,0 +1,230 @@
+discovery.kubernetes "pods" {
+	role = "pod"
+	selectors {
+		role  = "pod"
+		field = "spec.nodeName=" + sys.env("HOSTNAME")
+	}
+}
+
+discovery.relabel "pod_logs" {
+	targets = discovery.kubernetes.pods.targets
+
+	// eigene Logs nicht einsammeln (sonst Rückkopplung)
+	rule {
+		source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+		regex         = "(alloy|vector)"
+		action        = "drop"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_namespace"]
+		target_label  = "namespace"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_name"]
+		target_label  = "pod"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_container_name"]
+		target_label  = "container"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+		target_label  = "service"
+	}
+
+	rule {
+		replacement  = "talos-homelab"
+		target_label = "cluster"
+	}
+
+	// /var/log/pods/<ns>_<pod>_<uid>/<container>/*.log
+	rule {
+		source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
+		separator     = "/"
+		action        = "replace"
+		replacement   = "/var/log/pods/*$1/*.log"
+		target_label  = "__path__"
+	}
+}
+
+// Dateien statt loki.source.kubernetes: die K8s-Log-API liefert beim
+// Start die gesamte Historie, Loki lehnt alles aelter als die Retention ab.
+local.file_match "pod_logs" {
+	path_targets = discovery.relabel.pod_logs.output
+}
+
+loki.source.file "pods" {
+	targets                 = local.file_match.pod_logs.targets
+	on_positions_file_error = "restart_from_end"
+	forward_to              = [loki.process.cri.receiver]
+}
+
+// CRI-Format: "<ts> <stream> <F|P> <zeile>"
+loki.process "cri" {
+	stage.cri { }
+
+	forward_to = [loki.process.drop_noise.receiver]
+}
+
+// entspricht filter_noise im vector-agent: Health-Endpunkte und
+// kube-system raus, aber Tetragon und CoreDNS bleiben (SIEM)
+loki.process "drop_noise" {
+	stage.drop {
+		expression = "GET /(healthz|readyz)"
+	}
+
+	forward_to = [loki.process.enrich.receiver]
+}
+
+loki.process "enrich" {
+	stage.json {
+		expressions = {
+			level = "level",
+		}
+	}
+
+	stage.labels {
+		values = {
+			level = "",
+		}
+	}
+
+	forward_to = [loki.write.default.receiver]
+}
+
+// nur die aktive Datei — jedes Rotate-Backup waere ein eigener Stream
+local.file_match "kube_audit" {
+	path_targets = [{
+		__path__ = "/var/log/audit/kube/kube-apiserver.log",
+		source   = "kube-audit",
+		cluster  = "talos-homelab",
+		node     = sys.env("HOSTNAME"),
+	}]
+}
+
+// Positions-Datei liegt im emptyDir, sonst zieht jeder Neustart die Historie nach
+loki.source.file "kube_audit" {
+	targets                 = local.file_match.kube_audit.targets
+	tail_from_end           = true
+	on_positions_file_error = "restart_from_end"
+	forward_to              = [loki.process.kube_audit_no_secret_bodies.receiver]
+}
+
+// Secret-Events mit Body nur nach ES, dort ohne Bodies
+loki.process "kube_audit_no_secret_bodies" {
+	stage.match {
+		selector            = "{source=\"kube-audit\"} |~ \"level.:.RequestResponse\" |~ \"resource.:.secrets\""
+		action              = "drop"
+		drop_counter_reason = "secret_body"
+	}
+
+	forward_to = [loki.write.default.receiver]
+}
+
+// Hubble — nur Verdicts, die zählen. FORWARDED/TRACED flutet sonst
+// die Pipeline (ein Event pro TCP-Paket).
+local.file_match "hubble" {
+	path_targets = [{
+		__path__ = "/var/run/cilium/hubble/events.log",
+		source   = "hubble",
+		cluster  = "talos-homelab",
+	}]
+}
+
+loki.source.file "hubble" {
+	targets    = local.file_match.hubble.targets
+	forward_to = [loki.process.hubble_security.receiver]
+}
+
+loki.process "hubble_security" {
+	stage.json {
+		expressions = {
+			verdict = "flow.verdict",
+		}
+	}
+
+	stage.drop {
+		source     = "verdict"
+		expression = "^(FORWARDED|TRACED|REDIRECTED)$"
+	}
+
+	stage.labels {
+		values = {
+			verdict = "",
+		}
+	}
+
+	forward_to = [loki.write.default.receiver]
+}
+
+// ⚠️ otelcol.receiver.tcplog ist EXPERIMENTAL. Nur deshalb laeuft
+// dieser DaemonSet mit --stability.level=experimental. Der Collector
+// bleibt auf generally-available. Kommt eine weitere experimentelle
+// Komponente dazu, ist das eine bewusste Entscheidung, keine Folge
+// dieses Flags.
+
+// Talos schickt Kernel- und Service-Logs an 127.0.0.1:5555
+// (machine.logging in common.yaml.tftpl) — braucht hostNetwork
+otelcol.receiver.tcplog "talos" {
+	listen_address = "127.0.0.1:5555"
+
+	output {
+		logs = [otelcol.exporter.loki.talos.input]
+	}
+}
+
+otelcol.exporter.loki "talos" {
+	forward_to = [loki.process.talos.receiver]
+}
+
+loki.process "talos" {
+	// otelcol.exporter.loki verpackt die Talos-Zeile in ein body-Feld,
+	// deshalb zweistufig: erst die Huelle, dann das eigentliche JSON
+	stage.json {
+		expressions = {
+			body = "body",
+		}
+	}
+
+	stage.json {
+		source = "body"
+
+		expressions = {
+			talos_service = "\"talos-service\"",
+			talos_level   = "\"talos-level\"",
+		}
+	}
+
+	stage.static_labels {
+		values = {
+			source  = "talos",
+			cluster = "talos-homelab",
+			node    = sys.env("HOSTNAME"),
+		}
+	}
+
+	stage.labels {
+		values = {
+			talos_service = "",
+			level         = "talos_level",
+		}
+	}
+
+	// die eigentliche Zeile statt der OTLP-Huelle anzeigen
+	stage.output {
+		source = "body"
+	}
+
+	forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+	endpoint {
+		url       = "http://loki-gateway.monitoring.svc.cluster.local:80/loki/api/v1/push"
+		tenant_id = "talos-homelab"
+	}
+}

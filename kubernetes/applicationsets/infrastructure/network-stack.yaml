@@ -1,0 +1,68 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: network-stack
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  argocd.argoproj.io/secret-type: cluster
+                  environment: prod
+          - list:
+              elements:
+                - { name: cilium,              path: kubernetes/infrastructure/network/cilium/overlays/prod,              namespace: kube-system }
+                - { name: coredns,             path: kubernetes/infrastructure/network/coredns/overlays/prod,             namespace: kube-system }
+                - { name: istio-control-plane, path: kubernetes/infrastructure/network/istio-control-plane/overlays/prod, namespace: istio-system }
+                - { name: gateway,             path: kubernetes/infrastructure/network/gateway/overlays/prod,             namespace: gateway }
+                - { name: cloudflared,         path: kubernetes/infrastructure/network/cloudflared/overlays/prod,         namespace: cloudflared }
+                - { name: redis-gateway,       path: kubernetes/infrastructure/network/redis-gateway/overlays/prod,       namespace: gateway }
+                - { name: external-dns,        path: kubernetes/infrastructure/network/external-dns/rendered,             namespace: external-dns }
+  template:
+    metadata:
+      name: '{{.name}}'
+      labels:
+        app.kubernetes.io/name: '{{.name}}'
+        app.kubernetes.io/part-of: network-stack
+        app.kubernetes.io/managed-by: argocd
+    spec:
+      project: infrastructure
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: main
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: '{{.namespace}}'
+      ignoreDifferences:
+        - kind: Secret
+          name: cilium-ca
+          jsonPointers:
+          - /data
+        - kind: Secret
+          name: hubble-relay-client-certs
+          jsonPointers:
+          - /data
+        - kind: Secret
+          name: hubble-server-certs
+          jsonPointers:
+          - /data
+      syncPolicy:
+        automated: { prune: True, selfHeal: True }
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+          - ApplyOutOfSyncOnly=true
+        retry:
+          limit: -1
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }

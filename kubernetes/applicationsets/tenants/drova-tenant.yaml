@@ -1,0 +1,89 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: drova-tenant
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  drova.tier: enabled
+                  environment: prod
+          - list:
+              elements:
+                - { name: drova-postgres, path: kubernetes/tenants/drova/postgres/overlays/prod, namespace: drova }
+                - { name: drova-kafka,    path: kubernetes/tenants/drova/kafka/overlays/prod,    namespace: drova }
+                - { name: drova-console,  path: kubernetes/tenants/drova/console/overlays/prod,  namespace: drova }
+                - { name: drova-redis,    path: kubernetes/tenants/drova/redis/overlays/prod,    namespace: drova }
+  template:
+    metadata:
+      name: '{{.name}}'
+      labels:
+        app.kubernetes.io/name: '{{.name}}'
+        app.kubernetes.io/part-of: drova-tenant
+        app.kubernetes.io/managed-by: argocd
+    spec:
+      project: platform
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: main
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: '{{.namespace}}'
+      ignoreDifferences:
+        - group: postgresql.cnpg.io
+          kind: Cluster
+          managedFieldsManagers:
+          - cnpg-controller-manager
+        - group: redis.redis.opstreelabs.in
+          kind: RedisReplication
+          jsonPointers:
+          - /spec/kubernetesConfig/updateStrategy
+          - /spec/redisExporter/port
+          - /spec/storage/volumeClaimTemplate/metadata
+          - /spec/storage/volumeClaimTemplate/status
+          - /spec/storage/volumeMount
+        - group: redis.redis.opstreelabs.in
+          kind: Redis
+          jsonPointers:
+          - /spec/kubernetesConfig/updateStrategy
+          - /spec/redisExporter/port
+          - /spec/storage/volumeClaimTemplate/metadata
+          - /spec/storage/volumeClaimTemplate/status
+          - /spec/storage/volumeMount
+        - group: argoproj.io
+          kind: Application
+          jqPathExpressions:
+          - .status
+        - group: argoproj.io
+          kind: Rollout
+          jsonPointers:
+          - /spec/replicas
+        - kind: Service
+          name: api-gateway-canary
+          jsonPointers:
+          - /spec/selector
+        - kind: Service
+          name: api-gateway-stable
+          jsonPointers:
+          - /spec/selector
+      syncPolicy:
+        syncOptions:
+          - CreateNamespace=false
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+          - ServerSideDiff=false
+          - ApplyOutOfSyncOnly=true
+        retry:
+          limit: -1
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }

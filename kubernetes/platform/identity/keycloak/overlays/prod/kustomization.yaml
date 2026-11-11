@@ -1,0 +1,38 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - admin.yaml  # KC admin login
+  - db-credentials.yaml  # KC ↔ Postgres
+  - lldap-admin.yaml  # LDAP-Federation bindCredential
+  - argocd-oidc-client-secret.yaml  # argocd OIDC client secret
+  - grafana-client.yaml  # grafana OIDC client secret (Phase D iter-2)
+  - kubectl-client.yaml  # kubernetes (kubectl OIDC) client secret
+  - smtp.yaml  # Resend SMTP creds (User-Onboarding emails)
+  - hubble-client.yaml  # hubble OIDC client secret (Envoy SecurityPolicy)
+  - homepage-client.yaml  # homepage OIDC client secret (einzige Quelle, per ReferenceGrant gelesen)
+  - config-automation-client.yaml  # config-cli service account
+  - config-automation-master.yaml  # config-cli service account, Realm master
+  - realm-export-client.yaml  # realm-export service account
+
+configMapGenerator:
+  - name: keycloak-realm-config
+    namespace: keycloak
+    files:
+      - realm-kubernetes.yaml
+      - realm-master.yaml
+    options:
+      disableNameSuffixHash: true
+      labels:
+        app.kubernetes.io/part-of: platform-identity
+        app.kubernetes.io/managed-by: argocd
+
+components:
+  - ../../components/cert-manager
+  - ../../components/envoy-gateway
+  - ../../components/rook-ceph
+
+patches:
+  - path: sizing.yaml
+  - path: settings.yaml

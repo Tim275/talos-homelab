@@ -1,0 +1,71 @@
+#
+#
+#
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: quartal-dr-drill-reminder
+  namespace: velero
+  labels:
+    app.kubernetes.io/name: dr-drill-reminder
+    app.kubernetes.io/part-of: backup-operations
+spec:
+  schedule: "0 6 12 2,5,8,11 *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: reminder
+              image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
+              env:
+                - name: SLACK_WEBHOOK
+                  valueFrom:
+                    secretKeyRef:
+                      name: slack-webhook-url
+                      key: url
+                      optional: true
+              command:
+                - sh
+                - -c
+                - |
+                  TS=$(date -u +"%Y-%m-%d %H:%M UTC")
+                  MSG=$(cat <<EOF
+                  {
+                    "username": "DR-Drill-Reminder",
+                    "icon_emoji": ":calendar:",
+                    "attachments": [{
+                      "color": "warning",
+                      "title": "🏋️ Quartal-DR-Drill fällig",
+                      "text": "Es ist Zeit für den nächsten Disaster-Recovery-Drill.\n\n*Procedure:*\n1. Pick a tier0 Velero-Backup\n2. Restore in drdrill-NS\n3. Time it + verify\n4. Log in docs/runbooks/dr-drill-log.md",
+                      "fields": [
+                        {"title": "Trigger-Time", "value": "$TS", "short": true},
+                        {"title": "Last Drill", "value": "2026-05-14 (first ever)", "short": true}
+                      ]
+                    }]
+                  }
+                  EOF
+                  )
+                  if [ -n "$SLACK_WEBHOOK" ]; then
+                    curl -sk -X POST "$SLACK_WEBHOOK" -H 'Content-Type: application/json' -d "$MSG"
+                    echo "✓ DR-Drill-Reminder sent to Slack"
+                  else
+                    echo "⚠ SLACK_WEBHOOK not mounted — reminder logged only"
+                    echo "$MSG"
+                  fi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]

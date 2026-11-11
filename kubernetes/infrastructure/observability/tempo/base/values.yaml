@@ -1,0 +1,204 @@
+traces:
+  otlp:
+    grpc:
+      enabled: true
+    http:
+      enabled: true
+  jaeger:
+    thriftCompact:
+      enabled: true
+    thriftHttp:
+      enabled: true
+    grpc:
+      enabled: true
+
+metricsGenerator:
+  enabled: true
+  extraArgs:
+    - -config.expand-env=true
+  extraEnvFrom:
+    - configMapRef:
+        name: tempo-traces  # BUCKET_NAME, BUCKET_HOST, BUCKET_PORT
+    - secretRef:
+        name: tempo-traces  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+  config:
+    processor:
+      local_blocks:
+        flush_to_storage: true
+    traces_storage:
+      path: /var/tempo/traces
+    storage:
+      path: /var/tempo/wal
+      remote_write:
+        - url: http://prometheus-kube-prometheus-stack-prometheus-0.prometheus-operated.monitoring.svc:9090/api/v1/write
+        - url: http://prometheus-kube-prometheus-stack-prometheus-1.prometheus-operated.monitoring.svc:9090/api/v1/write
+
+# tempo-distributed ignoriert tempo.storage/retention (Schema des Single-Binary-Charts); Bucket und Keys aus der OBC tempo-traces
+storage:
+  trace:
+    backend: s3
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors:
+        - service-graphs
+        - span-metrics
+        - local-blocks
+      max_active_series: 50000
+      ingestion_time_range_slack: 2m
+    ingestion:
+      rate_limit_bytes: 20000000
+      burst_size_bytes: 30000000
+      max_traces_per_user: 50000
+  per_tenant_override_config: /runtime-config/overrides.yaml
+
+per_tenant_overrides: {}
+
+distributor:
+  extraArgs:
+    - -config.expand-env=true
+  extraEnvFrom:
+    - configMapRef:
+        name: tempo-traces  # BUCKET_NAME, BUCKET_HOST, BUCKET_PORT
+    - secretRef:
+        name: tempo-traces  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+
+ingester:
+  maxUnavailable: 1
+  affinity: |
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                {{- include "tempo.selectorLabels" (dict "ctx" . "component" "ingester") | nindent 12 }}
+            topologyKey: kubernetes.io/hostname
+        - weight: 75
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                {{- include "tempo.selectorLabels" (dict "ctx" . "component" "ingester") | nindent 12 }}
+            topologyKey: topology.kubernetes.io/zone
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+              - key: topology.kubernetes.io/zone
+                operator: NotIn
+                values: [nipogi]
+  config:
+    replication_factor: 2
+  persistence:
+    enabled: true
+  extraArgs:
+    - -config.expand-env=true
+  extraEnvFrom:
+    - configMapRef:
+        name: tempo-traces  # BUCKET_NAME, BUCKET_HOST, BUCKET_PORT
+    - secretRef:
+        name: tempo-traces  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+
+compactor:
+  affinity: |
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              {{- include "tempo.selectorLabels" (dict "ctx" . "component" "compactor") | nindent 10 }}
+          topologyKey: kubernetes.io/hostname
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                {{- include "tempo.selectorLabels" (dict "ctx" . "component" "compactor") | nindent 12 }}
+            topologyKey: topology.kubernetes.io/zone
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: topology.kubernetes.io/zone
+                operator: NotIn
+                values: [nipogi]
+  extraArgs:
+    - -config.expand-env=true
+  extraEnvFrom:
+    - configMapRef:
+        name: tempo-traces  # BUCKET_NAME, BUCKET_HOST, BUCKET_PORT
+    - secretRef:
+        name: tempo-traces  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+
+querier:
+  extraArgs:
+    - -config.expand-env=true
+  extraEnvFrom:
+    - configMapRef:
+        name: tempo-traces  # BUCKET_NAME, BUCKET_HOST, BUCKET_PORT
+    - secretRef:
+        name: tempo-traces  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+
+queryFrontend:
+  extraArgs:
+    - -config.expand-env=true
+  extraEnvFrom:
+    - configMapRef:
+        name: tempo-traces  # BUCKET_NAME, BUCKET_HOST, BUCKET_PORT
+    - secretRef:
+        name: tempo-traces  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+  affinity: |
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              {{- include "tempo.selectorLabels" (dict "ctx" . "component" "query-frontend") | nindent 10 }}
+          topologyKey: kubernetes.io/hostname
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                {{- include "tempo.selectorLabels" (dict "ctx" . "component" "query-frontend") | nindent 12 }}
+            topologyKey: topology.kubernetes.io/zone
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: topology.kubernetes.io/zone
+                operator: NotIn
+                values: [nipogi]
+
+gateway:
+  enabled: true
+  affinity: |
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              {{- include "tempo.selectorLabels" (dict "ctx" . "component" "gateway") | nindent 10 }}
+          topologyKey: kubernetes.io/hostname
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                {{- include "tempo.selectorLabels" (dict "ctx" . "component" "gateway") | nindent 12 }}
+            topologyKey: topology.kubernetes.io/zone
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: topology.kubernetes.io/zone
+                operator: NotIn
+                values: [nipogi]
+
+metaMonitoring:
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+
+global:
+  clusterDomain: cluster.local

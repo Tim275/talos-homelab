@@ -1,0 +1,41 @@
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: hubble-oidc
+  namespace: kube-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: hubble
+  oidc:
+    clientIDRef:
+      name: hubble-oidc-credentials
+      group: ""
+      kind: Secret
+    clientSecret:
+      name: hubble-oidc-credentials
+    cookieNames:
+      accessToken: AccessToken-Hubble
+      idToken: IdToken-Hubble
+    logoutPath: /oauth2/logout
+    forwardAccessToken: true
+    refreshToken: true
+    scopes:
+      - openid
+      - profile
+      - email
+      - groups
+  authorization:
+    defaultAction: Deny
+    rules:
+      - name: platform-sre-security
+        action: Allow
+        principal:
+          jwt:
+            provider: keycloak
+            claims:
+              - name: groups
+                valueType: StringArray
+                values: ["cluster-admins", "platform-engineers", "sre-team", "security-team"]

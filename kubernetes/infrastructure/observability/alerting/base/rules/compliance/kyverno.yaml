@@ -1,0 +1,57 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: compliance-kyverno
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: kyverno
+      interval: 60s
+      rules:
+        - alert: KyvernoPolicyFailures
+          expr: |
+            sum by (policy_name, resource_namespace, resource_kind) (
+              rate(kyverno_policy_results_total{rule_result="fail", policy_name!~"audit-require-requests|audit-require-limits"}[5m])
+            ) > 0
+          for: 5m
+          labels:
+            severity: warning
+            component: kyverno
+          annotations:
+            dashboard_url: "/d/kyverno"
+            summary: "Kyverno policy {{ $labels.policy_name }} failing in {{ $labels.resource_namespace }} ({{ $value | humanize }} failures/s)"
+            description: "Resource {{ $labels.resource_kind }} in ns {{ $labels.resource_namespace }} fails policy {{ $labels.policy_name }}. Check `kubectl get policyreport -n {{ $labels.resource_namespace }}`."
+            action: "kubectl get policyreport -n {{ $labels.resource_namespace }} -o yaml | grep -B2 'result: fail'"
+
+        - alert: KyvernoAdmissionDenied
+          expr: |
+            sum by (resource_kind, resource_namespace) (
+              rate(kyverno_admission_requests_total{request_allowed=""}[5m])
+            ) > 0
+            or
+            sum by (resource_kind, resource_namespace) (
+              rate(kyverno_admission_requests_total{request_allowed!="true"}[5m])
+            ) > 0
+          for: 5m
+          labels:
+            severity: warning
+            component: kyverno
+          annotations:
+            dashboard_url: "/d/kyverno"
+            summary: "Kyverno actively denied admission of {{ $labels.resource_kind }} in {{ $labels.resource_namespace }} ({{ $value | humanize }} denials/s)"
+            description: "Enforce-mode policy blocked a {{ $labels.resource_kind }} create/update. Workload is degraded."
+            action: "kubectl get events -n {{ $labels.resource_namespace }} | grep -i denied; find the enforce-policy blocking the {{ $labels.resource_kind }}; fix the resource or the policy."
+
+        - alert: KyvernoControllerDown
+          expr: |
+            kube_deployment_status_replicas_available{deployment=~"kyverno.*"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: kyverno
+          annotations:
+            dashboard_url: "/d/kyverno"
+            summary: "Kyverno controller {{ $labels.deployment }} down"
+            description: "Policy enforcement disabled — security risk."
+            action: "kubectl get pod -A -l app.kubernetes.io/name=kyverno + logs; policy enforcement is OFF until restored (security risk)."

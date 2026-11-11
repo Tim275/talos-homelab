@@ -1,0 +1,65 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: operators-stack
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  argocd.argoproj.io/secret-type: cluster
+                  environment: prod
+          - list:
+              elements:
+                - { name: cloudnative-pg,           path: kubernetes/infrastructure/operators/cloudnative-pg/rendered,                namespace: cnpg-system }
+                - { name: eck,                      path: kubernetes/infrastructure/operators/eck/rendered,                           namespace: elastic-system }
+                - { name: strimzi,                  path: kubernetes/infrastructure/operators/strimzi/overlays/prod,                  namespace: kafka }
+                - { name: redis,                    path: kubernetes/infrastructure/operators/redis/rendered,                         namespace: redis-operator-system }
+                - { name: grafana-operator,         path: kubernetes/infrastructure/operators/grafana-operator/rendered,              namespace: grafana }
+                - { name: opentelemetry-operator,   path: kubernetes/infrastructure/operators/opentelemetry-operator/rendered,        namespace: opentelemetry }
+                - { name: reloader,                 path: kubernetes/infrastructure/operators/reloader/rendered,                      namespace: reloader }
+                - { name: renovate,                 path: kubernetes/infrastructure/automation/renovate/rendered,                     namespace: renovate-operator }
+                - { name: renovate-jobs,            path: kubernetes/infrastructure/automation/renovate-jobs/overlays/prod,           namespace: renovate-operator }
+                - { name: keycloak-operator,        path: kubernetes/infrastructure/operators/keycloak-operator/overlays/prod,        namespace: keycloak }
+                - { name: argo-rollouts,            path: kubernetes/infrastructure/operators/argo-rollouts/rendered,                 namespace: argo-rollouts }
+                - { name: github-runner-controller, path: kubernetes/infrastructure/operators/github-runner-controller/overlays/prod, namespace: arc-systems }
+                - { name: github-runner-scale-set,  path: kubernetes/infrastructure/automation/github-runner-scale-set/overlays/prod, namespace: arc-runners }
+                - { name: sail-operator,            path: kubernetes/infrastructure/operators/sail-operator/rendered,                 namespace: sail-operator }
+                - { name: descheduler,              path: kubernetes/infrastructure/operators/descheduler/rendered,                   namespace: kube-system }
+                - { name: keda,                     path: kubernetes/infrastructure/operators/keda/rendered,                          namespace: keda }
+                - { name: kubevirt,                 path: kubernetes/infrastructure/operators/kubevirt/overlays/prod,                 namespace: kubevirt }
+  template:
+    metadata:
+      name: '{{.name}}'
+      labels:
+        app.kubernetes.io/name: '{{.name}}'
+        app.kubernetes.io/part-of: operators-stack
+        app.kubernetes.io/managed-by: argocd
+    spec:
+      project: infrastructure
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: main
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated: { prune: True, selfHeal: True }
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+          - ApplyOutOfSyncOnly=true
+        retry:
+          limit: -1
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }
