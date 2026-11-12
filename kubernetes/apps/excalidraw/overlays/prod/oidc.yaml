@@ -1,0 +1,52 @@
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: excalidraw-oidc-credentials-cookie-secret
+  namespace: excalidraw
+  annotations:
+    argocd.argoproj.io/sync-wave: '-1'
+spec:
+  refreshInterval: 1h
+  updatePolicy: IfNotExists
+  secretStoreRefs:
+    - name: openbao
+      kind: ClusterSecretStore
+  selector:
+    generatorRef:
+      apiVersion: generators.external-secrets.io/v1alpha1
+      kind: ClusterGenerator
+      name: password
+  data:
+    - match:
+        secretKey: password
+        remoteRef:
+          remoteKey: excalidraw/excalidraw-oidc-credentials
+          property: cookie-secret
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: excalidraw-oidc-credentials
+  namespace: excalidraw
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao
+    kind: ClusterSecretStore
+  target:
+    name: excalidraw-oidc-credentials
+    template:
+      engineVersion: v2
+      data:
+        client-id: excalidraw
+        client-secret: '{{ index . "client-secret" }}'
+        cookie-secret: '{{ index . "cookie-secret" }}'
+  data:
+    - secretKey: client-secret
+      remoteRef:
+        key: keycloak/keycloak-excalidraw-client-secret
+        property: clientSecret
+    - secretKey: cookie-secret
+      remoteRef:
+        key: excalidraw/excalidraw-oidc-credentials
+        property: cookie-secret
