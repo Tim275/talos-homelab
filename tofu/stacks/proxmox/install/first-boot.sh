@@ -27,6 +27,7 @@ EOF
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
+apt-get -y -o Dpkg::Options::=--force-confold full-upgrade
 apt-get install -y prometheus-node-exporter
 apt-get install -y -t trixie-backports prometheus-smartctl-exporter
 
