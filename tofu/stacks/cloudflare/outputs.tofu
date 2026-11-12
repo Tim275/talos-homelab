@@ -1,9 +1,9 @@
 output "public_fqdns" {
   value       = [for h in var.public_hosts : "${h}.${var.zone_name}"]
-  description = "Die einzigen public Hostnames (resolven zum Tunnel)."
+  description = "public Hostnames"
 }
 
 output "tunnel_cname" {
   value       = local.tunnel_cname
-  description = "Tunnel-CNAME-Ziel, auf das die public Records zeigen."
+  description = "Tunnel-CNAME"
 }
