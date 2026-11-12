@@ -1,0 +1,92 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hypervisor-external
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: external-connectivity
+      interval: 1m
+      rules:
+        - alert: InternetConnectivityLost
+          # ein einzelnes flatterndes Ziel ist kein ISP-Ausfall — erst die Mehrheit zaehlt
+          expr: |
+            count(probe_success{job="blackbox-external"} == 0)
+              / count(probe_success{job="blackbox-external"}) > 0.5
+          for: 5m
+          labels:
+            severity: critical
+            component: network
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/network.md#internetconnectivitylost"
+            dashboard_url: "/d/blackbox-exporter"
+            summary: "External connectivity lost: {{ $value | humanizePercentage }} der Blackbox-Ziele unerreichbar"
+            description: "Mehr als die Haelfte der externen Ziele faellt seit >5min aus. ISP/router/firewall issue."
+            action: "Check ISP/router/modem; welche Ziele betroffen sind zeigt probe_success{job=\"blackbox-external\"}; this is upstream of the cluster."
+
+        - alert: ExternalDNSResolutionFailed
+          expr: probe_dns_lookup_time_seconds{job="blackbox-dns"} > 5 or probe_success{job="blackbox-dns"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            component: dns
+          annotations:
+            dashboard_url: "/d/blackbox-exporter?var-target={{ $labels.instance }}"
+            summary: "External DNS slow/failing: {{ $labels.instance }}{{ if gt $value 0.0 }} ({{ $value | humanizeDuration }} lookup){{ else }} (Probe gescheitert){{ end }}"
+            description: "Blackbox-Probe gegen CoreDNS: Lookup >5s oder gescheitert. Externe Aufloesung bricht, interne svc-DNS kann noch gehen."
+            action: "kubectl logs -n kube-system -l k8s-app=kube-dns; the probe tests CoreDNS resolving externally — check upstream/Gateway."
+
+        - alert: TLSCertificateExpiringSoonExternal
+          expr: probe_ssl_earliest_cert_expiry{job=~"blackbox-.*"} - time() < 14 * 24 * 3600
+          for: 1h
+          labels:
+            severity: warning
+            component: ingress
+          annotations:
+            dashboard_url: "/d/blackbox-exporter?var-target={{ $labels.instance }}"
+            summary: "External TLS cert expires in {{ $value | humanizeDuration }} (<14d): {{ $labels.instance }}"
+            description: "Zertifikat eines oeffentlichen Endpunkts laeuft in unter 14 Tagen ab — nach Ablauf schlaegt TLS fuer Besucher fehl."
+            action: "Check the cert for {{ $labels.instance }}; cert-manager (internal) or the external CA; <14d to expiry."
+
+    - name: homelab-services
+      interval: 1m
+      rules:
+        - alert: HomelabPublicServiceDown
+          expr: probe_success{job="blackbox-homelab"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: ingress
+          annotations:
+            dashboard_url: "/d/blackbox-exporter?var-target={{ $labels.instance }}"
+            summary: "Homelab service unreachable: {{ $labels.instance }}"
+            description: "Blackbox probe to {{ $labels.instance }} returned no valid HTTP response for >5min (refused/timeout/5xx)."
+            action: "curl --resolve HOST:443:192.168.0.152 https://HOST/ ; check app pod + HTTPRoute + Envoy filter-chain."
+
+        - alert: HomelabPublicServiceDown
+          expr: probe_success{job="blackbox-homelab", instance=~"https://(drova\\.timourhomelab\\.org|homepage\\.timourhomelab\\.org/api/healthcheck)"} == 0
+          for: 3m
+          labels:
+            severity: critical
+            component: ingress
+          annotations:
+            dashboard_url: "/d/blackbox-exporter?var-target={{ $labels.instance }}"
+            summary: "Public service unreachable: {{ $labels.instance }}"
+            description: "Blackbox probe to {{ $labels.instance }} returned no valid HTTP response for >3min (refused/timeout/5xx)."
+            action: "Public URL gives 530 but curl --resolve HOST:443:192.168.0.152 https://HOST/ works -> kubectl -n cloudflared get pods,logs. Otherwise check app pod + HTTPRoute + Envoy filter-chain."
+
+        - alert: HomelabEdgeDown
+          expr: |
+            count(probe_success{job="blackbox-homelab"} == 0)
+              / count(probe_success{job="blackbox-homelab"}) > 0.5
+          for: 2m
+          labels:
+            severity: critical
+            component: ingress
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/network.md#homelabedgedown"
+            dashboard_url: "/d/blackbox-exporter"
+            summary: "{{ $value | humanizePercentage }} of public services down at once"
+            description: "Unrelated apps do not fail together. Shared path: Envoy Gateway, cloudflared or DNS."
+            action: "kubectl -n gateway logs -l control-plane=envoy-gateway | grep 'direct response' — if present: kubectl -n gateway rollout restart deploy envoy-gateway"

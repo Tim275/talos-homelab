@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: cloudflared
+spec:
+  # Deployment statt DaemonSet: Replicas dienen bei cloudflared nur der HA, nicht dem
+  # Lastausgleich. Ein DaemonSet koppelt die Edge-Verbindungen an den Node-Lebenszyklus,
+  # jeder Drain reisst dadurch Nutzerverbindungen ab.
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: cloudflared
+          resources:
+            requests:
+              # 7d: steady ~2m, p99 7m, max 16m — 100m gibt Prioritaet unter Node-Druck
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              # kein CPU-Limit: Ingress-Pfad, kurze Bursts liefen in CFS-Throttling
+              # (3628 Perioden/7d trotz 500m). CPU ist komprimierbar, Memory nicht.
+              memory: 512Mi

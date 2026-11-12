@@ -1,0 +1,34 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-operators
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: operators
+      interval: 60s
+      rules:
+        - alert: CloudNativePGOperatorDown
+          expr: absent(up{job="monitoring/cnpg-operator"}) or up{job="monitoring/cnpg-operator"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: platform
+          annotations:
+            dashboard_url: "/d/cnpg-postgres?var-operatorNamespace=cnpg-system"
+            summary: "CloudNativePG operator down"
+            description: "PostgreSQL cluster management blocked (failover/scaling/backup orchestration) — running DBs keep serving."
+            action: "kubectl -n cnpg-system rollout restart deploy/cnpg-controller-manager; running DBs keep serving meanwhile."
+
+        - alert: KEDAScalerErrors
+          expr: sum(rate(keda_scaler_detail_errors_total[10m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+            component: platform
+          annotations:
+            dashboard_url: "/d/keda-scaled-object"
+            summary: "KEDA scaler errors — autoscaling frozen ({{ $value | humanize }}/s)"
+            description: "Scaler cannot query its source (Kafka lag / Prometheus) — workloads stay at current replica count."
+            action: "kubectl -n keda logs deploy/keda-operator | grep -i error; check ScaledObject source reachability."

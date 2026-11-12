@@ -1,0 +1,181 @@
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: grafana-rate-limit
+  namespace: grafana
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: grafana-envoy
+  rateLimit:
+    type: Global
+    global:
+      rules:
+        - limit:
+            requests: 300
+            unit: Minute
+          clientSelectors:
+            - sourceCIDR:
+                value: 0.0.0.0/0
+                type: Distinct
+        - limit:
+            requests: 300
+            unit: Minute
+          clientSelectors:
+            - sourceCIDR:
+                value: ::/0
+                type: Distinct
+---
+#
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: argocd-rate-limit
+  namespace: argocd
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: argocd
+  loadBalancer:
+    type: ConsistentHash
+    consistentHash:
+      type: SourceIP
+  rateLimit:
+    type: Global
+    global:
+      rules:
+        - limit:
+            requests: 2000
+            unit: Minute
+          clientSelectors:
+            - sourceCIDR:
+                value: 0.0.0.0/0
+                type: Distinct
+        - limit:
+            requests: 2000
+            unit: Minute
+          clientSelectors:
+            - sourceCIDR:
+                value: ::/0
+                type: Distinct
+  healthCheck:
+    active:
+      timeout: 3s
+      interval: 10s
+      unhealthyThreshold: 2
+      healthyThreshold: 1
+      type: HTTP
+      http:
+        path: /healthz
+        expectedStatuses: [200]
+  circuitBreaker:
+    maxConnections: 200
+    maxPendingRequests: 100
+    maxParallelRequests: 200
+    maxParallelRetries: 5
+  tcpKeepalive:
+    idleTime: 30s
+    interval: 5s
+    probes: 3
+  retry:
+    numRetries: 2
+    perRetry:
+      backOff:
+        baseInterval: 100ms
+        maxInterval: 1s
+    retryOn:
+      triggers: [connect-failure, refused-stream, reset-before-request, retriable-status-codes]
+      httpStatusCodes: [502, 503, 504]
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: keycloak-rate-limit
+  namespace: keycloak
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: keycloak
+  loadBalancer:
+    type: ConsistentHash
+    consistentHash:
+      type: SourceIP
+  rateLimit:
+    type: Global
+    global:
+      rules:
+        - limit:
+            requests: 100
+            unit: Minute
+          clientSelectors:
+            - sourceCIDR:
+                value: 0.0.0.0/0
+                type: Distinct
+        - limit:
+            requests: 100
+            unit: Minute
+          clientSelectors:
+            - sourceCIDR:
+                value: ::/0
+                type: Distinct
+  healthCheck:
+    active:
+      timeout: 3s
+      interval: 10s
+      unhealthyThreshold: 2
+      healthyThreshold: 1
+      type: HTTP
+      http:
+        path: /health/ready
+        expectedStatuses: [200]
+  circuitBreaker:
+    maxConnections: 100
+    maxPendingRequests: 50
+    maxParallelRequests: 100
+    maxParallelRetries: 5
+  tcpKeepalive:
+    idleTime: 30s
+    interval: 5s
+    probes: 3
+  retry:
+    numRetries: 2
+    perRetry:
+      backOff:
+        baseInterval: 100ms
+        maxInterval: 1s
+    retryOn:
+      triggers: [connect-failure, refused-stream, reset-before-request, retriable-status-codes]
+      httpStatusCodes: [502, 503, 504]
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: kibana-rate-limit
+  namespace: elastic-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: kibana
+  rateLimit:
+    type: Global
+    global:
+      rules:
+        - limit:
+            requests: 200
+            unit: Minute
+          clientSelectors:
+            - sourceCIDR:
+                value: 0.0.0.0/0
+                type: Distinct
+        - limit:
+            requests: 200
+            unit: Minute
+          clientSelectors:
+            - sourceCIDR:
+                value: ::/0
+                type: Distinct

@@ -1,0 +1,86 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: Grafana
+metadata:
+  name: grafana
+  namespace: grafana
+  labels:
+    app: grafana
+spec:
+  disableDefaultAdminSecret: false
+  config:
+    log:
+      mode: console
+    server:
+      serve_from_sub_path: "false"
+    security:
+      cookie_secure: "true"
+      cookie_samesite: "none"      # OAuth round-trip via CF needs SameSite=None
+      disable_gravatar: "true"
+    auth:
+      disable_login_form: "false"
+      oauth_auto_login: "false"
+    auth.generic_oauth:
+      enabled: "true"
+      name: "Keycloak"
+      icon: "signin"
+      allow_sign_up: "true"
+      client_id: "$__env{OAUTH_CLIENT_ID}"
+      client_secret: "$__env{OAUTH_CLIENT_SECRET}"
+      scopes: "openid profile email roles"
+      role_attribute_path: "contains(roles[*], 'grafana-admin') && 'GrafanaAdmin' || contains(roles[*], 'grafana-editor') && 'Editor' || contains(roles[*], 'grafana-viewer') && 'Viewer'"
+      role_attribute_strict: "true"
+      allow_assign_grafana_admin: "true"
+      use_pkce: "true"
+      login_attribute_path: "preferred_username"
+      email_attribute_path: "email"
+      name_attribute_path: "name || preferred_username"
+    feature_toggles:
+      enable: "traceqlEditor traceqlSearch correlations"
+    users:
+      allow_sign_up: "false"
+      auto_assign_org: "true"
+      auto_assign_org_role: "Viewer"
+    analytics:
+      reporting_enabled: "false"
+      check_for_updates: "false"
+  service:
+    spec:
+      ports:
+        - name: http
+          port: 3000
+          protocol: TCP
+          targetPort: 3000
+      type: ClusterIP
+  deployment:
+    spec:
+      # RWO-Volume: RollingUpdate blockiert den eigenen Rollout
+      strategy:
+        type: Recreate
+      template:
+        spec:
+          priorityClassName: platform-critical
+          # SQLite unter /var/lib/grafana: ohne fsGroup kann der Container
+          # (UID/GID 10001) nicht auf das gemountete Volume schreiben.
+          securityContext:
+            fsGroup: 10001
+          containers:
+            - name: grafana
+              envFrom:
+                - secretRef:
+                    name: grafana-oauth-secret
+                - secretRef:
+                    name: grafana-datasource-env
+              volumeMounts:
+                - name: drova-datasources-provisioning
+                  mountPath: /etc/grafana/provisioning/datasources/drova-datasources.yaml
+                  subPath: drova-datasources.yaml
+                  readOnly: true
+          volumes:
+            - name: drova-datasources-provisioning
+              configMap:
+                name: grafana-drova-datasources-provisioning
+            # ersetzt das emptyDir des Operators — sonst ist die SQLite-DB
+            # (Dashboards, User, Datasources) nach jedem Pod-Restart weg
+            - name: grafana-data
+              persistentVolumeClaim:
+                claimName: grafana-data

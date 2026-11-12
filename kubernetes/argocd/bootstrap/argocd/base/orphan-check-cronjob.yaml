@@ -1,0 +1,105 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argocd-orphan-check
+  namespace: argocd
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argocd-orphan-check
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: [list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argocd-orphan-check
+subjects:
+  - kind: ServiceAccount
+    name: argocd-orphan-check
+    namespace: argocd
+roleRef:
+  kind: ClusterRole
+  name: argocd-orphan-check
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: argocd-orphan-check
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  schedule: "40 5 * * 0"
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 604800
+      activeDeadlineSeconds: 900
+      template:
+        spec:
+          serviceAccountName: argocd-orphan-check
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            fsGroup: 65534
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: check
+              image: docker.io/bitnamilegacy/kubectl:1.33.4@sha256:ed0b31a0508da84ee655c5c6e01bd3897fc56ad6cf69debb27fa1893a06d2246
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: { drop: ["ALL"] }
+                readOnlyRootFilesystem: true
+              command: [/bin/bash, -c]
+              args:
+                - |
+                  set -uo pipefail
+                  kubectl -n argocd get applications \
+                    -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' > /tmp/apps.txt
+
+                  # custom-columns statt -o json: 2 MB Text statt 36 MB JSON, kein Parser
+                  COLS='K:.kind,NS:.metadata.namespace,N:.metadata.name,I:.metadata.labels.argocd\.argoproj\.io/instance,T:.metadata.annotations.argocd\.argoproj\.io/tracking-id'
+                  # je Kind einzeln (kubectl hält sonst alle Listen gleichzeitig im Speicher); sbomreports allein ~100 MB JSON
+                  export KUBECACHEDIR=/tmp/kube-cache
+                  NS=$(kubectl api-resources --namespaced=true --verbs=list -o name \
+                       | grep -vE '^(events|pods|replicasets|endpoints|endpointslices|controllerrevisions|leases|sbomreports)')
+                  CL=$(kubectl api-resources --namespaced=false --verbs=list -o name \
+                       | grep -vE '^(componentstatuses|nodes|selfsubject|tokenreviews|clustersbomreports)')
+
+                  { for r in $NS; do kubectl get "$r" -A -o custom-columns="$COLS" --no-headers; done
+                    for r in $CL; do kubectl get "$r" -o custom-columns="$COLS" --no-headers; done; } \
+                  | awk -v appfile=/tmp/apps.txt '
+                      BEGIN { while ((getline a < appfile) > 0) if (a != "") app[a]=1 }
+                      {
+                        inst = $4
+                        if (inst == "<none>" && $5 != "<none>") { split($5, p, ":"); inst = p[1] }
+                        if (inst != "" && inst != "<none>" && !(inst in app)) {
+                          printf "%s %s/%s <- deleted app %s\n", $1, $2, $3, inst
+                          found++
+                        }
+                      }
+                      END { exit (found ? 1 : 0) }'
+                  rc=$?
+                  if [ $rc -ne 0 ]; then
+                    echo "FAIL: resources above are tracked by Applications that no longer exist."
+                    echo "They were left behind because the ApplicationSets set preserveResourcesOnDeletion."
+                  else
+                    echo "OK: no resources tracked by deleted Applications."
+                  fi
+                  exit $rc
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}

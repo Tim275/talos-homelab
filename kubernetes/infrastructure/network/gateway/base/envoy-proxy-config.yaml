@@ -1,0 +1,40 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: envoy-gateway-ha
+  namespace: gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        strategy:
+          type: RollingUpdate
+          rollingUpdate:
+            maxSurge: 100%
+            maxUnavailable: 0
+        pod:
+          priorityClassName: platform-critical
+          affinity:
+            podAntiAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  podAffinityTerm:
+                    labelSelector:
+                      matchLabels:
+                        gateway.envoyproxy.io/owning-gateway-name: envoy-gateway
+                    topologyKey: kubernetes.io/hostname
+          topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: topology.kubernetes.io/zone
+              whenUnsatisfiable: DoNotSchedule
+              nodeTaintsPolicy: Honor
+              matchLabelKeys:
+                - pod-template-hash
+              labelSelector:
+                matchLabels:
+                  gateway.envoyproxy.io/owning-gateway-name: envoy-gateway
+      envoyService:
+        externalTrafficPolicy: Cluster

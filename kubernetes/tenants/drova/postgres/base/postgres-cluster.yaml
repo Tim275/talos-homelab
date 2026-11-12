@@ -1,0 +1,77 @@
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: drova-postgres
+  namespace: drova
+  labels:
+    app.kubernetes.io/name: drova-postgres
+    app.kubernetes.io/component: database
+    platform.homelab/tenant: drova
+spec:
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.1   # renovate: docker=ghcr.io/cloudnative-pg/postgresql
+  priorityClassName: platform-critical
+  postgresql:
+    shared_preload_libraries:
+      - pgaudit
+    parameters:
+      max_connections: '100'
+      shared_buffers: 128MB
+      pgaudit.log: "ddl,write,role"
+      pgaudit.log_parameter: "on"
+  plugins:
+  - name: barman-cloud.cloudnative-pg.io
+    parameters:
+      barmanObjectName: drova-backup-store
+      serverName: drova-postgres
+  managed:
+    roles:
+      - name: grafana_reader
+        ensure: present
+        login: true
+        connectionLimit: 5
+        inRoles:
+          - pg_read_all_data
+        passwordSecret:
+          name: drova-postgres-grafana-reader
+  bootstrap:
+    initdb:
+      database: drova_users
+      owner: drova_admin
+      secret:
+        name: drova-pg-app-creds
+      postInitApplicationSQL:
+      - CREATE DATABASE drova_trips OWNER drova_admin;
+      - CREATE DATABASE drova_payments OWNER drova_admin;
+      - CREATE DATABASE drova_drivers OWNER drova_admin;
+      - GRANT ALL PRIVILEGES ON DATABASE drova_trips TO drova_admin;
+      - GRANT ALL PRIVILEGES ON DATABASE drova_payments TO drova_admin;
+      - GRANT ALL PRIVILEGES ON DATABASE drova_drivers TO drova_admin;
+  affinity:
+    podAntiAffinityType: required
+    topologyKey: kubernetes.io/hostname
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+              - key: node-pool
+                operator: In
+                values: [stateful]
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: DoNotSchedule
+      labelSelector:
+        matchLabels:
+          cnpg.io/cluster: drova-postgres
+          cnpg.io/podRole: instance
+  probes:
+    startup:
+      # 1h, Recovery aus dem Backup kam in 10min nicht durch
+      failureThreshold: 360
+      periodSeconds: 10
+    readiness:
+      timeoutSeconds: 5
+    liveness:
+      timeoutSeconds: 5

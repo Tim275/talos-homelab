@@ -1,0 +1,148 @@
+machine:
+  network:
+    interfaces:
+      - deviceSelector:
+          hardwareAddr: ${mac_address}
+        addresses:
+          - ${ip}/${subnet_mask}
+        routes:
+          - network: 0.0.0.0/0
+            gateway: ${gateway}
+        dhcp: false
+%{ if vip != null }
+        vip:
+          ip: ${vip}
+%{ endif }
+
+cluster:
+  allowSchedulingOnControlPlanes: false
+  controllerManager:
+    extraArgs:
+      bind-address: 0.0.0.0
+    resources: # explizit gesetzt, ueberschreibt den Talos-Default
+      requests:
+        cpu: 50m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+  scheduler:
+    extraArgs:
+      bind-address: 0.0.0.0
+    resources: # explizit gesetzt, ueberschreibt den Talos-Default
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 512Mi
+  apiServer:
+    extraArgs:
+      max-requests-inflight: "400"
+      max-mutating-requests-inflight: "200"
+      audit-log-path: /var/log/audit/kube/kube-apiserver.log
+      audit-log-maxsize: "100"
+      audit-log-maxbackup: "10"
+      audit-log-maxage: "30"
+      oidc-issuer-url: https://iam.timourhomelab.org/realms/kubernetes
+      oidc-client-id: kubernetes
+      oidc-username-claim: preferred_username
+      oidc-username-prefix: "oidc:"
+      oidc-groups-claim: groups
+      oidc-groups-prefix: "oidc-grp:"
+    auditPolicy:
+      apiVersion: audit.k8s.io/v1
+      kind: Policy
+      omitStages:
+        - "RequestReceived"
+      rules:
+        - level: RequestResponse
+          resources:
+            - group: ""
+              resources: ["pods/exec", "pods/attach", "pods/portforward"]
+          verbs: ["create", "get"]
+        - level: RequestResponse
+          resources:
+            - group: ""
+              resources: ["secrets", "configmaps"]
+          verbs: ["create", "update", "patch", "delete"]
+        - level: Metadata
+          resources:
+            - group: ""
+              resources: ["secrets", "configmaps"]
+        - level: Metadata
+          omitStages:
+            - "RequestReceived"
+          userGroups: ["system:unauthenticated"]
+        - level: RequestResponse
+          resources:
+            - group: "rbac.authorization.k8s.io"
+              resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+          verbs: ["create", "update", "patch", "delete"]
+        - level: Request
+          resources:
+            - group: ""
+              resources: ["pods", "replicationcontrollers"]
+            - group: "apps"
+              resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+            - group: "batch"
+              resources: ["jobs", "cronjobs"]
+          verbs: ["create", "update", "patch", "delete"]
+        - level: Metadata
+          resources:
+            - group: ""
+              resources: ["events"]
+            - group: "events.k8s.io"
+              resources: ["events"]
+          verbs: ["delete", "deletecollection"]
+        - level: None
+          nonResourceURLs:
+            - /healthz*
+            - /readyz*
+            - /livez*
+            - /version
+            - /metrics
+            - /openapi/*
+        - level: None
+          resources:
+            - group: "coordination.k8s.io"
+              resources: ["leases"]
+            - group: ""
+              resources: ["events"]
+            - group: "events.k8s.io"
+              resources: ["events"]
+        - level: None
+          verbs: ["get", "list", "watch"]
+        - level: Metadata
+          omitStages:
+            - "RequestReceived"
+    # request muss ueber dem echten Working-Set liegen, sonst ist der apiserver bei
+    # MemoryPressure Eviction-Kandidat (kubelet sortiert nach Verbrauch-ueber-Request, nicht nach QoS)
+    resources:
+      requests:
+        cpu: 600m
+        memory: ${floor(ram_dedicated / 2) - 1024}Mi
+      # kein cpu-Limit: Throttling des apiservers verzoegert jede Cluster-Operation
+      # memory-Limit nur, weil Talos GOMEMLIMIT daraus ableitet (95%) — sonst bremst die GC nie
+      limits:
+        memory: ${floor(ram_dedicated / 2)}Mi
+  etcd:
+    extraArgs:
+      listen-metrics-urls: http://0.0.0.0:2381
+      heartbeat-interval: "500"
+      election-timeout: "2500"
+      auto-compaction-mode: periodic
+      auto-compaction-retention: "8h"
+      quota-backend-bytes: "8589934592"
+  network:
+    cni:
+      name: none
+  proxy:
+    disabled: true
+  discovery:
+    enabled: true
+    registries:
+      service:
+        disabled: false
+  extraManifests: ${extra_manifests}
+  inlineManifests: ${inline_manifests}

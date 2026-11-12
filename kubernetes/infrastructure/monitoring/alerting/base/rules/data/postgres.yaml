@@ -1,0 +1,111 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: data-postgres
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: postgres-page
+      interval: 60s
+      rules:
+        - alert: CnpgPrimaryDown
+          expr: |
+            count by (namespace, cluster) (label_replace(max_over_time(cnpg_pg_replication_in_recovery{namespace!="dr-verify"}[1h]), "cluster", "$1", "pod", "(.+)-[0-9]+"))
+            unless on (namespace, cluster)
+            count by (namespace, cluster) (label_replace(cnpg_pg_replication_in_recovery{namespace!="dr-verify"} == 0, "cluster", "$1", "pod", "(.+)-[0-9]+"))
+          for: 2m
+          labels:
+            severity: critical
+            component: data
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/data.md#cnpgprimarydown"
+            dashboard_url: "/d/cnpg-postgres?var-namespace={{ $labels.namespace }}&var-cluster={{ $labels.cluster }}"
+            summary: "CNPG primary down: {{ $labels.namespace }}/{{ $labels.cluster }}"
+            description: "PostgreSQL primary not serving traffic for >2min."
+            action: "kubectl cnpg status {{ $labels.cluster }} -n {{ $labels.namespace }}; check pods; 'kubectl cnpg promote' a healthy replica if the primary is lost."
+
+        # Source: cnpg_backup_stopped_at_timestamp_seconds (kube-state-metrics custom-resource-
+        - alert: CNPGBackupStale
+          expr: |
+            (time() - max by (namespace, cluster) (cnpg_backup_stopped_at_timestamp_seconds)) > 90000
+          for: 30m
+          labels:
+            severity: warning
+            component: cnpg
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/data.md#cnpgbackupstale"
+            dashboard_url: "/d/cnpg-postgres?var-namespace={{ $labels.namespace }}"
+            summary: "CNPG {{ $labels.namespace }} no successful backup in 25h ({{ $value | humanizeDuration }} since last)"
+            description: "Last backup older than 25h — RPO exceeded, data-loss risk on failure."
+            action: "kubectl get backup -n {{ $labels.namespace }} ; check ScheduledBackup + barman plugin pod"
+
+        - alert: CNPGClusterHACritical
+          expr: |
+            max by (namespace, cnpg_cluster) (label_replace(cnpg_pg_replication_streaming_replicas - cnpg_pg_replication_is_wal_receiver_up, "cnpg_cluster", "$1", "pod", "(.+)-[0-9]+")) < 1
+            and on (namespace, cnpg_cluster) cnpg_cluster_spec_instances > 1
+          for: 5m
+          labels:
+            severity: critical
+            component: data
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/data.md#cnpgclusterhacritical"
+            dashboard_url: "/d/cnpg-postgres?var-namespace={{ $labels.namespace }}&var-cluster={{ $labels.cnpg_cluster }}"
+            summary: "CNPG ohne bereiten Standby: {{ $labels.namespace }}/{{ $labels.cnpg_cluster }}"
+            description: "Kein Standby streamt mehr. Faellt der Primary aus, gibt es kein Failover-Ziel."
+            action: "kubectl cnpg status {{ $labels.cnpg_cluster }} -n {{ $labels.namespace }}"
+
+    - name: postgres-ticket
+      interval: 60s
+      rules:
+        - alert: CNPGClusterHAWarning
+          expr: |
+            max by (namespace, cnpg_cluster) (label_replace(cnpg_pg_replication_streaming_replicas - cnpg_pg_replication_is_wal_receiver_up, "cnpg_cluster", "$1", "pod", "(.+)-[0-9]+")) == 1
+            and on (namespace, cnpg_cluster) cnpg_cluster_spec_instances > 2
+          for: 5m
+          labels:
+            severity: warning
+            component: data
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/data.md#cnpgclusterhawarning"
+            dashboard_url: "/d/cnpg-postgres?var-namespace={{ $labels.namespace }}&var-cluster={{ $labels.cnpg_cluster }}"
+            summary: "CNPG nur noch mit einem Standby: {{ $labels.namespace }}/{{ $labels.cnpg_cluster }}"
+            description: "Ein weiterer Ausfall und es gibt kein Failover-Ziel mehr."
+            action: "kubectl cnpg status {{ $labels.cnpg_cluster }} -n {{ $labels.namespace }}"
+
+        - alert: CnpgReplicationLagHigh
+          expr: cnpg_pg_replication_lag > 30
+          for: 5m
+          labels:
+            severity: warning
+            component: data
+          annotations:
+            dashboard_url: "/d/cnpg-postgres?var-namespace={{ $labels.namespace }}"
+            summary: "CNPG replication lag >30s: {{ $labels.namespace }}/{{ $labels.cluster }}"
+            description: "Replica lagging primary by {{ $value }}s — failover would lose recent writes."
+            action: "kubectl cnpg status {{ $labels.cluster }} -n {{ $labels.namespace }}; check replica WAL apply + Ceph IO pressure on the replica's PVC."
+
+        - alert: CnpgStorageNearFull
+          expr: (kubelet_volume_stats_used_bytes{persistentvolumeclaim=~".*-postgres-.*|.*-cnpg-.*"} / kubelet_volume_stats_capacity_bytes{persistentvolumeclaim=~".*-postgres-.*|.*-cnpg-.*"}) > 0.85
+          for: 15m
+          labels:
+            severity: warning
+            component: data
+          annotations:
+            dashboard_url: "/d/cnpg-postgres?var-namespace={{ $labels.namespace }}"
+            summary: "PostgreSQL PVC >85% full: {{ $labels.persistentvolumeclaim }}"
+            description: "Storage at {{ $value | humanizePercentage }} — disk full = DB crash. Expand PVC."
+            action: "Expand the CNPG PVC online (raise cluster.spec.storage.size) before disk-full crashes the DB."
+
+        - alert: CNPGBackupNeverRan
+          expr: |
+            absent_over_time(cnpg_backup_stopped_at_timestamp_seconds[3h])
+          for: 1h
+          labels:
+            severity: warning
+            component: cnpg
+          annotations:
+            dashboard_url: "/d/cnpg-postgres"
+            summary: "CNPG backup-timestamp metric absent — backups likely not running"
+            description: "No backup metric for 7d while CNPG clusters exist — verify ScheduledBackup + object-store creds."
+            action: "kubectl get scheduledbackup -A; verify the barman ObjectStore secret/creds + the backup plugin pod."

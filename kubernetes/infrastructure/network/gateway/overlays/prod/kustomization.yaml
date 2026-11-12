@@ -1,0 +1,34 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: gateway
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: network-infrastructure
+
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "1"
+
+resources:
+  - ../../base
+  - coraza-waf.yaml
+  - cloudflare-api-token.yaml
+
+components:
+  - ../../components/cert-manager
+  - ../../components/kube-prometheus-stack
+  - ../../components/cilium
+
+helmCharts:
+  - name: gateway-helm
+    repo: oci://docker.io/envoyproxy
+    version: 1.9.2
+    releaseName: eg
+    namespace: gateway
+    valuesFile: ../../base/values.yaml
+    additionalValuesFiles:
+      - values.yaml
+      - placement.yaml
+
+patches:
+  - path: sizing.yaml
+  - path: settings.yaml

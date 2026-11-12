@@ -1,0 +1,101 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  argocd.argoproj.io/secret-type: cluster
+                  environment: prod
+          - list:
+              elements:
+                - { name: descheduler,             path: kubernetes/infrastructure/cluster/descheduler/rendered,                   namespace: kube-system }
+                - { name: kubevirt,                path: kubernetes/infrastructure/cluster/kubevirt/overlays/prod,                 namespace: kubevirt }
+                - { name: metrics-server,          path: kubernetes/infrastructure/cluster/metrics-server/overlays/prod,           namespace: kube-system }
+                - { name: reloader,                path: kubernetes/infrastructure/cluster/reloader/rendered,                      namespace: reloader }
+                - { name: alerting,                path: kubernetes/infrastructure/monitoring/alerting/overlays/prod,              namespace: monitoring }
+                - { name: blackbox-exporter,       path: kubernetes/infrastructure/monitoring/blackbox-exporter/rendered,          namespace: monitoring }
+                - { name: kube-prometheus-stack,   path: kubernetes/infrastructure/monitoring/kube-prometheus-stack/overlays/prod, namespace: monitoring }
+                - { name: netbird,                 path: kubernetes/infrastructure/monitoring/netbird/overlays/prod,               namespace: netbird }
+                - { name: prometheus-edge,         path: kubernetes/infrastructure/monitoring/prometheus-edge/overlays/prod,       namespace: monitoring }
+                - { name: pve-exporter,            path: kubernetes/infrastructure/monitoring/pve-exporter/overlays/prod,          namespace: monitoring }
+                - { name: cilium,                  path: kubernetes/infrastructure/network/cilium/overlays/prod,                   namespace: kube-system }
+                - { name: cloudflared,             path: kubernetes/infrastructure/network/cloudflared/overlays/prod,              namespace: cloudflared }
+                - { name: coredns,                 path: kubernetes/infrastructure/network/coredns/overlays/prod,                  namespace: kube-system }
+                - { name: external-dns,            path: kubernetes/infrastructure/network/external-dns/rendered,                  namespace: external-dns }
+                - { name: gateway,                 path: kubernetes/infrastructure/network/gateway/overlays/prod,                  namespace: gateway }
+                - { name: istio-control-plane,     path: kubernetes/infrastructure/network/istio-control-plane/overlays/prod,      namespace: istio-system }
+                - { name: rate-limiting,           path: kubernetes/infrastructure/network/rate-limiting/overlays/prod,            namespace: argocd }
+                - { name: redis-gateway,           path: kubernetes/infrastructure/network/redis-gateway/overlays/prod,            namespace: gateway }
+                - { name: sail-operator,           path: kubernetes/infrastructure/network/sail-operator/rendered,                 namespace: sail-operator }
+                - { name: cert-manager,            path: kubernetes/infrastructure/security/cert-manager/rendered,                 namespace: cert-manager }
+                - { name: external-secrets,        path: kubernetes/infrastructure/security/external-secrets/overlays/prod,        namespace: external-secrets }
+                - { name: kube-bench,              path: kubernetes/infrastructure/security/kube-bench/overlays/prod,              namespace: security }
+                - { name: kyverno-policies,        path: kubernetes/infrastructure/security/kyverno-policies/overlays/prod,        namespace: kyverno }
+                - { name: kyverno,                 path: kubernetes/infrastructure/security/kyverno/overlays/prod,                 namespace: kyverno }
+                - { name: openbao-operator,        path: kubernetes/infrastructure/security/openbao-operator/rendered,             namespace: openbao-operator-system }
+                - { name: openbao,                 path: kubernetes/infrastructure/security/openbao/overlays/prod,                 namespace: openbao }
+                - { name: rbac,                    path: kubernetes/infrastructure/security/rbac/overlays/prod,                    namespace: argocd }
+                - { name: tetragon-namespaced,     path: kubernetes/infrastructure/security/tetragon-namespaced/overlays/prod,     namespace: drova }
+                - { name: tetragon,                path: kubernetes/infrastructure/security/tetragon/overlays/prod,                namespace: kube-system }
+                - { name: trivy,                   path: kubernetes/infrastructure/security/trivy/overlays/prod,                   namespace: trivy-system }
+                - { name: csi-snapshot-controller, path: kubernetes/infrastructure/storage/csi-snapshot-controller/overlays/prod,  namespace: kube-system }
+                - { name: rook-ceph-rgw,           path: kubernetes/infrastructure/storage/rook-ceph-rgw/overlays/prod,            namespace: rook-ceph }
+                - { name: rook-ceph,               path: kubernetes/infrastructure/storage/rook-ceph/rendered,                     namespace: rook-ceph }
+                - { name: velero-schedules,        path: kubernetes/infrastructure/storage/velero-schedules/overlays/prod,         namespace: velero }
+                - { name: velero,                  path: kubernetes/infrastructure/storage/velero/overlays/prod,                   namespace: velero }
+  template:
+    metadata:
+      name: '{{.name}}'
+      labels:
+        app.kubernetes.io/name: '{{.name}}'
+        app.kubernetes.io/part-of: infrastructure
+        app.kubernetes.io/managed-by: argocd
+    spec:
+      project: infrastructure
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: main
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: '{{.namespace}}'
+      ignoreDifferences:
+        - kind: Secret
+          name: cilium-ca
+          jsonPointers:
+          - /data
+        - kind: Secret
+          name: hubble-relay-client-certs
+          jsonPointers:
+          - /data
+        - kind: Secret
+          name: hubble-server-certs
+          jsonPointers:
+          - /data
+        - group: monitoring.coreos.com
+          kind: ServiceMonitor
+          jsonPointers:
+          - /metadata/annotations
+          - /metadata/labels
+      syncPolicy:
+        automated: { prune: True, selfHeal: True }
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+          - ApplyOutOfSyncOnly=true
+        retry:
+          limit: -1
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }

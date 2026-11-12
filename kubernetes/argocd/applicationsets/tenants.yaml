@@ -1,0 +1,90 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: tenants
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  argocd.argoproj.io/secret-type: cluster
+                  environment: prod
+          - list:
+              elements:
+                - { name: drova-console,  path: kubernetes/tenants/drova/console/overlays/prod,  namespace: drova, appProject: drova, repoURL: https://github.com/Tim275/talos-homelab }
+                - { name: drova-kafka,    path: kubernetes/tenants/drova/kafka/overlays/prod,    namespace: drova, appProject: drova, repoURL: https://github.com/Tim275/talos-homelab }
+                - { name: drova,          path: kubernetes/tenants/drova/overlays/prod,          namespace: drova, appProject: drova, repoURL: https://github.com/Tim275/talos-homelab }
+                - { name: drova-postgres, path: kubernetes/tenants/drova/postgres/overlays/prod, namespace: drova, appProject: drova, repoURL: https://github.com/Tim275/talos-homelab }
+                - { name: drova-redis,    path: kubernetes/tenants/drova/redis/overlays/prod,    namespace: drova, appProject: drova, repoURL: https://github.com/Tim275/talos-homelab }
+                - { name: drova-prod,     path: overlays/production,                             namespace: drova, appProject: drova, repoURL: https://github.com/Tim275/drova-gitops }
+  template:
+    metadata:
+      name: '{{.name}}'
+      labels:
+        app.kubernetes.io/name: '{{.name}}'
+        app.kubernetes.io/part-of: tenants
+        app.kubernetes.io/managed-by: argocd
+    spec:
+      project: '{{.appProject}}'
+      source:
+        repoURL: '{{.repoURL}}'
+        targetRevision: main
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: '{{.namespace}}'
+      ignoreDifferences:
+        - group: postgresql.cnpg.io
+          kind: Cluster
+          managedFieldsManagers:
+          - cnpg-controller-manager
+        - group: redis.redis.opstreelabs.in
+          kind: RedisReplication
+          jsonPointers:
+          - /spec/kubernetesConfig/updateStrategy
+          - /spec/redisExporter/port
+          - /spec/storage/volumeClaimTemplate/metadata
+          - /spec/storage/volumeClaimTemplate/status
+          - /spec/storage/volumeMount
+        - group: redis.redis.opstreelabs.in
+          kind: Redis
+          jsonPointers:
+          - /spec/kubernetesConfig/updateStrategy
+          - /spec/redisExporter/port
+          - /spec/storage/volumeClaimTemplate/metadata
+          - /spec/storage/volumeClaimTemplate/status
+          - /spec/storage/volumeMount
+        - group: argoproj.io
+          kind: Application
+          jqPathExpressions:
+          - .status
+        - group: argoproj.io
+          kind: Rollout
+          jsonPointers:
+          - /spec/replicas
+        - kind: Service
+          name: api-gateway-canary
+          jsonPointers:
+          - /spec/selector
+        - kind: Service
+          name: api-gateway-stable
+          jsonPointers:
+          - /spec/selector
+      syncPolicy:
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+          - ApplyOutOfSyncOnly=true
+        retry:
+          limit: -1
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }

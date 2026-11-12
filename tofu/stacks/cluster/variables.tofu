@@ -1,0 +1,115 @@
+variable "skip_cluster_health" {
+  description = "Skip the live talos_cluster_health check — set true in CI where the cluster API is unreachable"
+  type        = bool
+  default     = false
+}
+
+variable "proxmox" {
+  description = "Proxmox provider configuration"
+  type = object({
+    name         = string
+    cluster_name = string
+    endpoint     = string
+    insecure     = bool
+    username     = string
+  })
+}
+
+variable "proxmox_api_token" {
+  description = "API token for Proxmox"
+  type        = string
+  sensitive   = true
+}
+
+variable "talos_image" {
+  description = "Talos image configuration"
+  type = object({
+    factory_url           = optional(string, "https://factory.talos.dev")
+    version               = string
+    schematic_path        = string
+    update_version        = optional(string)
+    update_schematic_path = optional(string)
+    arch                  = optional(string, "amd64")
+    platform              = optional(string, "nocloud")
+    proxmox_datastore     = optional(string, "local")
+  })
+}
+
+variable "talos_cluster_config" {
+  description = "Talos cluster configuration"
+  type = object({
+    name                         = string
+    vip                          = optional(string)
+    gateway                      = string
+    subnet_mask                  = optional(string, "24")
+    talos_machine_config_version = optional(string)
+    proxmox_cluster              = string
+    kubernetes_version           = string
+    gateway_api_version          = string
+    extra_manifests              = optional(list(string), [])
+    kubelet                      = optional(string)
+    api_server                   = optional(string)
+    cilium = object({
+      bootstrap_manifest_path = string
+      values_file_path        = string
+    })
+  })
+}
+
+variable "talos_nodes" {
+  description = "Configuration for cluster nodes"
+  type = map(object({
+    host_node           = string
+    machine_type        = string
+    datastore_id        = optional(string, "local-zfs")
+    ip                  = string
+    mac_address         = string
+    vm_id               = number
+    cpu                 = number
+    ram_dedicated       = number
+    ram_floating        = optional(number)
+    dns                 = optional(list(string), ["192.168.0.1", "8.8.8.8"])
+    update              = optional(bool, false)
+    igpu                = optional(bool, false)
+    os_disk_size        = optional(number, 50)      # OS disk size in GB
+    ceph_disk_size      = optional(number, 0)       # Ceph OSD disk size in GB (0 = no Ceph disk)
+    ceph_disk_datastore = optional(string)          # Datastore for Ceph disk (fallback: datastore_id)
+    node_taints         = optional(map(string), {}) # taint-key => effect
+    pool                = optional(string, "")      # node-pool-Label; fehlte hier, tofu verwarf es stillschweigend
+  }))
+
+  validation {
+    condition     = length([for n in var.talos_nodes : n if contains(["controlplane", "worker"], n.machine_type)]) == length(var.talos_nodes)
+    error_message = "Node machine_type must be either 'controlplane' or 'worker'."
+  }
+}
+
+variable "openbao_seal_config" {
+  description = "OpenBao static seal key — null in CI"
+  type = object({
+    seal_key_path = string
+  })
+  sensitive = true
+  default   = null
+}
+
+variable "openbao_bootstrap_values" {
+  description = "Fremdwerte fuer OpenBao, Key <ns>.<secret>.<key> — leer in CI"
+  type        = map(string)
+  sensitive   = true
+  default     = {}
+}
+
+variable "kubernetes_volumes" {
+  description = "Kubernetes volumes configuration"
+  type = map(
+    object({
+      node    = string
+      size    = string
+      storage = optional(string, "local-zfs")
+      vmid    = optional(number, 9999)
+      format  = optional(string, "raw")
+    })
+  )
+  default = {}
+}

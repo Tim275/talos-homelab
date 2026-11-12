@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rook-ceph-tools
+  namespace: rook-ceph
+  labels:
+    app: rook-ceph-tools
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rook-ceph-tools
+  template:
+    metadata:
+      labels:
+        app: rook-ceph-tools
+    spec:
+      dnsPolicy: ClusterFirstWithHostNet
+      initContainers:
+        - name: config-init
+          image: quay.io/ceph/ceph:v19.2.3
+          command:
+            - /bin/bash
+            - -c
+            - |
+              cat > /etc/ceph/ceph.conf << EOF
+              [global]
+              mon_host = $(cat /etc/rook/mon_host)
+              [client.admin]
+              keyring = /etc/ceph/keyring
+              EOF
+              cp /etc/ceph-keyring/keyring /etc/ceph/keyring
+              chmod 600 /etc/ceph/keyring
+              echo "Config initialized successfully"
+          volumeMounts:
+            - mountPath: /etc/ceph
+              name: ceph-config
+            - mountPath: /etc/rook
+              name: mon-config
+            - mountPath: /etc/ceph-keyring
+              name: ceph-admin-keyring
+      containers:
+        - name: rook-ceph-tools
+          image: quay.io/ceph/ceph:v19.2.3
+          command:
+            - /bin/bash
+            - -c
+            - |
+              echo "Ceph Toolbox Ready"
+              tail -f /dev/null
+          volumeMounts:
+            - mountPath: /etc/ceph
+              name: ceph-config
+      volumes:
+        - name: ceph-config
+          emptyDir: {}
+        - name: mon-config
+          secret:
+            secretName: rook-ceph-config
+        - name: ceph-admin-keyring
+          secret:
+            secretName: rook-ceph-admin-keyring
+      tolerations:
+        - key: "node.kubernetes.io/unreachable"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 5

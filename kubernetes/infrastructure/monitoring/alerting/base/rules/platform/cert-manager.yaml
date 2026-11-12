@@ -1,0 +1,50 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-cert-manager
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: cert-manager-page
+      interval: 5m
+      rules:
+        - alert: CertExpiringIn7Days
+          expr: certmanager_certificate_expiration_timestamp_seconds - time() < 7 * 24 * 3600
+          for: 1h
+          labels:
+            severity: warning
+            component: platform
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/platform.md#certexpiringin7days"
+            dashboard_url: "/d/cert-manager?var-namespace={{ $labels.exported_namespace }}"
+            summary: "TLS cert expires in <7d: {{ $labels.name }}"
+            description: "Certificate {{ $labels.name }} in {{ $labels.namespace }} expires in {{ $value | humanizeDuration }} — service will break."
+            action: "kubectl describe certificate {{ $labels.name }} -n {{ $labels.namespace }}; check the Issuer + cert-manager logs; force renewal if stuck."
+
+    - name: cert-manager-ticket
+      interval: 5m
+      rules:
+        - alert: CertRenewalStuck
+          expr: certmanager_certificate_renewal_timestamp_seconds - time() < 0
+          for: 1h
+          labels:
+            severity: warning
+            component: platform
+          annotations:
+            dashboard_url: "/d/cert-manager?var-namespace={{ $labels.exported_namespace }}"
+            summary: "cert-manager renewal overdue: {{ $labels.name }} ({{ $value | humanizeDuration }})"
+            description: "Renewal time passed >1h ago but {{ $labels.name }} in {{ $labels.namespace }} still isn't renewed — cert-manager isn't handling it."
+            action: "kubectl describe certificate {{ $labels.name }} -n {{ $labels.namespace }}; check the Issuer is Ready + cert-manager logs."
+
+        - alert: CertManagerDown
+          expr: absent(up{job="cert-manager"}) or up{job="cert-manager"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: platform
+          annotations:
+            dashboard_url: "/d/cert-manager"
+            summary: "cert-manager controller down"
+            description: "Unreachable >5min — certificate renewals + new issuance blocked."
+            action: "kubectl -n cert-manager rollout restart deploy/cert-manager; check logs + webhook availability."

@@ -1,0 +1,46 @@
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: redpanda-basic-auth-password
+  namespace: drova
+  annotations:
+    argocd.argoproj.io/sync-wave: '-1'
+spec:
+  refreshInterval: 1h
+  updatePolicy: IfNotExists
+  secretStoreRefs:
+  - name: openbao
+    kind: ClusterSecretStore
+  selector:
+    generatorRef:
+      apiVersion: generators.external-secrets.io/v1alpha1
+      kind: ClusterGenerator
+      name: password
+  data:
+  - match:
+      secretKey: password
+      remoteRef:
+        remoteKey: drova/redpanda-basic-auth
+        property: password
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: redpanda-basic-auth
+  namespace: drova
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao
+    kind: ClusterSecretStore
+  target:
+    name: redpanda-basic-auth
+    template:
+      engineVersion: v2
+      data:
+        .htpasswd: '{{ htpasswd "redpanda" .password "bcrypt" }}'
+  data:
+  - secretKey: password
+    remoteRef:
+      key: drova/redpanda-basic-auth
+      property: password

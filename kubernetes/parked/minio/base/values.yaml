@@ -1,0 +1,62 @@
+
+mode: standalone
+
+
+persistence:
+  enabled: true
+  accessMode: ReadWriteOnce
+
+service:
+  type: ClusterIP
+  port: 9000
+
+consoleService:
+  type: ClusterIP
+  port: 9001
+
+auth:
+  rootUser: minioadmin
+  rootPassword: minioadmin123!
+
+buckets:
+  - name: homelab-backups
+    policy: none
+    purge: false
+
+ingress:
+  enabled: false
+
+metrics:
+  serviceMonitor:
+    enabled: true
+    namespace: minio
+    labels:
+      release: prometheus-operator
+
+podSecurityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+nodeSelector: {}
+  # node-role.kubernetes.io/worker: ""
+
+policies:
+  - name: backup-policy
+    statements:
+      - resources:
+          - "arn:aws:s3:::homelab-backups/*"
+        actions:
+          - "s3:GetObject"
+          - "s3:PutObject"
+          - "s3:DeleteObject"
+      - resources:
+          - "arn:aws:s3:::homelab-backups"
+        actions:
+          - "s3:GetBucketLocation"
+          - "s3:ListBucket"
+
+users:
+  - accessKey: velero
+    secretKey: velero-secret-key
+    policy: backup-policy

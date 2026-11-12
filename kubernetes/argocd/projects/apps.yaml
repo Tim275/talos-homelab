@@ -1,0 +1,105 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: apps
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    app.kubernetes.io/layer: apps
+spec:
+  description: 'self-hosted services, synced by hand'
+  syncWindows:
+    - kind: deny
+      schedule: '0 2 * * *'
+      duration: 3h
+      timeZone: Europe/Berlin
+      applications:
+        - '*'
+      manualSync: true
+  sourceRepos:
+    - 'https://github.com/Tim275/talos-homelab'
+  destinations:
+    - namespace: 'forgejo'
+      server: https://kubernetes.default.svc
+    - namespace: 'homepage'
+      server: https://kubernetes.default.svc
+    - namespace: 'n8n'
+      server: https://kubernetes.default.svc
+    - namespace: 'pgadmin'
+      server: https://kubernetes.default.svc
+    - namespace: 'uptime-kuma'
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+    - group: 'rbac.authorization.k8s.io'
+      kind: ClusterRole
+    - group: 'rbac.authorization.k8s.io'
+      kind: ClusterRoleBinding
+  namespaceResourceWhitelist:
+    - group: ''
+      kind: ConfigMap
+    - group: ''
+      kind: LimitRange
+    - group: ''
+      kind: PersistentVolumeClaim
+    - group: ''
+      kind: ResourceQuota
+    - group: ''
+      kind: Service
+    - group: ''
+      kind: ServiceAccount
+    - group: 'apps'
+      kind: Deployment
+    - group: 'autoscaling'
+      kind: HorizontalPodAutoscaler
+    - group: 'barmancloud.cnpg.io'
+      kind: ObjectStore
+    - group: 'batch'
+      kind: Job
+    - group: 'cilium.io'
+      kind: CiliumNetworkPolicy
+    - group: 'external-secrets.io'
+      kind: ExternalSecret
+    - group: 'external-secrets.io'
+      kind: PushSecret
+    - group: 'gateway.envoyproxy.io'
+      kind: BackendTrafficPolicy
+    - group: 'gateway.networking.k8s.io'
+      kind: HTTPRoute
+    - group: 'monitoring.coreos.com'
+      kind: ServiceMonitor
+    - group: 'objectbucket.io'
+      kind: ObjectBucketClaim
+    - group: 'policy'
+      kind: PodDisruptionBudget
+    - group: 'postgresql.cnpg.io'
+      kind: Cluster
+    - group: 'postgresql.cnpg.io'
+      kind: Pooler
+    - group: 'postgresql.cnpg.io'
+      kind: ScheduledBackup
+    - group: 'redis.redis.opstreelabs.in'
+      kind: Redis
+  roles:
+    - name: apps-admin
+      description: Full apps management access
+      policies:
+      - p, proj:apps:apps-admin, applications, *, apps/*, allow
+      - p, proj:apps:apps-admin, applicationsets, *, apps/*, allow
+      - p, proj:apps:apps-admin, exec, *, apps/*, allow
+      - p, proj:apps:apps-admin, logs, *, apps/*, allow
+    - name: apps-operator
+      description: Apps monitoring and troubleshooting
+      policies:
+      - p, proj:apps:apps-operator, applications, get, apps/*, allow
+      - p, proj:apps:apps-operator, applications, sync, apps/*, allow
+      - p, proj:apps:apps-operator, logs, get, apps/*, allow
+      groups:
+      - sre-team
+    - name: apps-viewer
+      description: Read-only apps access
+      policies:
+      - p, proj:apps:apps-viewer, applications, get, apps/*, allow
+      groups:
+      - viewers

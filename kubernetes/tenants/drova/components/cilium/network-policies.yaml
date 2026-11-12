@@ -1,0 +1,165 @@
+#
+# Pattern: Per-Tenant Default-Deny statt cluster-wide.
+#  - Niedriges Risiko (bricht NICHT andere Tenants/Ceph)
+#  - AKTIV sind NUR die 2 Policies in diesem File (default-deny + egress-baseline).
+#
+
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: drova-default-deny-ingress
+  namespace: drova
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: drova
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+        - matchLabels:
+            io.kubernetes.pod.namespace: monitoring
+        - matchLabels:
+            io.kubernetes.pod.namespace: gateway
+        - matchLabels:
+            io.kubernetes.pod.namespace: cloudflared
+        - matchLabels:
+            io.kubernetes.pod.namespace: redis-operator-system
+        - matchLabels:
+            io.kubernetes.pod.namespace: cnpg-system
+        - matchLabels:
+            io.kubernetes.pod.namespace: kafka                      # Strimzi-operator
+    # Drova-intern: Microservice ↔ Microservice (zusätzlich zu mTLS-Policies)
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: drova
+    - fromEntities:
+        - host
+        - kube-apiserver
+
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: drova-egress-baseline
+  namespace: drova
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: drova
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+
+    - toEntities:
+        - kube-apiserver
+
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: drova
+
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: cnpg-system
+
+    # External: Stripe API (Payment-Service braucht das)
+    - toFQDNs:
+        - matchPattern: "*.stripe.com"
+        - matchName: api.stripe.com
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+    # External: Mapbox API (Trip-Service braucht /directions für Routing)
+    - toFQDNs:
+        - matchPattern: "*.mapbox.com"
+        - matchName: api.mapbox.com
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+    # External: Cloudflare STUN (NetBird/WebRTC if used)
+    - toFQDNs:
+        - matchName: stun.cloudflare.com
+      toPorts:
+        - ports:
+            - port: "3478"
+              protocol: UDP
+
+    - toFQDNs:
+        - matchName: api.github.com
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+    - toFQDNs:
+        - matchPattern: "*.mongodb.net"
+        - matchPattern: "*.*.mongodb.net"
+      toPorts:
+        - ports:
+            - port: "27017"
+              protocol: TCP
+
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: opentelemetry
+      toPorts:
+        - ports:
+            - port: "4318"
+              protocol: TCP
+            - port: "4317"
+              protocol: TCP
+
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: keycloak
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: redis-drova-operator-egress
+  namespace: drova
+spec:
+  endpointSelector:
+    matchLabels:
+      app: redis-drova
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: redis-operator-system
+            name: redis-operator
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: user-service-smtp-egress
+  namespace: drova
+spec:
+  endpointSelector:
+    matchLabels:
+      app: user-service
+  egress:
+    - toFQDNs:
+        - matchName: smtp-relay.brevo.com
+      toPorts:
+        - ports:
+            - { port: "587", protocol: TCP }

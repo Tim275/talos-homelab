@@ -1,0 +1,24 @@
+import {
+  to = netbird_group.routers
+  id = "d8k09pafadhs73daptpg"
+}
+
+import {
+  to = netbird_group.users
+  id = "d8k09pbl0ubs73cdok70"
+}
+
+import {
+  to = netbird_network.homelab
+  id = "d8k09pafadhs73daptn0"
+}
+
+import {
+  to = netbird_network_router.lan
+  id = "d8k09pafadhs73daptn0/d8k09pafadhs73dapu20"
+}
+
+import {
+  to = netbird_account_settings.hardening
+  id = "d8jsbeafadhs73c5f6dg"
+}

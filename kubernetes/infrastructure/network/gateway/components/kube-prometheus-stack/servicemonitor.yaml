@@ -1,0 +1,40 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: envoy-gateway
+  annotations:
+    argocd.argoproj.io/tracking-id: kube-prometheus-stack:monitoring.coreos.com/ServiceMonitor:monitoring/envoy-gateway
+  labels:
+    argocd.argoproj.io/instance: kube-prometheus-stack
+    release: prometheus-operator
+    app: envoy-gateway
+    team: infrastructure
+spec:
+  selector:
+    matchLabels:
+      control-plane: envoy-gateway
+  namespaceSelector:
+    matchNames:
+      - gateway              # was: envoy-gateway-system — Envoy Gateway runs in 'gateway' ns
+  endpoints:
+    - port: metrics
+      path: /metrics  # FIX: Envoy Gateway exposes metrics at /metrics, not /stats/prometheus
+      interval: 30s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: envoy-ratelimit
+  labels:
+spec:
+  namespaceSelector:
+    matchNames:
+      - gateway
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: envoy-ratelimit
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s

@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audiobookshelf
+  labels:
+    app: audiobookshelf
+    app.kubernetes.io/name: audiobookshelf
+  annotations:
+    argocd.argoproj.io/sync-wave: "25"
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: audiobookshelf
+  template:
+    metadata:
+      labels:
+        app: audiobookshelf
+        app.kubernetes.io/name: audiobookshelf
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 2501
+      containers:
+        - name: audiobookshelf
+          image: ghcr.io/advplyr/audiobookshelf:2.27.0@sha256:f60a19bb94a9fc763212be0116502b0c2cee1da655c9320137a3020fb1ed2dca
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: PORT
+              value: "8080"
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: data
+              mountPath: /metadata
+          securityContext:
+            runAsUser: 2501
+            runAsGroup: 2501
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: audiobookshelf-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: audiobookshelf-data

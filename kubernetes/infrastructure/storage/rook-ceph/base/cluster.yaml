@@ -1,0 +1,189 @@
+apiVersion: ceph.rook.io/v1
+kind: CephCluster
+metadata:
+  name: rook-ceph
+  namespace: rook-ceph
+  labels:
+    app.kubernetes.io/name: rook-ceph
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/part-of: storage-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  cephVersion:
+    # https://docs.ceph.com/en/latest/releases/
+    image: quay.io/ceph/ceph:v19.2.3   # renovate: docker=quay.io/ceph/ceph
+    allowUnsupported: false
+
+  #     enabled: true
+
+  dataDirHostPath: /var/lib/rook
+
+  # Ref: https://documentation.suse.com/sbp/storage/html/SBP-rook-ceph-kubernetes/
+
+  cephConfig:
+    global:
+      osd_pool_default_pg_num: "16"
+      osd_pool_default_pg_autoscale_mode: "off"
+
+      osd_memory_target: "2147483648"     # 2GB — muss zum osd-Request passen (2Gi + 25% = 2560Mi), sonst OOM-Kill
+      osd_memory_target_autotune: "true"  # Auto-adjust based on available memory
+      bluestore_cache_autotune: "true"    # Auto-tune BlueStore cache
+
+      osd_heartbeat_grace: "120"          # Default: 20s, increased for VM I/O latency
+      osd_heartbeat_interval: "15"        # Default: 6s
+      mon_osd_down_out_interval: "600"    # Wait 10 min before marking OSD out
+      mon_clock_drift_allowed: "0.1"      # Default: 0.05s — homelab NTP jitter (Proxmox, no PTP)
+
+      osd_op_complaint_time: "120"        # Default: 30s, increased to 120s for VM I/O spikes
+      osd_op_log_threshold: "50"          # Default: 5, reduce log spam
+      osd_op_history_slow_op_threshold: "120" # Match complaint time
+      bluestore_throttle_bytes: "134217728"          # 128MB write buffer (doubled)
+      bluestore_throttle_deferred_bytes: "268435456" # 256MB deferred buffer (doubled)
+
+      bluestore_default_buffered_write: "true"
+      bluestore_prefer_deferred_size: "65536"  # Defer small writes
+
+      osd_client_op_priority: "63"
+      osd_recovery_op_priority: "3"
+      osd_recovery_max_active: "1"
+      osd_max_backfills: "1"
+
+      osd_scrub_begin_hour: "2"           # Start scrubbing at 2 AM
+      osd_scrub_end_hour: "6"             # End scrubbing at 6 AM
+      osd_scrub_during_recovery: "false"  # Never scrub during recovery
+
+      bluestore_slow_ops_warn_threshold: "50"
+
+      bluestore_max_blob_size_ssd: "524288"          # 512K blobs für big-writes
+      bluestore_prefer_deferred_size_ssd: "32768"    # SSD-specific defer-size
+      osd_op_queue: "wpq"                            # weighted priority queue
+      osd_op_queue_cut_off: "high"                   # client-ops über recovery
+      bluestore_csum_type: "none"                    # ⚠ disabled für SSD-perf
+      bluestore_block_db_size: "1073741824"          # 1GB RocksDB
+
+  cleanupPolicy:
+    confirmation: ""  # Set to "yes-really-destroy-data" for complete cleanup
+    sanitizeDisks:
+      method: quick  # quick|complete
+      dataSource: zero  # zero|random
+      iteration: 1
+
+  upgradeOSDRequiresHealthyPGs: true
+  skipUpgradeChecks: false
+  continueUpgradeAfterChecksEvenIfNotHealthy: false
+  waitTimeoutForHealthyOSDInMinutes: 10
+
+  mon:
+    allowMultiplePerNode: false
+
+  mgr:
+    allowMultiplePerNode: false
+    modules:
+      - name: pg_autoscaler
+        enabled: true  # Re-enabled after fixing overlapping CRUSH roots
+      - name: balancer
+        enabled: true
+      - name: prometheus
+        enabled: true
+      - name: telemetry
+        enabled: true  # Advanced cluster insights and health analytics
+
+  dashboard:
+    enabled: true
+    ssl: false  # HTTP backend - Envoy Gateway handles TLS at edge (like ArgoCD, Grafana, etc.)
+
+  monitoring:
+    enabled: false
+
+  network:
+    provider: host
+    connections:
+      encryption:
+        enabled: true  # msgr2 secure mode - encrypts all inter-daemon communication
+      compression:
+        enabled: false  # Disabled for security (avoid compression side-channels)
+
+  crashCollector:
+    disable: false
+
+
+  # Ref: https://documentation.suse.com/sbp/storage/html/SBP-rook-ceph-kubernetes/
+
+
+  removeOSDsIfOutAndSafeToRemove: true
+
+  priorityClassNames:
+    mon: system-node-critical
+    osd: system-node-critical
+    mgr: system-cluster-critical
+
+  storage:
+    useAllNodes: false
+    useAllDevices: false  # Use specific block devices (scsi1 = /dev/sdb)
+    config:
+      osdsPerDevice: "1"
+      encryptedDevice: "true"
+      osd_memory_target: "2147483648"
+      bluestore_cache_size: "1073741824"
+      bluestore_min_alloc_size_hdd: "65536"
+      bluestore_rocksdb_options: "compression=kNoCompression,max_write_buffer_number=4,min_write_buffer_number_to_merge=1,recycle_log_file_num=4"
+
+  healthCheck:
+    daemonHealth:
+      mon:
+        disabled: false
+        interval: 45s
+      osd:
+        disabled: false
+        interval: 60s
+      status:
+        disabled: false
+        interval: 60s
+
+  disruptionManagement:
+    managePodBudgets: true
+    osdMaintenanceTimeout: 30
+    pgHealthCheckTimeout: 0
+
+  placement:
+    all:
+      tolerations:
+        # kein blankes NoSchedule: sonst toleriert rook auch den control-plane-taint
+        - key: nipogi
+          operator: Exists
+          effect: PreferNoSchedule
+        - effect: NoExecute
+          operator: Exists
+    mon:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: rook-ceph-mon
+            topologyKey: topology.kubernetes.io/zone   # eine Maschine darf nie zwei MONs halten
+    mgr:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: rook-ceph-mgr
+              topologyKey: kubernetes.io/hostname
+    osd:
+      nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+                - key: node-role.kubernetes.io/worker
+                  operator: Exists
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: rook-ceph-osd
+              topologyKey: kubernetes.io/hostname

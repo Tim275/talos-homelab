@@ -1,0 +1,187 @@
+name: kustomize-validate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "kubernetes/**"
+      - ".github/workflows/kustomize-validate.yml"
+  # no paths filter — a required check must report on every PR
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  kustomize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install kustomize
+        run: |
+          VERSION="5.8.1"
+          curl -sL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${VERSION}/kustomize_v${VERSION}_linux_amd64.tar.gz" -o /tmp/kustomize.tar.gz
+          tar xzf /tmp/kustomize.tar.gz -C /tmp kustomize
+          sudo mv /tmp/kustomize /usr/local/bin/
+          kustomize version
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
+        with:
+          version: v4.2.1
+
+      - name: Install kubeconform
+        run: |
+          VERSION="0.7.0"
+          curl -sLO "https://github.com/yannh/kubeconform/releases/download/v${VERSION}/kubeconform-linux-amd64.tar.gz"
+          tar xzf "kubeconform-linux-amd64.tar.gz" kubeconform
+          sudo mv kubeconform /usr/local/bin/
+          kubeconform -v
+
+      - name: Validate kustomize builds + manifest schemas
+        run: |
+          set +e
+          FAILED=0
+          PASSED=0
+          FAILED_DIRS=()
+          mkdir -p /tmp/kubeconform-cache
+
+          while IFS= read -r kfile; do
+            DIR=$(dirname "$kfile")
+            grep -q '^kind: Component' "$kfile" && continue
+            # Retry to survive transient helm-repo errors on external chart pulls:
+            # 5xx, docker.io anonymous pull rate-limits (429/toomanyrequests — the
+            # usual culprit), TLS handshake / EOF / connection-reset. 5 attempts,
+            # linear backoff up to 40s so a throttling window has time to clear.
+            for attempt in 1 2 3 4 5; do
+              OUTPUT=$(kustomize build "$DIR" --enable-helm --load-restrictor=LoadRestrictionsNone 2>&1)
+              STATUS=$?
+              [ $STATUS -eq 0 ] && break
+              echo "$OUTPUT" | grep -qiE 'cannot be reached|429|too.?many.?requests|toomanyrequests|50[0234]|Service Unavailable|timeout|temporarily|connection refused|connection reset|reset by peer|no such host|TLS handshake|i/o timeout|unexpected EOF|deadline exceeded|dial tcp' || break
+              echo "::warning::transient build failure in $DIR (attempt $attempt/5), retrying"
+              sleep $((attempt * 10))
+            done
+
+            if [ $STATUS -ne 0 ]; then
+              FAILED=$((FAILED+1))
+              FAILED_DIRS+=("$DIR (build)")
+              echo "::error file=$kfile::kustomize build failed in $DIR"
+              echo "::group::Build error in $DIR"
+              echo "$OUTPUT"
+              echo "::endgroup::"
+              continue
+            fi
+
+            CONFORM=$(echo "$OUTPUT" | kubeconform \
+              -ignore-missing-schemas \
+              -schema-location default \
+              -cache /tmp/kubeconform-cache \
+              -summary 2>&1)
+            if [ $? -ne 0 ]; then
+              FAILED=$((FAILED+1))
+              FAILED_DIRS+=("$DIR (schema)")
+              echo "::error file=$kfile::kubeconform schema validation failed in $DIR"
+              echo "::group::Schema error in $DIR"
+              echo "$CONFORM"
+              echo "::endgroup::"
+            else
+              PASSED=$((PASSED+1))
+            fi
+          done < <(find kubernetes -name kustomization.yaml -not -path "*/charts/*" -not -path "kubernetes/parked/*")
+
+          echo "Total: $((PASSED + FAILED)), Passed: $PASSED, Failed: $FAILED"
+
+          if [ $FAILED -gt 0 ]; then
+            echo "Failed directories:"
+            printf '  - %s\n' "${FAILED_DIRS[@]}"
+            exit 1
+          fi
+
+      - name: Install python deps
+        run: pip install pyyaml
+
+      - name: Lint repo layout (base/overlays, AppSet paths, secret ownership)
+        run: python3 .github/scripts/lint-structure.py kubernetes
+
+      - name: Install yq
+        run: |
+          VERSION="4.53.4"
+          curl -sL "https://github.com/mikefarah/yq/releases/download/v${VERSION}/yq_linux_amd64" -o /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
+      - name: Verify piloted rendered manifests
+        id: rendered
+        run: |
+          set +e
+          PILOTS=(
+            "kubernetes/infrastructure/cluster/reloader/overlays/prod|kubernetes/infrastructure/cluster/reloader/rendered/manifests.yaml"
+            "kubernetes/infrastructure/security/openbao-operator/overlays/prod|kubernetes/infrastructure/security/openbao-operator/rendered/manifests.yaml"
+            "kubernetes/infrastructure/storage/rook-ceph/overlays/prod|kubernetes/infrastructure/storage/rook-ceph/rendered/manifests.yaml"
+            "kubernetes/infrastructure/security/cert-manager/overlays/prod|kubernetes/infrastructure/security/cert-manager/rendered/manifests.yaml"
+            "kubernetes/infrastructure/network/external-dns/overlays/prod|kubernetes/infrastructure/network/external-dns/rendered/manifests.yaml"
+            "kubernetes/infrastructure/monitoring/blackbox-exporter/overlays/prod|kubernetes/infrastructure/monitoring/blackbox-exporter/rendered/manifests.yaml"
+            "kubernetes/platform/delivery/argo-rollouts/overlays/prod|kubernetes/platform/delivery/argo-rollouts/rendered/manifests.yaml"
+            "kubernetes/platform/data/cloudnative-pg/overlays/prod|kubernetes/platform/data/cloudnative-pg/rendered/manifests.yaml"
+            "kubernetes/platform/observability/eck/overlays/prod|kubernetes/platform/observability/eck/rendered/manifests.yaml"
+            "kubernetes/platform/observability/grafana-operator/overlays/prod|kubernetes/platform/observability/grafana-operator/rendered/manifests.yaml"
+            "kubernetes/infrastructure/cluster/descheduler/overlays/prod|kubernetes/infrastructure/cluster/descheduler/rendered/manifests.yaml"
+            "kubernetes/platform/delivery/keda/overlays/prod|kubernetes/platform/delivery/keda/rendered/manifests.yaml"
+            "kubernetes/platform/automation/renovate/overlays/prod|kubernetes/platform/automation/renovate/rendered/manifests.yaml"
+            "kubernetes/platform/data/redis/overlays/prod|kubernetes/platform/data/redis/rendered/manifests.yaml"
+            "kubernetes/platform/observability/opentelemetry-operator/overlays/prod|kubernetes/platform/observability/opentelemetry-operator/rendered/manifests.yaml"
+            "kubernetes/infrastructure/network/sail-operator/overlays/prod|kubernetes/infrastructure/network/sail-operator/rendered/manifests.yaml"
+          )
+          DRIFTED=0
+          : > rendered-comment.md
+          for pair in "${PILOTS[@]}"; do
+            SRC="${pair%%|*}"; RENDERED="${pair##*|}"
+            NAME=$(basename "$(dirname "$(dirname "$RENDERED")")")
+            kustomize build "$SRC" --enable-helm --load-restrictor=LoadRestrictionsNone > /tmp/dry.yaml
+            if diff -q "$RENDERED" /tmp/dry.yaml > /dev/null; then
+              echo "rendered-manifests $NAME: matches dry source"
+            else
+              DRIFTED=1
+              yq eval-all '(.kind // "?")+"/"+(.metadata.namespace // "_")+"/"+(.metadata.name // "?")' /tmp/dry.yaml | sort -u > /tmp/dry-ids.txt
+              yq eval-all '(.kind // "?")+"/"+(.metadata.namespace // "_")+"/"+(.metadata.name // "?")' "$RENDERED" | sort -u > /tmp/rendered-ids.txt
+              {
+                printf '#### rendered-manifests — `%s`\n' "$NAME"
+                printf 'drift detected — run `mise run render-update %s` and commit\n' "$(dirname "$(dirname "$RENDERED")")"
+                echo '**removed** (would be pruned if regenerated):'
+                echo '```'; comm -13 /tmp/dry-ids.txt /tmp/rendered-ids.txt; echo '```'
+                echo '**added:**'
+                echo '```'; comm -23 /tmp/dry-ids.txt /tmp/rendered-ids.txt; echo '```'
+                echo ''
+              } >> rendered-comment.md
+              echo "::error::rendered manifests drift in $RENDERED"
+            fi
+          done
+          echo "drifted=$DRIFTED" >> "$GITHUB_OUTPUT"
+
+      # kommentiert nur bei Drift und raeumt den Kommentar weg, sobald er behoben ist
+      - name: Comment rendered-manifests drift on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.existsSync('rendered-comment.md') ? fs.readFileSync('rendered-comment.md', 'utf8').trim() : '';
+            const marker = 'rendered-manifests —';
+            const { data: comments } = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number });
+            const existing = comments.find(c => c.body.includes(marker));
+            if (!body) {
+              if (existing) await github.rest.issues.deleteComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id });
+              return;
+            }
+            if (existing) {
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body });
+            }
+
+      - name: Fail on rendered manifests drift
+        if: steps.rendered.outputs.drifted == '1'
+        run: exit 1

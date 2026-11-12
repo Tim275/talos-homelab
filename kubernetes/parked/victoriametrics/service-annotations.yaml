@@ -1,0 +1,76 @@
+# Whitelist statt Auto-Discovery — reine k8s-pods/service-endpoints-Discovery spammt.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: monitoring-service-annotations-guide
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  labels:
+    app.kubernetes.io/name: monitoring-guide
+    app.kubernetes.io/part-of: victoriametrics
+data:
+  README.md: |
+
+    Add these annotations to Service objects to enable monitoring:
+
+    ```yaml
+    metadata:
+      annotations:
+        prometheus.io/scrape: "true"      # Enable scraping
+        prometheus.io/port: "8080"        # Metrics port
+        prometheus.io/path: "/metrics"    # Metrics path (optional, defaults to /metrics)
+        prometheus.io/scheme: "https"     # http or https (optional, defaults to http)
+    ```
+
+
+    - **ArgoCD Server**: port 8083, path /metrics
+    - **ArgoCD Repo Server**: port 8084, path /metrics (FIXED: was 80)
+    - **ArgoCD Application Controller**: port 8082, path /metrics
+    - **ArgoCD ApplicationSet Controller**: port 8080, path /metrics
+    - **Sealed Secrets Controller**: port 8081, path /metrics (FIXED: was 8080)
+    - **Cert Manager**: port 9402, path /metrics
+    - **Rook Ceph Operator**: port 8080, path /metrics (FIXED: was 80)
+    - **CloudNative PG**: port 8080, path /metrics, scheme https (FIXED: was http)
+    - **VictoriaMetrics Components**: vmselect:8481, vminsert:8480, vmstorage:8482
+
+    - **ArgoCD Redis**: Use sidecar exporter instead (Redis doesn't export Prometheus metrics)
+    - **Argo Rollouts Dashboard**: No /metrics endpoint on port 3100
+    - **OpenTelemetry Collector gRPC**: gRPC endpoints don't serve HTTP metrics
+    - **Jaeger Collector/Agent**: Auto-discovery causes JSON parse errors
+    - **Vector syslog/API**: Syslog/API ports don't serve Prometheus metrics
+    - **Loki memberlist/chunks-cache**: Internal clustering/cache protocols
+    - **Elasticsearch transport**: Transport layer doesn't serve HTTP metrics
+    - **CoreDNS DNS ports**: DNS ports don't serve HTTP metrics
+
+
+    ```bash
+    kubectl patch vmservicescrape argocd-redis -n argocd --type=merge
+    kubectl patch vmservicescrape jaeger-agent -n jaeger --type=merge
+    kubectl patch vmservicescrape jaeger-collector -n jaeger --type=merge
+    kubectl patch vmservicescrape jaeger-query -n jaeger --type=merge
+    kubectl patch vmservicescrape otel-collector -n opentelemetry --type=merge
+    ```
+
+
+    ```yaml
+    extraArgs:
+      promscrape.kubernetes.disableEndpoints: "true"  # Stop service-endpoints spam
+      promscrape.kubernetes.disablePods: "true"       # Stop kubernetes-pods spam
+    ```
+
+
+    - kubernetes-pods: 43/50 UP (7 failures)
+    - kubernetes-service-endpoints: 103/323 UP (220 failures)
+    - Total failed targets: ~227
+
+    - kubernetes-pods failures: TARGET <5 (reduce by ~90%)
+    - kubernetes-service-endpoints failures: TARGET <20 (reduce by ~95%)
+    - Total failed targets: TARGET <5 (reduce by 98%)
+
+
+    1. **Centralized Whitelist**: Only prometheus.io/scrape=true services monitored
+    2. **Correct Endpoints**: Fixed ports, schemes, and paths
+    3. **Disabled Spam**: No more auto-discovery of non-metrics endpoints
+    4. **Clean Alerts**: Only meaningful monitoring failures
+    5. **Scalable**: Whitelist approach scales with cluster growth

@@ -1,0 +1,192 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kubernetes-control-plane
+  labels:
+    release: kube-prometheus-stack
+spec:
+  # etcd/kube-scheduler/kube-controller-manager: enabled:false in values.yaml
+  groups:
+    - name: etcd
+      interval: 1m
+      rules:
+        - alert: EtcdDiskLatencyHigh
+          expr: histogram_quantile(0.99, sum by (le) (rate(etcd_disk_wal_fsync_duration_seconds_bucket[30m]))) > 0.010
+          for: 15m
+          labels:
+            severity: warning
+            component: etcd
+          annotations:
+            dashboard_url: "/d/etcd"
+            summary: "etcd WAL fsync p99 {{ $value | humanizeDuration }}"
+            description: "etcd shares rpool on msa2 with three Ceph OSDs. Above 10ms the apiserver slows on every write."
+            action: "cat /proc/pressure/io on the host; a defrag does NOT help here — check OSD load instead."
+        - alert: etcdHighFsyncDurations
+          expr: |
+            histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket{job=~".*etcd.*"}[5m]))
+            > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            component: control-plane
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/control-plane.md#etcdhighfsyncdurations"
+            summary: "etcd disk WAL fsync p99 {{ $value | humanizeDuration }} on {{ $labels.instance }}"
+            dashboard_url: "/d/etcd"
+            description: "Baseline was measured on pve's LENSE SSD (p50 105ms / p90 216ms). ctrl-0 moved back to msa2 since (verified 2026-09-16) — that baseline is stale, not re-measured on the new disk yet. This fires only on degradation beyond whatever the real current baseline is. AdmissionWebhookRejecting is the alert that catches the actual damage."
+            action: "Check ctrl-0's etcd VM disk I/O; same root cause class as EtcdRequestLatencyHigh."
+
+        - alert: etcdHighCommitDurations
+          expr: |
+            histogram_quantile(0.99, rate(etcd_disk_backend_commit_duration_seconds_bucket{job=~".*etcd.*"}[5m]))
+            > 0.8
+          for: 10m
+          labels:
+            severity: warning
+            component: control-plane
+          annotations:
+            summary: "etcd backend commit p99 {{ $value | humanizeDuration }} on {{ $labels.instance }}"
+            dashboard_url: "/d/etcd"
+            description: "Baseline was measured on pve's LENSE SSD (p50 145ms / p90 422ms). ctrl-0 moved back to msa2 since (verified 2026-09-16) — that baseline is stale, not re-measured on the new disk yet."
+            action: "Check ctrl-0's etcd VM disk I/O."
+
+        - alert: etcdHighNumberOfFailedGRPCRequests
+          expr: |
+            100 * sum(rate(grpc_server_handled_total{job=~".*etcd.*", grpc_code=~"Unknown|FailedPrecondition|ResourceExhausted|Internal|Unavailable|DataLoss|DeadlineExceeded"}[5m])) without (grpc_type, grpc_code)
+              /
+            sum(rate(grpc_server_handled_total{job=~".*etcd.*"}[5m])) without (grpc_type, grpc_code)
+              > 1
+          for: 10m
+          labels:
+            severity: warning
+            component: control-plane
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/control-plane.md#etcdhighnumberoffailedgrpcrequests"
+            summary: "etcd gRPC {{ $labels.grpc_method }} failure-rate {{ $value | humanizePercentage }}"
+            dashboard_url: "/d/etcd"
+            description: "etcd itself is returning errors to its gRPC clients (apiserver included)."
+            action: "talosctl -n ctrl-0 etcd status; check etcd logs for the failing method."
+
+        - alert: etcdDatabaseQuotaLowSpace
+          expr: (last_over_time(etcd_mvcc_db_total_size_in_bytes{job=~".*etcd.*"}[5m]) / last_over_time(etcd_server_quota_backend_bytes{job=~".*etcd.*"}[5m]))*100 > 95
+          for: 10m
+          labels:
+            severity: critical
+            component: control-plane
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/control-plane.md#etcddatabasequotalowspace"
+            summary: "etcd database on {{ $labels.instance }} at {{ $value | humanizePercentage }} of quota"
+            dashboard_url: "/d/etcd"
+            description: "etcd stops accepting writes when the backend quota fills — full cluster write-outage."
+            action: "talosctl -n ctrl-0 etcd defrag; if quota itself is too small, raise --quota-backend-bytes."
+
+        - alert: etcdExcessiveDatabaseGrowth
+          expr: predict_linear(etcd_mvcc_db_total_size_in_bytes{job=~".*etcd.*"}[4h], 4*60*60) > etcd_server_quota_backend_bytes{job=~".*etcd.*"}
+          for: 10m
+          labels:
+            severity: warning
+            component: control-plane
+          annotations:
+            summary: "etcd database on {{ $labels.instance }} predicted to exceed quota within 4h ({{ $value | humanize1024 }}B projected)"
+            dashboard_url: "/d/etcd"
+            description: "Write-rate trend projects hitting the quota soon — catch this before etcdDatabaseQuotaLowSpace fires."
+            action: "Check what's writing so much (event churn, CRD spam); consider talosctl -n ctrl-0 etcd defrag."
+
+        - alert: etcdDatabaseHighFragmentationRatio
+          expr: (last_over_time(etcd_mvcc_db_total_size_in_use_in_bytes{job=~".*etcd.*"}[5m]) / last_over_time(etcd_mvcc_db_total_size_in_bytes{job=~".*etcd.*"}[5m])) < 0.5 and etcd_mvcc_db_total_size_in_use_in_bytes{job=~".*etcd.*"} > 104857600
+          for: 10m
+          labels:
+            severity: warning
+            component: control-plane
+          annotations:
+            runbook_url: "https://etcd.io/docs/v3.5/op-guide/maintenance/#defragmentation"
+            dashboard_url: "/d/etcd"
+            summary: "etcd database on {{ $labels.instance }} is {{ $value | humanizePercentage }} fragmented"
+            description: "In-use space is less than half of allocated disk space — defrag reclaims it."
+            action: "talosctl -n ctrl-0 etcd defrag (safe, brief write-stall, not data-lossy)."
+
+    - name: admission
+      interval: 1m
+      rules:
+        - alert: AdmissionWebhookRejecting
+          expr: |
+            sum by (name) (rate(apiserver_admission_webhook_rejection_count{error_type="calling_webhook_error"}[5m])) > 0
+          for: 10m
+          labels:
+            severity: critical
+            component: control-plane
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/control-plane.md#admissionwebhookrejecting"
+            dashboard_url: "/d/k8s-apiserver"
+            summary: "{{ $labels.name }} rejecting admission requests ({{ $value | humanize }}/s, webhook unreachable)"
+            description: "A failurePolicy=Fail webhook is refusing requests because the API server cannot reach it — not because a policy denied them. Every rejection is a create/update that did not happen. On 2026-09-12 this rejected 8305 requests in 24h and broke Velero PodVolumeBackups."
+            action: "kubectl -n <webhook-ns> get pods,endpointslices; if the backing pod is restarting, check apiserver latency first — etcd disk slowness makes controllers miss their readiness deadlines."
+
+        - alert: AdmissionWebhookFailingOpen
+          expr: |
+            sum by (name) (rate(apiserver_admission_webhook_fail_open_count[5m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+            component: control-plane
+          annotations:
+            dashboard_url: "/d/k8s-apiserver"
+            summary: "{{ $labels.name }} unreachable, requests admitted unvalidated ({{ $value | humanize }} fail-opens/s)"
+            description: "A failurePolicy=Ignore webhook is being skipped. Requests pass without the validation or mutation it provides. A webhook whose backing service no longer exists fails open on every single call."
+            action: "kubectl get mutatingwebhookconfiguration,validatingwebhookconfiguration -o wide and confirm the clientConfig service still exists; delete the configuration if its operator is gone."
+
+    - name: kube-scheduler
+      interval: 1m
+      rules:
+        - alert: KubeSchedulerDown
+          expr: absent(up{job="kube-scheduler"})
+          for: 15m
+          labels:
+            severity: critical
+            component: control-plane
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/control-plane.md#kubeschedulerdown"
+            summary: "kube-scheduler has disappeared from Prometheus target discovery"
+            dashboard_url: "/d/k8s-cluster-overview"
+            description: "No new pods can be scheduled — existing pods keep running, but nothing new gets placed."
+            action: "kubectl -n kube-system logs kube-scheduler-ctrl-0; without API: talosctl -n 192.168.0.101 containers -k | grep kube-scheduler, then talosctl logs -k <id>."
+
+        - alert: KubeSchedulerInstanceUnreachable
+          expr: up{job="kube-scheduler"} == 0
+          for: 15m
+          labels:
+            severity: warning
+            component: control-plane
+          annotations:
+            summary: "kube-scheduler instance unreachable for >15m"
+            dashboard_url: "/d/k8s-cluster-overview"
+            description: "Metrics endpoint unreachable — scheduler may still be running but degraded."
+            action: "talosctl -n ctrl-0 logs kube-scheduler; check port 10259 reachability."
+
+    - name: kube-controller-manager
+      interval: 1m
+      rules:
+        - alert: KubeControllerManagerDown
+          expr: absent(up{job="kube-controller-manager"})
+          for: 15m
+          labels:
+            severity: critical
+            component: control-plane
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/control-plane.md#kubecontrollermanagerdown"
+            summary: "kube-controller-manager has disappeared from Prometheus target discovery"
+            dashboard_url: "/d/k8s-cluster-overview"
+            description: "Reconcile loops stopped — Deployments/Jobs/ReplicaSets stop converging to desired state."
+            action: "kubectl -n kube-system logs kube-controller-manager-ctrl-0; without API: talosctl -n 192.168.0.101 containers -k | grep kube-controller-manager, then talosctl logs -k <id>."
+
+        - alert: KubeControllerManagerInstanceUnreachable
+          expr: up{job="kube-controller-manager"} == 0
+          for: 15m
+          labels:
+            severity: warning
+            component: control-plane
+          annotations:
+            summary: "kube-controller-manager instance unreachable for >15m"
+            dashboard_url: "/d/k8s-cluster-overview"
+            description: "Metrics endpoint unreachable — controller-manager may still be running but degraded."
+            action: "talosctl -n ctrl-0 logs kube-controller-manager; check port 10257 reachability."

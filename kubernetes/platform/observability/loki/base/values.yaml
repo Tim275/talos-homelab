@@ -1,0 +1,144 @@
+deploymentMode: Monolithic
+
+global:
+  priorityClassName: platform-critical
+
+lokiCanary:
+  priorityClassName: platform-critical
+
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 3
+    ring:
+      kvstore:
+        store: memberlist
+
+  ingester:
+    lifecycler:
+      ring:
+        kvstore:
+          store: memberlist
+        replication_factor: 3
+
+  distributor:
+    ring:
+      kvstore:
+        store: memberlist
+
+  storage:
+    type: s3
+    bucketNames:
+      chunks: loki-logs
+      ruler: loki-logs
+      admin: loki-logs
+
+  rulerConfig:
+    enable_api: true
+    enable_alertmanager_v2: true
+    alertmanager_url: http://alertmanager-kube-prometheus-stack-alertmanager-0.alertmanager-operated.monitoring.svc:9093,http://alertmanager-kube-prometheus-stack-alertmanager-1.alertmanager-operated.monitoring.svc:9093,http://alertmanager-kube-prometheus-stack-alertmanager-2.alertmanager-operated.monitoring.svc:9093
+    evaluation_interval: 1m
+    poll_interval: 1m
+    storage:
+      type: local
+      local:
+        directory: /loki/rules
+    ring:
+      kvstore:
+        store: inmemory
+
+  limits_config:
+    retention_stream:
+      - selector: '{source="kube-audit"}'
+        priority: 1
+        period: 8760h
+      - selector: '{service="tetragon"}'
+        priority: 1
+        period: 72h
+      - selector: '{source="hubble"}'
+        priority: 1
+        period: 72h
+    ingestion_rate_mb: 50
+    ingestion_burst_size_mb: 100
+    max_line_size: 256kb
+    max_line_size_truncate: true
+    max_streams_per_user: 10000
+    max_label_names_per_series: 30
+    per_stream_rate_limit: 10MB
+    per_stream_rate_limit_burst: 20MB
+    max_query_length: 721h
+    max_query_lookback: 8760h
+    max_query_parallelism: 32
+    max_concurrent_tail_requests: 10
+
+  compactor:
+    compactor_ring:
+      kvstore:
+        store: memberlist
+    retention_enabled: true
+    delete_request_store: s3
+
+  schemaConfig:
+    configs:
+      - from: "2024-01-01"
+        store: tsdb
+        index:
+          prefix: loki_index_
+          period: 24h
+        object_store: s3
+        schema: v13
+
+singleBinary:
+  priorityClassName: platform-critical
+  extraVolumes:
+    - name: loki-rules
+      configMap:
+        name: loki-alerting-rules
+  extraVolumeMounts:
+    - name: loki-rules
+      mountPath: /loki/rules/fake
+  persistence:
+    enabled: true
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: loki
+            app.kubernetes.io/component: single-binary
+        topologyKey: kubernetes.io/hostname
+  extraEnv:
+    - name: GOMEMLIMIT
+      value: 2700MiB # ~90% vom limit
+    - name: AWS_ACCESS_KEY_ID
+      valueFrom:
+        secretKeyRef:
+          name: loki-logs
+          key: AWS_ACCESS_KEY_ID
+    - name: AWS_SECRET_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: loki-logs
+          key: AWS_SECRET_ACCESS_KEY
+read:
+  replicas: 0
+backend:
+  replicas: 0
+write:
+  replicas: 0
+
+monitoring:
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+
+chunksCache:
+  allocatedMemory: 1024
+resultsCache:
+  allocatedMemory: 512
+
+gateway:
+  enabled: true
+  metrics:
+    enabled: false

@@ -1,0 +1,57 @@
+
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMCluster
+metadata:
+  name: vm-cluster
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"  # After VM operator (wave 3)
+spec:
+  retentionPeriod: "90d"  # 3 months retention (better than Prometheus default)
+
+  vmstorage:
+    replicaCount: 1  # Single node for homelab
+    resources:
+      limits:
+        cpu: "2"
+        memory: "4Gi"
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: "rook-ceph-block-enterprise"  # Using your Rook-Ceph storage
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 100Gi  # 100GB for metrics storage
+    extraArgs:
+      dedup.minScrapeInterval: "30s"  # Deduplication for efficient storage
+
+  vmselect:
+    replicaCount: 1  # Single node for homelab
+    resources:
+      limits:
+        cpu: "1"
+        memory: "2Gi"
+      requests:
+        cpu: "200m"
+        memory: "512Mi"
+    extraArgs:
+      search.maxConcurrentRequests: "16"  # Parallel query processing
+      search.maxMemoryPerQuery: "1GB"    # Memory per query limit
+
+  vminsert:
+    replicaCount: 1  # Single node for homelab
+    resources:
+      limits:
+        cpu: "1"
+        memory: "2Gi"
+      requests:
+        cpu: "200m"
+        memory: "512Mi"
+    extraArgs:
+      maxLabelsPerTimeseries: "50"       # Label limit per series
+      maxConcurrentInserts: "16"         # Parallel insert processing

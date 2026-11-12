@@ -1,0 +1,242 @@
+cluster:
+  name: talos
+  id: 1
+
+kubeProxyReplacement: true
+
+hostFirewall:
+  enabled: true
+
+policyAuditMode: false
+
+identityChangeGracePeriod: "30s"
+
+
+installNoConntrackIptablesRules: true
+
+routingMode: native
+autoDirectNodeRoutes: true
+
+k8sServiceHost: localhost
+k8sServicePort: 7445
+securityContext:
+  capabilities:
+    ciliumAgent:
+      - CHOWN
+      - KILL
+      - NET_ADMIN
+      - NET_RAW
+      - IPC_LOCK
+      - SYS_ADMIN
+      - SYS_RESOURCE
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    cleanCiliumState:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - SYS_RESOURCE
+
+cgroup:
+  autoMount:
+    enabled: false  # TALOS REQUIRED - Talos provides mounts
+  hostRoot: /sys/fs/cgroup
+
+# https://www.talos.dev/latest/talos-guides/network/host-dns/#forwarding-kube-dns-to-host-dns
+# https://docs.cilium.io/en/stable/operations/performance/tuning/#ebpf-host-routing
+bpf:
+  hostLegacyRouting: false  # BPF host routing REQUIRED for BBR bandwidth manager
+  masquerade: true  # Required for installNoConntrackIptablesRules
+  lbExternalClusterIP: true
+
+  # https://docs.cilium.io/en/stable/operations/performance/scalability/
+  bpfMapDynamicSizeRatio: 0.0025  # Scale maps with cluster size
+
+  policyMapMax: 65536    # Max policy entries
+
+  ctTcpMax: 524288       # 512K TCP connections
+  ctAnyMax: 262144       # 256K other connections
+
+  natMax: 524288         # 512K NAT entries
+  neighMax: 524288       # 512K neighbor entries
+
+# https://docs.cilium.io/en/stable/network/concepts/ipam/
+ipam:
+  mode: kubernetes
+  multiPoolPreAllocation: ""
+
+operator:
+
+  rollOutPods: true
+  prometheus:
+    metricsService: true
+    enabled: true
+    port: 9963
+    serviceMonitor:
+      enabled: true
+  dashboards:
+    enabled: false
+
+rollOutCiliumPods: true
+
+k8sClientRateLimit:
+  qps: 50      # Increased from 20 for Gateway API controller
+  burst: 200   # Increased from 100 for Gateway API controller
+
+l2announcements:
+  enabled: true
+
+externalIPs:
+  enabled: true
+
+loadBalancer:
+  # https://docs.cilium.io/en/stable/network/kubernetes/kubeproxy-free/#maglev-consistent-hashing
+  algorithm: maglev
+  enabled: true
+
+gatewayAPI:
+  enabled: false
+  enableAlpn: true
+  enableAppProtocol: true
+
+
+# https://docs.cilium.io/en/stable/network/kubernetes/bandwidth-manager/ — braucht Kernel 5.18+
+bandwidthManager:
+  enabled: true
+  bbr: true
+
+# BIG TCP ist mit WireGuard-Encryption inkompatibel, deshalb aus
+enableIPv4BIGTCP: false
+enableIPv6BIGTCP: false
+
+# https://docs.cilium.io/en/stable/security/network/encryption-wireguard/
+encryption:
+  enabled: true
+  type: wireguard
+  nodeEncryption: false   # NICHT true — encrypt-node verschlüsselt trustd(:50001)-Hostverkehr → Talos-Boot-Deadlock bei Node-Reset (23.05.26)
+  wireguard:
+    persistentKeepalive: 25s
+  strictMode:
+    enabled: true
+    allowRemoteNodeIdentities: false
+
+extraConfig:
+  node-encryption-opt-out-labels: "never-opt-out.never.match/key"
+  encrypt-node: "false"
+
+
+dnsProxy:
+  enabled: true
+  enableDnsCompression: true
+
+
+l7Proxy: true
+
+envoy:
+  prometheus:
+    enabled: true
+    port: "9964"
+    serviceMonitor:
+      enabled: true
+  securityContext:
+    capabilities:
+      keepCapNetBindService: true
+      envoy: [ NET_ADMIN, PERFMON, BPF ]
+
+hubble:
+  enabled: true
+  tls:
+    auto:
+      enabled: true
+      method: cronJob
+      certValidityDuration: 365
+  metrics:
+    enabled:
+      - dns
+      - drop
+      - tcp
+      - flow
+      - port-distribution
+      - icmp
+      - "policy:sourceContext=app|workload-name|reserved-identity;destinationContext=app|workload-name|reserved-identity;labelsContext=source_namespace,destination_namespace"
+      - "httpV2:exemplars=true;labelsContext=source_ip,source_namespace,source_workload,destination_ip,destination_namespace,destination_workload,traffic_direction;sourceContext=workload-name|reserved-identity;destinationContext=workload-name|reserved-identity"
+    enableOpenMetrics: true
+    port: 9965
+    serviceMonitor:
+      enabled: true
+    dashboards:
+      enabled: false
+  export:
+    static:
+      enabled: true
+      filePath: /var/run/cilium/hubble/events.log
+      fileMaxSizeMb: 10
+      fileMaxBackups: 1
+      fieldMask: []
+      allowList:
+        - '{"verdict":["DROPPED","ERROR","AUDIT"]}'
+      denyList: []
+  redact:
+    enabled: true
+    http:
+      urlQuery: true
+      userInfo: true
+      headers:
+        allow: []
+        deny:
+          - authorization
+          - cookie
+          - x-api-key
+          - x-auth-token
+          - proxy-authorization
+    kafka:
+      apiKey: true
+  relay:
+    enabled: true
+    rollOutPods: true
+    prometheus:
+      enabled: true
+      port: 9966
+      serviceMonitor:
+        enabled: true
+  ui:
+    enabled: true
+    rollOutPods: true
+
+ingressController:
+  enabled: false  # Not used — all routing via Envoy Gateway HTTPRoute
+
+authentication:
+  enabled: false
+
+prometheus:
+  metricsService: true
+  enabled: true
+  port: 9962
+  serviceMonitor:
+    enabled: true
+    trustCRDsExist: true
+
+dashboards:
+  enabled: false
+clustermesh:
+  useAPIServer: false
+  config:
+    enabled: false
+    global:
+      services:
+        enabled: false
+    clusters: []
+  apiserver:
+    metrics:
+      enabled: false
+      port: 9962
+      serviceMonitor:
+        enabled: false
+
+cni:
+  exclusive: false  # istio-cni chained sich in 05-cilium.conflist, exclusive raeumt es weg
+
+socketLB:
+  hostNamespaceOnly: true  # istio ambient: pod-traffic muss fuer ztunnel sichtbar bleiben (socket-LB nur host-ns)

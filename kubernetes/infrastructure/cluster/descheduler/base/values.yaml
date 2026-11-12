@@ -1,0 +1,40 @@
+kind: CronJob
+schedule: "*/30 * * * *"
+
+cmdOptions:
+  v: 3
+  dry-run: true
+
+deschedulerPolicy:
+  profiles:
+    - name: rebalance
+      pluginConfig:
+        - name: DefaultEvictor
+          args:
+            evictSystemCriticalPods: false
+            evictLocalStoragePods: false
+            ignorePvcPods: true
+            nodeFit: true
+            minReplicas: 2
+        - name: RemoveDuplicates
+        - name: RemovePodsViolatingTopologySpreadConstraint
+          args:
+            constraints:
+              - DoNotSchedule
+              - ScheduleAnyway
+        - name: LowNodeUtilization
+          args:
+            thresholds:
+              cpu: 60
+              memory: 60
+            targetThresholds:
+              cpu: 80
+              memory: 80
+            numberOfNodes: 2
+      plugins:
+        balance:
+          enabled:
+            - RemoveDuplicates
+            - RemovePodsViolatingTopologySpreadConstraint
+            - LowNodeUtilization
+
