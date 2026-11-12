@@ -10,7 +10,7 @@ Was nur im Cluster liegt, ist danach weg: die RGW-Buckets (CNPG-Backups `cnpg-*-
 - LLDAP legt Benutzer und Gruppen per Bootstrap-Job neu an, Passwörter nicht. Entweder das PVC per Velero sichern oder danach Passwörter neu setzen.
 - OpenBao braucht keinen Snapshot, solange jeder Wert entweder aus `openbao_values.auto.tfvars` oder aus einem Generator kommt (siehe Secrets).
 - Lokal vorhanden: `tofu/stacks/cluster/keys/seal.key`, `openbao_values.auto.tfvars`, `proxmox.auto.tfvars`.
-- `drova-prod` zieht seine Secrets aus `Tim275/drova-gitops`. Dort liegen sie als SealedSecrets, der Controller ist nicht mehr deployt. Vor dem Neuaufbau auf ExternalSecrets umstellen und die Werte in die tfvars aufnehmen.
+- `drova-prod` bringt seine Secrets als SealedSecrets aus `Tim275/drova-gitops` mit. Der Controller bekommt seine beiden Schlüssel aus OpenBao (`sealed-secrets.sealed-secrets-bootstrap-key*` in der tfvars); fehlen sie, bleiben die Secrets verschlüsselt.
 
 ## Aufbau
 
