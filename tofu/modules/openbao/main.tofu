@@ -21,7 +21,7 @@ resource "kubernetes_secret_v1" "seal_key" {
   }
 
   data = {
-    "key" = var.seal != null ? (fileexists("${path.root}/${var.seal.seal_key_path}") ? trimspace(file("${path.root}/${var.seal.seal_key_path}")) : "") : ""
+    "key" = var.seal != null ? trimspace(file("${path.root}/${var.seal.seal_key_path}")) : ""
   }
 
   # CI hat den key nicht

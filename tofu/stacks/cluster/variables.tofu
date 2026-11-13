@@ -90,12 +90,10 @@ variable "openbao_seal_config" {
     seal_key_path = string
   })
   sensitive = true
-  default   = null
 }
 
 variable "openbao_bootstrap_values" {
   description = "OpenBao seed values, key ns.secret.field, empty in CI"
   type        = map(string)
   sensitive   = true
-  default     = {}
 }
