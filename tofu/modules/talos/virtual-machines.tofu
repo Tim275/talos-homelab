@@ -5,7 +5,7 @@ resource "proxmox_virtual_environment_vm" "this" {
 
   name        = each.key
   description = each.value.machine_type == "controlplane" ? "Talos Control Plane" : "Talos Worker"
-  tags        = each.value.machine_type == "controlplane" ? ["k8s", "control-plane"] : ["k8s", "worker"]
+  tags        = concat(["k8s", each.value.machine_type == "controlplane" ? "control-plane" : "worker"], each.value.pool != "" ? [each.value.pool] : [])
   on_boot     = true
   vm_id       = each.value.vm_id
 
