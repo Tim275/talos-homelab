@@ -43,6 +43,15 @@ resource "proxmox_virtual_environment_firewall_rules" "cluster" {
   }
 
   rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "7480,9283"
+    source  = proxmox_virtual_environment_firewall_alias.lan.name
+    comment = "RGW, Ceph-mgr Prometheus"
+  }
+
+  rule {
     type   = "in"
     action = "ACCEPT"
     proto  = "tcp"

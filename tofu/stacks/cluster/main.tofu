@@ -22,3 +22,14 @@ module "openbao" {
   seal   = var.openbao_seal_config
   values = var.openbao_bootstrap_values
 }
+
+module "rook_external" {
+  depends_on = [module.talos]
+  source     = "../../modules/rook-external"
+
+  providers = {
+    kubernetes = kubernetes
+  }
+
+  values = var.rook_external
+}
