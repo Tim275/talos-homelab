@@ -15,17 +15,18 @@ variable "image" {
 variable "cluster" {
   description = "Talos cluster configuration"
   type = object({
-    name                         = string
-    vip                          = optional(string)
-    gateway                      = string
-    subnet_mask                  = optional(string, "24")
-    talos_machine_config_version = optional(string)
-    proxmox_cluster              = string
-    kubernetes_version           = string
-    gateway_api_version          = string
-    extra_manifests              = optional(list(string), [])
-    kubelet                      = optional(string)
-    api_server                   = optional(string)
+    name                          = string
+    vip                           = optional(string)
+    gateway                       = string
+    subnet_mask                   = optional(string, "24")
+    talos_machine_config_version  = optional(string)
+    proxmox_cluster               = string
+    kubernetes_version            = string
+    gateway_api_version           = string
+    kube_prometheus_stack_version = string
+    extra_manifests               = optional(list(string), [])
+    kubelet                       = optional(string)
+    api_server                    = optional(string)
     cilium = object({
       bootstrap_manifest_path = string
       values_file_path        = string
@@ -45,7 +46,6 @@ variable "nodes" {
     cpu                 = number
     ram_dedicated       = number
     ram_floating        = optional(number)
-    dns                 = optional(list(string), [])
     update              = optional(bool, false)
     igpu                = optional(bool, false)
     os_disk_size        = optional(number, 50)

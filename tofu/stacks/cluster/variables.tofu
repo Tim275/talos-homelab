@@ -38,17 +38,18 @@ variable "talos_image" {
 variable "talos_cluster_config" {
   description = "Talos cluster configuration"
   type = object({
-    name                         = string
-    vip                          = optional(string)
-    gateway                      = string
-    subnet_mask                  = optional(string, "24")
-    talos_machine_config_version = optional(string)
-    proxmox_cluster              = string
-    kubernetes_version           = string
-    gateway_api_version          = string
-    extra_manifests              = optional(list(string), [])
-    kubelet                      = optional(string)
-    api_server                   = optional(string)
+    name                          = string
+    vip                           = optional(string)
+    gateway                       = string
+    subnet_mask                   = optional(string, "24")
+    talos_machine_config_version  = optional(string)
+    proxmox_cluster               = string
+    kubernetes_version            = string
+    gateway_api_version           = string
+    kube_prometheus_stack_version = string
+    extra_manifests               = optional(list(string), [])
+    kubelet                       = optional(string)
+    api_server                    = optional(string)
     cilium = object({
       bootstrap_manifest_path = string
       values_file_path        = string
@@ -68,14 +69,13 @@ variable "talos_nodes" {
     cpu                 = number
     ram_dedicated       = number
     ram_floating        = optional(number)
-    dns                 = optional(list(string), ["192.168.0.1", "8.8.8.8"])
     update              = optional(bool, false)
     igpu                = optional(bool, false)
     os_disk_size        = optional(number, 50)      # OS disk size in GB
     ceph_disk_size      = optional(number, 0)       # Ceph OSD disk size in GB (0 = no Ceph disk)
     ceph_disk_datastore = optional(string)          # Datastore for Ceph disk (fallback: datastore_id)
     node_taints         = optional(map(string), {}) # taint-key => effect
-    pool                = optional(string, "")      # node-pool-Label; fehlte hier, tofu verwarf es stillschweigend
+    pool                = optional(string, "")
   }))
 
   validation {
