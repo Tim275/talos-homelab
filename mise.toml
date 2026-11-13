@@ -161,17 +161,43 @@ echo "$dir/${usage_host}.iso"
 """
 
 [tasks.pve-cluster]
-description = "Proxmox-Cluster homelab anlegen, nipogi und aoostar beitreten lassen"
+description = "Proxmox-Cluster homelab auf aoostar anlegen, nipogi und msa2 beitreten lassen"
 run = """
 set -euo pipefail
-main=192.168.0.50
+main=192.168.0.59
 ssh root@$main "pvecm status >/dev/null 2>&1 || pvecm create homelab --link0 $main"
 fp=$(ssh root@$main pvenode cert info --output-format json | jq -r '.[] | select(.filename == "pve-ssl.pem") | .fingerprint')
-for ip in 192.168.0.57 192.168.0.59; do
+for ip in 192.168.0.57 192.168.0.50; do
   if ssh root@$ip "pvecm status >/dev/null 2>&1"; then continue; fi
   ssh -t root@$ip "pvecm add $main --link0 $ip --fingerprint $fp"
 done
 ssh root@$main pvecm status
+"""
+
+[tasks.pve-ceph]
+description = "Ceph auf aoostar: Mon, Mgr, 990 PRO als 4 OSDs, HDD als 8 OSDs"
+run = """
+set -euo pipefail
+ssh root@192.168.0.59 bash -s <<'EOF'
+set -euo pipefail
+command -v ceph-mon >/dev/null || pveceph install --repository no-subscription --version tentacle < <(yes)
+[ -f /etc/pve/ceph.conf ] || pveceph init --network 192.168.0.0/24
+[ -d /var/lib/ceph/mon/ceph-aoostar ] || pveceph mon create
+[ -d /var/lib/ceph/mgr/ceph-aoostar ] || pveceph mgr create
+ceph config set osd osd_memory_target 2147483648
+osd() {
+  dev=$(lsblk -dnpo NAME,MODEL | awk -v m="$1" 'index($0, m) {print $1}')
+  [ -n "$dev" ] || { echo "$1 fehlt" >&2; exit 1; }
+  ceph-volume lvm list "$dev" >/dev/null 2>&1 || pveceph osd create "$dev" --osds-per-device "$2" --crush-device-class "$3"
+}
+osd "990 PRO" 4 ssd
+osd ST4000DM004 8 hdd
+for c in ssd hdd; do
+  ceph osd crush rule ls | grep -qx "$c-osd" || ceph osd crush rule create-replicated "$c-osd" default osd "$c"
+done
+ceph osd pool set .mgr crush_rule ssd-osd
+ceph osd tree
+EOF
 """
 
 # ─── Kubeconfig-Switcher ────────────────────────────────────────────────
