@@ -36,9 +36,14 @@ sshd -t
 systemctl reload ssh
 
 systemctl mask --now rpcbind.socket rpcbind.service
+dmidecode -t 38 | grep -q 'IPMI Device' || systemctl mask openipmi.service
 
 apst=nvme_core.default_ps_max_latency_us=0
-grep -q "$apst" /etc/kernel/cmdline || sed -i "s/\$/ $apst/" /etc/kernel/cmdline
 echo "GRUB_CMDLINE_LINUX=\"\$GRUB_CMDLINE_LINUX $apst\"" >/etc/default/grub.d/nvme-apst.cfg
-proxmox-boot-tool refresh
+if [ -f /etc/kernel/proxmox-boot-uuids ]; then
+  grep -q "$apst" /etc/kernel/cmdline || sed -i "s/\$/ $apst/" /etc/kernel/cmdline
+  proxmox-boot-tool refresh
+else
+  update-grub
+fi
 shutdown -r +1
