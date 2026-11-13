@@ -133,7 +133,7 @@ def main(path: str) -> int:
         f = f.relative_to(repo)
         if e.get("repoURL") not in (None, HOMELAB):
             continue
-        name, p = e["name"], e["path"]
+        name, p = e["app"], e["path"]
         target = repo / p
         starts.append(target)
         if target.name == "rendered":
