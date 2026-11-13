@@ -19,9 +19,9 @@ variable "lan_targets" {
     envoy_lb        = { address = "192.168.0.152/32", ports = ["80", "443"] }
     kube_api        = { address = "192.168.0.100/32", ports = ["6443"] }
     talos_ctrl0     = { address = "192.168.0.101/32", ports = ["50000"] }
-    proxmox_msa2    = { address = "192.168.0.50/32", ports = ["22", "8006"] }
-    proxmox_nipogi  = { address = "192.168.0.57/32", ports = ["22", "8006"] }
-    proxmox_aoostar = { address = "192.168.0.59/32", ports = ["22", "8006"] }
+    proxmox_msa2    = { address = "192.168.0.50/32", ports = ["22", "443", "8006"] }
+    proxmox_nipogi  = { address = "192.168.0.57/32", ports = ["22", "443", "8006"] }
+    proxmox_aoostar = { address = "192.168.0.59/32", ports = ["22", "443", "8006"] }
   }
   description = "Ziele im LAN mit den erlaubten TCP-Ports"
 }

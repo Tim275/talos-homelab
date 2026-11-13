@@ -34,10 +34,19 @@ resource "proxmox_virtual_environment_firewall_rules" "cluster" {
   }
 
   rule {
+    type    = "in"
+    action  = "ACCEPT"
+    proto   = "tcp"
+    dport   = "80,443"
+    source  = proxmox_virtual_environment_firewall_alias.lan.name
+    comment = "nginx vor der WebGUI"
+  }
+
+  rule {
     type   = "in"
     action = "ACCEPT"
     proto  = "tcp"
-    dport  = "22,8006"
+    dport  = "22,80,443,8006"
     source = proxmox_virtual_environment_firewall_alias.netbird.name
   }
 }
