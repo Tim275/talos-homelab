@@ -26,11 +26,10 @@ resource "proxmox_virtual_environment_download_file" "this" {
   for_each = toset(distinct([for k, v in var.nodes : "${v.host_node}_${v.update == true ? local.update_image_id : local.image_id}"]))
 
   node_name    = split("_", each.key)[0]
-  content_type = "iso"
+  content_type = "import"
   datastore_id = var.image.proxmox_datastore
 
-  file_name               = "talos-${split("_", each.key)[1]}-${split("_", each.key)[2]}-${var.image.platform}-${var.image.arch}.img"
-  url                     = "${var.image.factory_url}/image/${split("_", each.key)[1]}/${split("_", each.key)[2]}/${var.image.platform}-${var.image.arch}.raw.gz"
-  decompression_algorithm = "gz"
-  overwrite               = true
+  file_name = "talos-${split("_", each.key)[1]}-${split("_", each.key)[2]}-${var.image.platform}-${var.image.arch}.qcow2"
+  url       = "${var.image.factory_url}/image/${split("_", each.key)[1]}/${split("_", each.key)[2]}/${var.image.platform}-${var.image.arch}.qcow2"
+  overwrite = true
 } 
