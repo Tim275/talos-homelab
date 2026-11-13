@@ -178,29 +178,6 @@ parameters:
 provisioner: rook-ceph.ceph.rook.io/bucket
 reclaimPolicy: Delete
 ---
-allowVolumeExpansion: true
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-    storageclass.kubernetes.io/description: RWX via CephFS. Aktuell ungenutzt, als
-      Option vorgehalten.
-  name: rook-cephfs-enterprise
-parameters:
-  clusterID: rook-ceph
-  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-cephfs-provisioner
-  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
-  csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
-  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
-  csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
-  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
-  fsName: myfs-enterprise
-  pool: myfs-enterprise-replicated
-provisioner: rook-ceph.cephfs.csi.ceph.com
-reclaimPolicy: Delete
-volumeBindingMode: WaitForFirstConsumer
----
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -33173,14 +33150,6 @@ kind: ServiceAccount
 metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "4"
-  name: csi-orphan-cleanup
-  namespace: rook-ceph
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
   labels:
     app.kubernetes.io/component: driver-ceph
     app.kubernetes.io/name: cosi-driver-ceph
@@ -33194,22 +33163,6 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "4"
   name: released-pv-cleanup
-  namespace: rook-ceph
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  name: rook-ceph-cephfs-csi-ceph-com-ctrlplugin-sa
-  namespace: rook-ceph
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  name: rook-ceph-cephfs-csi-ceph-com-nodeplugin-sa
   namespace: rook-ceph
 ---
 apiVersion: v1
@@ -33431,24 +33384,6 @@ rules:
   verbs:
   - create
   - patch
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  name: csi-orphan-cleanup
-  namespace: rook-ceph
-rules:
-- apiGroups:
-  - ""
-  resources:
-  - pods
-  - pods/exec
-  verbs:
-  - get
-  - list
-  - create
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -33791,93 +33726,6 @@ rules:
   verbs:
   - get
   - create
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  name: rook-ceph-cephfs-csi-ceph-com-ctrlplugin-r
-rules:
-- apiGroups:
-  - coordination.k8s.io
-  resources:
-  - leases
-  verbs:
-  - get
-  - watch
-  - list
-  - delete
-  - update
-  - create
-- apiGroups:
-  - csiaddons.openshift.io
-  resources:
-  - csiaddonsnodes
-  verbs:
-  - get
-  - watch
-  - list
-  - create
-  - update
-  - delete
-- apiGroups:
-  - ""
-  resources:
-  - pods
-  verbs:
-  - get
-- apiGroups:
-  - apps
-  resources:
-  - replicasets
-  verbs:
-  - get
-- apiGroups:
-  - apps
-  resources:
-  - deployments/finalizers
-  - daemonsets/finalizers
-  verbs:
-  - update
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  name: rook-ceph-cephfs-csi-ceph-com-nodeplugin-r
-rules:
-- apiGroups:
-  - csiaddons.openshift.io
-  resources:
-  - csiaddonsnodes
-  verbs:
-  - get
-  - watch
-  - list
-  - create
-  - update
-  - delete
-- apiGroups:
-  - ""
-  resources:
-  - pods
-  verbs:
-  - get
-- apiGroups:
-  - apps
-  resources:
-  - replicasets
-  verbs:
-  - get
-- apiGroups:
-  - apps
-  resources:
-  - deployments/finalizers
-  - daemonsets/finalizers
-  verbs:
-  - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -34501,290 +34349,6 @@ rules:
   - get
   - list
   - delete
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  name: rook-ceph-cephfs-csi-ceph-com-ctrlplugin-cr
-rules:
-- apiGroups:
-  - ""
-  resources:
-  - secrets
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
-  verbs:
-  - get
-- apiGroups:
-  - ""
-  resources:
-  - nodes
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - storage.k8s.io
-  resources:
-  - csinodes
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - persistentvolumes
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - delete
-  - patch
-  - update
-- apiGroups:
-  - ""
-  resources:
-  - persistentvolumeclaims
-  verbs:
-  - get
-  - list
-  - watch
-  - patch
-  - update
-- apiGroups:
-  - storage.k8s.io
-  resources:
-  - storageclasses
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - events
-  verbs:
-  - list
-  - watch
-  - create
-  - update
-  - patch
-- apiGroups:
-  - storage.k8s.io
-  resources:
-  - volumeattachments
-  verbs:
-  - get
-  - list
-  - watch
-  - patch
-- apiGroups:
-  - storage.k8s.io
-  resources:
-  - volumeattachments/status
-  verbs:
-  - patch
-- apiGroups:
-  - ""
-  resources:
-  - persistentvolumeclaims/status
-  verbs:
-  - patch
-- apiGroups:
-  - snapshot.storage.k8s.io
-  resources:
-  - volumesnapshots
-  verbs:
-  - get
-  - list
-- apiGroups:
-  - snapshot.storage.k8s.io
-  resources:
-  - volumesnapshotclasses
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - snapshot.storage.k8s.io
-  resources:
-  - volumesnapshotcontents
-  verbs:
-  - get
-  - list
-  - watch
-  - patch
-  - update
-- apiGroups:
-  - snapshot.storage.k8s.io
-  resources:
-  - volumesnapshotcontents/status
-  verbs:
-  - update
-  - patch
-- apiGroups:
-  - groupsnapshot.storage.k8s.io
-  resources:
-  - volumegroupsnapshotclasses
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - groupsnapshot.storage.k8s.io
-  resources:
-  - volumegroupsnapshotcontents
-  verbs:
-  - get
-  - list
-  - watch
-  - update
-  - patch
-- apiGroups:
-  - groupsnapshot.storage.k8s.io
-  resources:
-  - volumegroupsnapshotcontents/status
-  verbs:
-  - update
-  - patch
-- apiGroups:
-  - groupsnapshot.storage.openshift.io
-  resources:
-  - volumegroupsnapshotclasses
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - groupsnapshot.storage.openshift.io
-  resources:
-  - volumegroupsnapshotcontents
-  verbs:
-  - get
-  - list
-  - watch
-  - update
-  - patch
-- apiGroups:
-  - groupsnapshot.storage.openshift.io
-  resources:
-  - volumegroupsnapshotcontents/status
-  verbs:
-  - update
-  - patch
-- apiGroups:
-  - replication.storage.openshift.io
-  resources:
-  - volumegroupreplicationcontents
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - replication.storage.openshift.io
-  resources:
-  - volumegroupreplicationclasses
-  verbs:
-  - get
-- apiGroups:
-  - ""
-  resources:
-  - serviceaccounts
-  verbs:
-  - get
-- apiGroups:
-  - ""
-  resources:
-  - serviceaccounts/token
-  verbs:
-  - create
-- apiGroups:
-  - authentication.k8s.io
-  resources:
-  - tokenreviews
-  verbs:
-  - create
-- apiGroups:
-  - storage.k8s.io
-  resources:
-  - volumeattributesclasses
-  verbs:
-  - get
-  - list
-  - watch
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  name: rook-ceph-cephfs-csi-ceph-com-nodeplugin-cr
-rules:
-- apiGroups:
-  - ""
-  resources:
-  - nodes
-  verbs:
-  - get
-- apiGroups:
-  - ""
-  resources:
-  - secrets
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
-  verbs:
-  - get
-- apiGroups:
-  - ""
-  resources:
-  - serviceaccounts
-  verbs:
-  - get
-- apiGroups:
-  - ""
-  resources:
-  - serviceaccounts/token
-  verbs:
-  - create
-- apiGroups:
-  - ""
-  resources:
-  - events
-  verbs:
-  - list
-  - watch
-  - create
-  - update
-  - patch
-- apiGroups:
-  - ""
-  resources:
-  - persistentvolumes
-  - persistentvolumeclaims
-  verbs:
-  - get
-- apiGroups:
-  - authentication.k8s.io
-  resources:
-  - tokenreviews
-  verbs:
-  - create
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -35639,22 +35203,6 @@ kind: RoleBinding
 metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "4"
-  name: csi-orphan-cleanup
-  namespace: rook-ceph
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: csi-orphan-cleanup
-subjects:
-- kind: ServiceAccount
-  name: csi-orphan-cleanup
-  namespace: rook-ceph
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
   labels:
     app.kubernetes.io/created-by: helm
     app.kubernetes.io/instance: rook-ceph
@@ -35885,36 +35433,6 @@ kind: RoleBinding
 metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "4"
-  name: rook-ceph-cephfs-csi-ceph-com-ctrlplugin-rb
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: rook-ceph-cephfs-csi-ceph-com-ctrlplugin-r
-subjects:
-- kind: ServiceAccount
-  name: rook-ceph-cephfs-csi-ceph-com-ctrlplugin-sa
-  namespace: rook-ceph
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  name: rook-ceph-cephfs-csi-ceph-com-nodeplugin-rb
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: rook-ceph-cephfs-csi-ceph-com-nodeplugin-r
-subjects:
-- kind: ServiceAccount
-  name: rook-ceph-cephfs-csi-ceph-com-nodeplugin-sa
-  namespace: rook-ceph
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
   name: rook-ceph-rbd-csi-ceph-com-ctrlplugin-rb
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -36014,36 +35532,6 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: released-pv-cleanup
-  namespace: rook-ceph
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  name: rook-ceph-cephfs-csi-ceph-com-ctrlplugin-crb
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: rook-ceph-cephfs-csi-ceph-com-ctrlplugin-cr
-subjects:
-- kind: ServiceAccount
-  name: rook-ceph-cephfs-csi-ceph-com-ctrlplugin-sa
-  namespace: rook-ceph
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  name: rook-ceph-cephfs-csi-ceph-com-nodeplugin-crb
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: rook-ceph-cephfs-csi-ceph-com-nodeplugin-cr
-subjects:
-- kind: ServiceAccount
-  name: rook-ceph-cephfs-csi-ceph-com-nodeplugin-sa
   namespace: rook-ceph
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -36220,29 +35708,11 @@ metadata:
 ---
 apiVersion: v1
 data:
-  config.yaml: |
-    PROMETHEUS_API_HOST: http://kube-prometheus-stack-prometheus.monitoring.svc:9090
-    PROMETHEUS_API_SSL_VERIFY: false
-    GRAFANA_API_URL: http://kube-prometheus-stack-grafana.monitoring.svc:80
-    GRAFANA_API_SSL_VERIFY: false
-  prometheus-api-host: http://kube-prometheus-stack-prometheus.monitoring.svc:9090
-kind: ConfigMap
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  labels:
-    app.kubernetes.io/component: dashboard-config
-    app.kubernetes.io/name: rook-ceph
-  name: rook-ceph-dashboard-prometheus-config
-  namespace: rook-ceph
----
-apiVersion: v1
-data:
   ROOK_CEPH_ALLOW_LOOP_DEVICES: "false"
   ROOK_CEPH_COMMANDS_TIMEOUT_SECONDS: "15"
   ROOK_CEPH_MON_RUN_AS_ROOT: "false"
   ROOK_DELETE_UNUSED_CRUSH_RULES: "true"
-  ROOK_ENABLE_DISCOVERY_DAEMON: "true"
+  ROOK_ENABLE_DISCOVERY_DAEMON: "false"
   ROOK_LOG_LEVEL: INFO
   ROOK_OBC_ALLOW_ADDITIONAL_CONFIG_FIELDS: maxObjects,maxSize
   ROOK_OBC_WATCH_OPERATOR_NAMESPACE: "true"
@@ -36288,56 +35758,6 @@ metadata:
     storage-backend: ceph
   name: rook-csi-operator-image-set-configmap
   namespace: rook-ceph
----
-apiVersion: scheduling.k8s.io/v1
-description: Priority class for Ceph MDS daemons - medium-high priority
-globalDefault: false
-kind: PriorityClass
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  name: rook-ceph-mds-priority
-value: 600000000
----
-apiVersion: scheduling.k8s.io/v1
-description: Priority class for Ceph MGR daemons - high priority
-globalDefault: false
-kind: PriorityClass
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  name: rook-ceph-mgr-priority
-value: 800000000
----
-apiVersion: scheduling.k8s.io/v1
-description: Priority class for Ceph MON daemons - highest priority
-globalDefault: false
-kind: PriorityClass
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  name: rook-ceph-mon-priority
-value: 900000000
----
-apiVersion: scheduling.k8s.io/v1
-description: Priority class for Ceph OSD daemons - high priority
-globalDefault: false
-kind: PriorityClass
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  name: rook-ceph-osd-priority
-value: 700000000
----
-apiVersion: scheduling.k8s.io/v1
-description: Priority class for Ceph RGW daemons - medium priority
-globalDefault: false
-kind: PriorityClass
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  name: rook-ceph-rgw-priority
-value: 500000000
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -36548,10 +35968,11 @@ spec:
       - command:
         - /bin/bash
         - -c
-        - |
-          echo "Ceph Toolbox Ready"
-          tail -f /dev/null
-        image: quay.io/ceph/ceph:v19.2.3
+        - tail -f /dev/null
+        env:
+        - name: CEPH_ARGS
+          value: --id healthchecker
+        image: quay.io/ceph/ceph:v20.2.5
         name: rook-ceph-tools
         volumeMounts:
         - mountPath: /etc/ceph
@@ -36564,22 +35985,20 @@ spec:
         - |
           cat > /etc/ceph/ceph.conf << EOF
           [global]
-          mon_host = $(cat /etc/rook/mon_host)
-          [client.admin]
+          mon_host = $(sed 's/[a-z0-9_-]\+=//g' /etc/rook/mon-endpoints)
           keyring = /etc/ceph/keyring
           EOF
-          cp /etc/ceph-keyring/keyring /etc/ceph/keyring
+          printf '[%s]\nkey = %s\n' "$(cat /etc/rook-mon/ceph-username)" "$(cat /etc/rook-mon/ceph-secret)" > /etc/ceph/keyring
           chmod 600 /etc/ceph/keyring
-          echo "Config initialized successfully"
-        image: quay.io/ceph/ceph:v19.2.3
+        image: quay.io/ceph/ceph:v20.2.5
         name: config-init
         volumeMounts:
         - mountPath: /etc/ceph
           name: ceph-config
         - mountPath: /etc/rook
-          name: mon-config
-        - mountPath: /etc/ceph-keyring
-          name: ceph-admin-keyring
+          name: mon-endpoints
+        - mountPath: /etc/rook-mon
+          name: mon-secret
       tolerations:
       - effect: NoExecute
         key: node.kubernetes.io/unreachable
@@ -36588,176 +36007,20 @@ spec:
       volumes:
       - emptyDir: {}
         name: ceph-config
-      - name: mon-config
+      - configMap:
+          items:
+          - key: data
+            path: mon-endpoints
+          name: rook-ceph-mon-endpoints
+        name: mon-endpoints
+      - name: mon-secret
         secret:
-          secretName: rook-ceph-config
-      - name: ceph-admin-keyring
-        secret:
-          secretName: rook-ceph-admin-keyring
----
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  labels:
-    app: ceph-crash-archive
-    tier: storage
-  name: ceph-crash-archive
-  namespace: rook-ceph
-spec:
-  concurrencyPolicy: Forbid
-  failedJobsHistoryLimit: 1
-  jobTemplate:
-    metadata:
-      annotations:
-        argocd.argoproj.io/sync-wave: "4"
-    spec:
-      template:
-        metadata:
-          annotations:
-            argocd.argoproj.io/sync-wave: "4"
-          labels:
-            app: ceph-crash-archive
-        spec:
-          containers:
-          - command:
-            - /bin/bash
-            - -c
-            - |
-              set -e
-              echo "=== Ceph Cluster Health Before ==="
-              ceph health detail || true
-              echo ""
-              echo "=== Archiving Ceph Crashes ==="
-              ceph crash archive-all
-              echo ""
-              echo "=== Ceph Cluster Health After ==="
-              ceph health detail
-              echo ""
-              echo "Crash archive completed successfully"
-            image: quay.io/ceph/ceph:v19.2.3
-            name: ceph-crash-archiver
-            resources:
-              limits:
-                cpu: 100m
-                memory: 128Mi
-              requests:
-                cpu: 10m
-                memory: 64Mi
-            volumeMounts:
-            - mountPath: /etc/ceph
-              name: ceph-config
-          initContainers:
-          - command:
-            - /bin/bash
-            - -c
-            - |
-              cat > /etc/ceph/ceph.conf << EOF
-              [global]
-              mon_host = $(cat /etc/rook/mon_host)
-              [client.admin]
-              keyring = /etc/ceph/keyring
-              EOF
-              cp /etc/ceph-keyring/keyring /etc/ceph/keyring
-              chmod 600 /etc/ceph/keyring
-            image: quay.io/ceph/ceph:v19.2.3
-            name: config-init
-            volumeMounts:
-            - mountPath: /etc/ceph
-              name: ceph-config
-            - mountPath: /etc/rook
-              name: mon-config
-            - mountPath: /etc/ceph-keyring
-              name: ceph-admin-keyring
-          restartPolicy: OnFailure
-          serviceAccountName: rook-ceph-system
-          volumes:
-          - emptyDir: {}
-            name: ceph-config
-          - name: mon-config
-            secret:
-              secretName: rook-ceph-config
-          - name: ceph-admin-keyring
-            secret:
-              secretName: rook-ceph-admin-keyring
-      ttlSecondsAfterFinished: 600
-  schedule: 0 */6 * * *
-  successfulJobsHistoryLimit: 1
-  suspend: false
----
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  name: csi-orphan-omap-cleanup
-  namespace: rook-ceph
-spec:
-  concurrencyPolicy: Forbid
-  failedJobsHistoryLimit: 3
-  jobTemplate:
-    metadata:
-      annotations:
-        argocd.argoproj.io/sync-wave: "4"
-    spec:
-      backoffLimit: 1
-      template:
-        metadata:
-          annotations:
-            argocd.argoproj.io/sync-wave: "4"
-        spec:
-          containers:
-          - command:
-            - /bin/bash
-            - -c
-            - |
-              set -eo pipefail
-              POOLS="replicapool-enterprise"
-              REMOVED=0
-              for POOL in $POOLS; do
-                echo "[$(date)] Scanning pool: $POOL"
-                KEYS=$(kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-                  rados -p "$POOL" listomapkeys csi.volumes.default 2>/dev/null \
-                  | grep '^csi\.volume\.pvc-' || true)
-                [ -z "$KEYS" ] && continue
-                RBD_IMGS=$(kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-                  rbd ls -p "$POOL" 2>/dev/null || true)
-                LIVE_PVCS=$(kubectl get pvc -A -o jsonpath='{range .items[*]}{.metadata.uid}{"\n"}{end}' 2>/dev/null)
-                while read -r KEY; do
-                  [ -z "$KEY" ] && continue
-                  PVC_UID=$(echo "$KEY" | sed 's|^csi\.volume\.pvc-||')
-                  if echo "$LIVE_PVCS" | grep -q "$PVC_UID"; then
-                    continue
-                  fi
-                  VOL_UID=$(kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-                    rados -p "$POOL" getomapval csi.volumes.default "$KEY" --no-header 2>/dev/null \
-                    | tr -d '\0' | tail -c 36 || true)
-                  if [ -n "$VOL_UID" ] && echo "$RBD_IMGS" | grep -q "csi-vol-$VOL_UID"; then
-                    echo "  SKIP $KEY → has live RBD image csi-vol-$VOL_UID"
-                    continue
-                  fi
-                  echo "  ORPHAN $KEY (PVC=$PVC_UID, IMG=$VOL_UID) — removing"
-                  kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-                    rados -p "$POOL" rmomapkey csi.volumes.default "$KEY" 2>&1 | tail -1
-                  REMOVED=$((REMOVED+1))
-                done <<< "$KEYS"
-              done
-              echo "[$(date)] Done. Removed $REMOVED orphan omap keys."
-            image: docker.io/alpine/k8s:1.36.5@sha256:094adf64cdc4827377cdbe7ea5747472ce115f9fbc64a4e35970ec66777f9a00
-            name: cleanup
-            resources:
-              limits:
-                cpu: 200m
-                memory: 128Mi
-              requests:
-                cpu: 50m
-                memory: 64Mi
-          restartPolicy: OnFailure
-          serviceAccountName: csi-orphan-cleanup
-      ttlSecondsAfterFinished: 600
-  schedule: 17 * * * *
-  successfulJobsHistoryLimit: 3
+          items:
+          - key: ceph-username
+            path: ceph-username
+          - key: ceph-secret
+            path: ceph-secret
+          secretName: rook-ceph-mon
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -36823,19 +36086,6 @@ kind: PodDisruptionBudget
 metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "4"
-  name: cephfs-csi-ctrlplugin
-  namespace: rook-ceph
-spec:
-  minAvailable: 2
-  selector:
-    matchLabels:
-      app: rook-ceph.cephfs.csi.ceph.com-ctrlplugin
----
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
   name: rbd-csi-ctrlplugin
   namespace: rook-ceph
 spec:
@@ -36843,71 +36093,6 @@ spec:
   selector:
     matchLabels:
       app: rook-ceph.rbd.csi.ceph.com-ctrlplugin
----
-apiVersion: ceph.rook.io/v1
-kind: CephBlockPool
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  name: kafka-fast
-  namespace: rook-ceph
-spec:
-  enableCrushUpdates: true
-  failureDomain: zone
-  parameters:
-    min_size: "1"
-  replicated:
-    requireSafeReplicaSize: true
-    size: 2
----
-apiVersion: ceph.rook.io/v1
-kind: CephBlockPool
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  name: obs-pool
-  namespace: rook-ceph
-spec:
-  enableCrushUpdates: true
-  failureDomain: zone
-  mirroring:
-    enabled: false
-  parameters:
-    compression_algorithm: lz4
-    compression_mode: aggressive
-    compression_required_ratio: "0.875"
-    min_size: "1"
-    pg_num: "64"
-    pgp_num: "64"
-  quotas:
-    maxSize: 300G
-  replicated:
-    requireSafeReplicaSize: true
-    size: 2
----
-apiVersion: ceph.rook.io/v1
-kind: CephBlockPool
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  name: replicapool-enterprise
-  namespace: rook-ceph
-spec:
-  enableCrushUpdates: true
-  failureDomain: zone
-  mirroring:
-    enabled: false
-    mode: image
-  parameters:
-    compression_algorithm: lz4
-    compression_max_blob_size: "131072"
-    compression_min_blob_size: "8192"
-    compression_mode: aggressive
-    compression_required_ratio: "0.875"
-    min_size: "1"
-  replicated:
-    requireSafeReplicaSize: true
-    size: 2
 ---
 apiVersion: ceph.rook.io/v1
 kind: CephCluster
@@ -36922,269 +36107,26 @@ metadata:
   name: rook-ceph
   namespace: rook-ceph
 spec:
-  cephConfig:
-    global:
-      bluestore_block_db_size: "1073741824"
-      bluestore_cache_autotune: "true"
-      bluestore_csum_type: none
-      bluestore_default_buffered_write: "true"
-      bluestore_max_blob_size_ssd: "524288"
-      bluestore_prefer_deferred_size: "65536"
-      bluestore_prefer_deferred_size_ssd: "32768"
-      bluestore_slow_ops_warn_threshold: "50"
-      bluestore_throttle_bytes: "134217728"
-      bluestore_throttle_deferred_bytes: "268435456"
-      mon_clock_drift_allowed: "0.1"
-      mon_osd_down_out_interval: "600"
-      osd_client_op_priority: "63"
-      osd_heartbeat_grace: "120"
-      osd_heartbeat_interval: "15"
-      osd_max_backfills: "1"
-      osd_memory_target: "2147483648"
-      osd_memory_target_autotune: "true"
-      osd_op_complaint_time: "120"
-      osd_op_history_slow_op_threshold: "120"
-      osd_op_log_threshold: "50"
-      osd_op_queue: wpq
-      osd_op_queue_cut_off: high
-      osd_pool_default_pg_autoscale_mode: "off"
-      osd_pool_default_pg_num: "16"
-      osd_recovery_max_active: "1"
-      osd_recovery_op_priority: "3"
-      osd_scrub_begin_hour: "2"
-      osd_scrub_during_recovery: "false"
-      osd_scrub_end_hour: "6"
-  cephVersion:
-    allowUnsupported: false
-    image: quay.io/ceph/ceph:v19.2.3
-  cleanupPolicy:
-    confirmation: ""
-    sanitizeDisks:
-      dataSource: zero
-      iteration: 1
-      method: quick
-  continueUpgradeAfterChecksEvenIfNotHealthy: false
   crashCollector:
-    disable: false
-  dashboard:
-    enabled: true
-    ssl: false
+    disable: true
   dataDirHostPath: /var/lib/rook
-  disruptionManagement:
-    managePodBudgets: true
-    osdMaintenanceTimeout: 30
-    pgHealthCheckTimeout: 0
+  external:
+    enable: true
   healthCheck:
     daemonHealth:
       mon:
         disabled: false
         interval: 45s
-      osd:
-        disabled: false
-        interval: 60s
-      status:
-        disabled: false
-        interval: 60s
-  mgr:
-    allowMultiplePerNode: false
-    count: 2
-    modules:
-    - enabled: true
-      name: pg_autoscaler
-    - enabled: true
-      name: balancer
-    - enabled: true
-      name: prometheus
-    - enabled: true
-      name: telemetry
-  mon:
-    allowMultiplePerNode: false
-    count: 3
+  labels:
+    monitoring:
+      release: kube-prometheus-stack
   monitoring:
-    enabled: false
-  network:
-    connections:
-      compression:
-        enabled: false
-      encryption:
-        enabled: true
-    provider: host
-  placement:
-    all:
-      tolerations:
-      - effect: PreferNoSchedule
-        key: nipogi
-        operator: Exists
-      - effect: NoExecute
-        operator: Exists
-    mgr:
-      nodeAffinity:
-        requiredDuringSchedulingIgnoredDuringExecution:
-          nodeSelectorTerms:
-          - matchExpressions:
-            - key: kubernetes.io/hostname
-              operator: NotIn
-              values:
-              - ctrl-0
-      podAntiAffinity:
-        preferredDuringSchedulingIgnoredDuringExecution:
-        - podAffinityTerm:
-            labelSelector:
-              matchLabels:
-                app: rook-ceph-mgr
-            topologyKey: kubernetes.io/hostname
-          weight: 100
-    mon:
-      nodeAffinity:
-        requiredDuringSchedulingIgnoredDuringExecution:
-          nodeSelectorTerms:
-          - matchExpressions:
-            - key: kubernetes.io/hostname
-              operator: NotIn
-              values:
-              - ctrl-0
-      podAntiAffinity:
-        requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app: rook-ceph-mon
-          topologyKey: topology.kubernetes.io/zone
-    osd:
-      nodeAffinity:
-        preferredDuringSchedulingIgnoredDuringExecution:
-        - preference:
-            matchExpressions:
-            - key: node-role.kubernetes.io/worker
-              operator: Exists
-          weight: 100
-      podAntiAffinity:
-        preferredDuringSchedulingIgnoredDuringExecution:
-        - podAffinityTerm:
-            labelSelector:
-              matchLabels:
-                app: rook-ceph-osd
-            topologyKey: kubernetes.io/hostname
-          weight: 100
-  priorityClassNames:
-    mgr: system-cluster-critical
-    mon: system-node-critical
-    osd: system-node-critical
-  removeOSDsIfOutAndSafeToRemove: true
-  resources:
-    crashcollector:
-      limits:
-        memory: 128Mi
-      requests:
-        cpu: 50m
-        memory: 64Mi
-    exporter:
-      limits:
-        memory: 128Mi
-      requests:
-        cpu: 10m
-        memory: 64Mi
-    mgr:
-      limits:
-        memory: 2Gi
-      requests:
-        cpu: 250m
-        memory: 1Gi
-    mon:
-      limits:
-        memory: 2Gi
-      requests:
-        cpu: 250m
-        memory: 2Gi
-    osd:
-      limits:
-        memory: 2560Mi
-      requests:
-        cpu: 100m
-        memory: 2560Mi
-    prepareosd:
-      limits:
-        memory: 256Mi
-      requests:
-        cpu: 50m
-        memory: 64Mi
-  skipUpgradeChecks: false
-  storage:
-    config:
-      bluestore_cache_size: "1073741824"
-      bluestore_min_alloc_size_hdd: "65536"
-      bluestore_rocksdb_options: compression=kNoCompression,max_write_buffer_number=4,min_write_buffer_number_to_merge=1,recycle_log_file_num=4
-      encryptedDevice: "true"
-      osd_memory_target: "2147483648"
-      osdsPerDevice: "1"
-    nodes:
-    - config:
-        storeType: bluestore
-      devices:
-      - name: /dev/sdb
-      name: worker-1
-    - config:
-        storeType: bluestore
-      devices:
-      - name: /dev/sdb
-      name: worker-2
-    - config:
-        storeType: bluestore
-      devices:
-      - name: /dev/sdb
-      name: worker-3
-    - config:
-        storeType: bluestore
-      devices:
-      - name: /dev/sdb
-      name: worker-4
-    - config:
-        storeType: bluestore
-      devices:
-      - name: /dev/sdb
-      name: worker-5
-    useAllDevices: false
-    useAllNodes: false
-  upgradeOSDRequiresHealthyPGs: true
-  waitTimeoutForHealthyOSDInMinutes: 10
----
-apiVersion: ceph.rook.io/v1
-kind: CephFilesystem
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  name: myfs-enterprise
-  namespace: rook-ceph
-spec:
-  dataPools:
-  - failureDomain: zone
-    name: replicated
-    parameters:
-      compression_algorithm: lz4
-      compression_mode: aggressive
-      min_size: "1"
-      pg_num: "8"
-      pgp_num: "8"
-    replicated:
-      requireSafeReplicaSize: false
-      size: 2
-  metadataPool:
-    failureDomain: zone
-    parameters:
-      min_size: "1"
-      pg_num: "16"
-      pgp_num: "16"
-    replicated:
-      requireSafeReplicaSize: false
-      size: 2
-  metadataServer:
-    activeCount: 1
-    activeStandby: true
-    priorityClassName: system-cluster-critical
-    resources:
-      requests:
-        cpu: 100m
-        memory: 512Mi
-  preserveFilesystemOnDelete: false
+    enabled: true
+    externalMgrEndpoints:
+    - ip: 192.168.0.50
+    - ip: 192.168.0.57
+    - ip: 192.168.0.59
+    externalMgrPrometheusPort: 9283
 ---
 apiVersion: ceph.rook.io/v1
 kind: CephObjectStoreUser
@@ -37218,43 +36160,6 @@ metadata:
 spec:
   displayName: Velero PV Backups User
   store: homelab-objectstore
----
-apiVersion: csi.ceph.io/v1
-kind: Driver
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  name: rook-ceph.cephfs.csi.ceph.com
-  namespace: rook-ceph
-spec:
-  attachRequired: true
-  cephFsClientType: kernel
-  controllerPlugin:
-    hostNetwork: false
-    privileged: false
-    replicas: 3
-    serviceAccountName: rook-ceph-cephfs-csi-ceph-com-ctrlplugin-sa
-    tolerations: []
-    volumes: []
-  deployCsiAddons: false
-  enableFencing: false
-  fsGroupPolicy: File
-  fuseMountOptions: {}
-  generateOMapInfo: false
-  grpcTimeout: 30
-  kernelMountOptions: {}
-  log:
-    rotation:
-      maxFiles: 7
-      maxLogSize: 10G
-      periodicity: daily
-    verbosity: 0
-  nodePlugin:
-    imagePullPolicy: IfNotPresent
-    serviceAccountName: rook-ceph-cephfs-csi-ceph-com-nodeplugin-sa
-    tolerations: []
-    volumes: []
-  snapshotPolicy: volumeSnapshot
 ---
 apiVersion: csi.ceph.io/v1
 kind: Driver
@@ -37337,89 +36242,3 @@ spec:
       tolerations: []
       volumes: []
     snapshotPolicy: none
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-    gethomepage.dev/description: Storage Cluster (VPN-only via NetBird)
-    gethomepage.dev/enabled: "true"
-    gethomepage.dev/group: Storage
-    gethomepage.dev/icon: ceph.png
-    gethomepage.dev/name: Ceph Dashboard
-    gethomepage.dev/pod-selector: app=rook-ceph-mgr
-  name: ceph-dashboard
-  namespace: rook-ceph
-spec:
-  hostnames:
-  - ceph.timourhomelab.org
-  parentRefs:
-  - group: gateway.networking.k8s.io
-    kind: Gateway
-    name: envoy-gateway
-    namespace: gateway
-    sectionName: https
-  rules:
-  - backendRefs:
-    - name: rook-ceph-mgr-dashboard
-      port: 7000
-    matches:
-    - path:
-        type: PathPrefix
-        value: /
----
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  labels:
-    app.kubernetes.io/component: monitoring
-    app.kubernetes.io/name: rook-ceph-exporter
-    app.kubernetes.io/part-of: rook-ceph
-    release: kube-prometheus-stack
-    team: platform
-  name: rook-ceph-exporter
-  namespace: rook-ceph
-spec:
-  endpoints:
-  - honorLabels: true
-    interval: 30s
-    path: /metrics
-    port: ceph-exporter-http-metrics
-    scrapeTimeout: 10s
-  namespaceSelector:
-    matchNames:
-    - rook-ceph
-  selector:
-    matchLabels:
-      app: rook-ceph-exporter
----
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  labels:
-    app.kubernetes.io/component: monitoring
-    app.kubernetes.io/name: rook-ceph-mgr
-    app.kubernetes.io/part-of: rook-ceph
-    release: kube-prometheus-stack
-    team: platform
-  name: rook-ceph-mgr
-  namespace: rook-ceph
-spec:
-  endpoints:
-  - honorLabels: true
-    interval: 30s
-    path: /metrics
-    port: http-metrics
-    scrapeTimeout: 10s
-  namespaceSelector:
-    matchNames:
-    - rook-ceph
-  selector:
-    matchLabels:
-      app: rook-ceph-mgr
-      rook_cluster: rook-ceph
