@@ -166,24 +166,32 @@ run = """
 set -euo pipefail
 main=192.168.0.59
 ssh root@$main "pvecm status >/dev/null 2>&1 || pvecm create homelab --link0 $main"
-fp=$(ssh root@$main pvenode cert info --output-format json | jq -r '.[] | select(.filename == "pve-ssl.pem") | .fingerprint')
+ssh root@$main "until pvecm status 2>/dev/null | grep -qE 'Quorate: +Yes'; do sleep 1; done"
 for ip in 192.168.0.57 192.168.0.50; do
   if ssh root@$ip "pvecm status >/dev/null 2>&1"; then continue; fi
-  ssh -t root@$ip "pvecm add $main --link0 $ip --fingerprint $fp"
+  key=$(ssh root@$ip cat /root/.ssh/id_rsa.pub)
+  ssh root@$main "grep -qxF '$key' /root/.ssh/authorized_keys || echo '$key' >>/root/.ssh/authorized_keys"
+  ssh root@$ip "ssh -o StrictHostKeyChecking=accept-new root@$main true && pvecm add $main --use_ssh 1 --link0 $ip"
 done
 ssh root@$main pvecm status
 """
 
 [tasks.pve-ceph]
-description = "Ceph auf aoostar: Mon, Mgr, 990 PRO als 4 OSDs, HDD als 8 OSDs"
+description = "Ceph: Mon und Mgr auf allen Hosts, auf aoostar 990 PRO als 4 OSDs und HDD als 8 OSDs"
+depends = ["pve-cluster"]
 run = """
 set -euo pipefail
-ssh root@192.168.0.59 bash -s <<'EOF'
+for ip in 192.168.0.59 192.168.0.57 192.168.0.50; do
+ssh root@$ip bash -s <<'EOF'
 set -euo pipefail
 command -v ceph-mon >/dev/null || pveceph install --repository no-subscription --version tentacle < <(yes)
 [ -f /etc/pve/ceph.conf ] || pveceph init --network 192.168.0.0/24
-[ -d /var/lib/ceph/mon/ceph-aoostar ] || pveceph mon create
-[ -d /var/lib/ceph/mgr/ceph-aoostar ] || pveceph mgr create
+[ -d /var/lib/ceph/mon/ceph-$(hostname) ] || pveceph mon create
+[ -d /var/lib/ceph/mgr/ceph-$(hostname) ] || pveceph mgr create
+EOF
+done
+ssh root@192.168.0.59 bash -s <<'EOF'
+set -euo pipefail
 ceph config set osd osd_memory_target 2147483648
 osd() {
   dev=$(lsblk -dnpo NAME,MODEL | awk -v m="$1" 'index($0, m) {print $1}')
