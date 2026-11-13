@@ -36,31 +36,3 @@ module "proxmox_csi_plugin" {
   proxmox           = var.proxmox
   proxmox_api_token = var.proxmox_api_token
 }
-
-# Volumes-Modul disabled — alles auf Ceph migriert
-# module "volumes" {
-#   depends_on = [module.proxmox_csi_plugin]
-#   source     = "../../modules/volumes"
-#
-#   providers = {
-#     restapi    = restapi
-#     kubernetes = kubernetes
-#   }
-#
-#   proxmox_api       = var.proxmox
-#   proxmox_api_token = var.proxmox_api_token
-#   volumes           = var.kubernetes_volumes
-# }
-
-# GitLab VM disabled — manually deleted, guards against accidental recreation.
-# Re-enable: uncomment + restore gitlab.auto.tfvars.
-# module "gitlab" {
-#   source = "../../modules/gitlab"
-#
-#   providers = {
-#     proxmox = proxmox
-#   }
-#
-#   gitlab_config = var.gitlab_config
-# }
-
