@@ -1,5 +1,5 @@
 variable "skip_cluster_health" {
-  description = "Skip the live talos_cluster_health check — set true in CI where the cluster API is unreachable"
+  description = "Skip the Talos health check (CI)"
   type        = bool
   default     = false
 }
@@ -85,7 +85,7 @@ variable "talos_nodes" {
 }
 
 variable "openbao_seal_config" {
-  description = "OpenBao static seal key — null in CI"
+  description = "OpenBao seal key, null in CI"
   type = object({
     seal_key_path = string
   })
@@ -94,7 +94,7 @@ variable "openbao_seal_config" {
 }
 
 variable "openbao_bootstrap_values" {
-  description = "Fremdwerte fuer OpenBao, Key <ns>.<secret>.<key> — leer in CI"
+  description = "OpenBao seed values, key ns.secret.field, empty in CI"
   type        = map(string)
   sensitive   = true
   default     = {}

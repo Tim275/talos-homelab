@@ -59,7 +59,7 @@ variable "nodes" {
 }
 
 variable "skip_cluster_health" {
-  description = "Skip the live talos_cluster_health data source — set true in CI where the cluster API is unreachable"
+  description = "Skip the Talos health check (CI)"
   type        = bool
   default     = false
 }
