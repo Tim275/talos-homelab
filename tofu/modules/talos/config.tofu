@@ -4,7 +4,7 @@ locals {
   extra_manifests = concat(var.cluster.extra_manifests, [
     "https://github.com/kubernetes-sigs/gateway-api/releases/download/${var.cluster.gateway_api_version}/standard-install.yaml",
     "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/${var.cluster.gateway_api_version}/config/crd/experimental/gateway.networking.k8s.io_tlsroutes.yaml",
-    "https://raw.githubusercontent.com/prometheus-community/helm-charts/refs/heads/main/charts/kube-prometheus-stack/charts/crds/crds/crd-servicemonitors.yaml"
+    "https://raw.githubusercontent.com/prometheus-community/helm-charts/kube-prometheus-stack-${var.cluster.kube_prometheus_stack_version}/charts/kube-prometheus-stack/charts/crds/crds/crd-servicemonitors.yaml"
   ])
 }
 
@@ -84,7 +84,6 @@ data "talos_machine_configuration" "this" {
       mac_address  = lower(each.value.mac_address)
       gateway      = var.cluster.gateway
       subnet_mask  = var.cluster.subnet_mask
-      dns          = each.value.dns != null ? each.value.dns : []
     })
   ]
 }
