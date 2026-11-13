@@ -99,17 +99,3 @@ variable "openbao_bootstrap_values" {
   sensitive   = true
   default     = {}
 }
-
-variable "kubernetes_volumes" {
-  description = "Kubernetes volumes configuration"
-  type = map(
-    object({
-      node    = string
-      size    = string
-      storage = optional(string, "local-zfs")
-      vmid    = optional(number, 9999)
-      format  = optional(string, "raw")
-    })
-  )
-  default = {}
-}
