@@ -125,6 +125,44 @@ cd tofu/stacks/cluster
 tofu apply -parallelism=1
 """
 
+[tasks.pve-iso]
+description = "Proxmox-ISO mit Antwortdatei bauen (tofu/stacks/proxmox/install/<host>.toml)"
+usage = 'arg "<host>" help="msa2proxmox, nipogi oder aoostar"'
+run = """
+set -euo pipefail
+dir=tofu/stacks/proxmox/install
+iso=proxmox-ve_9.2-1.iso
+[ -f "$dir/$iso" ] || curl -fL -o "$dir/$iso" "https://enterprise.proxmox.com/iso/$iso"
+echo "4e88fe416df9b527624a175f24c9aa07c714d3332afb1ee3dbf3879573ef2c6c  $dir/$iso" | shasum -a 256 -c
+tmp=$(mktemp -d "$PWD/$dir/.build.XXXXXX")
+trap 'rm -rf "$tmp"' EXIT
+sed "s|__ROOT_HASH__|$(cat "$dir/root-password.hash")|" "$dir/${usage_host}.toml" > "$tmp/answer.toml"
+docker run --rm --platform linux/amd64 -v "$PWD/$dir:/in:ro" -v "$tmp:/w" -w /w debian:trixie bash -euc "
+  apt-get update -qq && apt-get install -y -qq curl ca-certificates xorriso >/dev/null
+  curl -fsSL -o /usr/share/keyrings/proxmox-archive-keyring.gpg https://enterprise.proxmox.com/debian/proxmox-archive-keyring-trixie.gpg
+  echo 'deb [signed-by=/usr/share/keyrings/proxmox-archive-keyring.gpg] http://download.proxmox.com/debian/pve trixie pve-no-subscription' > /etc/apt/sources.list.d/pve.list
+  apt-get update -qq && apt-get install -y -qq proxmox-auto-install-assistant >/dev/null
+  proxmox-auto-install-assistant validate-answer answer.toml
+  proxmox-auto-install-assistant prepare-iso /in/$iso --fetch-from iso --answer-file answer.toml --on-first-boot /in/first-boot.sh --tmp /w --output /w/out.iso
+"
+mv "$tmp/out.iso" "$dir/${usage_host}.iso"
+echo "$dir/${usage_host}.iso"
+"""
+
+[tasks.pve-cluster]
+description = "Proxmox-Cluster homelab anlegen, nipogi und aoostar beitreten lassen"
+run = """
+set -euo pipefail
+main=192.168.0.50
+ssh root@$main "pvecm status >/dev/null 2>&1 || pvecm create homelab --link0 $main"
+fp=$(ssh root@$main pvenode cert info --output-format json | jq -r '.[] | select(.filename == "pve-ssl.pem") | .fingerprint')
+for ip in 192.168.0.57 192.168.0.59; do
+  if ssh root@$ip "pvecm status >/dev/null 2>&1"; then continue; fi
+  ssh -t root@$ip "pvecm add $main --link0 $ip --fingerprint $fp"
+done
+ssh root@$main pvecm status
+"""
+
 [tasks.kube-oidc]
 description = "OIDC-kubeconfig: Export-Befehl anzeigen"
 run = """
