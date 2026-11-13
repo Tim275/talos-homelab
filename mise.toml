@@ -193,10 +193,52 @@ for c in ssd hdd; do
   ceph osd crush rule ls | grep -qx "$c-osd" || ceph osd crush rule create-replicated "$c-osd" default osd "$c"
 done
 ceph osd pool set .mgr crush_rule ssd-osd
+ceph config set global osd_pool_default_size 2
+ceph config set global osd_pool_default_crush_rule "$(ceph osd crush rule dump ssd-osd | jq .rule_id)"
+ceph mgr module ls -f json | jq -e '.enabled_modules | index("prometheus")' >/dev/null || ceph mgr module enable prometheus
 h=/usr/share/pve-manager/migrations/pve-cephx-rotate-service-keys
 $h | grep -q "migration is complete" || $h --apply --confirm-all-clients-refreshed --assume-yes
 ceph osd tree
 EOF
+"""
+
+[tasks.pve-rgw]
+description = "RGW (S3) auf aoostar, Port 7480"
+depends = ["pve-ceph"]
+run = """
+set -euo pipefail
+ssh root@192.168.0.59 bash -s <<'EOF'
+set -euo pipefail
+h=$(hostname)
+d=/var/lib/ceph/radosgw/ceph-rgw.$h
+command -v radosgw >/dev/null || { apt-get update -qq; apt-get install -y -qq radosgw; }
+[ -f $d/keyring ] || { install -d -o ceph -g ceph $d; ceph auth get-or-create client.rgw.$h mon 'allow rw' mgr 'allow rw' osd 'allow rwx' -o $d/keyring; chown ceph:ceph $d/keyring; }
+grep -q "^\\\\[client.rgw.$h\\\\]" /etc/pve/ceph.conf || printf '\\n[client.rgw.%s]\\n\\tkeyring = %s/keyring\\n\\trgw_frontends = beast port=7480\\n' "$h" "$d" >>/etc/pve/ceph.conf
+systemctl enable --now ceph-radosgw@rgw.$h
+timeout 30 bash -c 'until curl -fsS -o /dev/null http://127.0.0.1:7480; do sleep 1; done' && echo "RGW antwortet auf 7480"
+EOF
+"""
+
+[tasks.pve-rook-export]
+description = "Rook external: Ceph-User fuer CSI und RGW anlegen, Zugaenge nach tofu/stacks/cluster/rook_external.auto.tfvars"
+depends = ["pve-rgw"]
+run = """
+set -euo pipefail
+eval "$(ssh root@192.168.0.59 'set -e; f=/root/rook-external.py; [ -f $f ] || curl -fsSL -o $f https://raw.githubusercontent.com/rook/rook/v1.20.7/deploy/examples/create-external-cluster-resources.py; python3 $f --namespace rook-ceph --rbd-data-pool-name replicapool-enterprise --rgw-endpoint 192.168.0.59:7480 --skip-monitoring-endpoint --format bash')"
+[ "$ROOK_EXTERNAL_USERNAME $CSI_RBD_NODE_SECRET_NAME $CSI_RBD_PROVISIONER_SECRET_NAME" = "client.healthchecker csi-rbd-node csi-rbd-provisioner" ] || { echo "unerwartete Ceph-User" >&2; exit 1; }
+umask 077
+cat >tofu/stacks/cluster/rook_external.auto.tfvars <<EOF
+rook_external = {
+  fsid                    = "$ROOK_EXTERNAL_FSID"
+  mon_data                = "$ROOK_EXTERNAL_CEPH_MON_DATA"
+  healthchecker_key       = "$ROOK_EXTERNAL_USER_SECRET"
+  csi_rbd_node_key        = "$CSI_RBD_NODE_SECRET"
+  csi_rbd_provisioner_key = "$CSI_RBD_PROVISIONER_SECRET"
+  rgw_admin_access_key    = "$RGW_ADMIN_OPS_USER_ACCESS_KEY"
+  rgw_admin_secret_key    = "$RGW_ADMIN_OPS_USER_SECRET_KEY"
+}
+EOF
+echo "tofu/stacks/cluster/rook_external.auto.tfvars geschrieben"
 """
 
 [tasks.pve-acme]
