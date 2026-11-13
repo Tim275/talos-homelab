@@ -208,6 +208,25 @@ ceph osd tree
 EOF
 """
 
+[tasks.pve-netbird]
+description = "NetBird-Client als Routing-Peer, Einmal-Key aus dem Dashboard in NB_SETUP_KEY"
+usage = 'arg "<ip>" help="IP des Proxmox-Hosts"'
+run = """
+set -euo pipefail
+ssh root@${usage_ip} bash -s <<'EOF'
+set -euo pipefail
+k=/usr/share/keyrings/netbird-archive-keyring.gpg
+[ -f $k ] || curl -fsSL https://pkgs.netbird.io/debian/public.key | gpg --dearmor -o $k
+echo "deb [signed-by=$k] https://pkgs.netbird.io/debian stable main" >/etc/apt/sources.list.d/netbird.list
+command -v netbird >/dev/null || { apt-get update -qq; apt-get install -y -qq netbird; }
+systemctl is-enabled netbird >/dev/null 2>&1 || { netbird service install; netbird service start; }
+EOF
+if [ -n "${NB_SETUP_KEY:-}" ]; then
+  printf '%s\\n' "$NB_SETUP_KEY" | ssh root@${usage_ip} 'read -r k; netbird up --setup-key "$k"'
+fi
+ssh root@${usage_ip} netbird status | head -6
+"""
+
 # ─── Kubeconfig-Switcher ────────────────────────────────────────────────
 
 [tasks.kube-oidc]
