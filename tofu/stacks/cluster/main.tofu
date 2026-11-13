@@ -19,9 +19,8 @@ module "openbao" {
     kubernetes = kubernetes
   }
 
-  seal             = var.openbao_seal_config
-  values           = var.openbao_bootstrap_values
-  etcd_client_cert = module.talos.etcd_client_cert
+  seal   = var.openbao_seal_config
+  values = var.openbao_bootstrap_values
 }
 
 module "proxmox_csi_plugin" {
