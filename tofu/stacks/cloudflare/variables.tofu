@@ -38,3 +38,13 @@ variable "envoy_lb_ip" {
   default     = "192.168.0.152"
   description = "LoadBalancer-IP des Envoy-Gateway"
 }
+
+variable "proxmox_hosts" {
+  type = map(string)
+  default = {
+    msa2proxmox = "192.168.0.50"
+    nipogi      = "192.168.0.57"
+    aoostar     = "192.168.0.59"
+  }
+  description = "Proxmox-Hosts und ihre LAN-IP"
+}

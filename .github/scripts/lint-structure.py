@@ -17,7 +17,7 @@ from pathlib import Path
 import yaml
 
 STACKS = ("infrastructure", "platform", "apps", "tenants")
-SKIP_DIRS = {"charts", "parked", "rendered"}
+SKIP_DIRS = {"charts", "rendered"}
 HOMELAB = "https://github.com/Tim275/talos-homelab"
 DEPRECATED = ("commonLabels", "patchesStrategicMerge", "patchesJson6902", "vars")
 ENV_SPECIFIC = {

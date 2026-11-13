@@ -9,3 +9,9 @@ output "monitoring_token_value" {
   value       = regex("[^=]+$", proxmox_user_token.this["monitoring"].value)
   sensitive   = true
 }
+
+output "iac_token" {
+  description = "PROXMOX_VE_API_TOKEN für diesen Stack"
+  value       = proxmox_user_token.this["iac"].value
+  sensitive   = true
+}

@@ -17,7 +17,7 @@ terraform {
   }
 }
 
-# root@pam über PROXMOX_VE_USERNAME / PROXMOX_VE_PASSWORD
+# PROXMOX_VE_API_TOKEN (iac_token), nur beim allerersten apply root@pam per Passwort
 provider "proxmox" {
   endpoint = "https://192.168.0.50:8006/"
   insecure = true

@@ -150,17 +150,133 @@ echo "$dir/${usage_host}.iso"
 """
 
 [tasks.pve-cluster]
-description = "Proxmox-Cluster homelab anlegen, nipogi und aoostar beitreten lassen"
+description = "Proxmox-Cluster homelab auf aoostar anlegen, nipogi und msa2 beitreten lassen"
 run = """
 set -euo pipefail
-main=192.168.0.50
+main=192.168.0.59
 ssh root@$main "pvecm status >/dev/null 2>&1 || pvecm create homelab --link0 $main"
-fp=$(ssh root@$main pvenode cert info --output-format json | jq -r '.[] | select(.filename == "pve-ssl.pem") | .fingerprint')
-for ip in 192.168.0.57 192.168.0.59; do
+ssh root@$main "until pvecm status 2>/dev/null | grep -qE 'Quorate: +Yes'; do sleep 1; done"
+for ip in 192.168.0.57 192.168.0.50; do
   if ssh root@$ip "pvecm status >/dev/null 2>&1"; then continue; fi
-  ssh -t root@$ip "pvecm add $main --link0 $ip --fingerprint $fp"
+  key=$(ssh root@$ip cat /root/.ssh/id_rsa.pub)
+  ssh root@$main "grep -qxF '$key' /root/.ssh/authorized_keys || echo '$key' >>/root/.ssh/authorized_keys"
+  ssh root@$ip "ssh -o StrictHostKeyChecking=accept-new root@$main true && pvecm add $main --use_ssh 1 --link0 $ip"
 done
 ssh root@$main pvecm status
+"""
+
+[tasks.pve-ceph]
+description = "Ceph: Mon und Mgr auf allen Hosts, auf aoostar 990 PRO als 4 OSDs und HDD als 8 OSDs"
+depends = ["pve-cluster"]
+run = """
+set -euo pipefail
+for ip in 192.168.0.59 192.168.0.57 192.168.0.50; do
+ssh root@$ip bash -s <<'EOF'
+set -euo pipefail
+command -v ceph-mon >/dev/null || pveceph install --repository no-subscription --version tentacle < <(yes)
+[ -f /etc/pve/ceph.conf ] || pveceph init --network 192.168.0.0/24
+[ -d /var/lib/ceph/mon/ceph-$(hostname) ] || pveceph mon create
+[ -d /var/lib/ceph/mgr/ceph-$(hostname) ] || pveceph mgr create
+EOF
+done
+ssh root@192.168.0.59 bash -s <<'EOF'
+set -euo pipefail
+ceph config set osd osd_memory_target 2147483648
+osd() {
+  dev=$(lsblk -dnpo NAME,MODEL | awk -v m="$1" 'index($0, m) {print $1}')
+  [ -n "$dev" ] || { echo "$1 fehlt" >&2; exit 1; }
+  ceph-volume lvm list "$dev" >/dev/null 2>&1 || pveceph osd create "$dev" --osds-per-device "$2" --crush-device-class "$3"
+}
+osd "990 PRO" 4 ssd
+osd ST4000DM004 8 hdd
+for c in ssd hdd; do
+  ceph osd crush rule ls | grep -qx "$c-osd" || ceph osd crush rule create-replicated "$c-osd" default osd "$c"
+done
+ceph osd pool set .mgr crush_rule ssd-osd
+h=/usr/share/pve-manager/migrations/pve-cephx-rotate-service-keys
+$h | grep -q "migration is complete" || $h --apply --confirm-all-clients-refreshed --assume-yes
+ceph osd tree
+EOF
+"""
+
+[tasks.pve-acme]
+description = "ACME-Konto bei Let's Encrypt (nur root@pam, daher per SSH); Plugin und Zertifikate macht tofu"
+run = """
+set -euo pipefail
+ssh root@192.168.0.59 bash -s <<'EOF'
+set -euo pipefail
+pvesh get /cluster/acme/account --output-format json | jq -e 'any(.[]; .name == "default")' >/dev/null ||
+  pvenode acme account register default sagichdirnicht259@outlook.de --directory https://acme-v02.api.letsencrypt.org/directory < <(yes)
+pvesh get /cluster/acme/account --output-format json | jq -r '.[].name'
+EOF
+"""
+
+[tasks.pve-netbird]
+description = "NetBird-Client als Routing-Peer, Einmal-Key aus dem Dashboard in NB_SETUP_KEY"
+usage = 'arg "<ip>" help="IP des Proxmox-Hosts"'
+run = """
+set -euo pipefail
+ssh root@${usage_ip} bash -s <<'EOF'
+set -euo pipefail
+k=/usr/share/keyrings/netbird-archive-keyring.gpg
+[ -f $k ] || curl -fsSL https://pkgs.netbird.io/debian/public.key | gpg --dearmor -o $k
+echo "deb [signed-by=$k] https://pkgs.netbird.io/debian stable main" >/etc/apt/sources.list.d/netbird.list
+command -v netbird >/dev/null || { apt-get update -qq; apt-get install -y -qq netbird; }
+systemctl is-enabled netbird >/dev/null 2>&1 || { netbird service install; netbird service start; }
+EOF
+if [ -n "${NB_SETUP_KEY:-}" ]; then
+  printf '%s\\n' "$NB_SETUP_KEY" | ssh root@${usage_ip} 'read -r k; netbird up --setup-key "$k"'
+fi
+ssh root@${usage_ip} netbird status | head -6
+"""
+
+[tasks.pve-proxy]
+description = "nginx auf jedem Host: WebGUI auf 443 statt 8006 (Proxmox-Wiki: Web Interface Via Nginx Proxy)"
+run = """
+set -euo pipefail
+for ip in 192.168.0.59 192.168.0.57 192.168.0.50; do
+ssh root@$ip bash -s <<'EOF'
+set -euo pipefail
+command -v nginx >/dev/null || { apt-get update -qq; DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nginx; }
+rm -f /etc/nginx/sites-enabled/default
+cat >/etc/nginx/conf.d/proxmox.conf <<'CONF'
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    ssl_certificate /etc/pve/local/pveproxy-ssl.pem;
+    ssl_certificate_key /etc/pve/local/pveproxy-ssl.key;
+    proxy_redirect off;
+
+    location / {
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_pass https://localhost:8006;
+        proxy_buffering off;
+        client_max_body_size 0;
+        proxy_connect_timeout 3600s;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        send_timeout 3600s;
+    }
+}
+CONF
+mkdir -p /etc/systemd/system/nginx.service.d
+printf '[Unit]\nRequires=pve-cluster.service\nAfter=pve-cluster.service\n' >/etc/systemd/system/nginx.service.d/pve.conf
+printf '[Service]\nType=oneshot\nExecStart=/usr/bin/systemctl reload nginx\n' >/etc/systemd/system/nginx-reload.service
+printf '[Timer]\nOnCalendar=daily\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n' >/etc/systemd/system/nginx-reload.timer
+nginx -t -q
+systemctl daemon-reload
+systemctl enable -q --now nginx nginx-reload.timer
+systemctl reload nginx
+EOF
+done
 """
 
 [tasks.kube-oidc]
