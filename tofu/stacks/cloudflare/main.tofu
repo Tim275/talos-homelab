@@ -42,6 +42,18 @@ resource "cloudflare_dns_record" "wildcard_internal" {
   comment = "wildcard → envoy LB (VPN-only, DoH-safe) — managed by tofu/cloudflare"
 }
 
+resource "cloudflare_dns_record" "proxmox" {
+  for_each = var.proxmox_hosts
+
+  zone_id = var.zone_id
+  name    = "${each.key}.${var.zone_name}"
+  type    = "A"
+  content = each.value
+  proxied = false
+  ttl     = 300
+  comment = "Proxmox-WebGUI (ACME-Zertifikat) — managed by tofu/cloudflare"
+}
+
 # Zero Trust Access (optional, auskommentiert) — SSO-Gate zusätzlich zur App-Auth
 #
 # resource "cloudflare_zero_trust_access_application" "n8n" {
