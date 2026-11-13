@@ -83,6 +83,11 @@ resource "proxmox_virtual_environment_user" "admin" {
   user_id  = "timour@pve"
   password = var.admin_password
   groups   = [proxmox_virtual_environment_group.admins.group_id]
+
+  # Startpasswort, danach gehört es dem Menschen (API-Tokens dürfen keine Passwörter ändern)
+  lifecycle {
+    ignore_changes = [password]
+  }
 }
 
 resource "proxmox_acl" "admins" {
