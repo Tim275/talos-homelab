@@ -174,7 +174,7 @@ for ip in 192.168.0.59 192.168.0.57 192.168.0.50; do
 ssh root@$ip bash -s <<'EOF'
 set -euo pipefail
 command -v ceph-mon >/dev/null || pveceph install --repository no-subscription --version tentacle < <(yes)
-[ -f /etc/pve/ceph.conf ] || pveceph init --network 192.168.0.0/24
+[ -f /etc/pve/ceph.conf ] || pveceph init --network 192.168.0.0/24 --size 2 --min_size 1
 [ -d /var/lib/ceph/mon/ceph-$(hostname) ] || pveceph mon create
 [ -d /var/lib/ceph/mgr/ceph-$(hostname) ] || pveceph mgr create
 EOF
@@ -193,8 +193,6 @@ for c in ssd hdd; do
   ceph osd crush rule ls | grep -qx "$c-osd" || ceph osd crush rule create-replicated "$c-osd" default osd "$c"
 done
 ceph osd pool set .mgr crush_rule ssd-osd
-ceph config set global osd_pool_default_size 2
-ceph config set global osd_pool_default_crush_rule "$(ceph osd crush rule dump ssd-osd | jq .rule_id)"
 ceph mgr module ls -f json | jq -e '.enabled_modules | index("prometheus")' >/dev/null || ceph mgr module enable prometheus
 h=/usr/share/pve-manager/migrations/pve-cephx-rotate-service-keys
 $h | grep -q "migration is complete" || $h --apply --confirm-all-clients-refreshed --assume-yes
@@ -216,6 +214,9 @@ command -v radosgw >/dev/null || { apt-get update -qq; apt-get install -y -qq ra
 grep -q "^\\\\[client.rgw.$h\\\\]" /etc/pve/ceph.conf || printf '\\n[client.rgw.%s]\\n\\tkeyring = %s/keyring\\n\\trgw_frontends = beast port=7480\\n' "$h" "$d" >>/etc/pve/ceph.conf
 systemctl enable --now ceph-radosgw@rgw.$h
 timeout 30 bash -c 'until curl -fsS -o /dev/null http://127.0.0.1:7480; do sleep 1; done' && echo "RGW antwortet auf 7480"
+timeout 30 bash -c 'until ceph osd pool ls | grep -Fxq .rgw.root; do sleep 1; done'
+ceph osd pool set .rgw.root size 2
+ceph osd pool set .rgw.root min_size 1
 EOF
 """
 
