@@ -68,8 +68,7 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
     ├── infrastructure/      what the cluster runs on: network, storage, security, monitoring, cluster
     ├── platform/            what teams and apps consume: identity, observability (dashboards, logs, traces), data, delivery, automation
     ├── apps/                self-hosted services: forgejo, uptime-kuma, pgadmin, homepage, n8n
-    ├── tenants/             one namespace, one AppProject, own repository: drova
-    └── parked/              kept, not deployed, see its README
+    └── tenants/             one namespace, one AppProject, own repository: drova
 ```
 
 ## 📐 Rules
@@ -89,7 +88,6 @@ Argo CD:
 - An operator and the custom resources it serves are separate Applications (`velero` and `velero-schedules`), because Argo CD cannot validate a custom resource before its CRD exists.
 - 16 operators deploy from `rendered/manifests.yaml`, the rendered output of their `overlays/prod`. CI fails on drift, so a PR shows the real diff.
 - Metrics and alerting are infrastructure (`infrastructure/monitoring`): they page for the cluster itself. Dashboards, logs and traces are platform. Alert rules live in `infrastructure/monitoring/alerting/base/rules/`. `dashboard_url` is a path, the Alertmanager template adds the host. Runbooks live in `docs/runbooks/`.
-- `parked/` keeps components that are not deployed. CI, lint and Renovate skip it.
 
 New component: a folder with `base/` and `overlays/prod/` plus a row in the ApplicationSet of its layer. New tenant: `tenants/<name>/` with namespace, quota, limits and RBAC, an AppProject in `argocd/projects/` and rows in `tenants`; data services are sub-components with their own rows.
 
