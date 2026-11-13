@@ -20,48 +20,55 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       initContainers:
         - name: config-init
-          image: quay.io/ceph/ceph:v19.2.3
+          image: quay.io/ceph/ceph:v20.2.5
           command:
             - /bin/bash
             - -c
             - |
               cat > /etc/ceph/ceph.conf << EOF
               [global]
-              mon_host = $(cat /etc/rook/mon_host)
-              [client.admin]
+              mon_host = $(sed 's/[a-z0-9_-]\+=//g' /etc/rook/mon-endpoints)
               keyring = /etc/ceph/keyring
               EOF
-              cp /etc/ceph-keyring/keyring /etc/ceph/keyring
+              printf '[%s]\nkey = %s\n' "$(cat /etc/rook-mon/ceph-username)" "$(cat /etc/rook-mon/ceph-secret)" > /etc/ceph/keyring
               chmod 600 /etc/ceph/keyring
-              echo "Config initialized successfully"
           volumeMounts:
             - mountPath: /etc/ceph
               name: ceph-config
             - mountPath: /etc/rook
-              name: mon-config
-            - mountPath: /etc/ceph-keyring
-              name: ceph-admin-keyring
+              name: mon-endpoints
+            - mountPath: /etc/rook-mon
+              name: mon-secret
       containers:
         - name: rook-ceph-tools
-          image: quay.io/ceph/ceph:v19.2.3
+          image: quay.io/ceph/ceph:v20.2.5
           command:
             - /bin/bash
             - -c
-            - |
-              echo "Ceph Toolbox Ready"
-              tail -f /dev/null
+            - tail -f /dev/null
+          env:
+            - name: CEPH_ARGS
+              value: --id healthchecker
           volumeMounts:
             - mountPath: /etc/ceph
               name: ceph-config
       volumes:
         - name: ceph-config
           emptyDir: {}
-        - name: mon-config
+        - name: mon-endpoints
+          configMap:
+            name: rook-ceph-mon-endpoints
+            items:
+              - key: data
+                path: mon-endpoints
+        - name: mon-secret
           secret:
-            secretName: rook-ceph-config
-        - name: ceph-admin-keyring
-          secret:
-            secretName: rook-ceph-admin-keyring
+            secretName: rook-ceph-mon
+            items:
+              - key: ceph-username
+                path: ceph-username
+              - key: ceph-secret
+                path: ceph-secret
       tolerations:
         - key: "node.kubernetes.io/unreachable"
           operator: "Exists"
