@@ -62,7 +62,7 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
 ├── docs/                    architecture diagram, runbooks, kubectl OIDC config
 ├── tofu/
 │   ├── stacks/              one root module per state: cluster, cloudflare, netbird, uptime-kuma, state
-│   └── modules/             talos, openbao, proxmox-csi-plugin, volumes, gitlab
+│   └── modules/             talos, openbao
 └── kubernetes/
     ├── argocd/              control plane: bootstrap (Argo CD itself, root), projects, clusters, applicationsets, crds
     ├── infrastructure/      what the cluster runs on: network, storage, security, monitoring, cluster

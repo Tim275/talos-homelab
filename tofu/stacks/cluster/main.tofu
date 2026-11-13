@@ -22,16 +22,3 @@ module "openbao" {
   seal   = var.openbao_seal_config
   values = var.openbao_bootstrap_values
 }
-
-module "proxmox_csi_plugin" {
-  depends_on = [module.talos]
-  source     = "../../modules/proxmox-csi-plugin"
-
-  providers = {
-    proxmox    = proxmox
-    kubernetes = kubernetes
-  }
-
-  proxmox           = var.proxmox
-  proxmox_api_token = var.proxmox_api_token
-}
