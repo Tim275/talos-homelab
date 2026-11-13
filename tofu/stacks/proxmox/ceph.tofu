@@ -3,7 +3,6 @@ locals {
     "replicapool-enterprise"     = { application = "rbd", crush_rule = "ssd-osd", pg_num = 32 }
     "kafka-fast"                 = { application = "rbd", crush_rule = "ssd-osd", pg_num = 32 }
     "obs-pool"                   = { application = "rbd", crush_rule = "hdd-osd", pg_num = 32 }
-    ".rgw.root"                  = { application = "rgw", crush_rule = "ssd-osd", pg_num = 8 }
     "default.rgw.log"            = { application = "rgw", crush_rule = "ssd-osd", pg_num = 8 }
     "default.rgw.control"        = { application = "rgw", crush_rule = "ssd-osd", pg_num = 8 }
     "default.rgw.meta"           = { application = "rgw", crush_rule = "ssd-osd", pg_num = 8 }
