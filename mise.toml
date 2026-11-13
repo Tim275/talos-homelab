@@ -166,7 +166,7 @@ ssh root@$main pvecm status
 """
 
 [tasks.pve-ceph]
-description = "Ceph: Mon und Mgr auf allen Hosts, auf aoostar 990 PRO als 4 OSDs und HDD als 8 OSDs"
+description = "Ceph: Mon und Mgr auf allen Hosts, auf aoostar 990 PRO und HDD als je 2 OSDs"
 depends = ["pve-cluster"]
 run = """
 set -euo pipefail
@@ -187,26 +187,29 @@ k=/var/lib/ceph/bootstrap-osd/ceph.keyring
 disk() { lsblk -dnpo NAME,MODEL | awk -v m="$1" 'index($0, m) {print $1}'; }
 ssd=$(disk "990 PRO"); hdd=$(disk ST4000DM004)
 [ -n "$ssd" ] && [ -n "$hdd" ] || { echo "990 PRO oder ST4000DM004 fehlt" >&2; exit 1; }
-# block.db der HDD-OSDs auf der SSD, Ceph empfiehlt 1-4 % der HDD
+# 2 OSDs je Platte, damit size 2 je Geräteklasse geht
+# block.db der HDD-OSDs auf der SSD, Ceph empfiehlt ab 2,5 % der HDD
 if ! vgs ceph-ssd >/dev/null 2>&1; then
   vgcreate ceph-ssd "$ssd"
   vgcreate ceph-hdd "$hdd"
-  for i in 0 1 2 3 4 5 6 7; do lvcreate -y -L 20G -n db-$i ceph-ssd; done
+  for i in 0 1; do lvcreate -y -L 50G -n db-$i ceph-ssd; done
   n=$(vgs --noheadings -o vg_free_count ceph-ssd | tr -d ' ')
-  for i in 0 1 2 3; do lvcreate -y -l $((n / 4)) -n osd-$i ceph-ssd; done
+  for i in 0 1; do lvcreate -y -l $((n / 2)) -n osd-$i ceph-ssd; done
   n=$(vgs --noheadings -o vg_free_count ceph-hdd | tr -d ' ')
-  for i in 0 1 2 3 4 5 6 7; do lvcreate -y -l $((n / 8)) -n osd-$i ceph-hdd; done
+  for i in 0 1; do lvcreate -y -l $((n / 2)) -n osd-$i ceph-hdd; done
 fi
-for i in 0 1 2 3; do
+for i in 0 1; do
   ceph-volume lvm list ceph-ssd/osd-$i >/dev/null 2>&1 || ceph-volume lvm create --bluestore --data ceph-ssd/osd-$i --crush-device-class ssd
 done
-for i in 0 1 2 3 4 5 6 7; do
+for i in 0 1; do
   ceph-volume lvm list ceph-hdd/osd-$i >/dev/null 2>&1 || ceph-volume lvm create --bluestore --data ceph-hdd/osd-$i --block.db ceph-ssd/db-$i --crush-device-class hdd
 done
 for c in ssd hdd; do
   ceph osd crush rule ls | grep -qx "$c-osd" || ceph osd crush rule create-replicated "$c-osd" default osd "$c"
 done
 ceph osd pool set .mgr crush_rule ssd-osd
+ceph osd pool set .mgr size 2
+ceph osd pool set .mgr min_size 1
 ceph mgr module ls -f json | jq -e '.enabled_modules | index("prometheus")' >/dev/null || ceph mgr module enable prometheus
 h=/usr/share/pve-manager/migrations/pve-cephx-rotate-service-keys
 ceph mon dump -f json | jq -e '.auth_service_cipher.name == "aes256k"' >/dev/null || $h --apply --confirm-all-clients-refreshed --assume-yes
