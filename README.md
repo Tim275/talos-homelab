@@ -54,6 +54,7 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
 - [Uptime Kuma](https://uptime.kuma.pet/): Status page.
 - [pgAdmin](https://www.pgadmin.org/): PostgreSQL administration.
 - [Homepage](https://gethomepage.dev/): Start page for the homelab.
+- [Excalidraw](https://excalidraw.com/): Whiteboard.
 
 ## 🗃️ Folder Structure
 
