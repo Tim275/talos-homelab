@@ -119,4 +119,17 @@ talos_nodes = {
     ceph_disk_size = 0
     pool           = "stateful"
   }
+  "worker-7" = {
+    host_node      = "aoostar"
+    machine_type   = "worker"
+    ip             = "192.168.0.110"
+    mac_address    = "BC:24:11:2E:C8:B4"
+    vm_id          = 1009
+    cpu            = 4
+    ram_dedicated  = 12288
+    datastore_id   = "local-zfs"
+    os_disk_size   = 50
+    ceph_disk_size = 0
+    pool           = "stateful"
+  }
 }
