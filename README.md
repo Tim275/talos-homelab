@@ -13,7 +13,6 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
 [![OpenTofu](https://img.shields.io/badge/IaC-OpenTofu-844FBA?style=for-the-badge&logo=opentofu&logoColor=white)](https://opentofu.org/)
 [![ArgoCD](https://img.shields.io/badge/GitOps-ArgoCD-00D4AA?style=for-the-badge&logo=argo&logoColor=white)](https://argo-cd.readthedocs.io/)
 
-
 ## Architecture Diagram
 
 [![Architecture Diagram](docs/homelabarchitecture.svg)](https://raw.githubusercontent.com/Tim275/talos-homelab/main/docs/homelabarchitecture.svg)
@@ -54,6 +53,7 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
 - [Uptime Kuma](https://uptime.kuma.pet/): Status page.
 - [pgAdmin](https://www.pgadmin.org/): PostgreSQL administration.
 - [Homepage](https://gethomepage.dev/): Start page for the homelab.
+- [Excalidraw](https://excalidraw.com/): Whiteboard.
 
 ## 🗃️ Folder Structure
 
@@ -68,6 +68,5 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
     ├── infrastructure/      what the cluster runs on: network, storage, security, monitoring, cluster
     ├── platform/            what teams and apps consume: identity, observability (dashboards, logs, traces), data, delivery, automation
     ├── apps/                self-hosted services: forgejo, uptime-kuma, pgadmin, homepage, n8n
-    ├── tenants/             one namespace, one AppProject, own repository: drova
-    └── parked/              kept, not deployed, see its README
+    └── tenants/             one namespace, one AppProject, own repository: drova
 ```
