@@ -182,13 +182,27 @@ done
 ssh root@192.168.0.59 bash -s <<'EOF'
 set -euo pipefail
 ceph config set osd osd_memory_target 2147483648
-osd() {
-  dev=$(lsblk -dnpo NAME,MODEL | awk -v m="$1" 'index($0, m) {print $1}')
-  [ -n "$dev" ] || { echo "$1 fehlt" >&2; exit 1; }
-  ceph-volume lvm list "$dev" >/dev/null 2>&1 || pveceph osd create "$dev" --osds-per-device "$2" --crush-device-class "$3"
-}
-osd "990 PRO" 4 ssd
-osd ST4000DM004 8 hdd
+k=/var/lib/ceph/bootstrap-osd/ceph.keyring
+[ -f $k ] || { install -d /var/lib/ceph/bootstrap-osd; ceph auth get client.bootstrap-osd -o $k; }
+disk() { lsblk -dnpo NAME,MODEL | awk -v m="$1" 'index($0, m) {print $1}'; }
+ssd=$(disk "990 PRO"); hdd=$(disk ST4000DM004)
+[ -n "$ssd" ] && [ -n "$hdd" ] || { echo "990 PRO oder ST4000DM004 fehlt" >&2; exit 1; }
+# block.db der HDD-OSDs auf der SSD, Ceph empfiehlt 1-4 % der HDD
+if ! vgs ceph-ssd >/dev/null 2>&1; then
+  vgcreate ceph-ssd "$ssd"
+  vgcreate ceph-hdd "$hdd"
+  for i in 0 1 2 3 4 5 6 7; do lvcreate -y -L 20G -n db-$i ceph-ssd; done
+  n=$(vgs --noheadings -o vg_free_count ceph-ssd | tr -d ' ')
+  for i in 0 1 2 3; do lvcreate -y -l $((n / 4)) -n osd-$i ceph-ssd; done
+  n=$(vgs --noheadings -o vg_free_count ceph-hdd | tr -d ' ')
+  for i in 0 1 2 3 4 5 6 7; do lvcreate -y -l $((n / 8)) -n osd-$i ceph-hdd; done
+fi
+for i in 0 1 2 3; do
+  ceph-volume lvm list ceph-ssd/osd-$i >/dev/null 2>&1 || ceph-volume lvm create --bluestore --data ceph-ssd/osd-$i --crush-device-class ssd
+done
+for i in 0 1 2 3 4 5 6 7; do
+  ceph-volume lvm list ceph-hdd/osd-$i >/dev/null 2>&1 || ceph-volume lvm create --bluestore --data ceph-hdd/osd-$i --block.db ceph-ssd/db-$i --crush-device-class hdd
+done
 for c in ssd hdd; do
   ceph osd crush rule ls | grep -qx "$c-osd" || ceph osd crush rule create-replicated "$c-osd" default osd "$c"
 done
@@ -198,6 +212,7 @@ h=/usr/share/pve-manager/migrations/pve-cephx-rotate-service-keys
 ceph mon dump -f json | jq -e '.auth_service_cipher.name == "aes256k"' >/dev/null || $h --apply --confirm-all-clients-refreshed --assume-yes
 # krbd unter Kernel 7.0 kann nur aes
 ceph mon dump -f json | jq -e '[.auth_allowed_ciphers[].name] | index("aes")' >/dev/null || ceph mon set auth_allowed_ciphers aes256k,aes
+for c in AUTH_INSECURE_CLIENT_KEY_TYPE AUTH_INSECURE_KEYS_ALLOWED AUTH_INSECURE_KEYS_CREATABLE; do ceph health mute $c --sticky; done
 ceph osd tree
 EOF
 """
