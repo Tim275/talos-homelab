@@ -96,3 +96,26 @@ resource "kubernetes_secret_v1" "rgw_admin" {
     ignore_changes = [data]
   }
 }
+
+resource "kubernetes_endpoint_slice_v1" "rgw" {
+  metadata {
+    name      = "ceph-rgw"
+    namespace = kubernetes_namespace_v1.this.metadata[0].name
+    labels = {
+      "kubernetes.io/service-name" = "ceph-rgw"
+    }
+  }
+
+  address_type = "IPv4"
+
+  endpoint {
+    addresses = ["192.168.0.59"]
+  }
+
+  port {
+    name         = "http"
+    port         = 7480
+    protocol     = "TCP"
+    app_protocol = "http"
+  }
+}
