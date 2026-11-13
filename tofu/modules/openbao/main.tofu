@@ -51,11 +51,7 @@ resource "kubernetes_secret_v1" "bootstrap_values" {
     }
   }
 
-  data = merge(var.values, {
-    "monitoring.etcd-client-cert.ca.crt"     = var.etcd_client_cert.ca
-    "monitoring.etcd-client-cert.server.crt" = var.etcd_client_cert.cert
-    "monitoring.etcd-client-cert.server.key" = var.etcd_client_cert.key
-  })
+  data = var.values
 
   # CI hat die Werte nicht
   lifecycle {
