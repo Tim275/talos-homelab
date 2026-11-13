@@ -195,7 +195,9 @@ done
 ceph osd pool set .mgr crush_rule ssd-osd
 ceph mgr module ls -f json | jq -e '.enabled_modules | index("prometheus")' >/dev/null || ceph mgr module enable prometheus
 h=/usr/share/pve-manager/migrations/pve-cephx-rotate-service-keys
-$h | grep -q "migration is complete" || $h --apply --confirm-all-clients-refreshed --assume-yes
+ceph mon dump -f json | jq -e '.auth_service_cipher.name == "aes256k"' >/dev/null || $h --apply --confirm-all-clients-refreshed --assume-yes
+# krbd unter Kernel 7.0 kann nur aes
+ceph mon dump -f json | jq -e '[.auth_allowed_ciphers[].name] | index("aes")' >/dev/null || ceph mon set auth_allowed_ciphers aes256k,aes
 ceph osd tree
 EOF
 """
@@ -226,10 +228,14 @@ description = "Rook external: Ceph-User fuer CSI und RGW anlegen, Zugaenge nach 
 depends = ["pve-rgw"]
 run = """
 set -euo pipefail
+ssh root@192.168.0.59 bash -s <<'EOF'
+ceph auth get client.csi-rbd-node >/dev/null 2>&1 || ceph auth get-or-create client.csi-rbd-node mon "profile rbd, allow command 'osd blocklist'" osd "profile rbd" --key_type aes >/dev/null
+EOF
 eval "$(ssh root@192.168.0.59 'set -e; f=/root/rook-external.py; [ -f $f ] || curl -fsSL -o $f https://raw.githubusercontent.com/rook/rook/v1.20.7/deploy/examples/create-external-cluster-resources.py; python3 $f --namespace rook-ceph --rbd-data-pool-name replicapool-enterprise --rgw-endpoint 192.168.0.59:7480 --skip-monitoring-endpoint --format bash')"
 [ "$ROOK_EXTERNAL_USERNAME $CSI_RBD_NODE_SECRET_NAME $CSI_RBD_PROVISIONER_SECRET_NAME" = "client.healthchecker csi-rbd-node csi-rbd-provisioner" ] || { echo "unerwartete Ceph-User" >&2; exit 1; }
 ROOK_EXTERNAL_CEPH_MON_DATA=$(ssh root@192.168.0.59 'ceph mon dump -f json' | jq -r '[.mons[] | .name + "=" + (.public_addrs.addrvec[] | select(.type=="v1") | .addr)] | join(",")')
 [ -n "$ROOK_EXTERNAL_CEPH_MON_DATA" ] || { echo "keine Mons" >&2; exit 1; }
+[ "$(ssh root@192.168.0.59 'ceph auth get-key client.csi-rbd-node | base64 -d | od -An -tu2 -N2' | tr -d ' ')" = 1 ] || { echo "csi-rbd-node braucht einen aes-Key" >&2; exit 1; }
 umask 077
 cat >tofu/stacks/cluster/rook_external.auto.tfvars <<EOF
 rook_external = {
