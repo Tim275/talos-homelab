@@ -21,7 +21,7 @@ locals {
     "Drova"        = { url = "https://drova.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"], notify = "telegram" }
     "n8n"          = { url = "https://n8n.timourhomelab.org/healthz", group = "Anwendungen", codes = ["200-299"], notify = "slack" }
     "Forgejo"      = { url = "https://forgejo.timourhomelab.org/api/healthz", group = "Anwendungen", codes = ["200-299"], notify = "slack" }
-    "Keycloak"     = { url = "https://iam.timourhomelab.org/realms/kubernetes", group = "Anwendungen", codes = ["200-299"], notify = "telegram" }
+    "Keycloak"     = { url = "https://iam.timourhomelab.org/realms/plattform", group = "Anwendungen", codes = ["200-299"], notify = "telegram" }
     "Homepage"     = { url = "https://homepage.timourhomelab.org/api/healthcheck", group = "Anwendungen", codes = ["200-299"], notify = "telegram" }
     "LLDAP"        = { url = "https://lldap.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"], notify = "slack" }
     "pgAdmin"      = { url = "https://pgadmin.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"], notify = "slack" }
