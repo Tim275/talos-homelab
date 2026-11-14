@@ -110,33 +110,14 @@ jobs:
           sudo chmod +x /usr/local/bin/yq
           yq --version
 
-      - name: Verify piloted rendered manifests
+      - name: Verify rendered manifests
         id: rendered
         run: |
           set +e
-          PILOTS=(
-            "kubernetes/infrastructure/cluster/reloader/overlays/prod|kubernetes/infrastructure/cluster/reloader/rendered/manifests.yaml"
-            "kubernetes/infrastructure/security/openbao-operator/overlays/prod|kubernetes/infrastructure/security/openbao-operator/rendered/manifests.yaml"
-            "kubernetes/infrastructure/security/vault-config-operator/overlays/prod|kubernetes/infrastructure/security/vault-config-operator/rendered/manifests.yaml"
-            "kubernetes/infrastructure/storage/rook-ceph/overlays/prod|kubernetes/infrastructure/storage/rook-ceph/rendered/manifests.yaml"
-            "kubernetes/infrastructure/security/cert-manager/overlays/prod|kubernetes/infrastructure/security/cert-manager/rendered/manifests.yaml"
-            "kubernetes/infrastructure/network/external-dns/overlays/prod|kubernetes/infrastructure/network/external-dns/rendered/manifests.yaml"
-            "kubernetes/infrastructure/monitoring/blackbox-exporter/overlays/prod|kubernetes/infrastructure/monitoring/blackbox-exporter/rendered/manifests.yaml"
-            "kubernetes/platform/delivery/argo-rollouts/overlays/prod|kubernetes/platform/delivery/argo-rollouts/rendered/manifests.yaml"
-            "kubernetes/platform/data/cloudnative-pg/overlays/prod|kubernetes/platform/data/cloudnative-pg/rendered/manifests.yaml"
-            "kubernetes/platform/observability/eck/overlays/prod|kubernetes/platform/observability/eck/rendered/manifests.yaml"
-            "kubernetes/platform/observability/grafana-operator/overlays/prod|kubernetes/platform/observability/grafana-operator/rendered/manifests.yaml"
-            "kubernetes/infrastructure/cluster/descheduler/overlays/prod|kubernetes/infrastructure/cluster/descheduler/rendered/manifests.yaml"
-            "kubernetes/platform/delivery/keda/overlays/prod|kubernetes/platform/delivery/keda/rendered/manifests.yaml"
-            "kubernetes/platform/automation/renovate/overlays/prod|kubernetes/platform/automation/renovate/rendered/manifests.yaml"
-            "kubernetes/platform/data/redis/overlays/prod|kubernetes/platform/data/redis/rendered/manifests.yaml"
-            "kubernetes/platform/observability/opentelemetry-operator/overlays/prod|kubernetes/platform/observability/opentelemetry-operator/rendered/manifests.yaml"
-            "kubernetes/infrastructure/network/sail-operator/overlays/prod|kubernetes/infrastructure/network/sail-operator/rendered/manifests.yaml"
-          )
           DRIFTED=0
           : > rendered-comment.md
-          for pair in "${PILOTS[@]}"; do
-            SRC="${pair%%|*}"; RENDERED="${pair##*|}"
+          for RENDERED in $(find kubernetes -path '*/rendered/manifests.yaml' | sort); do
+            SRC="$(dirname "$(dirname "$RENDERED")")/overlays/prod"
             NAME=$(basename "$(dirname "$(dirname "$RENDERED")")")
             kustomize build "$SRC" --enable-helm --load-restrictor=LoadRestrictionsNone > /tmp/dry.yaml
             if diff -q "$RENDERED" /tmp/dry.yaml > /dev/null; then
