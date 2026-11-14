@@ -1,7 +1,5 @@
-variable "seal" {
-  type = object({
-    seal_key_path = string
-  })
+variable "unseal" {
+  type      = map(string)
   sensitive = true
 }
 

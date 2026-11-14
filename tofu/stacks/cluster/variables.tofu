@@ -84,14 +84,6 @@ variable "talos_nodes" {
   }
 }
 
-variable "openbao_seal_config" {
-  description = "OpenBao seal key, null in CI"
-  type = object({
-    seal_key_path = string
-  })
-  sensitive = true
-}
-
 variable "openbao_bootstrap_values" {
   description = "OpenBao seed values, key ns.secret.field, empty in CI"
   type        = map(string)

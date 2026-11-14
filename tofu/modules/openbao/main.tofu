@@ -9,25 +9,18 @@ resource "kubernetes_namespace_v1" "openbao" {
   }
 }
 
-resource "kubernetes_secret_v1" "seal_key" {
+resource "kubernetes_secret_v1" "unseal_azure" {
   depends_on = [kubernetes_namespace_v1.openbao]
 
   metadata {
-    name      = "openbao-seal-key"
+    name      = "openbao-unseal-azure"
     namespace = "openbao"
     labels = {
       "velero.io/exclude-from-backup" = "true"
     }
   }
 
-  data = {
-    "key" = var.seal != null ? trimspace(file("${path.root}/${var.seal.seal_key_path}")) : ""
-  }
-
-  # CI hat den key nicht
-  lifecycle {
-    ignore_changes = [data]
-  }
+  data = var.unseal
 }
 
 resource "kubernetes_namespace_v1" "external_secrets" {
