@@ -1,8 +1,8 @@
 # tofu
 
-- `stacks/`: ein Root-Modul je State. `cluster` (Proxmox-VMs, Talos, OpenBao-Seed), `proxmox` (Hosts, Storages, Tokens; nur lokal mit root@pam), `cloudflare`, `netbird`, `uptime-kuma`, `state` (das Azure-Backend selbst, State bleibt lokal).
+- `stacks/`: ein Root-Modul je State. `cluster` (Proxmox-VMs, Talos, OpenBao-Seed), `proxmox` (Hosts, Storages, Tokens; nur lokal mit root@pam), `cloudflare`, `netbird`, `uptime-kuma`, `unseal` (Azure Key Vault für den OpenBao-Unseal; nur von Hand), `state` (das Azure-Backend selbst, State bleibt lokal).
 - `modules/`: Bausteine, die nur aus den Stacks heraus benutzt werden (`talos`, `openbao`).
 
-Lokal braucht der Cluster-Stack in `stacks/cluster` die Startwerte `openbao_values.auto.tfvars`, den Seal-Key `keys/seal.key` und die Ceph-Zugänge `rook_external.auto.tfvars` (`mise run pve-rook-export`). Alle drei kommen nie ins Repo, ohne sie bricht `tofu plan` ab.
+Lokal braucht der Cluster-Stack in `stacks/cluster` die Startwerte `openbao_values.auto.tfvars` und die Ceph-Zugänge `rook_external.auto.tfvars` (`mise run pve-rook-export`). Beide kommen nie ins Repo, ohne sie bricht `tofu plan` ab.
 
-Jeder Stack läuft aus seinem Ordner. `cloudflare`, `netbird` und `uptime-kuma` wendet die CI nach dem Merge an, `cluster` die CI mit Freigabe, `state` nur von Hand. Der Cluster-Stack immer mit `tofu apply -parallelism=1`.
+Jeder Stack läuft aus seinem Ordner. `cloudflare`, `netbird` und `uptime-kuma` wendet die CI nach dem Merge an, `cluster` die CI mit Freigabe, `unseal` und `state` nur von Hand. Der Cluster-Stack immer mit `tofu apply -parallelism=1`.

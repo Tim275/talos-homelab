@@ -1,0 +1,60 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: openbao-tls-ca
+  namespace: openbao
+spec:
+  isCA: true
+  commonName: openbao-ca
+  secretName: openbao-tls-ca
+  duration: 43800h
+  renewBefore: 8760h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    kind: ClusterIssuer
+    name: homelab-internal-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: openbao-ca
+  namespace: openbao
+spec:
+  ca:
+    secretName: openbao-tls-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: openbao-tls-server
+  namespace: openbao
+spec:
+  secretName: openbao-tls-server
+  commonName: openbao.openbao.svc
+  duration: 2160h
+  renewBefore: 720h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  usages:
+    - digital signature
+    - server auth
+    - client auth
+  dnsNames:
+    - openbao-cluster-openbao.local
+    - localhost
+    - openbao.openbao.svc
+    - openbao.openbao.svc.cluster.local
+    - "*.openbao.svc"
+    - "*.openbao.svc.cluster.local"
+    - "*.openbao.openbao.svc"
+    - "*.openbao.openbao.svc.cluster.local"
+    - openbao.timourhomelab.org
+  ipAddresses:
+    - 127.0.0.1
+  issuerRef:
+    kind: Issuer
+    name: openbao-ca
