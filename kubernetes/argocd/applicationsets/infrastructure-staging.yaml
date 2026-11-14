@@ -1,0 +1,51 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure-staging
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  argocd.argoproj.io/secret-type: cluster
+                  environment: staging
+          - list:
+              elements:
+                - { app: openbao-config,        path: kubernetes/infrastructure/security/openbao-config/overlays/staging,        namespace: openbao }
+                - { app: openbao-operator,      path: kubernetes/infrastructure/security/openbao-operator/overlays/staging,      namespace: openbao-operator-system }
+                - { app: openbao,               path: kubernetes/infrastructure/security/openbao/overlays/staging,               namespace: openbao }
+                - { app: vault-config-operator, path: kubernetes/infrastructure/security/vault-config-operator/overlays/staging, namespace: vault-config-operator }
+  template:
+    metadata:
+      name: '{{.app}}-staging'
+      labels:
+        app.kubernetes.io/name: '{{.app}}'
+        app.kubernetes.io/part-of: infrastructure
+        app.kubernetes.io/managed-by: argocd
+    spec:
+      project: infrastructure
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: main
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated: { prune: True, selfHeal: True }
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - ServerSideApply=true
+          - ApplyOutOfSyncOnly=true
+        retry:
+          limit: -1
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }

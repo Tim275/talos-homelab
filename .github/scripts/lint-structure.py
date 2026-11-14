@@ -4,10 +4,10 @@
 Checks:
 - every ApplicationSet row points at an existing kustomization (or a rendered/ folder)
 - the Application name is the folder name, sub-components are named parent-child
-- every component (a folder owning base/ or overlays/) is claimed by exactly one row
+- every component (a folder owning base/ or overlays/) is claimed by exactly one row per environment
 - every file in a component is reachable from its kustomization, nothing is commented out
 - base/ holds no helmCharts, no deprecated kustomize fields, no hostnames, addresses or node names
-- the environment label is prod
+- the environment label is prod or staging
 - a SecurityPolicy and the secret it references live in the same component
 """
 import re
@@ -17,6 +17,7 @@ from pathlib import Path
 import yaml
 
 STACKS = ("infrastructure", "platform", "apps", "tenants")
+ENVIRONMENTS = ("prod", "staging")
 SKIP_DIRS = {"charts", "rendered"}
 HOMELAB = "https://github.com/Tim275/talos-homelab"
 DEPRECATED = ("commonLabels", "patchesStrategicMerge", "patchesJson6902", "vars")
@@ -150,12 +151,14 @@ def main(path: str) -> int:
             want = expected_name(root, comp)
             if name != want:
                 err(f, f"Application {name} should be named {want} after its folder")
-            claimed.setdefault(comp, []).append(name)
+            env = target.name if target.parent.name == "overlays" else "prod"
+            claimed.setdefault((comp, env), []).append(name)
     for c in sorted(comps):
-        if c not in claimed:
+        if (c, "prod") not in claimed:
             err(f"{c.relative_to(repo)}/kustomization.yaml", f"{c.relative_to(repo)} is in no ApplicationSet")
-        elif len(claimed[c]) > 1:
-            err(c.relative_to(repo), f"{c.relative_to(repo)} is claimed by {claimed[c]}")
+    for (c, env), names in sorted(claimed.items()):
+        if len(names) > 1:
+            err(c.relative_to(repo), f"{c.relative_to(repo)} is claimed by {names} in {env}")
 
     seen = reachable(root, starts + [root / "argocd" / "bootstrap", root / "argocd" / "bootstrap" / "root", root / "argocd" / "crds", root / "argocd" / "projects", root / "argocd" / "clusters", root / "argocd" / "applicationsets"])
     for f in sorted(root.rglob("*")):
@@ -203,8 +206,8 @@ def main(path: str) -> int:
             continue
         for i, line in enumerate(f.read_text().splitlines(), 1):
             m = re.match(r"^\s*environment:\s*['\"]?([A-Za-z]+)['\"]?\s*$", line)
-            if m and m.group(1) != "prod":
-                err(f"{f.relative_to(repo)},line={i}", f"environment is {m.group(1)}, only prod exists")
+            if m and m.group(1) not in ENVIRONMENTS:
+                err(f"{f.relative_to(repo)},line={i}", f"environment is {m.group(1)}, known are {', '.join(ENVIRONMENTS)}")
 
     granted = set()
     for g in root.rglob("*.yaml"):
