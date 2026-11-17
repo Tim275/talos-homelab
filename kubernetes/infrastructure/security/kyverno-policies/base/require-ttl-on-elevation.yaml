@@ -1,0 +1,26 @@
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: require-ttl-on-elevation
+spec:
+  failurePolicy: Ignore
+  evaluation:
+    background:
+      enabled: false
+  validationActions: [Deny]
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: [CREATE, UPDATE]
+        resources: [rolebindings, clusterrolebindings]
+  variables:
+    - name: elevated
+      expression: "['edit', 'admin', 'cluster-admin'].exists(r, r == object.roleRef.name)"
+    - name: oidcSubject
+      expression: "has(object.subjects) && object.subjects.exists(s, s.name.startsWith('oidc:') || s.name.startsWith('oidc-grp:'))"
+    - name: hasTtl
+      expression: "has(object.metadata.labels) && 'cleanup.kyverno.io/ttl' in object.metadata.labels"
+  validations:
+    - expression: "object.metadata.name == 'oidc-cluster-admins' || !variables.elevated || !variables.oidcSubject || variables.hasTtl"
+      message: "Schreibrechte fuer OIDC-Nutzer nur befristet: Label cleanup.kyverno.io/ttl setzen (mise run elevate)."

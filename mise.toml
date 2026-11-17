@@ -354,6 +354,31 @@ EOF
 done
 """
 
+[tasks.elevate]
+description = "Befristetes Schreibrecht vergeben, Kyverno loescht die Bindung nach Ablauf"
+usage = '''
+arg "<subject>" help="Nutzer (tim) oder Gruppe (sre-team)"
+arg "<role>" help="edit, admin oder cluster-admin"
+arg "<namespace>" help="Namespace, oder cluster fuer clusterweit"
+flag "--group" help="subject ist eine Gruppe"
+flag "--ttl <ttl>" default="2h" help="Dauer, z.B. 30m, 2h, 1d"
+flag "--reason <reason>" default="-" help="Begruendung fuer das Audit"
+'''
+run = """
+set -euo pipefail
+case "$usage_subject" in *[!a-zA-Z0-9._-]*) echo "ungueltiger Name" >&2; exit 1;; esac
+if [ -n "${usage_group:-}" ]; then sub="oidc-grp:$usage_subject"; kind=Group; else sub="oidc:$usage_subject"; kind=User; fi
+name="elevate-$usage_subject-$(date +%s)"
+if [ "$usage_namespace" = cluster ]; then
+  head="kind: ClusterRoleBinding"; meta="  name: $name"
+else
+  head="kind: RoleBinding"; meta="  name: $name\n  namespace: $usage_namespace"
+fi
+printf 'apiVersion: rbac.authorization.k8s.io/v1\n%s\nmetadata:\n%b\n  labels:\n    cleanup.kyverno.io/ttl: "%s"\n  annotations:\n    elevation/granted-by: "%s"\n    elevation/reason: "%s"\nroleRef:\n  apiGroup: rbac.authorization.k8s.io\n  kind: ClusterRole\n  name: %s\nsubjects:\n  - apiGroup: rbac.authorization.k8s.io\n    kind: %s\n    name: "%s"\n' \
+  "$head" "$meta" "$usage_ttl" "$(whoami)" "$usage_reason" "$usage_role" "$kind" "$sub" | kubectl apply -f -
+echo "$sub: $usage_role in $usage_namespace fuer $usage_ttl"
+"""
+
 [tasks.kubeconfigs]
 description = "Nach tofu apply: Admin-kubeconfig (system:masters, break-glass) und OIDC-kubeconfig (Keycloak) schreiben"
 usage = 'flag "--dir <dir>" default="tofu/stacks/cluster" help="Stack-Ordner, in dem tofu apply lief"'
