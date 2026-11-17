@@ -25,6 +25,10 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
 
 ![Three ways in](docs/architecture/3-request-flows.svg)
 
+### Secrets
+
+![Secrets](docs/architecture/4-secret-flow.svg)
+
 <sub>sources: `docs/architecture/*.excalidraw`</sub>
 
 ## Bootstrap
