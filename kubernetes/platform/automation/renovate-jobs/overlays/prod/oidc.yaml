@@ -1,0 +1,108 @@
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: renovate-oidc-credentials-cookie-secret
+  namespace: renovate-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: '-1'
+spec:
+  refreshInterval: 1h
+  updatePolicy: IfNotExists
+  secretStoreRefs:
+    - name: openbao
+      kind: ClusterSecretStore
+  selector:
+    generatorRef:
+      apiVersion: generators.external-secrets.io/v1alpha1
+      kind: ClusterGenerator
+      name: password
+  data:
+    - match:
+        secretKey: password
+        remoteRef:
+          remoteKey: renovate-operator/renovate-oidc-credentials
+          property: cookie-secret
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: renovate-oidc-credentials
+  namespace: renovate-operator
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao
+    kind: ClusterSecretStore
+  target:
+    name: renovate-oidc-credentials
+    template:
+      engineVersion: v2
+      data:
+        client-id: renovate
+        client-secret: '{{ index . "client-secret" }}'
+        cookie-secret: '{{ index . "cookie-secret" }}'
+  data:
+    - secretKey: client-secret
+      remoteRef:
+        key: keycloak/keycloak-renovate-client-secret
+        property: clientSecret
+    - secretKey: cookie-secret
+      remoteRef:
+        key: renovate-operator/renovate-oidc-credentials
+        property: cookie-secret
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: renovate-oidc
+  namespace: renovate-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: renovate-operator-renovate-operator
+  oidc:
+    provider:
+      issuer: https://iam.timourhomelab.org/realms/plattform
+      authorizationEndpoint: https://iam.timourhomelab.org/realms/plattform/protocol/openid-connect/auth
+      tokenEndpoint: https://iam.timourhomelab.org/realms/plattform/protocol/openid-connect/token
+    clientIDRef:
+      name: renovate-oidc-credentials
+      group: ""
+      kind: Secret
+    clientSecret:
+      name: renovate-oidc-credentials
+    redirectURL: https://renovate.timourhomelab.org/oauth2/callback
+    logoutPath: /oauth2/logout
+    cookieNames:
+      accessToken: AccessToken-Renovate
+      idToken: IdToken-Renovate
+    refreshToken: true
+    scopes:
+      - openid
+      - profile
+      - email
+      - groups
+  jwt:
+    providers:
+      - name: keycloak
+        issuer: https://iam.timourhomelab.org/realms/plattform
+        remoteJWKS:
+          uri: https://iam.timourhomelab.org/realms/plattform/protocol/openid-connect/certs
+        extractFrom:
+          cookies:
+            - AccessToken-Renovate
+  authorization:
+    defaultAction: Deny
+    rules:
+      - name: admins
+        action: Allow
+        principal:
+          jwt:
+            provider: keycloak
+            claims:
+              - name: groups
+                valueType: StringArray
+                values: ["cluster-admins", "platform-engineers", "sre-team", "security-team"]
