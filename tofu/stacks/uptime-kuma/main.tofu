@@ -28,7 +28,7 @@ locals {
     "OpenBao"      = { url = "https://openbao.timourhomelab.org/", group = "Anwendungen", codes = ["200-299"], notify = "slack" }
     "Grafana"      = { url = "https://grafana.timourhomelab.org/", group = "Monitoring", codes = ["200-299"], notify = "slack" }
     "Prometheus"   = { url = "https://prometheus.timourhomelab.org/", group = "Monitoring", codes = ["200-299", "401"], notify = "slack" }
-    "Alertmanager" = { url = "https://alertmanager.timourhomelab.org/", group = "Monitoring", codes = ["200-299"], notify = "slack" }
+    "Alertmanager" = { url = "https://alertmanager.timourhomelab.org/", group = "Monitoring", codes = ["200-299", "401"], notify = "slack" }
     "Kibana"       = { url = "https://kibana.timourhomelab.org/", group = "Monitoring", codes = ["200-299"], notify = "slack" }
     "Hubble"       = { url = "https://hubble.timourhomelab.org/", group = "Monitoring", codes = ["200-299"], notify = "slack" }
     "Jaeger"       = { url = "https://jaeger.timourhomelab.org/", group = "Monitoring", codes = ["200-299", "401"], notify = "slack" }
