@@ -11,11 +11,55 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
 [![OpenTofu](https://img.shields.io/badge/IaC-OpenTofu-844FBA?style=for-the-badge&logo=opentofu&logoColor=white)](https://opentofu.org/)
 [![ArgoCD](https://img.shields.io/badge/GitOps-ArgoCD-00D4AA?style=for-the-badge&logo=argo&logoColor=white)](https://argo-cd.readthedocs.io/)
 
-## Architecture Diagram
+## Architecture
 
-[![Architecture Diagram](docs/homelabarchitecture.svg)](https://raw.githubusercontent.com/Tim275/talos-homelab/main/docs/homelabarchitecture.svg)
+### Hardware & network
 
-<sub>click the diagram for full resolution</sub>
+![Hardware & network](docs/architecture/1-hardware-network.svg)
+
+### Platform, GitOps & bootstrap
+
+![Platform, GitOps & bootstrap](docs/architecture/2-platform-gitops.svg)
+
+### Three ways in
+
+![Three ways in](docs/architecture/3-request-flows.svg)
+
+<sub>sources: `docs/architecture/*.excalidraw`</sub>
+
+## Bootstrap
+
+Needs the remote state (`tofu/stacks/state`), Proxmox with its Ceph pools (`tofu/stacks/proxmox`) and the Ceph user for Rook (`mise run rook-external`).
+
+**1 · OpenTofu builds the cluster**
+
+```sh
+cd tofu/stacks/cluster
+export TF_ENCRYPTION="$(cat ~/.homelab/tofu-encryption/cluster.hcl)"
+tofu init
+tofu apply -parallelism=1
+export KUBECONFIG=$PWD/output/kube-config.yaml
+cd ../../..
+```
+
+**2 · Argo CD and root**, applied twice: the first run creates the CRDs
+
+```sh
+kustomize build --enable-helm --load-restrictor LoadRestrictionsNone \
+  kubernetes/argocd/bootstrap > /tmp/bootstrap.yaml
+kubectl apply --server-side --force-conflicts -f /tmp/bootstrap.yaml
+kubectl wait --for=condition=Established --timeout=180s \
+  crd/applications.argoproj.io crd/applicationsets.argoproj.io crd/appprojects.argoproj.io
+kubectl apply --server-side --force-conflicts -f /tmp/bootstrap.yaml
+```
+
+**3–5 · Argo CD takes over**: infrastructure and platform sync on their own, apps and tenants wait for a manual sync
+
+```sh
+kubectl -n argocd get applications -w
+```
+
+From then on every change goes through a PR. GitHub Actions runs the checks, plans OpenTofu on the PR and applies after approval: `tofu-root-cd` for the cluster, `tofu-cd` for NetBird and Uptime Kuma (start it once by hand after a rebuild). `tofu-drift` compares code and reality every morning.
 
 ## 📦 Applications
 
@@ -256,7 +300,7 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
 
 ```
 .
-├── docs/                    architecture diagram, runbooks, kubectl OIDC config
+├── docs/                    architecture diagrams, runbooks, kubectl OIDC config
 ├── tofu/
 │   ├── stacks/              one root module per state: cluster, proxmox, netbird, uptime-kuma, state
 │   └── modules/             talos, openbao, rook-external
