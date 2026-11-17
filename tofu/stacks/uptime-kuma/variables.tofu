@@ -6,7 +6,7 @@ variable "uptime_kuma_url" {
 
 variable "uptime_kuma_username" {
   type        = string
-  default     = "Tim"
+  default     = "Timour"
   description = "Admin-Benutzer"
 }
 
