@@ -13,21 +13,25 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
 
 ## Architecture
 
-### Hardware & network
+### Hardware and network
 
-![Hardware & network](docs/architecture/1-hardware-network.svg)
+![Hardware and network](docs/architecture/1-hardware-network.svg)
 
-### Platform, GitOps & bootstrap
+### Platform and GitOps
 
-![Platform, GitOps & bootstrap](docs/architecture/2-platform-gitops.svg)
+![Platform and GitOps](docs/architecture/2-platform-gitops.svg)
+
+### Bootstrap and deploy order
+
+![Bootstrap and deploy order](docs/architecture/3-bootstrap.svg)
 
 ### Three ways in
 
-![Three ways in](docs/architecture/3-request-flows.svg)
+![Three ways in](docs/architecture/4-request-flows.svg)
 
 ### Secrets
 
-![Secrets](docs/architecture/4-secret-flow.svg)
+![Secrets](docs/architecture/5-secret-flow.svg)
 
 <sub>sources: `docs/architecture/*.excalidraw`</sub>
 
