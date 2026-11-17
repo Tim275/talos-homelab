@@ -33,6 +33,10 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
 
 ![Secrets](docs/architecture/5-secret-flow.svg)
 
+### Observability and alerting
+
+![Observability and alerting](docs/architecture/6-observability.svg)
+
 <sub>sources: `docs/architecture/*.excalidraw`</sub>
 
 ## 🗃️ Folder Structure
