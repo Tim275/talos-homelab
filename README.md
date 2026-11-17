@@ -33,7 +33,11 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
 
 ## Bootstrap
 
-Needs the remote state in Azure Blob (`tofu/stacks/state`, encrypted with OpenTofu state encryption, CI logs in via OIDC), Proxmox with its Ceph pools (`tofu/stacks/proxmox`) and the Ceph user for Rook (`mise run rook-external`).
+Needs:
+
+- the remote state in Azure Blob (`tofu/stacks/state`), encrypted with OpenTofu state encryption; CI logs in via OIDC
+- Proxmox with its Ceph pools, firewall and API tokens (`tofu/stacks/proxmox`, applied by hand)
+- four local, git-ignored inputs in `tofu/stacks/cluster`: `proxmox.auto.tfvars` (endpoints and the API token from the proxmox stack), `openbao_values.auto.tfvars` (first secrets), `keys/seal.key` (OpenBao seal key) and `rook_external.auto.tfvars` (written by `mise run rook-external`)
 
 **1 · OpenTofu builds the cluster**
 
