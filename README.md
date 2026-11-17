@@ -33,7 +33,7 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
 
 ## Bootstrap
 
-Needs the remote state (`tofu/stacks/state`), Proxmox with its Ceph pools (`tofu/stacks/proxmox`) and the Ceph user for Rook (`mise run rook-external`).
+Needs the remote state in Azure Blob (`tofu/stacks/state`, encrypted with OpenTofu state encryption, CI logs in via OIDC), Proxmox with its Ceph pools (`tofu/stacks/proxmox`) and the Ceph user for Rook (`mise run rook-external`).
 
 **1 · OpenTofu builds the cluster**
 
