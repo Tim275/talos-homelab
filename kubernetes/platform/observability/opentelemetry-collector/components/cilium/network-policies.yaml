@@ -1,0 +1,52 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: otel-collector-ingress-lock
+  namespace: opentelemetry
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/instance: opentelemetry.otel-collector
+  ingress:
+    - fromEntities:
+        - cluster
+      toPorts:
+        - ports:
+            - { port: "4317", protocol: TCP }
+            - { port: "4318", protocol: TCP }
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - { port: "8888", protocol: TCP }
+    - fromEntities:
+        - host
+        - kube-apiserver
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: otel-gateway-ingress-lock
+  namespace: opentelemetry
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/instance: opentelemetry.otel-gateway
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app.kubernetes.io/instance: opentelemetry.otel-collector
+      toPorts:
+        - ports:
+            - { port: "4317", protocol: TCP }
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - { port: "8888", protocol: TCP }
+    - fromEntities:
+        - host
+        - kube-apiserver

@@ -1,0 +1,80 @@
+#
+#   - All system + log indices default to 1 replica → unassigned on 1-node → cluster=YELLOW
+#   - No automated snapshots → manual backup or none
+#
+#   - Index template forces replicas=0 cluster-wide on logs-* + .ds-* indices
+#   - SLM policy snapshots daily at 01:30 UTC, retains 7-30 days
+#   - Existing snapshot repository (s3-ceph) is reused (created by snapshots/ Job)
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: elasticsearch-single-node-tuning
+  namespace: elastic-system
+  labels:
+    app.kubernetes.io/name: elasticsearch
+    app.kubernetes.io/component: tuning
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: elasticsearch
+        app.kubernetes.io/component: tuning
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: tune
+          image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          env:
+            - name: ES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: production-cluster-es-elastic-user
+                  key: elastic
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              ES="https://production-cluster-es-http.elastic-system.svc.cluster.local:9200"
+              AUTH="elastic:${ES_PASSWORD}"
+
+              echo "Waiting for Elasticsearch..."
+              until curl -sk -u "$AUTH" "$ES/_cluster/health" | grep -q '"status":"\(green\|yellow\)"'; do sleep 5; done
+
+              echo "==> Cluster settings: disk watermarks (single-node tighter thresholds)"
+              curl -sk -u "$AUTH" -X PUT "$ES/_cluster/settings" \
+                -H 'Content-Type: application/json' -d '{
+                  "persistent": {
+                    "cluster.routing.allocation.disk.threshold_enabled": true,
+                    "cluster.routing.allocation.disk.watermark.low": "85%",
+                    "cluster.routing.allocation.disk.watermark.high": "90%",
+                    "cluster.routing.allocation.disk.watermark.flood_stage": "95%"
+                  }
+                }'
+              echo
+
+              echo "==> Force replicas=0 on all indices incl. data stream backing indices"
+              echo "    (single-node cluster: replicas can't allocate on 1 node -> 0 keeps it GREEN)"
+              curl -sk -u "$AUTH" -X PUT "$ES/*/_settings?expand_wildcards=all" \
+                -H 'Content-Type: application/json' -d '{
+                  "index": { "number_of_replicas": 0 }
+                }'
+              echo
+
+              echo "==> Cluster health"
+              curl -sk -u "$AUTH" "$ES/_cluster/health?pretty"
+              echo
+              echo "Done."

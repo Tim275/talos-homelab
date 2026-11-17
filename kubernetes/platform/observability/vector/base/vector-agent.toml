@@ -1,0 +1,147 @@
+# Vector Agent Configuration - Lightweight log collector (replaces Fluent Bit)
+# Runs as DaemonSet on each node
+
+# Performance settings
+data_dir = "/vector-data-dir"
+
+[api]
+enabled = true
+address = "0.0.0.0:8686"
+
+# Kubernetes logs source
+[sources.kubernetes_logs]
+type = "kubernetes_logs"
+auto_partial_merge = true
+exclude_paths_glob_patterns = ["**/fluent*/**", "**/fluentd*/**", "**/vector*/**"]
+
+# Host metrics source (optional)
+[sources.host_metrics]
+type = "host_metrics"
+collectors = ["cpu", "memory", "disk"]
+
+# Parse Kubernetes metadata
+[transforms.kubernetes_metadata]
+type = "remap"
+inputs = ["kubernetes_logs"]
+source = '''
+.kubernetes.namespace = .kubernetes.pod_namespace
+.kubernetes.deployment = .kubernetes.pod_labels.deployment
+.kubernetes.pod_name = .kubernetes.pod_name
+.kubernetes.container_name = .kubernetes.container_name
+.kubernetes.node_name = .kubernetes.pod_node_name
+.kubernetes.pod_labels = .kubernetes.pod_labels
+.cluster = "talos-homelab"
+.environment = "production"
+'''
+
+# Parse JSON logs
+[transforms.parse_json]
+type = "remap"
+inputs = ["kubernetes_metadata"]
+source = '''
+parsed, err = parse_json(.message)
+if err == null {
+  . = merge!(., parsed)
+}
+'''
+
+# Filter out noisy logs
+# Tetragon runs in kube-system but its runtime-security events must pass (SIEM).
+[transforms.filter_noise]
+type = "filter"
+inputs = ["parse_json"]
+condition = '''
+(!contains(to_string(.message) ?? "", "GET /healthz") &&
+!contains(to_string(.message) ?? "", "GET /readyz") &&
+!contains(to_string(.kubernetes.namespace) ?? "", "kube-system")) ||
+contains(to_string(.level) ?? "", "error") ||
+contains(to_string(.level) ?? "", "warn") ||
+starts_with(to_string(.kubernetes.pod_name) ?? "", "tetragon") ||
+starts_with(to_string(.kubernetes.pod_name) ?? "", "coredns")
+'''
+
+# Kubernetes API server audit logs (control plane nodes only)
+[sources.kube_audit_logs]
+type = "file"
+include = ["/var/log/audit/kube/kube-apiserver*.log"]
+read_from = "end"
+
+[transforms.parse_kube_audit]
+type = "remap"
+inputs = ["kube_audit_logs"]
+source = '''
+. = parse_json!(string!(.message))
+# Drop raw request/response bodies + annotations — full K8s objects explode the ES mapping
+del(.requestObject)
+del(.responseObject)
+del(.annotations)
+.source = "kubernetes-audit"
+.cluster = "talos-homelab"
+.environment = "production"
+.service_name = "kube-audit"
+.severity = "info"
+.namespace_suffix = "production"
+."@timestamp" = .stageTimestamp
+."log.level" = if .level == "RequestResponse" { "info" } else { "debug" }
+."service.name" = "kube-audit"
+."event.action" = .verb
+."event.outcome" = if exists(.responseStatus.code) && to_int!(.responseStatus.code) < 400 { "success" } else { "failure" }
+."user.name" = string(.user.username) ?? "unknown"
+."user.id" = string(.user.uid) ?? ""
+."source_ip" = if exists(.sourceIPs) && length!(.sourceIPs) > 0 { string!(.sourceIPs[0]) } else { "" }
+."kubernetes.namespace" = string(.objectRef.namespace) ?? ""
+."kubernetes.resource" = string(.objectRef.resource) ?? ""
+."kubernetes.name" = string(.objectRef.name) ?? ""
+del(.user)
+del(.objectRef)
+del(.responseStatus)
+'''
+
+# Talos-Logs laufen jetzt ueber Alloy (otelcol.receiver.tcplog).
+# Beide koennen 127.0.0.1:5555 nicht gleichzeitig binden.
+
+[sources.hubble_flows]
+type = "file"
+include = ["/var/run/cilium/hubble/events.log*"]
+read_from = "end"
+ignore_older_secs = 600
+
+[transforms.parse_hubble]
+type = "remap"
+inputs = ["hubble_flows"]
+source = '''
+. = parse_json!(.message)
+.source = "hubble"
+.cluster = "talos-homelab"
+'''
+
+# Security-relevant flows only. FORWARDED/TRACED flooded the pipeline
+# (every TCP packet event) and starved the sampler — Hubble UI/metrics
+# already cover healthy traffic; logs only need verdicts that matter.
+[transforms.filter_hubble_security]
+type = "filter"
+inputs = ["parse_hubble"]
+condition = '''
+includes(["DROPPED", "ERROR", "AUDIT", "POLICY_DENIED"], to_string(.flow.verdict) ?? to_string(.verdict) ?? "")
+'''
+
+# Forward to Vector Aggregator
+[sinks.vector_aggregator]
+type = "vector"
+inputs = ["filter_noise", "parse_kube_audit", "filter_hubble_security"]
+address = "vector-aggregator.elastic-system.svc.cluster.local:6000"
+version = "2"
+
+[sinks.vector_aggregator.buffer]
+type = "disk"
+max_size = 268435488  # 256MB buffer per node
+when_full = "drop_newest"
+
+[sinks.vector_aggregator.healthcheck]
+enabled = true
+
+# Prometheus metrics
+[sinks.prometheus_metrics]
+type = "prometheus_exporter"
+inputs = ["host_metrics"]
+address = "0.0.0.0:9090"

@@ -1,0 +1,31 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: drova-kafka-broker-metrics
+  namespace: drova
+  labels:
+    app.kubernetes.io/name: drova-kafka-broker-podmonitor
+    app.kubernetes.io/part-of: prometheus-operator
+spec:
+  namespaceSelector:
+    matchNames:
+      - drova
+  selector:
+    matchLabels:
+      strimzi.io/cluster: drova-kafka
+      strimzi.io/kind: Kafka
+  podMetricsEndpoints:
+    - port: tcp-prometheus
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      honorLabels: true
+      relabelings:
+        - action: labelmap
+          regex: __meta_kubernetes_pod_label_(strimzi_io_.+)
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: kubernetes_namespace
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: kubernetes_pod_name
+        - sourceLabels: [__meta_kubernetes_pod_node_name]
+          targetLabel: node_name

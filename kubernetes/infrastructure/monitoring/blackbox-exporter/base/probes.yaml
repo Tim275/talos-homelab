@@ -1,0 +1,72 @@
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: external-connectivity
+  namespace: monitoring
+spec:
+  jobName: blackbox-external
+  module: http_2xx
+  prober:
+    url: blackbox-exporter-prometheus-blackbox-exporter.monitoring.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - https://1.1.1.1
+        - https://8.8.8.8
+        - https://github.com
+        - https://cloudflare.com
+      labels:
+        env: external
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: external-dns
+  namespace: monitoring
+spec:
+  jobName: blackbox-dns
+  module: dns_external
+  prober:
+    url: blackbox-exporter-prometheus-blackbox-exporter.monitoring.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - kube-dns.kube-system.svc.cluster.local:53
+      labels:
+        env: cluster-dns
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: homelab-public-services
+  namespace: monitoring
+spec:
+  jobName: blackbox-homelab
+  module: http_reachable
+  prober:
+    url: blackbox-exporter-prometheus-blackbox-exporter.monitoring.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      labels:
+        env: prod
+        type: public
+---
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: kubelet-serving-cert
+  namespace: monitoring
+spec:
+  jobName: kubelet-serving-cert
+  metricsPath: /probe
+  params:
+    module: [tls_connect]
+  kubernetesSDConfigs:
+    - role: Node
+  relabelings:
+    - sourceLabels: [__address__]
+      targetLabel: __param_target
+    - sourceLabels: [__meta_kubernetes_node_name]
+      targetLabel: node
+    - targetLabel: __address__
+      replacement: blackbox-exporter-prometheus-blackbox-exporter.monitoring.svc.cluster.local:9115

@@ -1,0 +1,189 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: observability-health
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: observability-page
+      interval: 30s
+      rules:
+        - alert: PrometheusPodMissing
+          expr: |
+            kube_statefulset_status_replicas_ready{namespace="monitoring",statefulset="prometheus-kube-prometheus-stack-prometheus"}
+            < kube_statefulset_replicas{namespace="monitoring",statefulset="prometheus-kube-prometheus-stack-prometheus"}
+          for: 5m
+          labels:
+            severity: critical
+            component: monitoring
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/platform.md#prometheuspodmissing"
+            dashboard_url: "/d/prometheus-stats"
+            summary: "Prometheus replica missing — metrics stopped ({{ $value }} ready)"
+            description: "Fewer ready Prometheus pods than desired >5min (often Phase=Succeeded after upgrade-eviction). All SLO/Rollout alerts blind until restarted."
+            action: "kubectl get pod -n monitoring -l app.kubernetes.io/name=prometheus; if Phase=Succeeded after eviction: 'kubectl delete pod ... --force'."
+
+        - alert: AlertmanagerPodMissing
+          expr: |
+            kube_statefulset_status_replicas_ready{namespace="monitoring",statefulset="alertmanager-kube-prometheus-stack-alertmanager"}
+            < kube_statefulset_replicas{namespace="monitoring",statefulset="alertmanager-kube-prometheus-stack-alertmanager"}
+          for: 10m
+          labels:
+            severity: critical
+            component: monitoring
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/platform.md#alertmanagerpodmissing"
+            dashboard_url: "/d/alertmanager-state"
+            summary: "Alertmanager replica missing — gossip mesh degraded ({{ $value }} ready)"
+            description: "Fewer ready AM pods than desired >10min. A single dead AM can stay invisible (HA majority). Fix: kubectl delete pod -n monitoring <name> --force."
+            action: "kubectl delete pod -n monitoring -l app.kubernetes.io/name=alertmanager --force (a single dead AM hides behind HA majority)."
+
+        - alert: LokiIngestionOverloadDropping
+          expr: |
+            (
+              sum by (reason) (rate(loki_discarded_samples_total[30m]))
+                / scalar(clamp_min(sum(rate(loki_distributor_lines_received_total[30m])), 1))
+            ) > 0.01
+            and
+            (
+              sum by (reason) (rate(loki_discarded_samples_total[5m]))
+                / scalar(clamp_min(sum(rate(loki_distributor_lines_received_total[5m])), 1))
+            ) > 0.01
+          for: 10m
+          labels:
+            severity: critical
+            component: observability
+          annotations:
+            dashboard_url: "/d/loki-stack"
+            summary: "Loki verwirft {{ $value | humanizePercentage }} der Logzeilen — {{ $labels.reason }}"
+            description: "Loki verwirft ueber 1 % der eingehenden Zeilen ({{ $labels.reason }}) — Tenant ueber ingestion_rate_mb oder per_stream_rate_limit. Zeilen sind weg, keine Platte laeuft voll. Anteil statt Absolutwert: 0,03 Zeilen/s bei 206/s ist kein Vorfall. Log-Alarme sehen die verworfenen Zeilen nicht."
+            action: "kubectl logs -n monitoring loki-0 | grep -i 'rate limit'; identify the noisy stream (namespace/pod) and fix the log spam or raise the per-tenant limit."
+    - name: observability-ticket
+      interval: 60s
+      rules:
+        - alert: PrometheusTargetDown
+          expr: up == 0
+          for: 15m
+          labels:
+            severity: warning
+            component: observability
+          annotations:
+            dashboard_url: "/d/prometheus-stats"
+            summary: "Scrape target down: {{ $labels.job }}/{{ $labels.instance }}"
+            description: "Prometheus cannot scrape {{ $labels.instance }} for >15min."
+            action: "Check {{ $labels.instance }} ({{ $labels.job }}): is the exporter/pod up? ServiceMonitor selector + network policy?"
+
+        - alert: GrafanaDown
+          expr: absent(up{job="grafana-service"}) or up{job="grafana-service"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: observability
+          annotations:
+            dashboard_url: "/d/prometheus-stats"
+            summary: "Grafana is down"
+            description: "Grafana unreachable >5min — dashboards unavailable (alerting unaffected)."
+            action: "kubectl -n monitoring rollout restart deploy/grafana; check logs + its DB/datasources."
+
+        - alert: RolloutAborted
+          expr: rollout_phase{phase=~"Abort|Error|Timeout"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            component: deployment
+          annotations:
+            summary: "Argo Rollout aborted — {{ $labels.namespace }}/{{ $labels.name }}"
+            description: "Rollout in Abort/Error/Timeout >5min (AnalysisTemplate fail, canary health-check, image-pull). New release stuck; users on old version."
+            action: "kubectl argo rollouts get rollout {{ $labels.name }} -n {{ $labels.namespace }}; check the AnalysisRun/canary; retry or abort."
+
+        - alert: EnvoyGatewayPodCompletedLoop
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="gateway",container="envoy"}[1h]) > 10
+          for: 10m
+          labels:
+            severity: warning
+            component: ingress
+          annotations:
+            dashboard_url: "/d/k8s-pod-overview?var-namespace=gateway&var-pod={{ $labels.pod }}"
+            summary: "Envoy-gateway pod restart-loop ({{ $value }} in 1h, threshold 10)"
+            description: "Repeated cold-starts hurt user-facing latency. If Reason=Completed: likely Talos-eviction race."
+            action: "kubectl -n gateway describe pod -l app.kubernetes.io/name=envoy; if Reason=Completed it's a Talos-eviction race — check node pressure."
+
+        - alert: LokiDown
+          expr: absent(up{job=~".*loki.*"}) or up{job=~".*loki.*"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            component: observability
+          annotations:
+            dashboard_url: "/d/loki-stack"
+            summary: "Loki {{ $labels.job }} down"
+            description: "Log store unreachable >10min — log ingestion/query unavailable (metrics-alerting unaffected)."
+            action: "kubectl -n monitoring get pod -l app.kubernetes.io/name=loki + logs; check its object-store (Ceph-RGW) backend."
+
+        - alert: LokiRuleEvaluationFailures
+          expr: sum by (rule_group) (increase(loki_prometheus_rule_evaluation_failures_total[10m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+            component: observability
+          annotations:
+            dashboard_url: "/d/loki-stack"
+            summary: "Loki Ruler kann Log-Regeln nicht auswerten ({{ $labels.rule_group }})"
+            description: "Die Log-Alarme dieser Gruppe sind still, nicht grün."
+            action: "kubectl -n monitoring logs -l app.kubernetes.io/component=single-binary --since=30m | grep -i 'rule'"
+
+        - alert: LokiRulerAlertingBroken
+          expr: |
+            (sum(rate(loki_prometheus_notifications_errors_total[5m])) / (sum(rate(loki_prometheus_notifications_sent_total[5m])) > 0)) > 0.03
+            or
+            sum(loki_prometheus_notifications_alertmanagers_discovered) == 0
+          for: 15m
+          labels:
+            severity: critical
+            component: observability
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/platform.md#alertmanagerclusterfailedtosendalerts"
+            dashboard_url: "/d/loki-stack"
+            summary: "Loki Ruler erreicht den Alertmanager nicht"
+            description: "Alle Log-Alarme gehen verloren, auch die Pages. Metrik-Alarme sind nicht betroffen."
+            action: "kubectl -n monitoring logs -l app.kubernetes.io/component=single-binary --since=30m | grep -i notif"
+
+        - alert: VectorPipelineDown
+          expr: absent(up{job=~".*vector.*"}) or up{job=~".*vector.*"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            component: observability
+          annotations:
+            dashboard_url: "/d/vector-throughput"
+            summary: "Vector log-shipper {{ $labels.instance }} down"
+            description: "Vector agent/aggregator down >10min — pod logs not shipped to Loki/Elasticsearch."
+            action: "kubectl -n elastic-system get pod -l app.kubernetes.io/name=vector + logs; restart the agent/aggregator."
+
+        - alert: VectorBufferUtilizationHigh
+          expr: vector_buffer_byte_size / vector_buffer_max_byte_size > 0.8
+          for: 15m
+          labels:
+            severity: warning
+            component: observability
+          annotations:
+            dashboard_url: "/d/vector-throughput"
+            summary: "Vector buffer {{ $labels.component_id }} at {{ $value | humanizePercentage }}"
+            description: "Vector buffer >80% full for 15min — the sink is falling behind; events will drop next."
+            action: "Check ES/Loki ingest health + vector-throughput dashboard; scale the sink or raise buffer size."
+
+        - alert: VectorSinkDroppingEvents
+          expr: |
+            sum by (component_id) (rate(vector_component_discarded_events_total{component_kind="sink"}[10m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+            component: observability
+          annotations:
+            dashboard_url: "/d/vector-throughput"
+            summary: "Vector sink {{ $labels.component_id }} dropping events ({{ $value | humanize }}/s)"
+            description: "Vector is discarding events at the {{ $labels.component_id }} sink for >15min — poison docs (ES mapping conflict), template-render failures or batch rejects. Logs silently lost. Check: kubectl logs -n elastic-system deploy/vector-aggregator | grep -v '^{' | grep ERROR"
+            action: "kubectl logs -n elastic-system deploy/vector-aggregator | grep -v '^{' | grep ERROR — poison doc (ES mapping conflict) or sink backpressure; check ES disk/health."
+

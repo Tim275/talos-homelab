@@ -1,0 +1,81 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hardware-host-sensors
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: host-sensors
+      interval: 1m
+      rules:
+        - alert: HostCPUTemperatureCritical
+          # k10temp der Ryzen-Hosts meldet keinen crit-Wert und liegt bauartbedingt auf Tjmax 95
+          expr: node_hwmon_temp_celsius{chip=~"platform_coretemp.*"} > 95
+          for: 15m
+          labels:
+            severity: critical
+            component: hardware
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/hosts.md#hostcputemperaturecritical"
+            dashboard_url: "/d/k8s-node-overview"
+            summary: "CPU {{ $labels.chip }} on {{ $labels.instance }} at {{ $value }}°C"
+            description: "Thermal shutdown imminent — host may power off. Check airflow / dust / fan."
+            action: "PHYSICAL: clean dust + check fan/airflow on the host; reduce load until temp drops below throttle."
+        - alert: HostNVMeTemperatureCritical
+          # Composite, nicht Sensor 2
+          expr: |
+            max by (instance, chip) (
+              node_hwmon_temp_celsius{chip=~"nvme.*"}
+              and on (instance, chip, sensor) node_hwmon_sensor_label{label="Composite"}
+            ) > 85
+          for: 15m
+          labels:
+            severity: warning
+            component: hardware
+          annotations:
+            dashboard_url: "/d/k8s-node-overview"
+            summary: "NVMe {{ $labels.chip }} on {{ $labels.instance }} at {{ $value }}°C"
+            description: "NVMe running hot — thermal-throttles and degrades Ceph performance."
+            action: "PHYSICAL: add/reseat heatsink, improve airflow/dust; reduce write load."
+
+        # 85C is thermal-shutdown territory; Ceph slow-ops start well below that
+        - alert: HostNVMeTemperatureWarning
+          # Composite, nicht Sensor 2
+          expr: |
+            max by (instance, chip) (
+              node_hwmon_temp_celsius{chip=~"nvme.*"}
+              and on (instance, chip, sensor) node_hwmon_sensor_label{label="Composite"}
+            ) > 70
+          for: 30m
+          labels:
+            severity: warning
+            component: hardware
+          annotations:
+            dashboard_url: "/d/k8s-node-overview"
+            summary: "NVMe {{ $labels.chip }} on {{ $labels.instance }} at {{ $value }}°C"
+            description: "Sustained >70C on the Composite sensor. A throttling NVMe is a common source of CephSlowOps — check the disk before blaming Ceph."
+            action: "smartctl -a /dev/nvmeN on the host; compare against the other NVMe in the same chassis. PHYSICAL: heatsink/airflow. Cross-check: does CephSlowOps fire at the same time? Which OSDs sit on this disk: ceph osd tree."
+
+        # - alert: HypervisorSwapInUse
+        #   expr: |
+        #   for: 15m
+        #     severity: warning
+        #     component: hardware
+        #     dashboard_url: "/d/k8s-node-overview"
+        #     summary: "Hypervisor {{ $labels.instance }}: {{ $value | humanizePercentage }} Swap belegt"
+
+        - alert: HostSwapUsageHigh
+          expr: |
+            (node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes) / clamp_min(node_memory_SwapTotal_bytes, 1) > 0.8
+            and
+            node_memory_MemAvailable_bytes / clamp_min(node_memory_MemTotal_bytes, 1) < 0.15
+          for: 15m
+          labels:
+            severity: warning
+            component: hardware
+          annotations:
+            dashboard_url: "/d/k8s-node-overview"
+            summary: "{{ $labels.instance }} thrashing: swap {{ $value | humanizePercentage }} (Schwelle >80%) + RAM frei <15%"
+            description: "Host unter echtem Speicher-Druck (Swap voll UND wenig RAM frei) → Performance-Einbruch für VMs/Ceph. Right-sizing/Workload reduzieren."
+            action: "kubectl top pods -A --sort-by=memory; right-size the memory-heavy workloads on this host."

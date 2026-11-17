@@ -1,0 +1,108 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: lldap-bootstrap
+  namespace: lldap
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  schedule: "0 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  startingDeadlineSeconds: 600
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      ttlSecondsAfterFinished: 600
+      template:
+        metadata:
+          labels:
+            velero.io/exclude-from-backup: "true"
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            fsGroup: 1001
+          containers:
+            - name: bootstrap
+              image: lldap/lldap:v0.6.3-alpine-rootless
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -e
+                  mkdir -p /bootstrap/user-configs /bootstrap/group-configs /bootstrap/user-schemas
+                  # Schemas erwartet bootstrap.sh als Array, User und Gruppen als JSON-Stream
+                  cp /config/user-schemas.json /bootstrap/user-schemas/
+                  jq -c '.[]' /config/groups.json > /bootstrap/group-configs/groups.json
+                  jq -c '.[]' /config/users.json  > /bootstrap/user-configs/users.json
+
+                  # "password": "secret:<key>" gegen den gleichnamigen Secret-Key auflösen
+                  for f in /secrets/*; do
+                    jq -c --arg k "secret:$(basename "$f")" --rawfile v "$f" \
+                      'if .password == $k then .password = ($v | rtrimstr("\n")) else . end' \
+                      /bootstrap/user-configs/users.json > /tmp/users.json
+                    mv /tmp/users.json /bootstrap/user-configs/users.json
+                  done
+
+                  if grep -q '"secret:' /bootstrap/user-configs/users.json; then
+                    echo "ERROR: unaufgelöste secret:-Referenz in users.json"
+                    grep -o '"secret:[a-z0-9-]*"' /bootstrap/user-configs/users.json
+                    exit 1
+                  fi
+
+                  exec /app/bootstrap.sh
+              env:
+                - name: LLDAP_URL
+                  value: http://lldap:17170
+                - name: LLDAP_ADMIN_USERNAME
+                  value: admin
+                - name: LLDAP_ADMIN_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: lldap-secrets
+                      key: admin-password
+                - name: USER_CONFIGS_DIR
+                  value: /bootstrap/user-configs
+                - name: GROUP_CONFIGS_DIR
+                  value: /bootstrap/group-configs
+                - name: USER_SCHEMAS_DIR
+                  value: /bootstrap/user-schemas
+                - name: DO_CLEANUP
+                  value: "true"
+              volumeMounts:
+                - name: config
+                  mountPath: /config
+                  readOnly: true
+                - name: secrets
+                  mountPath: /secrets
+                  readOnly: true
+                - name: bootstrap
+                  mountPath: /bootstrap
+                - name: tmp
+                  mountPath: /tmp
+              securityContext:
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                runAsUser: 1000
+                capabilities:
+                  drop: ["ALL"]
+                seccompProfile:
+                  type: RuntimeDefault
+          volumes:
+            - name: config
+              projected:
+                sources:
+                  - configMap:
+                      name: bootstrap-users
+                  - configMap:
+                      name: bootstrap-groups
+                  - configMap:
+                      name: bootstrap-user-schemas
+            - name: secrets
+              secret:
+                secretName: lldap-secrets
+            - name: bootstrap
+              emptyDir: {}
+            - name: tmp
+              emptyDir: {}

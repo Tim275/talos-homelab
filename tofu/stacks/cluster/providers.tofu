@@ -1,0 +1,41 @@
+terraform {
+  required_version = ">= 1.12.0"
+  backend "azurerm" {
+    resource_group_name  = "rg-tofu-state"
+    storage_account_name = "tofustatehomelab"
+    container_name       = "tfstate"
+    key                  = "talos-homelab.tfstate"
+    use_azuread_auth     = true
+    use_oidc             = true
+    subscription_id      = "72c89487-4bc9-4c91-a0f7-0cc51fc89336"
+  }
+
+  required_providers {
+    talos = {
+      source  = "siderolabs/talos"
+      version = "0.12.0"
+    }
+    proxmox = {
+      source  = "bpg/proxmox"
+      version = "0.122.0"
+    }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "2.38.0"
+    }
+  }
+}
+
+provider "proxmox" {
+  endpoint = var.proxmox.endpoint
+  insecure = var.proxmox.insecure
+
+  api_token = var.proxmox_api_token
+}
+
+provider "kubernetes" {
+  host                   = module.talos.kube_config.kubernetes_client_configuration.host
+  client_certificate     = base64decode(module.talos.kube_config.kubernetes_client_configuration.client_certificate)
+  client_key             = base64decode(module.talos.kube_config.kubernetes_client_configuration.client_key)
+  cluster_ca_certificate = base64decode(module.talos.kube_config.kubernetes_client_configuration.ca_certificate)
+}

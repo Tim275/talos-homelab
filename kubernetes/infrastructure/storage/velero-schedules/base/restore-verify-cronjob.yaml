@@ -1,0 +1,149 @@
+#
+#
+# Backup-Schedule: daily-cluster (03:00, alle Namespaces)
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: velero-restore-verify
+  namespace: velero
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: velero-restore-verify
+rules:
+  - apiGroups: ["velero.io"]
+    resources: [backups, restores]
+    verbs: [get, list, create, delete]
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [get, create, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: velero-restore-verify
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: velero-restore-verify
+subjects:
+  - kind: ServiceAccount
+    name: velero-restore-verify
+    namespace: velero
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: velero-restore-verify
+  namespace: velero
+  labels:
+    app.kubernetes.io/name: velero-restore-verify
+    app.kubernetes.io/part-of: backup-validation
+spec:
+  schedule: "30 7 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 7      # 7 days history für DR-Drill-Tracking
+  startingDeadlineSeconds: 600
+  jobTemplate:
+    spec:
+      backoffLimit: 2           # retry transient fails (Ceph/RGW instability during thermal events) before alerting
+      ttlSecondsAfterFinished: 86400
+      activeDeadlineSeconds: 7200   # 2h max — had stuck-12h job
+      template:
+        metadata:
+          labels:
+            app: velero-restore-verify
+        spec:
+          serviceAccountName: velero-restore-verify
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: verify
+              image: alpine/k8s:1.36.5@sha256:094adf64cdc4827377cdbe7ea5747472ce115f9fbc64a4e35970ec66777f9a00
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              volumeMounts:
+                - { name: tmp, mountPath: /tmp }
+              command: [/bin/bash, -c]
+              args:
+                - |
+                  set -uo pipefail
+                  TS=$(date +%Y%m%d-%H%M)
+                  TEST_NS="dr-verify-${TS}"
+                  RESTORE="dr-verify-${TS}"
+
+                  echo "═══ DR-Verify-Run ${TS} ═══"
+
+                  LATEST=$(kubectl get backups.velero.io -n velero \
+                    -l velero.io/schedule-name=daily-cluster \
+                    --sort-by=.metadata.creationTimestamp \
+                    -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.status.phase}{"\n"}{end}' 2>/dev/null \
+                    | grep '|Completed$' | tail -1 | cut -d'|' -f1)
+
+                  if [ -z "$LATEST" ]; then
+                    echo "✗ FAIL: kein Completed daily-cluster Backup in letzten 7d gefunden"
+                    echo "→ Recent backups:"
+                    kubectl get backups.velero.io -n velero \
+                      -l velero.io/schedule-name=daily-cluster \
+                      --sort-by=.metadata.creationTimestamp 2>/dev/null | tail -5
+                    exit 1
+                  fi
+
+                  echo "→ Found latest completed backup: $LATEST"
+
+                  kubectl apply -f - <<EOF
+                  apiVersion: velero.io/v1
+                  kind: Restore
+                  metadata:
+                    name: ${RESTORE}
+                    namespace: velero
+                  spec:
+                    backupName: ${LATEST}
+                    includedNamespaces: [drova]
+                    namespaceMapping:
+                      drova: ${TEST_NS}
+                    includedResources: [secrets, configmaps]
+                    labelSelector:
+                      matchExpressions:
+                        - { key: bucket-provisioner, operator: DoesNotExist }
+                    restorePVs: false
+                  EOF
+
+                  ERROR_REASON=""
+                  for i in $(seq 1 90); do
+                    PHASE=$(kubectl get restores.velero.io -n velero "$RESTORE" -o jsonpath='{.status.phase}' 2>/dev/null)
+                    if [ "$PHASE" = "Completed" ]; then
+                      echo "✓ Restore Completed"
+                      break
+                    fi
+                    if [ "$PHASE" = "PartiallyFailed" ] || [ "$PHASE" = "Failed" ]; then
+                      echo "✗ FAIL: Restore phase=$PHASE"
+                      kubectl get restores.velero.io -n velero "$RESTORE" -o yaml | grep -A 5 "errors:" | head -10
+                      ERROR_REASON="phase=$PHASE"
+                      break
+                    fi
+                    sleep 10
+                  done
+
+                  kubectl delete restores.velero.io -n velero "$RESTORE" --ignore-not-found=true >/dev/null 2>&1
+                  kubectl delete ns "$TEST_NS" --ignore-not-found=true --wait=false >/dev/null 2>&1
+
+                  if [ "$PHASE" = "Completed" ]; then
+                    echo "═══ ✓ DR-Verify SUCCESS for backup $LATEST ═══"
+                    exit 0
+                  else
+                    echo "═══ ✗ DR-Verify FAILED ($ERROR_REASON) for backup $LATEST ═══"
+                    exit 1
+                  fi
+          volumes:
+            - name: tmp
+              emptyDir: {}

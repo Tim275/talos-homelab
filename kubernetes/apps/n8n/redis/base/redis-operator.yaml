@@ -1,0 +1,47 @@
+#
+# - Small PVC (1Gi) - Redis only stores temporary job queue
+# - PostgreSQL stores the actual workflow data
+# - AOF disabled (appendonly no) - prevents fsync timeouts on slow Ceph storage
+#
+#
+apiVersion: redis.redis.opstreelabs.in/v1beta2
+kind: Redis
+metadata:
+  name: redis-n8n
+  namespace: n8n
+  labels:
+    app.kubernetes.io/name: redis-n8n
+    app.kubernetes.io/component: queue
+spec:
+  podSecurityContext:
+    runAsUser: 1000
+    fsGroup: 1000
+  kubernetesConfig:
+    image: quay.io/opstree/redis:v7.4.7@sha256:b6dd75f518d7ab1b23cc377bbc4cae0c04bb8c99b9b17e7855d820ec98d6bdbc   # renovate: docker=quay.io/opstree/redis
+    imagePullPolicy: IfNotPresent
+    redisSecret:
+      name: redis-n8n-password
+      key: password
+  livenessProbe:
+    exec:
+      command: ["sh", "-ec", "RESP=$(redis-cli --no-auth-warning -a \"${REDIS_PASSWORD}\" -h $(hostname) -p ${REDIS_PORT} ping); [ \"$RESP\" = \"PONG\" ]"]
+    initialDelaySeconds: 15
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 5
+  readinessProbe:
+    exec:
+      command: ["sh", "-ec", "RESP=$(redis-cli --no-auth-warning -a \"${REDIS_PASSWORD}\" -h $(hostname) -p ${REDIS_PORT} ping); [ \"$RESP\" = \"PONG\" ]"]
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  redisConfig:
+    additionalRedisConfig: redis-n8n-external-config
+  redisExporter:
+    enabled: true
+    image: quay.io/opstree/redis-exporter:v1.80.2@sha256:d01cb919c12b66b07214de0ad86fe4426fc168819bdefd4ecb211da7cffcef18   # renovate: docker=quay.io/opstree/redis-exporter
+  storage:
+    volumeClaimTemplate:
+      spec:
+        accessModes: ["ReadWriteOnce"]

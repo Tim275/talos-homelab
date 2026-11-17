@@ -1,0 +1,54 @@
+name: alert-lint
+
+on:
+  # no paths filter — a required check must report on every PR
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - "kubernetes/**/*.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install promtool
+        run: |
+          PROM_VERSION="2.55.1"
+          curl -sLO "https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/prometheus-${PROM_VERSION}.linux-amd64.tar.gz"
+          tar xzf "prometheus-${PROM_VERSION}.linux-amd64.tar.gz"
+          sudo mv "prometheus-${PROM_VERSION}.linux-amd64/promtool" /usr/local/bin/
+          promtool --version
+
+      - name: Install amtool
+        run: |
+          AM_VERSION="0.34.0"
+          curl -sLO "https://github.com/prometheus/alertmanager/releases/download/v${AM_VERSION}/alertmanager-${AM_VERSION}.linux-amd64.tar.gz"
+          tar xzf "alertmanager-${AM_VERSION}.linux-amd64.tar.gz"
+          sudo mv "alertmanager-${AM_VERSION}.linux-amd64/amtool" /usr/local/bin/
+          amtool --version
+
+      - name: Install python deps
+        run: pip install pyyaml
+
+      - name: Lint PrometheusRules (syntax + required annotations/labels)
+        run: python3 .github/scripts/lint-alerts.py kubernetes
+
+      - name: Unit-test PrometheusRules (promtool test rules)
+        run: python3 .github/scripts/test-alerts.py kubernetes
+
+      - name: Lint GrafanaDashboards (panel structure + datasource UIDs + grid overlap)
+        run: python3 .github/scripts/lint-dashboards.py kubernetes
+
+      - name: Check dashboard links (uid + variables exist)
+        run: python3 .github/scripts/lint-dashboard-links.py kubernetes
+
+      - name: Check Alertmanager config (routes, receivers, time_intervals)
+        run: python3 .github/scripts/check-alertmanager-config.py kubernetes

@@ -1,0 +1,254 @@
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: otel-collector
+  namespace: opentelemetry
+  annotations:
+    prometheus.io/scrape: "false"
+spec:
+  mode: daemonset
+  image: otel/opentelemetry-collector-contrib:0.158.0@sha256:c5918f78992ee73b0d6f0e599423ac5ec52dd5d9726733114d6eca53d5a32ed5   # renovate: docker=otel/opentelemetry-collector-contrib
+  podAnnotations:
+    prometheus.io/scrape: "false"
+  env:
+    - name: GOMEMLIMIT
+      value: "614MiB"  # 80 % von limits.memory
+    - name: K8S_NODE_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.hostIP
+    - name: K8S_NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+    - name: K8S_POD_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.name
+    - name: K8S_POD_NAMESPACE
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.namespace
+  config:
+
+
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+
+    processors:
+      batch:
+        timeout: 10s
+        send_batch_size: 1024
+        send_batch_max_size: 2048
+
+      memory_limiter:
+        limit_percentage: 80  # limit_mib 1400 lag über dem Container-Limit
+        spike_limit_percentage: 20
+        check_interval: 1s
+
+      filter/healthchecks:
+        error_mode: ignore
+        traces:
+          span:
+            - span.name == "grpc.health.v1.Health/Check"
+            - span.name == "ping"
+
+      resource:
+        attributes:
+          - key: cluster
+            value: talos-homelab
+            action: upsert
+          - key: collector.name
+            value: ${env:K8S_POD_NAME}
+            action: upsert
+
+      k8sattributes:
+        auth_type: "serviceAccount"
+        passthrough: false
+        extract:
+          metadata:
+            - k8s.namespace.name
+            - k8s.deployment.name
+            - k8s.statefulset.name
+            - k8s.daemonset.name
+            - k8s.job.name
+            - k8s.cronjob.name
+            - k8s.pod.name
+            - k8s.pod.uid
+            - k8s.node.name
+            - k8s.container.name
+          labels:
+            - tag_name: app
+              key: app
+              from: pod
+            - tag_name: app.kubernetes.io/name
+              key: app.kubernetes.io/name
+              from: pod
+            - tag_name: app.kubernetes.io/component
+              key: app.kubernetes.io/component
+              from: pod
+        pod_association:
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.ip
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.uid
+          - sources:
+              - from: connection
+
+      attributes/redact:
+        actions:
+          - key: http.request.header.authorization
+            action: delete
+          - key: http.request.header.cookie
+            action: delete
+          - key: http.request.header.x-api-key
+            action: delete
+          - key: db.statement
+            action: hash
+          - key: enduser.id
+            action: hash
+          - key: user.email
+            action: hash
+
+
+    exporters:
+      otlp/gateway:
+        endpoint: otel-gateway-collector.opentelemetry:4317
+        tls:
+          insecure: true
+        sending_queue:
+          enabled: true
+          queue_size: 1000
+        retry_on_failure:
+          enabled: true
+          initial_interval: 1s
+          max_interval: 30s
+
+      otlphttp/loki:
+        endpoint: http://loki-gateway.monitoring:80/otlp
+        headers:
+          X-Scope-OrgID: talos-homelab
+        tls:
+          insecure: true
+        sending_queue:
+          enabled: true
+          queue_size: 1000
+        retry_on_failure:
+          enabled: true
+          initial_interval: 1s
+          max_interval: 30s
+
+      prometheusremotewrite:
+        endpoint: http://prometheus-kube-prometheus-stack-prometheus-0.prometheus-operated.monitoring.svc:9090/api/v1/write
+        headers:
+          X-Scope-OrgID: talos-homelab
+        resource_to_telemetry_conversion:
+          enabled: true
+        target_info:
+          enabled: true
+        retry_on_failure:
+          enabled: true
+          initial_interval: 1s
+          max_interval: 30s
+
+      prometheusremotewrite/1:
+        endpoint: http://prometheus-kube-prometheus-stack-prometheus-1.prometheus-operated.monitoring.svc:9090/api/v1/write
+        headers:
+          X-Scope-OrgID: talos-homelab
+        resource_to_telemetry_conversion:
+          enabled: true
+        target_info:
+          enabled: true
+        retry_on_failure:
+          enabled: true
+          initial_interval: 1s
+          max_interval: 30s
+
+      debug:
+        verbosity: basic
+        sampling_initial: 5
+        sampling_thereafter: 200
+
+
+    connectors:
+      spanmetrics:
+        histogram:
+          explicit:
+            buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
+        dimensions:
+          - name: http.method
+          - name: http.status_code
+          - name: k8s.namespace.name
+        exemplars:
+          enabled: true
+        metrics_flush_interval: 15s
+        namespace: traces.span.metrics
+
+
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+      zpages:
+        endpoint: 0.0.0.0:55679
+
+
+    service:
+      extensions:
+        - health_check
+        - zpages
+
+      pipelines:
+        traces:
+          receivers:
+            - otlp
+          processors:
+            - memory_limiter
+            - filter/healthchecks
+            - k8sattributes
+            - resource
+            - attributes/redact
+            - batch
+          exporters:
+            - otlp/gateway
+            - spanmetrics
+
+        metrics/spanmetrics:
+          receivers: [spanmetrics]
+          exporters: [prometheusremotewrite, prometheusremotewrite/1]
+
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, resource, batch]
+          exporters: [otlphttp/loki]
+
+        metrics:
+          receivers:
+            - otlp
+          processors:
+            - memory_limiter
+            - k8sattributes
+            - resource
+            - batch
+          exporters:
+            - prometheusremotewrite
+            - prometheusremotewrite/1
+
+      telemetry:
+        metrics:
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: 0.0.0.0
+                    port: 8888
+
+

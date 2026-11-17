@@ -1,0 +1,37 @@
+apiVersion: sailoperator.io/v1
+kind: Istio
+metadata:
+  name: default
+  namespace: istio-system
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  namespace: istio-system
+  version: v1.30.0
+  profile: ambient
+
+  updateStrategy:
+    type: InPlace
+
+  values:
+    global:
+      meshID: mesh1
+      network: network1
+
+    pilot:
+      autoscaleEnabled: false
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: topology.kubernetes.io/zone
+                    operator: NotIn
+                    values: [nipogi]
+
+    meshConfig:
+      extensionProviders:
+        - name: opentelemetry
+          opentelemetry:
+            service: otel-collector-collector.opentelemetry.svc.cluster.local
+            port: 4317

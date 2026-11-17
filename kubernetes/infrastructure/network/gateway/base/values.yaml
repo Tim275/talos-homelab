@@ -1,0 +1,89 @@
+crds:
+  enabled: false
+config:
+  envoyGateway:
+    gateway:
+      controllerName: gateway.envoyproxy.io/gatewayclass-controller
+    provider:
+      type: Kubernetes
+      kubernetes:
+        rateLimitDeployment:
+          container:
+            env:
+              # ueberschrittene Schluessel lokal merken — genau der Verkehr,
+              # den man abweisen will, kostet dann kein Redis mehr
+              - name: LOCAL_CACHE_SIZE_IN_BYTES
+                value: "26214400"
+          # pod.priorityClassName wird fuer dieses Deployment ignoriert
+          # (container.env aus demselben Block greift) — deshalb per patch
+          patch:
+            type: StrategicMerge
+            value:
+              spec:
+                template:
+                  spec:
+                    priorityClassName: platform-critical
+                    topologySpreadConstraints:
+                      - maxSkew: 1
+                        topologyKey: kubernetes.io/hostname
+                        whenUnsatisfiable: DoNotSchedule
+                        nodeTaintsPolicy: Honor
+                        matchLabelKeys: [pod-template-hash]
+                        labelSelector:
+                          matchLabels:
+                            app.kubernetes.io/name: envoy-ratelimit
+                            app.kubernetes.io/component: ratelimit
+                      - maxSkew: 1
+                        topologyKey: topology.kubernetes.io/zone
+                        whenUnsatisfiable: ScheduleAnyway
+                        nodeTaintsPolicy: Honor
+                        matchLabelKeys: [pod-template-hash]
+                        labelSelector:
+                          matchLabels:
+                            app.kubernetes.io/name: envoy-ratelimit
+                            app.kubernetes.io/component: ratelimit
+          pod:
+            affinity:
+    logging:
+      level:
+        default: info
+    extensionApis:
+      enableBackend: true
+    rateLimit:
+      timeout: 100ms
+      backend:
+        type: Redis
+        redis:
+          url: redis://redis-gateway.gateway.svc.cluster.local:6379
+
+deployment:
+  priorityClassName: platform-critical
+  pod:
+    affinity:
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        nodeTaintsPolicy: Honor
+        matchLabelKeys: [pod-template-hash]
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: gateway-helm
+            app.kubernetes.io/instance: eg
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: ScheduleAnyway
+        nodeTaintsPolicy: Honor
+        matchLabelKeys: [pod-template-hash]
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: gateway-helm
+            app.kubernetes.io/instance: eg
+
+topologyInjector:
+  enabled: false
+
+certgen:
+  job:
+    annotations:
+      argocd.argoproj.io/sync-options: ServerSideApply=false

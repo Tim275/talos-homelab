@@ -1,0 +1,117 @@
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: elasticsearch-users-jaeger
+  namespace: elastic-system
+  annotations:
+    argocd.argoproj.io/sync-wave: '-1'
+spec:
+  refreshInterval: 1h
+  updatePolicy: IfNotExists
+  secretStoreRefs:
+  - name: openbao
+    kind: ClusterSecretStore
+  selector:
+    generatorRef:
+      apiVersion: generators.external-secrets.io/v1alpha1
+      kind: ClusterGenerator
+      name: password
+  data:
+  - match:
+      secretKey: password
+      remoteRef:
+        remoteKey: elastic-system/users
+        property: jaeger
+---
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: elasticsearch-users-grafana-reader
+  namespace: elastic-system
+  annotations:
+    argocd.argoproj.io/sync-wave: '-1'
+spec:
+  refreshInterval: 1h
+  updatePolicy: IfNotExists
+  secretStoreRefs:
+  - name: openbao
+    kind: ClusterSecretStore
+  selector:
+    generatorRef:
+      apiVersion: generators.external-secrets.io/v1alpha1
+      kind: ClusterGenerator
+      name: password
+  data:
+  - match:
+      secretKey: password
+      remoteRef:
+        remoteKey: elastic-system/users
+        property: grafana_reader
+---
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: elasticsearch-users-prometheus-exporter
+  namespace: elastic-system
+  annotations:
+    argocd.argoproj.io/sync-wave: '-1'
+spec:
+  refreshInterval: 1h
+  updatePolicy: IfNotExists
+  secretStoreRefs:
+  - name: openbao
+    kind: ClusterSecretStore
+  selector:
+    generatorRef:
+      apiVersion: generators.external-secrets.io/v1alpha1
+      kind: ClusterGenerator
+      name: password
+  data:
+  - match:
+      secretKey: password
+      remoteRef:
+        remoteKey: elastic-system/users
+        property: prometheus-exporter
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: production-cluster-multi-filerealm
+  namespace: elastic-system
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao
+    kind: ClusterSecretStore
+  target:
+    name: production-cluster-multi-filerealm
+    template:
+      engineVersion: v2
+      data:
+        users: '{{ htpasswd "jaeger" .jaeger "bcrypt" }}
+
+          {{ htpasswd "grafana_reader" .grafana_reader "bcrypt" }}
+
+          {{ htpasswd "prometheus-exporter" .prometheus_exporter "bcrypt" }}
+
+          '
+        users_roles: 'jaeger_writer:jaeger
+
+          grafana_reader:grafana_reader
+
+          prometheus_exporter:prometheus-exporter
+
+          '
+  data:
+  - secretKey: jaeger
+    remoteRef:
+      key: elastic-system/users
+      property: jaeger
+  - secretKey: grafana_reader
+    remoteRef:
+      key: elastic-system/users
+      property: grafana_reader
+  - secretKey: prometheus_exporter
+    remoteRef:
+      key: elastic-system/users
+      property: prometheus-exporter

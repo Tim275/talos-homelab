@@ -1,0 +1,90 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: storage-csi
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: csi-page
+      interval: 30s
+      rules:
+        - alert: PVCCriticallyFull
+          expr: |
+            (kubelet_volume_stats_available_bytes{job="kubelet"} / kubelet_volume_stats_capacity_bytes{job="kubelet"}) < 0.10
+          for: 5m
+          labels:
+            severity: critical
+            component: storage
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/storage.md#pvccriticallyfull"
+            dashboard_url: "/d/k8s-persistent-volumes?var-namespace={{ $labels.namespace }}&var-volume={{ $labels.persistentvolumeclaim }}"
+            summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} <10% free ({{ $value | humanizePercentage }})"
+            description: "Disk nearly full — app may fail / data loss. Expand the PVC now."
+            action: "Expand the PVC (edit spec.resources.requests.storage — Ceph RBD online-grows), or free space inside the volume."
+
+    - name: csi-ticket
+      interval: 60s
+      rules:
+        - alert: PVCFillingUp
+          expr: |
+            (kubelet_volume_stats_available_bytes{job="kubelet",persistentvolumeclaim!~".*-postgres-.*|.*-cnpg-.*"} / kubelet_volume_stats_capacity_bytes{job="kubelet",persistentvolumeclaim!~".*-postgres-.*|.*-cnpg-.*"}) < 0.20
+          for: 30m
+          labels:
+            severity: warning
+            component: storage
+          annotations:
+            dashboard_url: "/d/k8s-persistent-volumes?var-namespace={{ $labels.namespace }}&var-volume={{ $labels.persistentvolumeclaim }}"
+            summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} <20% free ({{ $value | humanizePercentage }})"
+            description: "Volume over 80% full — early warning before the <10% critical page. Plan a PVC expansion."
+            action: "Expand the PVC (spec.resources.requests.storage — Ceph RBD online-grows) before it hits the critical page."
+        - alert: PVCPendingCritical
+          expr: |
+            (kube_persistentvolumeclaim_status_phase{phase="Pending"} == 1)
+            and on (namespace, persistentvolumeclaim)
+              kube_pod_spec_volumes_persistentvolumeclaims_info
+          for: 30m
+          labels:
+            severity: warning
+            component: storage
+          annotations:
+            dashboard_url: "/d/k8s-pvc-overview?var-k8s_namespace={{ $labels.namespace }}"
+            summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} pending >30min"
+            description: "Workload blocked. Likely stuck CSI omap-lock — see PVC-recovery runbook."
+            action: "kubectl exec -n rook-ceph deploy/rook-ceph-tools -- rados -p replicapool-enterprise rmomapkey csi.volumes.default csi.volume.<PVC-UID>"
+
+        - alert: CSIProvisionerDown
+          expr: kube_deployment_status_replicas_available{deployment=~".*csi.ceph.com-ctrlplugin"} < 1
+          for: 5m
+          labels:
+            severity: warning
+            component: storage
+          annotations:
+            dashboard_url: "/d/ceph-cluster"
+            summary: "Ceph CSI provisioner {{ $labels.deployment }} has 0 replicas"
+            description: "PVC creation/deletion blocked cluster-wide while provisioner is down."
+            action: "kubectl -n rook-ceph rollout restart deploy/csi-rbdplugin-provisioner; check provisioner + rook-ceph-operator logs."
+
+        - alert: ReleasedPVsAccumulating
+          expr: sum(kube_persistentvolume_status_phase{phase="Released"}) > 15
+          for: 30m
+          labels:
+            severity: warning
+            component: storage
+          annotations:
+            dashboard_url: "/d/k8s-pvc-overview"
+            summary: "{{ $value }} Released PVs — CSI cleanup not keeping up"
+            description: "Released PVs accumulate when CSI deletion sticks on omap-locks. Hourly cleanup CronJob should handle it."
+            action: "Check the hourly released-PV cleanup CronJob; manually 'kubectl get pv | grep Released' and delete stale ones after verifying data."
+
+        - alert: CephOSDFlapping
+          expr: changes(ceph_osd_up[10m]) > 2
+          for: 5m
+          labels:
+            severity: warning
+            component: storage
+          annotations:
+            dashboard_url: "/d/ceph-osd?var-osd={{ $labels.ceph_daemon }}"
+            summary: "Ceph OSD {{ $labels.ceph_daemon }} flapping ({{ $value }} state changes in 10min, threshold 2)"
+            description: "OSD bouncing up/down — investigate disk health, network, or memory pressure."
+            action: "Toolbox: 'ceph osd df' for the daemon; check its disk SMART + node memory/network pressure."

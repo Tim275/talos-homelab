@@ -1,0 +1,24 @@
+// OTLP geht an den otel-collector — hier nur die Cluster-Events, einmal pro Cluster
+
+loki.source.kubernetes_events "cluster" {
+	job_name   = "kubernetes-events"
+	forward_to = [loki.process.events.receiver]
+}
+
+loki.process "events" {
+	stage.static_labels {
+		values = {
+			source  = "k8s-events",
+			cluster = "talos-homelab",
+		}
+	}
+
+	forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+	endpoint {
+		url       = "http://loki-gateway.monitoring.svc.cluster.local:80/loki/api/v1/push"
+		tenant_id = "talos-homelab"
+	}
+}
