@@ -34,6 +34,27 @@ spec:
         fsGroup: 5050
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        - name: pgpass
+          image: dpage/pgadmin4:9.17@sha256:c332c5f6dfba995d9ebc4af261d93506d6876085d712eaaa3defc8dd1a3f26de
+          command: ["sh", "-c"]
+          args:
+            - d="/var/lib/pgadmin/storage/$(echo "$PGADMIN_DEFAULT_EMAIL" | sed 's/@/_/g')";
+              mkdir -p "$d" && cp /secrets/pgpass "$d/.pgpass" && chmod 600 "$d/.pgpass"
+          env:
+            - name: PGADMIN_DEFAULT_EMAIL
+              value: admin@timourhomelab.org
+          volumeMounts:
+            - name: pgadmin-data
+              mountPath: /var/lib/pgadmin
+            - name: pgpass
+              mountPath: /secrets
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
       containers:
         - name: pgadmin
           image: dpage/pgadmin4:9.17@sha256:c332c5f6dfba995d9ebc4af261d93506d6876085d712eaaa3defc8dd1a3f26de
@@ -52,9 +73,16 @@ spec:
               value: "True"
             - name: PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED
               value: "False"
+            - name: PGADMIN_SERVER_JSON_FILE
+              value: /pgadmin4/config/servers.json
+            - name: PGADMIN_REPLACE_SERVERS_ON_STARTUP
+              value: "True"
           volumeMounts:
             - name: pgadmin-data
               mountPath: /var/lib/pgadmin
+            - name: servers
+              mountPath: /pgadmin4/config
+              readOnly: true
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -79,3 +107,9 @@ spec:
         - name: pgadmin-data
           persistentVolumeClaim:
             claimName: pgadmin-data
+        - name: servers
+          configMap:
+            name: pgadmin-servers
+        - name: pgpass
+          secret:
+            secretName: pgadmin-pgpass
