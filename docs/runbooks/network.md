@@ -114,11 +114,12 @@ kubectl -n istio-system describe ds ztunnel | tail -20
 
 ## NetBirdRoutingPeerDown
 
-Ein Routing-Peer (msa2proxmox oder nipogi) ist offline. Damit ist die Route ins LAN weg und alle VPN-only-Dienste sind unerreichbar.
+Ein Routing-Peer (msa2proxmox, nipogi oder aoostar) ist offline. Die anderen routen weiter; erst wenn alle drei weg sind, sind die VPN-only-Dienste unerreichbar.
 
 ```bash
 ssh root@192.168.0.50 'systemctl status netbird --no-pager; netbird status'
 ssh root@192.168.0.57 'systemctl status netbird --no-pager; netbird status'
+ssh root@192.168.0.59 'systemctl status netbird --no-pager; netbird status'
 ssh root@<host> systemctl restart netbird
 ```
 
