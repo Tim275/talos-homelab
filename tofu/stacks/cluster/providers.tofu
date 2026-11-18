@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.12.0"
+  required_version = ">= 1.12.2"
   backend "azurerm" {
     resource_group_name  = "rg-tofu-state"
     storage_account_name = "tofustatehomelab"
