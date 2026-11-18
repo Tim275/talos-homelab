@@ -27,6 +27,7 @@ PROD_ONLY = {
     "prometheus-edge": "Proxmox hosts",
     "pve-exporter": "Proxmox hosts",
     "rook-ceph": "Ceph on Proxmox",
+    "rook-ceph-rgw": "Ceph on Proxmox",
     "cloudflared": "needs its own tunnel",
     "cilium": "addresses of the cluster network",
     "coredns": "addresses of the cluster network",
