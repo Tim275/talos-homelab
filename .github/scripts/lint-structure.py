@@ -199,7 +199,7 @@ def main(path: str) -> int:
             env = target.name if target.parent.name == "overlays" else "prod"
             claimed.setdefault((comp, env), []).append(name)
     for c in sorted(comps):
-        if (c, "prod") not in claimed:
+        if not any((c, env) in claimed for env in ENVIRONMENTS):
             err(f"{c.relative_to(repo)}/kustomization.yaml", f"{c.relative_to(repo)} is in no ApplicationSet")
     for (c, env), names in sorted(claimed.items()):
         if len(names) > 1:
