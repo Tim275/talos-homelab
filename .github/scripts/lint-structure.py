@@ -7,7 +7,8 @@ Checks:
 - every component (a folder owning base/ or overlays/) is claimed by exactly one row per environment,
   a commented-out row keeps its component parked
 - every file in a component is reachable from its kustomization, nothing is commented out
-- base/ holds no helmCharts, no deprecated kustomize fields, no hostnames, addresses or node names
+- base/ holds no helmCharts, no image tags, no deprecated kustomize fields, no hostnames, addresses or node names
+- every image of a component gets its tag in each overlay
 - the environment label is prod or staging
 - a SecurityPolicy and the secret it references live in the same component
 """
@@ -91,6 +92,33 @@ def expected_name(root: Path, comp: Path) -> str:
     if (parent / "base").is_dir() or (parent / "overlays").is_dir():
         return f"{parent.name}-{comp.name}"
     return rel.name
+
+
+def images(path: Path) -> list[str]:
+    """Values of the image fields in a YAML file."""
+    out = []
+
+    def walk(o):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                if k in ("image", "imageName") and isinstance(v, str) and v and "*" not in v:
+                    out.append(v)
+                else:
+                    walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+
+    try:
+        for d in yaml.safe_load_all(path.read_text()):
+            walk(d)
+    except yaml.YAMLError:
+        pass
+    return out
+
+
+def pinned(image: str) -> bool:
+    return "@" in image or ":" in image.rsplit("/", 1)[-1]
 
 
 def referenced(k: Path) -> set[Path]:
@@ -202,6 +230,26 @@ def main(path: str) -> int:
                     err(k.relative_to(repo), f"{key} is deprecated, run kustomize edit fix")
             if k.parent.name == "base" and d.get("helmCharts"):
                 err(k.relative_to(repo), "helmCharts belong in overlays/prod, base is chart-free")
+
+    for comp in sorted({k.parent.parent for k in root.rglob("base/kustomization.yaml") if not skip(k.relative_to(root))}):
+        names = set()
+        for d in ("base", "components"):
+            for f in sorted((comp / d).rglob("*.y*ml")):
+                if skip(f.relative_to(root)):
+                    continue
+                for image in images(f):
+                    if pinned(image):
+                        err(f.relative_to(repo), f"image tag in {d}, set {image.split('@')[0].rsplit(':', 1)[0]} in overlays")
+                    else:
+                        names.add(image)
+        for overlay in sorted(p for p in (comp / "overlays").glob("*") if p.is_dir()):
+            tagged = set()
+            for f in overlay.rglob("*.y*ml"):
+                tagged |= {i.split("@")[0].rsplit(":", 1)[0] for i in images(f) if pinned(i)}
+                if f.name == "kustomization.yaml":
+                    tagged |= {i.get("name") for d in load(f) for i in d.get("images") or [] if i.get("newTag") or i.get("digest")}
+            for name in sorted(names - tagged):
+                err(overlay.relative_to(repo) / "kustomization.yaml", f"{name} has no tag, add it to images")
 
     for f in sorted(root.rglob("*")):
         rel = f.relative_to(root) if f.is_file() else None
