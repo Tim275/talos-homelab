@@ -72,7 +72,7 @@ def parked(text: str) -> list:
 
 
 def rows(root: Path):
-    for f in sorted((root / "argocd" / "applicationsets").glob("*.yaml")):
+    for f in sorted((root / "argocd" / "applicationsets").glob("*/*.yaml")):
         for _, e in parked(f.read_text()):
             yield f, e
         for doc in load(f):
@@ -205,19 +205,19 @@ def main(path: str) -> int:
         if len(names) > 1:
             err(c.relative_to(repo), f"{c.relative_to(repo)} is claimed by {names} in {env}")
 
-    seen = reachable(root, starts + [root / "argocd" / "bootstrap" / "prod", root / "argocd" / "bootstrap" / "argocd" / "overlays" / "prod", root / "argocd" / "bootstrap" / "staging", root / "argocd" / "crds", root / "argocd" / "projects", root / "argocd" / "clusters" / "prod", root / "argocd" / "clusters" / "staging", root / "argocd" / "applicationsets"])
+    seen = reachable(root, starts + [root / "argocd" / "bootstrap" / "prod", root / "argocd" / "bootstrap" / "argocd" / "overlays" / "prod", root / "argocd" / "bootstrap" / "staging", root / "argocd" / "crds", root / "argocd" / "projects", root / "argocd" / "clusters" / "prod", root / "argocd" / "clusters" / "staging", root / "argocd" / "applicationsets" / "prod", root / "argocd" / "applicationsets" / "staging"])
     for f in sorted(root.rglob("*")):
         if not f.is_file() or skip(f.relative_to(root)) or f.name in (".gitattributes", "README.md"):
             continue
         if f.suffix in (".yaml", ".yml", ".json", ".toml", ".alloy", ".tftpl") and f.resolve() not in seen:
             err(f.relative_to(repo), "not referenced by any kustomization")
 
-    for k in sorted([*root.rglob("kustomization.yaml"), *(root / "argocd" / "projects").glob("*.yaml"), *(root / "argocd" / "applicationsets").glob("*.yaml"), *(root / "argocd" / "clusters").glob("*/*.yaml")]):
+    for k in sorted([*root.rglob("kustomization.yaml"), *(root / "argocd" / "projects").glob("*.yaml"), *(root / "argocd" / "applicationsets").glob("*/*.yaml"), *(root / "argocd" / "clusters").glob("*/*.yaml")]):
         rel = k.relative_to(root)
         if skip(rel):
             continue
         text = k.read_text()
-        if k.parent.name == "applicationsets":
+        if k.parent.parent.name == "applicationsets":
             for m, _ in parked(text):
                 text = text.replace(m.group(0), "", 1)
         if COMMENTED_ENTRY.search(text):
