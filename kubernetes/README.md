@@ -5,7 +5,7 @@ Comes with the Talos machine config, see `tofu/stacks/cluster`.
 
 ## CRDs
 ```bash
-kustomize build --enable-helm kubernetes/argocd/crds | kubectl apply --server-side -f -
+kustomize build --enable-helm kubernetes/argocd/crds | kubectl apply --server-side --force-conflicts -f -
 ```
 
 ## Argo CD
