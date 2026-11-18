@@ -13,6 +13,7 @@ talos_cluster_config = {
   api_server                    = ""
   cilium = {
     bootstrap_manifest_path = "../../modules/talos/inline-manifests/cilium-bootstrap.yaml"
-    values_file_path        = "../../modules/talos/inline-manifests/cilium-values.yaml"
+    values_base_path        = "../../../kubernetes/infrastructure/network/cilium/base/values.yaml"
+    values_overlay_path     = "../../../kubernetes/infrastructure/network/cilium/overlays/prod/values.yaml"
   }
 }

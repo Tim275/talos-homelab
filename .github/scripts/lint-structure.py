@@ -9,6 +9,7 @@ Checks:
 - every file in a component is reachable from its kustomization, nothing is commented out
 - base/ holds no helmCharts, no image tags, no remote resources, no deprecated kustomize fields, no hostnames, addresses or node names
 - every image of a component gets its tag in each overlay
+- the Cilium version of the Talos bootstrap equals the chart version Argo CD deploys
 - the environment label is prod or staging
 - a SecurityPolicy and the secret it references live in the same component
 """
@@ -310,6 +311,14 @@ def main(path: str) -> int:
                 names.add(users["name"])
             for name in names - owned - granted:
                 err(f.relative_to(repo), f"SecurityPolicy {doc['metadata']['name']} references secret {name}, which {comp.relative_to(repo)} does not own")
+
+    job = repo / "tofu" / "modules" / "talos" / "inline-manifests" / "cilium-bootstrap.yaml"
+    chart = root / "infrastructure" / "network" / "cilium" / "overlays" / "prod" / "kustomization.yaml"
+    if job.is_file() and chart.is_file():
+        boot = re.search(r"--version=v?([\d.]+)", job.read_text())
+        want = next((str(h.get("version")).lstrip("v") for d in load(chart) for h in d.get("helmCharts") or [] if h.get("name") == "cilium"), None)
+        if boot and want and boot.group(1) != want:
+            err(job.relative_to(repo), f"bootstrap installs Cilium {boot.group(1)}, Argo CD deploys {want}")
 
     failed += len(global_errors)
     print(f"\nSummary: {len(comps)} components, {len(starts)} rows, {failed} failed")
