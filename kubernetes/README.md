@@ -17,11 +17,21 @@ kubectl -n argocd get secret argocd-initial-admin-secret -ojson | jq -r '.data.p
 ```
 
 ## Root app
+Prod:
 ```bash
 kubectl apply --server-side --force-conflicts -k kubernetes/argocd/bootstrap
 ```
 
-On the staging cluster use `kubernetes/argocd/bootstrap/staging` instead.
+Staging:
+```bash
+kubectl apply --server-side --force-conflicts -k kubernetes/argocd/bootstrap/staging
+```
+
+The root app labels the cluster with its environment. Each ApplicationSet only deploys to clusters of its own environment, from `overlays/prod` or `overlays/staging`.
+
+```bash
+kubectl -n argocd get applications -l environment=staging
+```
 
 ## Apps and tenants
 ```bash
