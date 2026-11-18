@@ -237,7 +237,7 @@ def main(path: str) -> int:
     for name in sorted((set(PROD_ONLY) & deployed["staging"]) | (set(STAGING_ONLY) & deployed["prod"])):
         err(".github/scripts/lint-structure.py", f"{name} runs in both environments, remove it from the exceptions")
 
-    seen = reachable(root, starts + [root / "argocd" / "bootstrap" / "prod", root / "argocd" / "bootstrap" / "argocd" / "overlays" / "prod", root / "argocd" / "bootstrap" / "staging", root / "argocd" / "crds", root / "argocd" / "projects", root / "argocd" / "clusters" / "prod", root / "argocd" / "clusters" / "staging", root / "argocd" / "applicationsets" / "prod", root / "argocd" / "applicationsets" / "staging"])
+    seen = reachable(root, starts + [root / "argocd" / "bootstrap" / "prod", root / "argocd" / "bootstrap" / "argocd" / "overlays" / "prod", root / "argocd" / "bootstrap" / "argocd" / "overlays" / "staging", root / "argocd" / "bootstrap" / "staging", root / "argocd" / "crds", root / "argocd" / "projects", root / "argocd" / "clusters" / "prod", root / "argocd" / "clusters" / "staging", root / "argocd" / "applicationsets" / "prod", root / "argocd" / "applicationsets" / "staging"])
     for f in sorted(root.rglob("*")):
         if not f.is_file() or skip(f.relative_to(root)) or f.name in (".gitattributes", "README.md"):
             continue
