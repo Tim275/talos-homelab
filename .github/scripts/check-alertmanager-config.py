@@ -19,16 +19,21 @@ import yaml
 VALUES_GLOB = "**/alertmanager*.yaml"
 ROUTES = Path(".github/tests/alertmanager/routes.yaml")
 
-GRAFANA = "https://grafana.timourhomelab.org/d"
-LINK_CASES = [
-    ("/d/etcd", f"{GRAFANA}/etcd?from=1791196472000&to=now"),
-    (
-        "/d/k8s-views-nodes?var-node=worker-1",
-        f"{GRAFANA}/k8s-views-nodes?var-node=worker-1&from=1791196472000&to=now",
-    ),
-    (f"{GRAFANA}/etcd", f"{GRAFANA}/etcd?from=1791196472000&to=now"),
-    ("https://argo.timourhomelab.org/applications", "https://argo.timourhomelab.org/applications"),
-]
+def link_cases(path: Path) -> list[tuple[str, str]]:
+    domain = "staging.timourhomelab.org" if "/overlays/staging/" in str(path) else "timourhomelab.org"
+    grafana = f"https://grafana.{domain}/d"
+    argo = f"https://argo.{domain}/applications"
+    return [
+        ("/d/etcd", f"{grafana}/etcd?from=1791196472000&to=now"),
+        (
+            "/d/k8s-views-nodes?var-node=worker-1",
+            f"{grafana}/k8s-views-nodes?var-node=worker-1&from=1791196472000&to=now",
+        ),
+        (f"{grafana}/etcd", f"{grafana}/etcd?from=1791196472000&to=now"),
+        (argo, argo),
+    ]
+
+
 RENDER_ALL = ["slack.body", "telegram.body", "jira.summary", "jira.description"]
 
 
@@ -111,24 +116,25 @@ def render(tmp: Path, text: str, data: dict) -> subprocess.CompletedProcess:
 
 
 def check_templates(path: Path, files: dict) -> bool:
+    cases = link_cases(path)
     ok = True
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp = Path(tmp_dir)
         (tmp / "tmpl").mkdir()
         for name, body in files.items():
             (tmp / "tmpl" / name).write_text(body)
-        for url, want in LINK_CASES:
+        for url, want in cases:
             result = render(tmp, '{{ template "alert.dashboard_url" . }}', alert_data(url))
             got = result.stdout.strip()
             if result.returncode != 0 or got != want:
                 ok = False
                 print(f"FAIL dashboard-link {url}: erwartet {want}, bekommen {got or result.stderr.strip()}")
         for name in RENDER_ALL:
-            result = render(tmp, f'{{{{ template "{name}" . }}}}', alert_data(LINK_CASES[0][0]))
+            result = render(tmp, f'{{{{ template "{name}" . }}}}', alert_data(cases[0][0]))
             if result.returncode != 0:
                 ok = False
                 print(f"FAIL template {name}: {result.stderr.strip()}")
-    print(f"{'OK  ' if ok else 'FAIL'} {path}  ({len(LINK_CASES)} Link-Tests, {len(RENDER_ALL)} Render-Tests)")
+    print(f"{'OK  ' if ok else 'FAIL'} {path}  ({len(cases)} Link-Tests, {len(RENDER_ALL)} Render-Tests)")
     return ok
 
 
