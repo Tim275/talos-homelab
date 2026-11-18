@@ -1,0 +1,47 @@
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: keycloak-admin-password
+  namespace: keycloak
+  annotations:
+    argocd.argoproj.io/sync-wave: '-1'
+spec:
+  refreshInterval: 1h
+  updatePolicy: IfNotExists
+  secretStoreRefs:
+  - name: openbao
+    kind: ClusterSecretStore
+  selector:
+    generatorRef:
+      apiVersion: generators.external-secrets.io/v1alpha1
+      kind: ClusterGenerator
+      name: password
+  data:
+  - match:
+      secretKey: password
+      remoteRef:
+        remoteKey: keycloak/keycloak-admin
+        property: password
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: keycloak-admin
+  namespace: keycloak
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao
+    kind: ClusterSecretStore
+  target:
+    name: keycloak-admin
+    template:
+      engineVersion: v2
+      data:
+        username: admin
+        password: '{{ .password }}'
+  data:
+  - secretKey: password
+    remoteRef:
+      key: keycloak/keycloak-admin
+      property: password
