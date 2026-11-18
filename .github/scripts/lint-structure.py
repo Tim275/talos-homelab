@@ -176,7 +176,7 @@ def main(path: str) -> int:
         if len(names) > 1:
             err(c.relative_to(repo), f"{c.relative_to(repo)} is claimed by {names} in {env}")
 
-    seen = reachable(root, starts + [root / "argocd" / "bootstrap", root / "argocd" / "bootstrap" / "root", root / "argocd" / "crds", root / "argocd" / "projects", root / "argocd" / "clusters", root / "argocd" / "applicationsets"])
+    seen = reachable(root, starts + [root / "argocd" / "bootstrap", root / "argocd" / "bootstrap" / "root", root / "argocd" / "bootstrap" / "argocd" / "overlays" / "prod", root / "argocd" / "crds", root / "argocd" / "projects", root / "argocd" / "clusters", root / "argocd" / "applicationsets"])
     for f in sorted(root.rglob("*")):
         if not f.is_file() or skip(f.relative_to(root)) or f.name in (".gitattributes", "README.md"):
             continue
