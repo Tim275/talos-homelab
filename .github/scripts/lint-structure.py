@@ -7,7 +7,7 @@ Checks:
 - every component (a folder owning base/ or overlays/) is claimed by exactly one row per environment,
   a commented-out row keeps its component parked
 - every file in a component is reachable from its kustomization, nothing is commented out
-- base/ holds no helmCharts, no image tags, no deprecated kustomize fields, no hostnames, addresses or node names
+- base/ holds no helmCharts, no image tags, no remote resources, no deprecated kustomize fields, no hostnames, addresses or node names
 - every image of a component gets its tag in each overlay
 - the environment label is prod or staging
 - a SecurityPolicy and the secret it references live in the same component
@@ -230,6 +230,10 @@ def main(path: str) -> int:
                     err(k.relative_to(repo), f"{key} is deprecated, run kustomize edit fix")
             if k.parent.name == "base" and d.get("helmCharts"):
                 err(k.relative_to(repo), "helmCharts belong in overlays/prod, base is chart-free")
+            if {"base", "components"} & set(rel.parts[:-1]) and "overlays" not in rel.parts:
+                for r in (d.get("resources") or []) + (d.get("crds") or []):
+                    if "://" in r:
+                        err(k.relative_to(repo), f"remote resource in base, its version belongs in overlays: {r}")
 
     for comp in sorted({k.parent.parent for k in root.rglob("base/kustomization.yaml") if not skip(k.relative_to(root))}):
         names = set()
