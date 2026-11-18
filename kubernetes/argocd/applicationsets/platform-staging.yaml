@@ -1,0 +1,57 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform-staging
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  argocd.argoproj.io/secret-type: cluster
+                  environment: staging
+          - list:
+              elements:
+                - { app: cloudnative-pg, path: kubernetes/platform/data/cloudnative-pg/overlays/staging, namespace: cnpg-system }
+                - { app: redis, path: kubernetes/platform/data/redis/overlays/staging, namespace: redis-operator-system }
+                - { app: strimzi, path: kubernetes/platform/data/strimzi/overlays/staging, namespace: kafka }
+                - { app: argo-rollouts, path: kubernetes/platform/delivery/argo-rollouts/overlays/staging, namespace: argo-rollouts }
+                - { app: keda, path: kubernetes/platform/delivery/keda/overlays/staging, namespace: keda }
+                - { app: keycloak-operator, path: kubernetes/platform/identity/keycloak-operator/overlays/staging, namespace: keycloak }
+                - { app: eck, path: kubernetes/platform/observability/eck/overlays/staging, namespace: elastic-system }
+                - { app: grafana-operator, path: kubernetes/platform/observability/grafana-operator/overlays/staging, namespace: grafana }
+                - { app: opentelemetry-operator, path: kubernetes/platform/observability/opentelemetry-operator/overlays/staging, namespace: opentelemetry }
+  template:
+    metadata:
+      name: '{{.app}}-staging'
+      labels:
+        app.kubernetes.io/name: '{{.app}}'
+        app.kubernetes.io/part-of: platform
+        app.kubernetes.io/managed-by: argocd
+    spec:
+      project: platform
+      source:
+        repoURL: https://github.com/Tim275/talos-homelab
+        targetRevision: main
+        path: '{{.path}}'
+      destination:
+        server: '{{.server}}'
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated: { prune: True, selfHeal: True }
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - ServerSideApply=true
+          - ApplyOutOfSyncOnly=true
+        retry:
+          limit: -1
+          refresh: true
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }

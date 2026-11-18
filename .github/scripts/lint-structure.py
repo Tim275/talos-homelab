@@ -205,14 +205,14 @@ def main(path: str) -> int:
         if len(names) > 1:
             err(c.relative_to(repo), f"{c.relative_to(repo)} is claimed by {names} in {env}")
 
-    seen = reachable(root, starts + [root / "argocd" / "bootstrap", root / "argocd" / "bootstrap" / "root", root / "argocd" / "bootstrap" / "argocd" / "overlays" / "prod", root / "argocd" / "crds", root / "argocd" / "projects", root / "argocd" / "clusters", root / "argocd" / "applicationsets"])
+    seen = reachable(root, starts + [root / "argocd" / "bootstrap", root / "argocd" / "bootstrap" / "root", root / "argocd" / "bootstrap" / "argocd" / "overlays" / "prod", root / "argocd" / "bootstrap" / "staging", root / "argocd" / "bootstrap" / "root-staging", root / "argocd" / "crds", root / "argocd" / "projects", root / "argocd" / "clusters" / "prod", root / "argocd" / "clusters" / "staging", root / "argocd" / "applicationsets"])
     for f in sorted(root.rglob("*")):
         if not f.is_file() or skip(f.relative_to(root)) or f.name in (".gitattributes", "README.md"):
             continue
         if f.suffix in (".yaml", ".yml", ".json", ".toml", ".alloy", ".tftpl") and f.resolve() not in seen:
             err(f.relative_to(repo), "not referenced by any kustomization")
 
-    for k in sorted([*root.rglob("kustomization.yaml"), *(root / "argocd" / "projects").glob("*.yaml"), *(root / "argocd" / "applicationsets").glob("*.yaml"), *(root / "argocd" / "clusters").glob("*.yaml")]):
+    for k in sorted([*root.rglob("kustomization.yaml"), *(root / "argocd" / "projects").glob("*.yaml"), *(root / "argocd" / "applicationsets").glob("*.yaml"), *(root / "argocd" / "clusters").glob("*/*.yaml")]):
         rel = k.relative_to(root)
         if skip(rel):
             continue
