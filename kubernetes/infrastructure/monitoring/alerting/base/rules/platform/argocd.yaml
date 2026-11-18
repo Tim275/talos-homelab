@@ -100,6 +100,18 @@ spec:
             description: "lldap Deployment has 0 available replicas >5min → LDAP-backed Keycloak logins start failing (SSO impact)."
             action: "kubectl -n lldap get pod,deploy; kubectl -n lldap logs deploy/lldap; check its PVC/SQLite + the node."
 
+        - alert: ArgoCDSyncStuck
+          expr: argocd_app_info{operation="sync"} == 1
+          for: 1h
+          labels:
+            severity: warning
+            component: gitops
+          annotations:
+            dashboard_url: "https://argo.timourhomelab.org/applications"
+            summary: "{{ $labels.name }} synct seit 1h ohne Ergebnis"
+            description: "Die Sync-Operation laeuft seit ueber einer Stunde und wiederholt denselben Commit. Solange sie haengt, rollt Argo CD fuer diese App nichts Neues aus, auch wenn sie Synced und Healthy zeigt."
+            action: "kubectl -n argocd get application {{ $labels.name }} -o jsonpath='{.status.operationState.message}'"
+
         - alert: ArgoCDAppOutOfSyncTooLong
           # Diese vier drifteten in 7d zu >50% dauerhaft (Operator mutiert eigene CRs);
           # sie gehoeren per ignoreDifferences gefixt, nicht hier alarmiert.
