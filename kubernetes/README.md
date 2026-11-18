@@ -19,7 +19,7 @@ kubectl -n argocd get secret argocd-initial-admin-secret -ojson | jq -r '.data.p
 ## Root app
 Prod:
 ```bash
-kubectl apply --server-side --force-conflicts -k kubernetes/argocd/bootstrap
+kubectl apply --server-side --force-conflicts -k kubernetes/argocd/bootstrap/prod
 ```
 
 Staging:
