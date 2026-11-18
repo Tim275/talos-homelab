@@ -3,7 +3,6 @@ locals {
   kubernetes_endpoint         = coalesce(var.cluster.vip, local.first_control_plane_node_ip)
   extra_manifests = concat(var.cluster.extra_manifests, [
     "https://github.com/kubernetes-sigs/gateway-api/releases/download/${var.cluster.gateway_api_version}/standard-install.yaml",
-    "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/${var.cluster.gateway_api_version}/config/crd/experimental/gateway.networking.k8s.io_tlsroutes.yaml",
     "https://raw.githubusercontent.com/prometheus-community/helm-charts/kube-prometheus-stack-${var.cluster.kube_prometheus_stack_version}/charts/kube-prometheus-stack/charts/crds/crds/crd-servicemonitors.yaml"
   ])
 }
@@ -35,7 +34,8 @@ resource "terraform_data" "cilium_bootstrap_inline_manifests" {
           namespace = "kube-system"
         }
         data = {
-          "values.yaml" = file("${path.root}/${var.cluster.cilium.values_file_path}")
+          "base.yaml" = file("${path.root}/${var.cluster.cilium.values_base_path}")
+          "prod.yaml" = file("${path.root}/${var.cluster.cilium.values_overlay_path}")
         }
       })
     },
