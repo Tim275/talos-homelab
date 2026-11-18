@@ -864,14 +864,15 @@ echo 'pve-firewall stop             Security · Runbook #6'
 """
 
 [tasks.render-diff]
-description = "Diff committed rendered/manifests.yaml against dry source (all piloted components)"
+description = "Diff committed rendered/<env>/manifests.yaml against dry source (all piloted components)"
 run = """
 FAIL=0
 FRESH=$(mktemp)
-find kubernetes -path "*/rendered/manifests.yaml" > /tmp/render-diff-list.txt
+find kubernetes -path "*/rendered/*/manifests.yaml" > /tmp/render-diff-list.txt
 while IFS= read -r rendered; do
-  dir=$(dirname "$(dirname "$rendered")")
-  kustomize build "$dir/overlays/prod" --enable-helm --load-restrictor=LoadRestrictionsNone > "$FRESH"
+  env=$(basename "$(dirname "$rendered")")
+  dir=$(dirname "$(dirname "$(dirname "$rendered")")")
+  kustomize build "$dir/overlays/$env" --enable-helm --load-restrictor=LoadRestrictionsNone > "$FRESH"
   if ! diff -u "$rendered" "$FRESH"; then
     echo "DRIFT: $rendered"; FAIL=1
   fi
@@ -881,9 +882,9 @@ exit $FAIL
 """
 
 [tasks.render-update]
-description = "Regenerate rendered/manifests.yaml for one component"
+description = "Regenerate rendered/<env>/manifests.yaml for one component"
 usage = 'arg "<dir>" help="component base dir, e.g. kubernetes/infrastructure/cluster/reloader"'
-run = 'kustomize build "${usage_dir}/overlays/prod" --enable-helm --load-restrictor=LoadRestrictionsNone > "${usage_dir}/rendered/manifests.yaml"'
+run = 'for d in "${usage_dir}"/rendered/*/; do kustomize build "${usage_dir}/overlays/$(basename "$d")" --enable-helm --load-restrictor=LoadRestrictionsNone > "${d}manifests.yaml"; done'
 
 [tasks.help-gitops]
 description = "OpenBao / ArgoCD / Kubeconfig"

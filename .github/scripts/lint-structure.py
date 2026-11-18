@@ -2,7 +2,8 @@
 """Lint the repository layout.
 
 Checks:
-- every ApplicationSet row points at an existing kustomization (or a rendered/ folder)
+- every ApplicationSet row points at an existing kustomization or at rendered/<environment>
+- a component with rendered manifests is deployed from them in every environment
 - the Application name is the folder name, sub-components are named parent-child
 - every component (a folder owning base/ or overlays/) is claimed by exactly one row per environment,
   a commented-out row keeps its component parked
@@ -206,16 +207,18 @@ def main(path: str) -> int:
             parked_names.add(name)
         else:
             deployed[env].add(name)
-        if target.parent.name == "overlays" and target.name != env:
+        if target.parent.name in ("overlays", "rendered") and target.name != env:
             err(f, f"{name}: a {env} row deploys {p}")
         starts.append(target)
-        if target.name == "rendered":
+        if target.parent.name == "rendered":
             if not (target / "manifests.yaml").is_file():
                 err(f, f"{name}: {p}/manifests.yaml missing")
-            comp = target.parent
-            starts.append(comp / "overlays" / "prod")
+            comp = target.parent.parent
+            starts.append(comp / "overlays" / target.name)
         elif (target / "kustomization.yaml").is_file():
             comp = target.parent.parent if target.parent.name == "overlays" else target
+            if (comp / "rendered").is_dir():
+                err(f, f"{name}: {comp.relative_to(repo)} has rendered manifests, deploy rendered/{env}")
         else:
             err(f, f"{name}: {p} has no kustomization.yaml")
             continue
