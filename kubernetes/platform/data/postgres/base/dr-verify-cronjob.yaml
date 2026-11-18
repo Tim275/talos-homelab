@@ -16,6 +16,10 @@ rules:
   - apiGroups: [postgresql.cnpg.io]
     resources: [backups]
     verbs: [list]
+  - apiGroups: [postgresql.cnpg.io]
+    resources: [clusters]
+    resourceNames: [postgres]
+    verbs: [get]
   - apiGroups: [""]
     resources: [secrets]
     resourceNames: [cnpg-postgres-backup]
@@ -75,6 +79,11 @@ spec:
                   CLUSTER_NAME="postgres-restore"
                   SOURCE_NS="postgres"
                   SOURCE_CLUSTER="postgres"
+                  IMAGE=$(kubectl get cluster -n $SOURCE_NS $SOURCE_CLUSTER -o jsonpath='{.spec.imageName}')
+                  if [ -z "$IMAGE" ]; then
+                    echo "✗ FAIL: imageName von $SOURCE_CLUSTER nicht lesbar"
+                    exit 1
+                  fi
 
                   echo "═══ CNPG DR-Verify Run ${TS} ═══"
 
@@ -109,7 +118,7 @@ spec:
                     namespace: $TEST_NS
                   spec:
                     instances: 1
-                    imageName: ghcr.io/cloudnative-pg/postgresql:16.4-22
+                    imageName: $IMAGE
                     storage:
                       size: 5Gi
                       storageClass: rook-ceph-block-enterprise
