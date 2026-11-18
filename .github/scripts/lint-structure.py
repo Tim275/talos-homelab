@@ -5,7 +5,7 @@ Checks:
 - every ApplicationSet row points at an existing kustomization or at rendered/<environment>
 - a component with rendered manifests is deployed from them in every environment
 - the Application name is the folder name, sub-components are named parent-child
-- every component (a folder owning base/ or overlays/) is claimed by exactly one row per environment,
+- every component (a folder owning base/ or overlays/) is claimed by a row, by at most one per environment,
   a commented-out row keeps its component parked
 - every file in a component is reachable from its kustomization, nothing is commented out
 - base/ holds no helmCharts, no image tags, no remote resources, no deprecated kustomize fields, no hostnames, addresses or node names
