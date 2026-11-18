@@ -11,6 +11,8 @@ Checks:
 - every image of a component gets its tag in each overlay
 - the Cilium version of the Talos bootstrap equals the chart version Argo CD deploys
 - the environment label is prod or staging
+- a row deploys the overlay of its own environment
+- every Application of prod also runs in staging and the other way round, exceptions are named in PROD_ONLY and STAGING_ONLY
 - a SecurityPolicy and the secret it references live in the same component
 """
 import re
@@ -21,6 +23,17 @@ import yaml
 
 STACKS = ("infrastructure", "platform", "apps", "tenants")
 ENVIRONMENTS = ("prod", "staging")
+PROD_ONLY = {
+    "prometheus-edge": "Proxmox hosts",
+    "pve-exporter": "Proxmox hosts",
+    "rook-ceph": "Ceph on Proxmox",
+    "cloudflared": "needs its own tunnel",
+    "cilium": "addresses of the cluster network",
+    "coredns": "addresses of the cluster network",
+    "gateway": "node names",
+    "elasticsearch": "node names",
+}
+STAGING_ONLY = {"local-path": "block storage instead of rook-ceph"}
 SKIP_DIRS = {"charts", "rendered"}
 HOMELAB = "https://github.com/Tim275/talos-homelab"
 DEPRECATED = ("commonLabels", "patchesStrategicMerge", "patchesJson6902", "vars")
@@ -72,19 +85,25 @@ def parked(text: str) -> list:
 
 
 def rows(root: Path):
-    for f in sorted((root / "argocd" / "applicationsets").glob("*/*.yaml")):
-        for _, e in parked(f.read_text()):
-            yield f, e
+    """(file, environment, row, parked) for every ApplicationSet row."""
+    sets = root / "argocd" / "applicationsets"
+    for f in sorted((sets / "base").glob("*.yaml")):
         for doc in load(f):
             if doc.get("kind") != "ApplicationSet":
                 continue
-            gens = doc["spec"]["generators"][0]["matrix"]["generators"]
             ign = doc["spec"]["template"]["spec"].get("ignoreDifferences")
             if ign is not None and not (isinstance(ign, list) and all(isinstance(i, dict) and i.get("kind") for i in ign)):
                 print(f"::error file={f}::ignoreDifferences must be a list of entries with kind")
                 global_errors.append(f)
-            for e in gens[1]["list"]["elements"]:
-                yield f, e
+    for env in ENVIRONMENTS:
+        for f in sorted((sets / env).glob("*.yaml")):
+            for _, e in parked(f.read_text()):
+                yield f, env, e, True
+            for doc in load(f):
+                if doc.get("kind") != "ApplicationSet":
+                    continue
+                for e in doc["spec"]["generators"][0]["matrix"]["generators"][1]["list"]["elements"]:
+                    yield f, env, e, False
 
 
 def expected_name(root: Path, comp: Path) -> str:
@@ -175,12 +194,19 @@ def main(path: str) -> int:
 
     comps = components(root)
     claimed, starts = {}, []
-    for f, e in rows(root):
+    deployed, parked_names = {env: set() for env in ENVIRONMENTS}, set()
+    for f, env, e, is_parked in rows(root):
         f = f.relative_to(repo)
         if e.get("repoURL") not in (None, HOMELAB):
             continue
         name, p = e["app"], e["path"]
         target = repo / p
+        if is_parked:
+            parked_names.add(name)
+        else:
+            deployed[env].add(name)
+        if target.parent.name == "overlays" and target.name != env:
+            err(f, f"{name}: a {env} row deploys {p}")
         starts.append(target)
         if target.name == "rendered":
             if not (target / "manifests.yaml").is_file():
@@ -196,7 +222,6 @@ def main(path: str) -> int:
             want = expected_name(root, comp)
             if name != want:
                 err(f, f"Application {name} should be named {want} after its folder")
-            env = target.name if target.parent.name == "overlays" else "prod"
             claimed.setdefault((comp, env), []).append(name)
     for c in sorted(comps):
         if not any((c, env) in claimed for env in ENVIRONMENTS):
@@ -204,6 +229,13 @@ def main(path: str) -> int:
     for (c, env), names in sorted(claimed.items()):
         if len(names) > 1:
             err(c.relative_to(repo), f"{c.relative_to(repo)} is claimed by {names} in {env}")
+    sets = (root / "argocd" / "applicationsets").relative_to(repo)
+    for name in sorted(deployed["prod"] - deployed["staging"] - set(PROD_ONLY) - parked_names):
+        err(sets / "staging", f"{name} runs in prod but not in staging, add the row or name it in PROD_ONLY")
+    for name in sorted(deployed["staging"] - deployed["prod"] - set(STAGING_ONLY)):
+        err(sets / "prod", f"{name} runs in staging but not in prod, add the row or name it in STAGING_ONLY")
+    for name in sorted((set(PROD_ONLY) & deployed["staging"]) | (set(STAGING_ONLY) & deployed["prod"])):
+        err(".github/scripts/lint-structure.py", f"{name} runs in both environments, remove it from the exceptions")
 
     seen = reachable(root, starts + [root / "argocd" / "bootstrap" / "prod", root / "argocd" / "bootstrap" / "argocd" / "overlays" / "prod", root / "argocd" / "bootstrap" / "staging", root / "argocd" / "crds", root / "argocd" / "projects", root / "argocd" / "clusters" / "prod", root / "argocd" / "clusters" / "staging", root / "argocd" / "applicationsets" / "prod", root / "argocd" / "applicationsets" / "staging"])
     for f in sorted(root.rglob("*")):
