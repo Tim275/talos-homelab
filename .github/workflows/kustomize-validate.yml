@@ -122,9 +122,11 @@ jobs:
           set +e
           DRIFTED=0
           : > rendered-comment.md
-          for RENDERED in $(find kubernetes -path '*/rendered/manifests.yaml' | sort); do
-            SRC="$(dirname "$(dirname "$RENDERED")")/overlays/prod"
-            NAME=$(basename "$(dirname "$(dirname "$RENDERED")")")
+          for RENDERED in $(find kubernetes -path '*/rendered/*/manifests.yaml' | sort); do
+            ENVIRONMENT=$(basename "$(dirname "$RENDERED")")
+            COMPONENT=$(dirname "$(dirname "$(dirname "$RENDERED")")")
+            SRC="$COMPONENT/overlays/$ENVIRONMENT"
+            NAME="$(basename "$COMPONENT") ($ENVIRONMENT)"
             kustomize build "$SRC" --enable-helm --load-restrictor=LoadRestrictionsNone > /tmp/dry.yaml
             if diff -q "$RENDERED" /tmp/dry.yaml > /dev/null; then
               echo "rendered-manifests $NAME: matches dry source"
@@ -134,7 +136,7 @@ jobs:
               yq eval-all '(.kind // "?")+"/"+(.metadata.namespace // "_")+"/"+(.metadata.name // "?")' "$RENDERED" | sort -u > /tmp/rendered-ids.txt
               {
                 printf '#### rendered-manifests — `%s`\n' "$NAME"
-                printf 'drift detected — run `mise run render-update %s` and commit\n' "$(dirname "$(dirname "$RENDERED")")"
+                printf 'drift detected — run `mise run render-update %s` and commit\n' "$COMPONENT"
                 echo '**removed** (would be pruned if regenerated):'
                 echo '```'; comm -13 /tmp/dry-ids.txt /tmp/rendered-ids.txt; echo '```'
                 echo '**added:**'
