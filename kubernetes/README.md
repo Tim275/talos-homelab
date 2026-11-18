@@ -21,6 +21,8 @@ kubectl -n argocd get secret argocd-initial-admin-secret -ojson | jq -r '.data.p
 kubectl apply --server-side --force-conflicts -k kubernetes/argocd/bootstrap
 ```
 
+On the staging cluster use `kubernetes/argocd/bootstrap/staging` instead.
+
 ## Apps and tenants
 ```bash
 kubectl config set-context --current --namespace=argocd
