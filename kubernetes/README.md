@@ -10,7 +10,7 @@ kustomize build --enable-helm kubernetes/argocd/crds | kubectl apply --server-si
 
 ## Argo CD
 ```bash
-kubectl apply -f kubernetes/argocd/bootstrap/root/priority-classes.yaml
+kubectl apply -f kubernetes/argocd/bootstrap/root-prod/priority-classes.yaml
 kustomize build --enable-helm --load-restrictor LoadRestrictionsNone kubernetes/argocd/bootstrap/argocd/overlays/prod | kubectl apply --server-side --force-conflicts -f -
 kubectl -n argocd rollout status deploy/argocd-server
 kubectl -n argocd get secret argocd-initial-admin-secret -ojson | jq -r '.data.password | @base64d'
