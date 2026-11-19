@@ -474,6 +474,19 @@ metadata:
   namespace: harbor
 ---
 apiVersion: v1
+data:
+  redis.conf: |
+    appendonly no
+    save 900 1
+    save 300 10
+    maxmemory 192mb
+    maxmemory-policy volatile-lru
+kind: ConfigMap
+metadata:
+  name: redis-harbor-config
+  namespace: harbor
+---
+apiVersion: v1
 data: null
 kind: Secret
 metadata:
@@ -1924,6 +1937,42 @@ spec:
     size: 4096
   secretName: harbor-core-token
 ---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: redis-harbor
+  namespace: harbor
+spec:
+  endpointSelector:
+    matchExpressions:
+    - key: app.kubernetes.io/name
+      operator: In
+      values:
+      - redis-harbor
+      - redis-harbor-sentinel
+  ingress:
+  - fromEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: harbor
+    - matchLabels:
+        io.kubernetes.pod.namespace: redis-operator-system
+    toPorts:
+    - ports:
+      - port: "6379"
+        protocol: TCP
+      - port: "26379"
+        protocol: TCP
+  - fromEndpoints:
+    - matchLabels:
+        app.kubernetes.io/name: prometheus
+        io.kubernetes.pod.namespace: monitoring
+    toPorts:
+    - ports:
+      - port: "9121"
+        protocol: TCP
+  - fromEntities:
+    - host
+---
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
@@ -2256,6 +2305,21 @@ spec:
     matchLabels:
       app: harbor
 ---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redis-harbor
+  namespace: harbor
+spec:
+  endpoints:
+  - honorLabels: true
+    interval: 60s
+    port: redis-exporter
+  selector:
+    matchLabels:
+      app: redis-harbor
+      app.kubernetes.io/component: metrics
+---
 apiVersion: objectbucket.io/v1alpha1
 kind: ObjectBucketClaim
 metadata:
@@ -2264,3 +2328,105 @@ metadata:
 spec:
   bucketName: harbor-registry
   storageClassName: rook-ceph-bucket
+---
+apiVersion: redis.redis.opstreelabs.in/v1beta2
+kind: RedisReplication
+metadata:
+  labels:
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/name: redis-harbor
+  name: redis-harbor
+  namespace: harbor
+spec:
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis-harbor
+          topologyKey: topology.kubernetes.io/zone
+        weight: 100
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: redis-harbor
+        topologyKey: kubernetes.io/hostname
+  clusterSize: 3
+  kubernetesConfig:
+    image: quay.io/opstree/redis:v7.4.11@sha256:115d8e221b1459b9f2db7d927ed40318ffac4eb2cddb5702974bce92d32b7a51
+    imagePullPolicy: IfNotPresent
+    resources:
+      limits:
+        cpu: 500m
+        memory: 256Mi
+      requests:
+        cpu: 20m
+        memory: 64Mi
+  pdb:
+    enabled: true
+    maxUnavailable: 1
+  podSecurityContext:
+    fsGroup: 1000
+    runAsUser: 1000
+  priorityClassName: platform-critical
+  redisConfig:
+    additionalRedisConfig: redis-harbor-config
+  redisExporter:
+    enabled: true
+    image: quay.io/opstree/redis-exporter:v1.89.0@sha256:00a3628bdd3bb3423a15c5daefa328c471ee609798eed1744fe578c906d20cab
+    resources:
+      limits:
+        cpu: 250m
+        memory: 64Mi
+      requests:
+        cpu: 10m
+        memory: 32Mi
+  storage:
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+        storageClassName: rook-ceph-block-enterprise
+---
+apiVersion: redis.redis.opstreelabs.in/v1beta2
+kind: RedisSentinel
+metadata:
+  labels:
+    app.kubernetes.io/component: sentinel
+    app.kubernetes.io/name: redis-harbor-sentinel
+  name: redis-harbor-sentinel
+  namespace: harbor
+spec:
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: redis-harbor-sentinel
+        topologyKey: kubernetes.io/hostname
+  clusterSize: 3
+  kubernetesConfig:
+    image: quay.io/opstree/redis-sentinel:v7.4.11@sha256:9aae9fadd987a72684d5e75f92081bd4a3df81726e713b47a71df8bae861cda6
+    imagePullPolicy: IfNotPresent
+    resources:
+      limits:
+        cpu: 200m
+        memory: 64Mi
+      requests:
+        cpu: 10m
+        memory: 32Mi
+  pdb:
+    enabled: true
+    maxUnavailable: 1
+  podSecurityContext:
+    fsGroup: 1000
+    runAsUser: 1000
+  priorityClassName: platform-critical
+  redisSentinelConfig:
+    masterGroupName: harbor
+    quorum: "2"
+    redisReplicationName: redis-harbor
