@@ -2269,6 +2269,8 @@ spec:
                     description: |-
                       MaxMemoryPercentOfLimit is the percentage of the Redis container memory limit to be used as maxmemory.
                       When set with a memory limit, the operator also exports the computed value via the REDIS_MAX_MEMORY environment variable.
+                      This feature requires the GenerateConfigInInitContainer feature gate to be enabled on the operator;
+                      without it the REDIS_MAX_MEMORY value is exported but never applied to the Redis configuration.
                     maximum: 100
                     minimum: 1
                     type: integer
@@ -5632,6 +5634,12 @@ spec:
                 type: integer
               clusterVersion:
                 default: v7
+                description: |-
+                  ClusterVersion is the major version of the Redis image in use, written as
+                  `v6`, `v7`, `v8` and so on. It must match the major version of the image
+                  configured for the cluster: Redis 7+ features such as hostname based
+                  cluster announcements and CLUSTER ADDSLOTSRANGE are enabled for `v7` and
+                  every later major version, and disabled for `v6` and older.
                 type: string
               env:
                 items:
@@ -6532,6 +6540,8 @@ spec:
                     description: |-
                       MaxMemoryPercentOfLimit is the percentage of the Redis container memory limit to be used as maxmemory.
                       When set with a memory limit, the operator also exports the computed value via the REDIS_MAX_MEMORY environment variable.
+                      This feature requires the GenerateConfigInInitContainer feature gate to be enabled on the operator;
+                      without it the REDIS_MAX_MEMORY value is exported but never applied to the Redis configuration.
                     maximum: 100
                     minimum: 1
                     type: integer
@@ -8120,6 +8130,8 @@ spec:
                         description: |-
                           MaxMemoryPercentOfLimit is the percentage of the Redis container memory limit to be used as maxmemory.
                           When set with a memory limit, the operator also exports the computed value via the REDIS_MAX_MEMORY environment variable.
+                          This feature requires the GenerateConfigInInitContainer feature gate to be enabled on the operator;
+                          without it the REDIS_MAX_MEMORY value is exported but never applied to the Redis configuration.
                         maximum: 100
                         minimum: 1
                         type: integer
@@ -9800,6 +9812,8 @@ spec:
                         description: |-
                           MaxMemoryPercentOfLimit is the percentage of the Redis container memory limit to be used as maxmemory.
                           When set with a memory limit, the operator also exports the computed value via the REDIS_MAX_MEMORY environment variable.
+                          This feature requires the GenerateConfigInInitContainer feature gate to be enabled on the operator;
+                          without it the REDIS_MAX_MEMORY value is exported but never applied to the Redis configuration.
                         maximum: 100
                         minimum: 1
                         type: integer
@@ -15587,6 +15601,8 @@ spec:
                     description: |-
                       MaxMemoryPercentOfLimit is the percentage of the Redis container memory limit to be used as maxmemory.
                       When set with a memory limit, the operator also exports the computed value via the REDIS_MAX_MEMORY environment variable.
+                      This feature requires the GenerateConfigInInitContainer feature gate to be enabled on the operator;
+                      without it the REDIS_MAX_MEMORY value is exported but never applied to the Redis configuration.
                     maximum: 100
                     minimum: 1
                     type: integer
@@ -25849,8 +25865,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: redis-operator
     app.kubernetes.io/part-of: redis-operator
-    app.kubernetes.io/version: 0.25.0
-    helm.sh/chart: redis-operator-0.25.0
+    app.kubernetes.io/version: 0.27.0
+    helm.sh/chart: redis-operator-0.27.0
   name: redis-operator
   namespace: redis-operator-system
 ---
@@ -25863,9 +25879,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: redis-operator
     app.kubernetes.io/part-of: redis-operator
-    app.kubernetes.io/version: 0.25.0
-    helm.sh/chart: redis-operator-0.25.0
-    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+    app.kubernetes.io/version: 0.27.0
+    helm.sh/chart: redis-operator-0.27.0
   name: redis-operator
 rules:
 - apiGroups:
@@ -25982,6 +25997,67 @@ rules:
   - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: role
+    app.kubernetes.io/instance: redis-operator
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: redis-operator
+    app.kubernetes.io/part-of: redis-operator
+    app.kubernetes.io/version: 0.27.0
+    helm.sh/chart: redis-operator-0.27.0
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: redis-operator-edit
+rules:
+- apiGroups:
+  - redis.redis.opstreelabs.in
+  resources:
+  - redis
+  - redisclusters
+  - redisreplications
+  - redissentinels
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - patch
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: role
+    app.kubernetes.io/instance: redis-operator
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: redis-operator
+    app.kubernetes.io/part-of: redis-operator
+    app.kubernetes.io/version: 0.27.0
+    helm.sh/chart: redis-operator-0.27.0
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: redis-operator-view
+rules:
+- apiGroups:
+  - redis.redis.opstreelabs.in
+  resources:
+  - redis
+  - redis/status
+  - redisclusters
+  - redisclusters/status
+  - redisreplications
+  - redisreplications/status
+  - redissentinels
+  - redissentinels/status
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   labels:
@@ -25990,8 +26066,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: redis-operator
     app.kubernetes.io/part-of: redis-operator
-    app.kubernetes.io/version: 0.25.0
-    helm.sh/chart: redis-operator-0.25.0
+    app.kubernetes.io/version: 0.27.0
+    helm.sh/chart: redis-operator-0.27.0
   name: redis-operator
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -26011,8 +26087,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: redis-operator
     app.kubernetes.io/part-of: redis-operator
-    app.kubernetes.io/version: 0.25.0
-    helm.sh/chart: redis-operator-0.25.0
+    app.kubernetes.io/version: 0.27.0
+    helm.sh/chart: redis-operator-0.27.0
   name: redis-operator
   namespace: redis-operator-system
 spec:
@@ -26038,14 +26114,12 @@ spec:
         - manager
         env:
         - name: INIT_CONTAINER_IMAGE
-          value: quay.io/opstree/redis-operator:v0.25.0
+          value: quay.io/opstree/redis-operator:v0.27.0
         - name: ENABLE_WEBHOOKS
           value: "false"
         - name: SERVICE_DNS_DOMAIN
           value: cluster.local
-        - name: FEATURE_GATES
-          value: GenerateConfigInInitContainer=false
-        image: quay.io/opstree/redis-operator:v0.25.0
+        image: quay.io/opstree/redis-operator:v0.27.0
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
