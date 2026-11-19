@@ -11,6 +11,51 @@ metadata:
   name: harbor
 ---
 apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: harbor-robot-rotation
+  namespace: harbor
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: harbor-robot-rotation
+  namespace: harbor
+rules:
+- apiGroups:
+  - ""
+  resourceNames:
+  - harbor-robot-drova-pull
+  resources:
+  - secrets
+  verbs:
+  - get
+  - patch
+- apiGroups:
+  - external-secrets.io
+  resourceNames:
+  - harbor-robot-drova-pull
+  resources:
+  - pushsecrets
+  verbs:
+  - get
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: harbor-robot-rotation
+  namespace: harbor
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: harbor-robot-rotation
+subjects:
+- kind: ServiceAccount
+  name: harbor-robot-rotation
+  namespace: harbor
+---
+apiVersion: v1
 data:
   _REDIS_URL_CORE: redis+sentinel://redis-harbor-sentinel-sentinel.harbor.svc.cluster.local:26379/harbor/0?idle_timeout_seconds=30
   _REDIS_URL_REG: redis+sentinel://redis-harbor-sentinel-sentinel.harbor.svc.cluster.local:26379/harbor/2?idle_timeout_seconds=30
@@ -1773,6 +1818,78 @@ spec:
       - name: registry-internal-certs
         secret:
           secretName: harbor-registry-internal-tls
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: harbor-robot-rotation
+  namespace: harbor
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          containers:
+          - args:
+            - |
+              set -o pipefail
+              api() { curl -fsS -u "admin:$HARBOR_PASSWORD" -H 'Content-Type: application/json' "$@"; }
+              robot=$(api "$HARBOR_URL/api/v2.0/robots?q=Level%3Dproject&page_size=100" | jq -c --arg n "$ROBOT" '.[] | select(.name == $n)')
+              [ -n "$robot" ] || { echo "robot $ROBOT not found"; exit 1; }
+              id=$(jq -r .id <<<"$robot")
+              age=$(( ( $(date +%s) - $(date -d "$(jq -r .creation_time <<<"$robot")" +%s) ) / 86400 ))
+              new="$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)aB3"
+              # the expiry counts from creation, so it has to move with every rotation
+              jq -c --argjson d "$(( age + VALID_DAYS ))" '.duration = $d' <<<"$robot" | api -X PUT "$HARBOR_URL/api/v2.0/robots/$id" -d @- >/dev/null
+              jq -nc --arg s "$new" '{secret: $s}' | api -X PATCH "$HARBOR_URL/api/v2.0/robots/$id" -d @- >/dev/null
+              kubectl -n harbor patch secret "$SECRET_NAME" --type merge -p "$(jq -nc --arg s "$new" '{stringData: {password: $s}}')" >/dev/null
+              kubectl -n harbor annotate pushsecret "$SECRET_NAME" force-sync="$(date +%s)" --overwrite >/dev/null
+              echo "rotated $ROBOT, valid for $VALID_DAYS days"
+            command:
+            - /bin/bash
+            - -ceu
+            env:
+            - name: HARBOR_URL
+              value: http://harbor.harbor.svc.cluster.local
+            - name: HARBOR_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: HARBOR_ADMIN_PASSWORD
+                  name: harbor-secrets
+            - name: ROBOT
+              value: robot$drova+pull
+            - name: SECRET_NAME
+              value: harbor-robot-drova-pull
+            - name: VALID_DAYS
+              value: "90"
+            - name: HOME
+              value: /tmp
+            image: docker.io/alpine/k8s:1.37.2@sha256:7a82aeefea3d554a43a8676b137f2b88bae6c1fe11c13862b191b3a086cc28c0
+            name: rotate
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+              readOnlyRootFilesystem: true
+            volumeMounts:
+            - mountPath: /tmp
+              name: tmp
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          serviceAccountName: harbor-robot-rotation
+          volumes:
+          - emptyDir: {}
+            name: tmp
+  schedule: 0 6 1 * *
+  successfulJobsHistoryLimit: 3
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
