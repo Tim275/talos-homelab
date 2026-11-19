@@ -178,3 +178,15 @@ talosctl -n <node-ip> service kubelet
 
 - Alle Nodes Ready → Problem liegt beim Scrape (Prometheus, NetworkPolicy, TLS), nicht bei den Nodes
 - Mehrere NotReady auf demselben Host → [ProxmoxHostDown](hosts.md#proxmoxhostdown)
+
+## KubeMultipleNodesNotReady
+
+Zwei oder mehr Nodes sind seit 5 min NotReady, gecordonte zählen nicht. Die Redundanz ist aufgebraucht, der nächste Ausfall trifft Dienste.
+
+```bash
+kubectl get nodes -o wide
+kubectl describe node <node> | grep -A8 Conditions
+```
+
+- Alle betroffenen Nodes liegen auf einem Proxmox-Host → [ProxmoxHostDown](hosts.md#proxmoxhostdown)
+- Verteilt über Hosts → Netz oder Control Plane: [ControlPlaneNodeDown](#controlplanenodedown)

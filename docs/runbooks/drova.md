@@ -52,3 +52,16 @@ kubectl -n kube-system exec <cilium-pod> -c cilium-agent -- hubble observe --ver
 
 - `UNAVAILABLE` → Ziel hat keine Endpoints, oder Traffic wird verworfen (drova hat Default-Deny für Egress).
 - `DEADLINE_EXCEEDED` → Ziel zu langsam, siehe [Latenz-Burn](#latenz-burn).
+
+## PodCrashLooping
+
+Ein drova-Container hängt seit 5 min in CrashLoopBackOff. Kritisch nur für drova, für alle anderen Namespaces gibt es die Warnung.
+
+```bash
+kubectl -n drova get pods | grep -v Running
+kubectl -n drova logs <pod> -c <container> --previous --tail=50
+kubectl -n drova describe pod <pod> | grep -A6 "Last State"
+```
+
+- `OOMKilled` → Limits in `drova-gitops` anheben
+- Kurz nach einem Deploy → in `drova-gitops` zurückrollen, dann `drova-prod` manuell syncen
