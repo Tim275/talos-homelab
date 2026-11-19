@@ -12,8 +12,8 @@ metadata:
 ---
 apiVersion: v1
 data:
-  _REDIS_URL_CORE: redis://harbor-redis:6379/0?idle_timeout_seconds=30
-  _REDIS_URL_REG: redis://harbor-redis:6379/2?idle_timeout_seconds=30
+  _REDIS_URL_CORE: redis+sentinel://redis-harbor-sentinel-sentinel.harbor.svc.cluster.local:26379/harbor/0?idle_timeout_seconds=30
+  _REDIS_URL_REG: redis+sentinel://redis-harbor-sentinel-sentinel.harbor.svc.cluster.local:26379/harbor/2?idle_timeout_seconds=30
   CHART_CACHE_DRIVER: redis
   CONFIG_PATH: /etc/core/app.conf
   CORE_LOCAL_URL: http://127.0.0.1:8080
@@ -89,7 +89,7 @@ data:
   HARBOR_METRIC_SUBSYSTEM: exporter
   HARBOR_REDIS_NAMESPACE: harbor_job_service_namespace
   HARBOR_REDIS_TIMEOUT: "3600"
-  HARBOR_REDIS_URL: redis://harbor-redis:6379/1
+  HARBOR_REDIS_URL: redis+sentinel://redis-harbor-sentinel-sentinel.harbor.svc.cluster.local:26379/harbor/1
   HARBOR_SERVICE_HOST: harbor-core
   HARBOR_SERVICE_PORT: "80"
   HARBOR_SERVICE_SCHEME: http
@@ -122,7 +122,7 @@ data:
       workers: 10
       backend: "redis"
       redis_pool:
-        redis_url: "redis://harbor-redis:6379/1"
+        redis_url: "redis+sentinel://redis-harbor-sentinel-sentinel.harbor.svc.cluster.local:26379/harbor/1"
         namespace: "harbor_job_service_namespace"
         idle_timeout_second: 3600
     job_loggers:
@@ -403,7 +403,8 @@ data:
       redirect:
         disable: true
     redis:
-      addr: harbor-redis:6379
+      addr: redis-harbor-sentinel-sentinel.harbor.svc.cluster.local:26379
+      sentinelMasterSet: harbor
       db: 2
       username: ""
       password: ""
@@ -718,29 +719,6 @@ metadata:
     chart: harbor
     heritage: Helm
     release: harbor
-  name: harbor-redis
-  namespace: harbor
-spec:
-  ports:
-  - port: 6379
-  selector:
-    app: harbor
-    component: redis
-    release: harbor
----
-apiVersion: v1
-kind: Service
-metadata:
-  labels:
-    app: harbor
-    app.kubernetes.io/instance: harbor
-    app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/name: harbor
-    app.kubernetes.io/part-of: harbor
-    app.kubernetes.io/version: 2.15.4
-    chart: harbor
-    heritage: Helm
-    release: harbor
   name: harbor-registry
   namespace: harbor
 spec:
@@ -784,7 +762,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/configmap: dd8e0cac0ea5b619603382d97428fec2b99cbd019b0754650cf9019bdfefbdfe
+        checksum/configmap: a72b948910d9448d23f07bdb2c7e1d8b1ab311247434409695202ce1a8b7083a
         checksum/secret: 7c8a26615e5ea394c6ebb5d6b975553556dcd3224c5e76351f3c71db82ca1dbc
         checksum/secret-jobservice: b458a24b4de57975a180b4e59cd775b5cba4528dfd251c7d911e385b6e7c330e
       labels:
@@ -980,7 +958,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/configmap: 784139c2a2b44c9cf2b2a7de3f722063843454d69dcf4657e217d8998be2a806
+        checksum/configmap: edf6f42f5840977a4a710dbfebd28067dc0eead695c80e375c29ab44da4c3fba
         checksum/secret: af99af6e8898a45123f02d0d32bdfa21942f9bff6a30ed6866e63049dd9dc1c6
       labels:
         app: harbor
@@ -1094,7 +1072,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/configmap: 02acb30f47edaf97f0d05d8cd5f80548ac05648ac5784f1d6613cdbf494ba376
+        checksum/configmap: 890b46e71d588029e13cb3c04628f70089512a45dd7de6eca623f8e559a80e4c
         checksum/configmap-env: 7aad5863d04ef7ec2b78295abda22d695b1d9804161b86fb94c0fea4e90f2248
         checksum/secret: b458a24b4de57975a180b4e59cd775b5cba4528dfd251c7d911e385b6e7c330e
         checksum/secret-core: 7c8a26615e5ea394c6ebb5d6b975553556dcd3224c5e76351f3c71db82ca1dbc
@@ -1486,7 +1464,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/configmap: bc0f87e6015d9131b09a76de200f309be00e7aafc8e6c0fdbc93288df31882fc
+        checksum/configmap: 03cbd2d59fb0e8212692ad92b2f87239221a8438b0a3e62b51b1888b6ee2bbb6
         checksum/secret: fa19e18dff7e34e15462713bec24881b0add3635801b9e2a110e7c62940b6cc9
         checksum/secret-core: 7c8a26615e5ea394c6ebb5d6b975553556dcd3224c5e76351f3c71db82ca1dbc
         checksum/secret-jobservice: b458a24b4de57975a180b4e59cd775b5cba4528dfd251c7d911e385b6e7c330e
@@ -1706,109 +1684,6 @@ spec:
         name: registry-config
       - emptyDir: {}
         name: registry-data
----
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  labels:
-    app: harbor
-    app.kubernetes.io/component: redis
-    app.kubernetes.io/instance: harbor
-    app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/name: harbor
-    app.kubernetes.io/part-of: harbor
-    app.kubernetes.io/version: 2.15.4
-    chart: harbor
-    component: redis
-    heritage: Helm
-    release: harbor
-  name: harbor-redis
-  namespace: harbor
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: harbor
-      component: redis
-      release: harbor
-  serviceName: harbor-redis
-  template:
-    metadata:
-      labels:
-        app: harbor
-        app.kubernetes.io/component: redis
-        app.kubernetes.io/instance: harbor
-        app.kubernetes.io/managed-by: Helm
-        app.kubernetes.io/name: harbor
-        app.kubernetes.io/part-of: harbor
-        app.kubernetes.io/version: 2.15.4
-        chart: harbor
-        component: redis
-        heritage: Helm
-        release: harbor
-    spec:
-      automountServiceAccountToken: false
-      containers:
-      - image: docker.io/goharbor/valkey-photon:v2.15.4
-        imagePullPolicy: IfNotPresent
-        livenessProbe:
-          failureThreshold: 3
-          initialDelaySeconds: 300
-          periodSeconds: 10
-          successThreshold: 1
-          tcpSocket:
-            port: 6379
-          timeoutSeconds: 1
-        name: redis
-        readinessProbe:
-          failureThreshold: 3
-          initialDelaySeconds: 1
-          periodSeconds: 10
-          successThreshold: 1
-          tcpSocket:
-            port: 6379
-          timeoutSeconds: 1
-        resources:
-          limits:
-            cpu: 500m
-            memory: 256Mi
-          requests:
-            cpu: 20m
-            memory: 32Mi
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
-          privileged: false
-          runAsNonRoot: true
-          seccompProfile:
-            type: RuntimeDefault
-        volumeMounts:
-        - mountPath: /var/lib/redis
-          name: data
-          subPath: null
-      securityContext:
-        fsGroup: 999
-        runAsUser: 999
-      terminationGracePeriodSeconds: 120
-  volumeClaimTemplates:
-  - apiVersion: v1
-    kind: PersistentVolumeClaim
-    metadata:
-      annotations: null
-      labels:
-        app: harbor
-        chart: harbor
-        heritage: Helm
-        release: harbor
-      name: data
-    spec:
-      accessModes:
-      - ReadWriteOnce
-      resources:
-        requests:
-          storage: 1Gi
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
