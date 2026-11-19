@@ -8,7 +8,8 @@ Checks:
 - every component (a folder owning base/ or overlays/) is claimed by a row, by at most one per environment,
   a commented-out row keeps its component parked
 - every file in a component is reachable from its kustomization, nothing is commented out
-- base/ holds no helmCharts, no image tags, no remote resources, no deprecated kustomize fields, no hostnames, addresses or node names
+- base/ holds no helmCharts, no image tags, no remote resources, no deprecated kustomize fields
+- base/ and components/ hold no hostnames, addresses, node names or environment values, unless the component runs in prod only
 - every image of a component gets its tag in each overlay
 - the Cilium version of the Talos bootstrap equals the chart version Argo CD deploys
 - the environment label is prod or staging
@@ -43,6 +44,7 @@ ENV_SPECIFIC = {
     "hostname": re.compile(r"timourhomelab\.org|@outlook\.|@hotmail\.|@gmail\."),
     "address": re.compile(r"\b(?!10\.0\.0\.0/8|192\.168\.0\.0/16)(?:192\.168|10\.\d{1,3})\.\d{1,3}\.\d{1,3}\b"),
     "node name": re.compile(r"\b(?:worker|ctrl|storage)-\d\b"),
+    "environment": re.compile(r"^\s*(?:[\w./-]+/)?env(?:ironment)?:\s*['\"]?(?:prod|production|staging)['\"]?$"),
 }
 ENV_EXEMPT_KINDS = {"PrometheusRule", "GrafanaDashboard", "CustomResourceDefinition"}
 global_errors = []
@@ -294,9 +296,12 @@ def main(path: str) -> int:
 
     for f in sorted(root.rglob("*")):
         rel = f.relative_to(root) if f.is_file() else None
-        if rel is None or skip(rel) or "base" not in rel.parts or rel.parts[0] not in STACKS:
+        if rel is None or skip(rel) or not {"base", "components"} & set(rel.parts[:-1]) or "overlays" in rel.parts or rel.parts[0] not in STACKS:
             continue
         if f.suffix not in (".yaml", ".yml", ".toml", ".alloy") or f.name == "alerting-rules.yaml":
+            continue
+        layer = next(p for p in rel.parts if p in ("base", "components"))
+        if rel.parts[rel.parts.index(layer) - 1] in PROD_ONLY:
             continue
         docs = load(f) if f.suffix in (".yaml", ".yml") else []
         if docs and all(d.get("kind") in ENV_EXEMPT_KINDS for d in docs):
@@ -307,7 +312,7 @@ def main(path: str) -> int:
             code = re.sub(r"\s+#.*$", "", line)
             for what, rx in ENV_SPECIFIC.items():
                 if rx.search(code):
-                    err(f"{f.relative_to(repo)},line={i}", f"{what} in base, move it to overlays/prod")
+                    err(f"{f.relative_to(repo)},line={i}", f"{what} in {'components' if 'components' in f.relative_to(root).parts else 'base'}, move it to the overlays")
 
     for f in sorted(root.rglob("*.yaml")):
         if skip(f.relative_to(root)):
