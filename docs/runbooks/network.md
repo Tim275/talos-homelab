@@ -135,3 +135,17 @@ kubectl -n gateway logs deploy/envoy-ratelimit --tail 50
 ```
 
 - Hängt oft am Redis dahinter: `kubectl -n gateway get pod redis-gateway-0`
+
+## HomelabPublicServiceDown
+
+Die Blackbox-Probe auf drova oder homepage bekommt seit 3 min keine gültige Antwort (abgelehnt, Timeout oder 5xx).
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://drova.timourhomelab.org
+curl -s -o /dev/null -w '%{http_code}\n' --resolve drova.timourhomelab.org:443:192.168.0.152 https://drova.timourhomelab.org
+kubectl -n cloudflared get pods
+```
+
+- Öffentlich 530, über `--resolve` 200 → Tunnel: [CloudflaredAllDown](#cloudflaredalldown)
+- Beides scheitert → Gateway oder App: [HomelabEdgeDown](#homelabedgedown)
+- Nur drova betroffen → [Fehler-Burn](drova.md#fehler-burn)

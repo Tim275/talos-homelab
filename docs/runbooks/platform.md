@@ -127,3 +127,16 @@ sum by (integration, reason) (rate(alertmanager_notifications_failed_total[15m])
   ```bash
   curl -su "$USER:$TOKEN" https://timourmiagol.atlassian.net/rest/api/2/issue/SCRUM-1/transitions | jq -r '.transitions[].name'
   ```
+
+## LokiIngestionOverloadDropping
+
+Loki verwirft über 1 % der eingehenden Logzeilen, meist weil ein Stream das Limit sprengt. Die verworfenen Zeilen sind verloren.
+
+```bash
+kubectl -n monitoring logs loki-0 --since=30m | grep -iE "rate limit|stream limit" | tail -5
+```
+
+In Grafana (Loki) die lauteste Quelle: `topk(5, sum by (namespace, pod) (bytes_rate({namespace=~".+"}[5m])))`
+
+- Log-Spam an der Quelle beheben (Log-Level, Schleife), nicht das Limit hochsetzen
+- Limits: `ingestion_rate_mb` und `per_stream_rate_limit` in `kubernetes/platform/observability/loki/base/values.yaml`
