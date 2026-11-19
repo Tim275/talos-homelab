@@ -21,7 +21,7 @@ import yaml
 REQUIRED_ANNOTATIONS = ["summary"]
 REQUIRED_LABELS = ["severity"]
 VALID_SEVERITIES = {"critical", "warning", "info"}
-ALERTS_TREE = "kubernetes/infrastructure/monitoring/alerting/base/rules/"
+ALERTS_TREE = "kubernetes/infrastructure/monitoring/alerting/"
 LOCATION_WHITELIST: tuple[str, ...] = (
     # Recording-Rules + lokale Alerts des Edge-Prometheus — gehoeren zu einer
     # eigenen Instanz mit eigenem Alertmanager (disconnected/air-gap-Faehigkeit),
