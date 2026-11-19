@@ -16,6 +16,9 @@ rules:
   - apiGroups: ["velero.io"]
     resources: [backups, restores]
     verbs: [get, list, create, delete]
+  - apiGroups: ["velero.io"]
+    resources: [podvolumerestores]
+    verbs: [get, list]
   - apiGroups: [""]
     resources: [namespaces]
     verbs: [get, create, delete]
@@ -136,6 +139,56 @@ spec:
 
                   kubectl delete restores.velero.io -n velero "$RESTORE" --ignore-not-found=true >/dev/null 2>&1
                   kubectl delete ns "$TEST_NS" --ignore-not-found=true --wait=false >/dev/null 2>&1
+
+                  DATA_NS="dr-verify-data-${TS}"
+                  DATA_RESTORE="dr-verify-data-${TS}"
+                  DATA_BACKUP=$(kubectl get backups.velero.io -n velero \
+                    -l velero.io/schedule-name=tier1-stateful-apps \
+                    --sort-by=.metadata.creationTimestamp \
+                    -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.status.phase}{"\n"}{end}' 2>/dev/null \
+                    | grep '|Completed$' | tail -1 | cut -d'|' -f1)
+                  DATA_PHASE=""
+                  PVR_PHASE=""
+                  BYTES=0
+                  if [ -n "$DATA_BACKUP" ]; then
+                    echo "→ Volume restore from: $DATA_BACKUP"
+                    kubectl apply -f - <<EOF
+                  apiVersion: velero.io/v1
+                  kind: Restore
+                  metadata:
+                    name: ${DATA_RESTORE}
+                    namespace: velero
+                  spec:
+                    backupName: ${DATA_BACKUP}
+                    includedNamespaces: [pgadmin]
+                    namespaceMapping:
+                      pgadmin: ${DATA_NS}
+                    restorePVs: true
+                    excludedResources:
+                      - httproutes.gateway.networking.k8s.io
+                      - externalsecrets.external-secrets.io
+                      - pushsecrets.external-secrets.io
+                      - servicemonitors.monitoring.coreos.com
+                      - securitypolicies.gateway.envoyproxy.io
+                      - backendtrafficpolicies.gateway.envoyproxy.io
+                      - ciliumnetworkpolicies.cilium.io
+                      - networkpolicies.networking.k8s.io
+                  EOF
+                    for i in $(seq 1 90); do
+                      DATA_PHASE=$(kubectl get restores.velero.io -n velero "$DATA_RESTORE" -o jsonpath='{.status.phase}' 2>/dev/null)
+                      case "$DATA_PHASE" in Completed|PartiallyFailed|Failed|FailedValidation) break ;; esac
+                      sleep 10
+                    done
+                    PVR_PHASE=$(kubectl get podvolumerestores.velero.io -n velero -l velero.io/restore-name="$DATA_RESTORE" -o jsonpath='{.items[0].status.phase}' 2>/dev/null)
+                    BYTES=$(kubectl get podvolumerestores.velero.io -n velero -l velero.io/restore-name="$DATA_RESTORE" -o jsonpath='{.items[0].status.progress.bytesDone}' 2>/dev/null)
+                    echo "→ Volume restore: restore=$DATA_PHASE volume=$PVR_PHASE bytes=${BYTES:-0}"
+                    kubectl delete restores.velero.io -n velero "$DATA_RESTORE" --ignore-not-found=true >/dev/null 2>&1
+                    kubectl delete ns "$DATA_NS" --ignore-not-found=true --wait=false >/dev/null 2>&1
+                  fi
+                  if [ "$DATA_PHASE" != "Completed" ] || [ "$PVR_PHASE" != "Completed" ] || [ "${BYTES:-0}" -le 0 ]; then
+                    ERROR_REASON="volume restore: restore=$DATA_PHASE volume=$PVR_PHASE bytes=${BYTES:-0}"
+                    PHASE="Failed"
+                  fi
 
                   if [ "$PHASE" = "Completed" ]; then
                     echo "═══ ✓ DR-Verify SUCCESS for backup $LATEST ═══"
