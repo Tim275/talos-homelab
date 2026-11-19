@@ -71,6 +71,8 @@ spec:
                     secretKeyRef:
                       name: harbor-secrets
                       key: HARBOR_ADMIN_PASSWORD
+                - name: PROJECT
+                  value: drova
                 - name: ROBOT
                   value: robot$drova+pull
                 - name: SECRET_NAME
@@ -87,7 +89,8 @@ spec:
                 - |
                   set -o pipefail
                   api() { curl -fsS -u "admin:$HARBOR_PASSWORD" -H 'Content-Type: application/json' "$@"; }
-                  robot=$(api "$HARBOR_URL/api/v2.0/robots?q=Level%3Dproject&page_size=100" | jq -c --arg n "$ROBOT" '.[] | select(.name == $n)')
+                  project=$(api "$HARBOR_URL/api/v2.0/projects/$PROJECT" | jq -r .project_id)
+                  robot=$(api "$HARBOR_URL/api/v2.0/robots?q=Level%3Dproject%2CProjectID%3D$project&page_size=100" | jq -c --arg n "$ROBOT" '.[] | select(.name == $n)')
                   [ -n "$robot" ] || { echo "robot $ROBOT not found"; exit 1; }
                   id=$(jq -r .id <<<"$robot")
                   age=$(( ( $(date +%s) - $(date -d "$(jq -r .creation_time <<<"$robot")" +%s) ) / 86400 ))
