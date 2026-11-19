@@ -17,7 +17,7 @@ rules:
     resources: [backups, restores]
     verbs: [get, list, create, delete]
   - apiGroups: ["velero.io"]
-    resources: [podvolumerestores]
+    resources: [podvolumerestores, datadownloads]
     verbs: [get, list]
   - apiGroups: [""]
     resources: [namespaces]
@@ -179,8 +179,11 @@ spec:
                       case "$DATA_PHASE" in Completed|PartiallyFailed|Failed|FailedValidation) break ;; esac
                       sleep 10
                     done
-                    PVR_PHASE=$(kubectl get podvolumerestores.velero.io -n velero -l velero.io/restore-name="$DATA_RESTORE" -o jsonpath='{.items[0].status.phase}' 2>/dev/null)
-                    BYTES=$(kubectl get podvolumerestores.velero.io -n velero -l velero.io/restore-name="$DATA_RESTORE" -o jsonpath='{.items[0].status.progress.bytesDone}' 2>/dev/null)
+                    for kind in datadownloads podvolumerestores; do
+                      PVR_PHASE=$(kubectl get "$kind.velero.io" -n velero -l velero.io/restore-name="$DATA_RESTORE" -o jsonpath='{.items[0].status.phase}' 2>/dev/null)
+                      BYTES=$(kubectl get "$kind.velero.io" -n velero -l velero.io/restore-name="$DATA_RESTORE" -o jsonpath='{.items[0].status.progress.bytesDone}' 2>/dev/null)
+                      [ -n "$PVR_PHASE" ] && break
+                    done
                     echo "→ Volume restore: restore=$DATA_PHASE volume=$PVR_PHASE bytes=${BYTES:-0}"
                     kubectl delete restores.velero.io -n velero "$DATA_RESTORE" --ignore-not-found=true >/dev/null 2>&1
                     kubectl delete ns "$DATA_NS" --ignore-not-found=true --wait=false >/dev/null 2>&1
