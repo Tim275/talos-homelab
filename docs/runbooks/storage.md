@@ -91,6 +91,11 @@ kubectl -n velero logs -l name=velero --tail 100 | grep -i error
   ```bash
   kubectl -n velero get podvolumebackups -l velero.io/backup-name=<backup> --no-headers | wc -l
   ```
+  LLDAP, Grafana, Forgejo, Uptime-Kuma und pgAdmin laufen über Ceph-Snapshots, dort zählen die `datauploads`:
+  ```bash
+  kubectl -n velero get datauploads -l velero.io/backup-name=<backup>
+  ```
+  OpenBao bleibt beim Datei-Backup, sein Operator verbietet Änderungen an den Volumes und damit Snapshots.
 - `PartiallyFailed`: welches Volume, steht in den PodVolumeBackups (`velero backup logs` scheitert hier an `SignatureDoesNotMatch` vom RGW):
   ```bash
   kubectl -n velero get podvolumebackups -l velero.io/backup-name=<backup> -o custom-columns=POD:.spec.pod.name,VOL:.spec.volume,PHASE:.status.phase
