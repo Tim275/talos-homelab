@@ -62,6 +62,7 @@ rules:
   - watch
   - update
   - delete
+  - patch
 - apiGroups:
   - ""
   resources:
@@ -3278,6 +3279,25 @@ data:
                       - name
                       type: object
                     type: array
+                  githubAppReference:
+                    description: |-
+                      Reference to a Github App for authentication, this will automatically mount a secret with
+                      RENOVATE_TOKEN
+                    properties:
+                      appIdSecretKey:
+                        type: string
+                      installationIdSecretKey:
+                        type: string
+                      pemSecretKey:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - appIdSecretKey
+                    - installationIdSecretKey
+                    - pemSecretKey
+                    - secretName
+                    type: object
                   image:
                     description: Renovate Docker image to use
                     type: string
@@ -3391,6 +3411,10 @@ data:
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                         type: object
                     type: object
+                  runtimeClassName:
+                    description: RuntimeClassName for the resulting pod, used to select
+                      a non-default container runtime
+                    type: string
                   schedule:
                     description: Cron schedule in standard cron format
                     type: string
@@ -4113,6 +4137,11 @@ data:
                     description: If true, forked repositories discovered during autodiscovery
                       will be excluded by querying the platform API
                     type: boolean
+                  skipPendingDeletion:
+                    description: If true, repositories marked for delayed deletion (pending
+                      deletion) will be excluded by querying the platform API. Only GitLab
+                      exposes this state.
+                    type: boolean
                   tolerations:
                     description: Tolerations for scheduling the resulting pod
                     items:
@@ -4402,7 +4431,7 @@ data:
                   executionOptions:
                     properties:
                       debug:
-                        description: If true, the renovate job will be executed with LOG_LEVEL=debug
+                        description: If true, the renovate job will be executed with RENOVATE_LOG_LEVEL=debug
                         type: boolean
                     type: object
                   projects:
@@ -4575,7 +4604,7 @@ spec:
           value: "0"
         - name: LOG_STORE_MODE
           value: disabled
-        image: ghcr.io/mogenius/renovate-operator:4.7.1
+        image: ghcr.io/mogenius/renovate-operator:4.14.1
         imagePullPolicy: IfNotPresent
         name: renovate-operator
         ports:
@@ -4634,7 +4663,7 @@ spec:
         - --force-conflicts
         - -f
         - /crd/renovatejob.yaml
-        image: registry.k8s.io/kubectl:v1.36.0
+        image: registry.k8s.io/kubectl:v1.36.2
         imagePullPolicy: IfNotPresent
         name: kubectl
         securityContext:
