@@ -116,12 +116,11 @@ ls /dev/disk/by-label/backup-hdd
 - Einrichtung und Skript: `tofu/stacks/proxmox/install/backup-copy.sh`. Kopiert wird um 04:30, gelöscht wird nie.
 - Auf der Platte liegt je Bucket ein Ordner unter `rgw/`, lesbar mit jedem Linux.
 
-Wiederherstellen, wenn Ceph weg ist:
+Wiederherstellen, wenn Ceph weg war und neu steht (RGW läuft, Buckets und Benutzer sind wieder angelegt):
 
 ```bash
-mount LABEL=backup-hdd /mnt/backup-hdd
-rclone serve s3 /mnt/backup-hdd/rgw --addr :7481 --auth-key <key>,<secret>
+mount /mnt/backup-hdd
+rclone copy /mnt/backup-hdd/rgw/velero-cluster-backups rgw:velero-cluster-backups --s3-acl bucket-owner-full-control
 ```
 
-Danach den Velero-Speicherort auf diesen Endpunkt zeigen lassen (`s3Url`, `accessMode: ReadOnly`) und wie gewohnt `velero restore create --from-backup <backup>`. Postgres holt sich Basis-Backup und WAL über denselben Endpunkt (`externalClusters` im Cluster-Manifest).
-
+Je Bucket einmal, dann den Velero-Speicherort auf `ReadOnly` stellen und wie gewohnt `velero restore create --from-backup <backup>`. Postgres und OpenBao lesen ihre Sicherungen aus denselben Buckets wie vorher.
