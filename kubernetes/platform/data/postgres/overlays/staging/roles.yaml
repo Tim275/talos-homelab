@@ -242,3 +242,52 @@ spec:
       remoteRef:
         key: pgadmin/postgres-credentials
         property: password
+---
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: role-harbor-password
+  namespace: postgres
+  annotations:
+    argocd.argoproj.io/sync-wave: '-1'
+spec:
+  refreshInterval: 1h
+  updatePolicy: IfNotExists
+  secretStoreRefs:
+    - name: openbao
+      kind: ClusterSecretStore
+  selector:
+    generatorRef:
+      apiVersion: generators.external-secrets.io/v1alpha1
+      kind: ClusterGenerator
+      name: password
+  data:
+    - match:
+        secretKey: password
+        remoteRef:
+          remoteKey: harbor/harbor-postgres-credentials
+          property: password
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: role-harbor
+  namespace: postgres
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao
+    kind: ClusterSecretStore
+  target:
+    name: role-harbor
+    template:
+      type: kubernetes.io/basic-auth
+      engineVersion: v2
+      data:
+        username: harbor
+        password: '{{ .password }}'
+  data:
+    - secretKey: password
+      remoteRef:
+        key: harbor/harbor-postgres-credentials
+        property: password
