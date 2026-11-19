@@ -474,6 +474,28 @@ spec:
                                   Operator-managed labels take precedence if the same key is specified here.
                                 type: object
                             type: object
+                          probes:
+                            description: Probes configures health probes for the restored
+                              OpenBao container.
+                            properties:
+                              startup:
+                                description: Startup extends the time allowed for
+                                  OpenBao to start.
+                                properties:
+                                  failureThreshold:
+                                    default: 60
+                                    description: |-
+                                      FailureThreshold is the number of consecutive failures allowed before the
+                                      kubelet restarts the container. The probe runs every 5 seconds after an
+                                      initial 10-second delay. The default is 60 failures, approximately 5 minutes;
+                                      the maximum is 720 failures, approximately 1 hour. Only longer budgets are
+                                      supported. Changing this value updates the Pod template and can restart Pods.
+                                    format: int32
+                                    maximum: 720
+                                    minimum: 60
+                                    type: integer
+                                type: object
+                            type: object
                           resources:
                             description: ResourceRequirements describes the compute
                               resource requirements.
@@ -1374,6 +1396,14 @@ spec:
                       everySuccessfulBackups:
                         format: int64
                         maximum: 10000
+                        minimum: 1
+                        type: integer
+                      maxSnapshotSizeBytes:
+                        default: 8589934592
+                        description: |-
+                          MaxSnapshotSizeBytes sets the snapshot and scratch-storage budget on each
+                          generated restore request. The default is 8 GiB.
+                        format: int64
                         minimum: 1
                         type: integer
                       namespace:
@@ -3297,6 +3327,27 @@ spec:
                     description: |-
                       Labels are merged into the generated OpenBao Pod template labels.
                       Operator-managed labels take precedence if the same key is specified here.
+                    type: object
+                type: object
+              probes:
+                description: Probes configures health probes for voter and read-replica
+                  containers.
+                properties:
+                  startup:
+                    description: Startup extends the time allowed for OpenBao to start.
+                    properties:
+                      failureThreshold:
+                        default: 60
+                        description: |-
+                          FailureThreshold is the number of consecutive failures allowed before the
+                          kubelet restarts the container. The probe runs every 5 seconds after an
+                          initial 10-second delay. The default is 60 failures, approximately 5 minutes;
+                          the maximum is 720 failures, approximately 1 hour. Only longer budgets are
+                          supported. Changing this value updates the Pod template and can restart Pods.
+                        format: int32
+                        maximum: 720
+                        minimum: 60
+                        type: integer
                     type: object
                 type: object
               profile:
@@ -6731,7 +6782,6 @@ spec:
                       size:
                         description: Size is the snapshot size in bytes.
                         format: int64
-                        maximum: 8589934592
                         minimum: 1
                         type: integer
                       version:
@@ -7939,6 +7989,28 @@ spec:
                           Operator-managed labels take precedence if the same key is specified here.
                         type: object
                     type: object
+                  probes:
+                    description: Probes configures health probes for the restored
+                      OpenBao container.
+                    properties:
+                      startup:
+                        description: Startup extends the time allowed for OpenBao
+                          to start.
+                        properties:
+                          failureThreshold:
+                            default: 60
+                            description: |-
+                              FailureThreshold is the number of consecutive failures allowed before the
+                              kubelet restarts the container. The probe runs every 5 seconds after an
+                              initial 10-second delay. The default is 60 failures, approximately 5 minutes;
+                              the maximum is 720 failures, approximately 1 hour. Only longer budgets are
+                              supported. Changing this value updates the Pod template and can restart Pods.
+                            format: int32
+                            maximum: 720
+                            minimum: 60
+                            type: integer
+                        type: object
+                    type: object
                   resources:
                     description: ResourceRequirements describes the compute resource
                       requirements.
@@ -8868,7 +8940,6 @@ spec:
                     type: string
                   expectedSize:
                     format: int64
-                    maximum: 8589934592
                     minimum: 1
                     type: integer
                   expectedVersion:
@@ -8882,6 +8953,14 @@ spec:
                       For example, "clusters/prod/2025-10-14-120000.snap".
                     minLength: 1
                     type: string
+                  maxSnapshotSizeBytes:
+                    default: 8589934592
+                    description: |-
+                      MaxSnapshotSizeBytes bounds the downloaded snapshot and reserves matching
+                      disk-backed scratch storage for the restore Job. The default is 8 GiB.
+                    format: int64
+                    minimum: 1
+                    type: integer
                   target:
                     description: |-
                       Target reuses BackupTarget for storage connection details.
@@ -9097,6 +9176,10 @@ spec:
                 - key
                 - target
                 type: object
+                x-kubernetes-validations:
+                - message: expectedSize exceeds maxSnapshotSizeBytes
+                  rule: '!has(self.expectedSize) || self.expectedSize <= (has(self.maxSnapshotSizeBytes)
+                    ? self.maxSnapshotSizeBytes : 8589934592)'
               targetLifecycle:
                 description: TargetLifecycle retains recovery targets or deletes disposable
                   test resources.
@@ -9372,7 +9455,6 @@ spec:
                   size:
                     description: Size is the staged snapshot size in bytes.
                     format: int64
-                    maximum: 8589934592
                     minimum: 1
                     type: integer
                   targetContainerID:
@@ -9747,8 +9829,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-controller
   namespace: openbao-operator-system
 ---
@@ -9760,8 +9842,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-controller-token
   namespace: openbao-operator-system
 rules:
@@ -9781,8 +9863,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-leader-election
   namespace: openbao-operator-system
 rules:
@@ -9820,8 +9902,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: metrics-reader
 rules:
 - nonResourceURLs:
@@ -9837,8 +9919,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-controller-openbaocluster
 rules:
 - apiGroups:
@@ -9878,8 +9960,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-controller-openbaorestore
 rules:
 - apiGroups:
@@ -9898,8 +9980,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-metrics-auth
 rules:
 - apiGroups:
@@ -9922,8 +10004,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbaocluster-admin
 rules:
 - apiGroups:
@@ -9946,8 +10028,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbaocluster-cloud-identity
 rules:
 - apiGroups:
@@ -9965,8 +10047,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbaocluster-editor
 rules:
 - apiGroups:
@@ -9995,8 +10077,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbaocluster-helper-image
 rules:
 - apiGroups:
@@ -10015,8 +10097,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbaocluster-image-trust-roots
 rules:
 - apiGroups:
@@ -10034,8 +10116,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbaocluster-network-publication
 rules:
 - apiGroups:
@@ -10053,8 +10135,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbaocluster-restore
 rules:
 - apiGroups:
@@ -10072,8 +10154,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbaocluster-viewer
 rules:
 - apiGroups:
@@ -10098,8 +10180,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
     rbac.authorization.k8s.io/aggregate-to-admin: "true"
     rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: openbao-operator-openbaotenant-editor
@@ -10131,8 +10213,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-single-tenant
 rules:
 - apiGroups:
@@ -10356,8 +10438,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-controller-leader-election
   namespace: openbao-operator-system
 roleRef:
@@ -10377,8 +10459,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-controller-token
   namespace: openbao-operator-system
 roleRef:
@@ -10398,8 +10480,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-single-tenant
   namespace: openbao
 roleRef:
@@ -10419,8 +10501,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-controller-metrics-auth
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -10439,8 +10521,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-controller-openbaocluster
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -10459,8 +10541,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-controller-openbaorestore
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -10479,8 +10561,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-controller-metrics
   namespace: openbao-operator-system
 spec:
@@ -10501,8 +10583,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-controller
   namespace: openbao-operator-system
 spec:
@@ -10557,10 +10639,10 @@ spec:
         - name: OPENBAO_TENANT_NAMESPACE_POD_SECURITY_LABELS_MODE
           value: enforce
         - name: OPERATOR_VERSION
-          value: 0.6.1
+          value: 0.6.3
         - name: OPENBAO_JWT_AUDIENCE
           value: openbao-internal
-        image: ghcr.io/kubebao/openbao-operator:0.6.1
+        image: ghcr.io/kubebao/openbao-operator:0.6.3
         imagePullPolicy: IfNotPresent
         livenessProbe:
           httpGet:
@@ -10641,8 +10723,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-enforce-managed-image-digests
 spec:
   failurePolicy: Fail
@@ -10698,8 +10780,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-lock-controller-statefulset-mutations
 spec:
   failurePolicy: Fail
@@ -10825,8 +10907,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-lock-managed-resource-mutations
 spec:
   failurePolicy: Fail
@@ -11416,13 +11498,13 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
   annotations:
-    openbao.org/admission-policy-fingerprint: sha256:0f02bf5f11789189efb6a9f6401d6f5043946f69092194e7eaf6bc8dc7c292b8
+    openbao.org/admission-policy-fingerprint: sha256:aa80cfbc400292b4a702b9429612ea5e3c14ace15336198b0fc7a3e51f4dcfa3
   labels:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-protect-restore-execution
 spec:
   failurePolicy: Fail
@@ -11489,6 +11571,10 @@ spec:
       == 'DELETE' || (variables.new_origin == variables.old_origin && (variables.old_origin
       == '' || object.spec == oldObject.spec))
     message: Only the controller can create or change restricted restore targets.
+  - expression: |-
+      !variables.is_restore || request.operation == 'DELETE' || !has(object.status) || !has(dyn(object.status).submissionClaim) || dyn(object.status).submissionClaim.size <=
+        (has(dyn(object.spec).source.maxSnapshotSizeBytes) ? dyn(object.spec).source.maxSnapshotSizeBytes : 8589934592)
+    message: The staged snapshot size exceeds maxSnapshotSizeBytes.
   - expression: |-
       !variables.old_claim || request.operation == 'DELETE' ||
         (has(dyn(object.status).submissionClaim) && dyn(object.status).submissionClaim == dyn(oldObject.status).submissionClaim)
@@ -11618,8 +11704,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-restrict-controller-rbac
 spec:
   failurePolicy: Fail
@@ -11759,8 +11845,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-restrict-controller-secret-writes
 spec:
   failurePolicy: Fail
@@ -11849,8 +11935,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-restrict-controller-serviceaccounts
 spec:
   failurePolicy: Fail
@@ -11953,8 +12039,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-restrict-provisioner-namespace-mutations
 spec:
   failurePolicy: Fail
@@ -12033,8 +12119,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-restrict-provisioner-rbac
 spec:
   failurePolicy: Fail
@@ -12415,8 +12501,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-restrict-provisioner-tenant-governance
 spec:
   failurePolicy: Fail
@@ -12521,8 +12607,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-validate-openbao-tenant
 spec:
   failurePolicy: Fail
@@ -12565,8 +12651,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-validate-openbaocluster
 spec:
   failurePolicy: Fail
@@ -13672,8 +13758,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-validate-openbaorestore
 spec:
   failurePolicy: Fail
@@ -13881,8 +13967,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-enforce-managed-image-digests-binding
 spec:
   policyName: openbao-operator-openbao-enforce-managed-image-digests
@@ -13896,8 +13982,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-lock-controller-statefulset-mutations-binding
 spec:
   policyName: openbao-operator-openbao-lock-controller-statefulset-mutations
@@ -13911,8 +13997,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-lock-managed-resource-mutations-binding
 spec:
   policyName: openbao-operator-openbao-lock-managed-resource-mutations
@@ -13926,8 +14012,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-protect-restore-execution-binding
 spec:
   policyName: openbao-operator-openbao-protect-restore-execution
@@ -13941,8 +14027,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-restrict-controller-rbac-binding
 spec:
   matchResources:
@@ -13969,8 +14055,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-restrict-controller-secret-writes-binding
 spec:
   matchResources:
@@ -13996,8 +14082,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-restrict-controller-serviceaccounts-binding
 spec:
   matchResources:
@@ -14023,8 +14109,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-restrict-provisioner-namespace-mutations-binding
 spec:
   matchResources:
@@ -14048,8 +14134,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-restrict-provisioner-rbac-binding
 spec:
   matchResources:
@@ -14076,8 +14162,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-restrict-provisioner-tenant-governance-binding
 spec:
   matchResources:
@@ -14104,8 +14190,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-validate-openbao-tenant-binding
 spec:
   policyName: openbao-operator-openbao-validate-openbao-tenant
@@ -14119,8 +14205,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-validate-openbaocluster-binding
 spec:
   policyName: openbao-operator-openbao-validate-openbaocluster
@@ -14134,8 +14220,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-openbao-validate-openbaorestore-binding
 spec:
   policyName: openbao-operator-openbao-validate-openbaorestore
@@ -14149,8 +14235,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-allow-health-probes
   namespace: openbao-operator-system
 spec:
@@ -14171,8 +14257,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-allow-metrics
   namespace: openbao-operator-system
 spec:
@@ -14198,8 +14284,8 @@ metadata:
     app.kubernetes.io/instance: openbao-operator
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: openbao-operator
-    app.kubernetes.io/version: 0.6.1
-    helm.sh/chart: openbao-operator-0.6.1
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
   name: openbao-operator-deny-all-ingress
   namespace: openbao-operator-system
 spec:
