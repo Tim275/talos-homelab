@@ -1841,10 +1841,9 @@ spec:
               robot=$(api "$HARBOR_URL/api/v2.0/robots?q=Level%3Dproject%2CProjectID%3D$project&page_size=100" | jq -c --arg n "$ROBOT" '.[] | select(.name == $n)')
               [ -n "$robot" ] || { echo "robot $ROBOT not found"; exit 1; }
               id=$(jq -r .id <<<"$robot")
-              age=$(( ( $(date +%s) - $(date -d "$(jq -r .creation_time <<<"$robot")" +%s) ) / 86400 ))
               new="$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)aB3"
               # the expiry counts from creation, so it has to move with every rotation
-              jq -c --argjson d "$(( age + VALID_DAYS ))" '.duration = $d' <<<"$robot" | api -X PUT "$HARBOR_URL/api/v2.0/robots/$id" -d @- >/dev/null
+              jq -c --argjson v "$VALID_DAYS" '.duration = (((now - (.creation_time | sub("\\.[0-9]+"; "") | fromdate)) / 86400 | floor) + $v)' <<<"$robot" | api -X PUT "$HARBOR_URL/api/v2.0/robots/$id" -d @- >/dev/null
               jq -nc --arg s "$new" '{secret: $s}' | api -X PATCH "$HARBOR_URL/api/v2.0/robots/$id" -d @- >/dev/null
               kubectl -n harbor patch secret "$SECRET_NAME" --type merge -p "$(jq -nc --arg s "$new" '{stringData: {password: $s}}')" >/dev/null
               kubectl -n harbor annotate pushsecret "$SECRET_NAME" force-sync="$(date +%s)" --overwrite >/dev/null
