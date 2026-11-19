@@ -16,13 +16,13 @@ data:
   _REDIS_URL_REG: redis+sentinel://redis-harbor-sentinel-sentinel.harbor.svc.cluster.local:26379/harbor/2?idle_timeout_seconds=30
   CHART_CACHE_DRIVER: redis
   CONFIG_PATH: /etc/core/app.conf
-  CORE_LOCAL_URL: http://127.0.0.1:8080
-  CORE_URL: http://harbor-core:80
+  CORE_LOCAL_URL: https://127.0.0.1:8443
+  CORE_URL: https://harbor-core:443
   DATABASE_TYPE: postgresql
   EXT_ENDPOINT: https://harbor.staging.timourhomelab.org
   HTTP_PROXY: ""
   HTTPS_PROXY: ""
-  JOBSERVICE_URL: http://harbor-jobservice
+  JOBSERVICE_URL: https://harbor-jobservice
   LOG_LEVEL: info
   METRIC_ENABLE: "true"
   METRIC_NAMESPACE: harbor
@@ -31,8 +31,8 @@ data:
   METRIC_SUBSYSTEM: core
   NO_PROXY: harbor-core,harbor-jobservice,harbor-database,harbor-registry,harbor-portal,harbor-trivy,harbor-exporter,127.0.0.1,localhost,.local,.internal
   PERMITTED_REGISTRY_TYPES_FOR_PROXY_CACHE: docker-hub,harbor,azure-acr,ali-acr,aws-ecr,google-gcr,docker-registry,github-ghcr,jfrog-artifactory
-  PORT: "8080"
-  PORTAL_URL: http://harbor-portal
+  PORT: "8443"
+  PORTAL_URL: https://harbor-portal
   POSTGRESQL_DATABASE: harbor
   POSTGRESQL_HOST: postgres-rw.postgres.svc.cluster.local
   POSTGRESQL_MAX_IDLE_CONNS: "5"
@@ -41,13 +41,13 @@ data:
   POSTGRESQL_SSLMODE: require
   POSTGRESQL_USERNAME: harbor
   QUOTA_UPDATE_PROVIDER: db
-  REGISTRY_CONTROLLER_URL: http://harbor-registry:8080
+  REGISTRY_CONTROLLER_URL: https://harbor-registry:8443
   REGISTRY_CREDENTIAL_USERNAME: harbor_registry_user
   REGISTRY_STORAGE_PROVIDER_NAME: s3
-  REGISTRY_URL: http://harbor-registry:5000
+  REGISTRY_URL: https://harbor-registry:5443
   REPLICATION_ADAPTER_WHITELIST: ali-acr,aws-ecr,azure-acr,docker-hub,docker-registry,github-ghcr,google-gcr,harbor,huawei-SWR,jfrog-artifactory,tencent-tcr,volcengine-cr
-  TOKEN_SERVICE_URL: http://harbor-core:80/service/token
-  TRIVY_ADAPTER_URL: http://harbor-trivy:8080
+  TOKEN_SERVICE_URL: https://harbor-core:443/service/token
+  TRIVY_ADAPTER_URL: https://harbor-trivy:8443
   WITH_TRIVY: "false"
   app.conf: |
     appname = Harbor
@@ -55,7 +55,7 @@ data:
     enablegzip = true
 
     [prod]
-    httpport = 8080
+    httpport = 8443
 kind: ConfigMap
 metadata:
   labels:
@@ -91,8 +91,8 @@ data:
   HARBOR_REDIS_TIMEOUT: "3600"
   HARBOR_REDIS_URL: redis+sentinel://redis-harbor-sentinel-sentinel.harbor.svc.cluster.local:26379/harbor/1
   HARBOR_SERVICE_HOST: harbor-core
-  HARBOR_SERVICE_PORT: "80"
-  HARBOR_SERVICE_SCHEME: http
+  HARBOR_SERVICE_PORT: "443"
+  HARBOR_SERVICE_SCHEME: https
   HTTP_PROXY: ""
   HTTPS_PROXY: ""
   LOG_LEVEL: info
@@ -116,8 +116,11 @@ apiVersion: v1
 data:
   config.yml: |+
     #Server listening port
-    protocol: "http"
-    port: 8080
+    protocol: "https"
+    port: 8443
+    https_config:
+      cert: "/etc/harbor/ssl/jobservice/tls.crt"
+      key: "/etc/harbor/ssl/jobservice/tls.key"
     worker_pool:
       workers: 10
       backend: "redis"
@@ -161,7 +164,7 @@ metadata:
 ---
 apiVersion: v1
 data:
-  CORE_URL: http://harbor-core:80
+  CORE_URL: https://harbor-core:443
   HTTP_PROXY: ""
   HTTPS_PROXY: ""
   JOBSERVICE_WEBHOOK_JOB_HTTP_CLIENT_TIMEOUT: "3"
@@ -170,11 +173,11 @@ data:
   METRIC_NAMESPACE: harbor
   METRIC_SUBSYSTEM: jobservice
   NO_PROXY: harbor-core,harbor-jobservice,harbor-database,harbor-registry,harbor-portal,harbor-trivy,harbor-exporter,127.0.0.1,localhost,.local,.internal
-  REGISTRY_CONTROLLER_URL: http://harbor-registry:8080
+  REGISTRY_CONTROLLER_URL: https://harbor-registry:8443
   REGISTRY_CREDENTIAL_USERNAME: harbor_registry_user
   REGISTRY_HTTP_CLIENT_TIMEOUT: "30"
-  REGISTRY_URL: http://harbor-registry:5000
-  TOKEN_SERVICE_URL: http://harbor-core:80/service/token
+  REGISTRY_URL: https://harbor-registry:5443
+  TOKEN_SERVICE_URL: https://harbor-core:443/service/token
 kind: ConfigMap
 metadata:
   labels:
@@ -214,11 +217,11 @@ data:
       proxy_http_version 1.1;
 
       upstream core {
-        server "harbor-core:80";
+        server "harbor-core:443";
       }
 
       upstream portal {
-        server harbor-portal:80;
+        server harbor-portal:443;
       }
 
       log_format timed_combined '[$time_local]:$remote_addr - '
@@ -245,7 +248,7 @@ data:
         add_header Content-Security-Policy "frame-ancestors 'none'";
 
         location / {
-          proxy_pass http://portal/;
+          proxy_pass https://portal/;
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -256,7 +259,9 @@ data:
         }
 
         location /api/ {
-          proxy_pass http://core/api/;
+          proxy_pass https://core/api/;
+          proxy_ssl_verify        off;
+          proxy_ssl_session_reuse on;
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -267,7 +272,7 @@ data:
         }
 
         location /c/ {
-          proxy_pass http://core/c/;
+          proxy_pass https://core/c/;
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -282,7 +287,7 @@ data:
         }
 
         location /v2/ {
-          proxy_pass http://core/v2/;
+          proxy_pass https://core/v2/;
           proxy_set_header Host $http_host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -294,7 +299,7 @@ data:
         }
 
         location /service/ {
-          proxy_pass http://core/service/;
+          proxy_pass https://core/service/;
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -340,8 +345,17 @@ data:
         uwsgi_temp_path /tmp/uwsgi_temp;
         scgi_temp_path /tmp/scgi_temp;
         server {
-            listen 8080;
-            listen [::]:8080;
+            listen 8443 ssl;
+            listen [::]:8443 ssl;
+            # SSL
+            ssl_certificate /etc/harbor/ssl/portal/tls.crt;
+            ssl_certificate_key /etc/harbor/ssl/portal/tls.key;
+
+            # Recommendations from https://raymii.org/s/tutorials/Strong_SSL_Security_On_nginx.html
+            ssl_protocols TLSv1.2 TLSv1.3;
+            ssl_ciphers '!aNULL:kECDH+AESGCM:ECDH+AESGCM:RSA+AESGCM:kECDH+AES:ECDH+AES:RSA+AES:';
+            ssl_prefer_server_ciphers on;
+            ssl_session_cache shared:SSL:10m;
             server_name  localhost;
             root   /usr/share/nginx/html;
             index  index.html index.htm;
@@ -417,8 +431,12 @@ data:
         maxactive: 500
         idletimeout: 60s
     http:
-      addr: :5000
+      addr: :5443
       relativeurls: false
+      tls:
+        certificate: /etc/harbor/ssl/registry/tls.crt
+        key: /etc/harbor/ssl/registry/tls.key
+        minimumtls: tls1.2
       # set via environment variable
       # secret: placeholder
       debug:
@@ -437,8 +455,11 @@ data:
         enabled: true
   ctl-config.yml: |+
     ---
-    protocol: "http"
-    port: 8080
+    protocol: "https"
+    port: 8443
+    https_config:
+      cert: "/etc/harbor/ssl/registry/tls.crt"
+      key: "/etc/harbor/ssl/registry/tls.key"
     log_level: info
     registry_config: "/etc/registry/config.yml"
 
@@ -621,10 +642,10 @@ metadata:
   namespace: harbor
 spec:
   ports:
-  - name: http-web
-    port: 80
-    targetPort: 8080
-  - name: http-metrics
+  - name: https-web
+    port: 443
+    targetPort: 8443
+  - name: https-metrics
     port: 8001
   selector:
     app: harbor
@@ -648,7 +669,7 @@ metadata:
   namespace: harbor
 spec:
   ports:
-  - name: http-metrics
+  - name: https-metrics
     port: 8001
   selector:
     app: harbor
@@ -672,10 +693,10 @@ metadata:
   namespace: harbor
 spec:
   ports:
-  - name: http-jobservice
-    port: 80
-    targetPort: 8080
-  - name: http-metrics
+  - name: https-jobservice
+    port: 443
+    targetPort: 8443
+  - name: https-metrics
     port: 8001
   selector:
     app: harbor
@@ -699,8 +720,8 @@ metadata:
   namespace: harbor
 spec:
   ports:
-  - port: 80
-    targetPort: 8080
+  - port: 443
+    targetPort: 8443
   selector:
     app: harbor
     component: portal
@@ -723,11 +744,11 @@ metadata:
   namespace: harbor
 spec:
   ports:
-  - name: http-registry
-    port: 5000
-  - name: http-controller
-    port: 8080
-  - name: http-metrics
+  - name: https-registry
+    port: 5443
+  - name: https-controller
+    port: 8443
+  - name: https-metrics
     port: 8001
   selector:
     app: harbor
@@ -737,6 +758,8 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  annotations:
+    secret.reloader.stakater.com/reload: harbor-core-internal-tls
   labels:
     app: harbor
     app.kubernetes.io/component: core
@@ -762,7 +785,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/configmap: a72b948910d9448d23f07bdb2c7e1d8b1ab311247434409695202ce1a8b7083a
+        checksum/configmap: 4adc0481c09135662c0af2a91710e72a99a63f0766da15f67353ca0773ac5152
         checksum/secret: 7c8a26615e5ea394c6ebb5d6b975553556dcd3224c5e76351f3c71db82ca1dbc
         checksum/secret-jobservice: b458a24b4de57975a180b4e59cd775b5cba4528dfd251c7d911e385b6e7c330e
       labels:
@@ -806,6 +829,14 @@ spec:
             secretKeyRef:
               key: HARBOR_ADMIN_PASSWORD
               name: harbor-secrets
+        - name: INTERNAL_TLS_ENABLED
+          value: "true"
+        - name: INTERNAL_TLS_KEY_PATH
+          value: /etc/harbor/ssl/core/tls.key
+        - name: INTERNAL_TLS_CERT_PATH
+          value: /etc/harbor/ssl/core/tls.crt
+        - name: INTERNAL_TLS_TRUST_CA_PATH
+          value: /etc/harbor/ssl/core/ca.crt
         - name: POSTGRESQL_PASSWORD
           valueFrom:
             secretKeyRef:
@@ -837,21 +868,21 @@ spec:
           failureThreshold: 2
           httpGet:
             path: /api/v2.0/ping
-            port: 8080
-            scheme: HTTP
+            port: 8443
+            scheme: HTTPS
           initialDelaySeconds: 0
           periodSeconds: 10
           successThreshold: 1
           timeoutSeconds: 1
         name: core
         ports:
-        - containerPort: 8080
+        - containerPort: 8443
         readinessProbe:
           failureThreshold: 2
           httpGet:
             path: /api/v2.0/ping
-            port: 8080
-            scheme: HTTP
+            port: 8443
+            scheme: HTTPS
           initialDelaySeconds: 0
           periodSeconds: 10
           successThreshold: 1
@@ -876,8 +907,8 @@ spec:
           failureThreshold: 360
           httpGet:
             path: /api/v2.0/ping
-            port: 8080
-            scheme: HTTP
+            port: 8443
+            scheme: HTTPS
           initialDelaySeconds: 10
           periodSeconds: 10
           successThreshold: 1
@@ -892,6 +923,8 @@ spec:
         - mountPath: /etc/core/private_key.pem
           name: token-service-private-key
           subPath: tls.key
+        - mountPath: /etc/harbor/ssl/core
+          name: core-internal-certs
         - mountPath: /etc/core/token
           name: psc
       priorityClassName: platform-critical
@@ -927,12 +960,17 @@ spec:
       - name: token-service-private-key
         secret:
           secretName: harbor-core-token
+      - name: core-internal-certs
+        secret:
+          secretName: harbor-core-internal-tls
       - emptyDir: {}
         name: psc
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  annotations:
+    secret.reloader.stakater.com/reload: harbor-core-internal-tls
   labels:
     app: harbor
     app.kubernetes.io/component: exporter
@@ -958,7 +996,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/configmap: edf6f42f5840977a4a710dbfebd28067dc0eead695c80e375c29ab44da4c3fba
+        checksum/configmap: 9d37f607639d7193d38be79a7bcd68e4c9ad4711d03b5ee64b241843d442bb7e
         checksum/secret: af99af6e8898a45123f02d0d32bdfa21942f9bff6a30ed6866e63049dd9dc1c6
       labels:
         app: harbor
@@ -1033,7 +1071,9 @@ spec:
           runAsNonRoot: true
           seccompProfile:
             type: RuntimeDefault
-        volumeMounts: null
+        volumeMounts:
+        - mountPath: /etc/harbor/ssl/core
+          name: core-internal-certs
       securityContext:
         fsGroup: 10000
         runAsUser: 10000
@@ -1041,10 +1081,15 @@ spec:
       - name: config
         secret:
           secretName: harbor-exporter
+      - name: core-internal-certs
+        secret:
+          secretName: harbor-core-internal-tls
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  annotations:
+    secret.reloader.stakater.com/reload: harbor-jobservice-internal-tls
   labels:
     app: harbor
     app.kubernetes.io/component: jobservice
@@ -1072,8 +1117,8 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/configmap: 890b46e71d588029e13cb3c04628f70089512a45dd7de6eca623f8e559a80e4c
-        checksum/configmap-env: 7aad5863d04ef7ec2b78295abda22d695b1d9804161b86fb94c0fea4e90f2248
+        checksum/configmap: b4cc3fe4510c01b130ab9db1c7c2c5b9dcff9ac4676a2357411d11c0b296897c
+        checksum/configmap-env: 3fd1dcb366e010f5c926c10efc99ca65afc6f7dd16751016fcb5e9b8d6d3a028
         checksum/secret: b458a24b4de57975a180b4e59cd775b5cba4528dfd251c7d911e385b6e7c330e
         checksum/secret-core: 7c8a26615e5ea394c6ebb5d6b975553556dcd3224c5e76351f3c71db82ca1dbc
       labels:
@@ -1112,6 +1157,14 @@ spec:
             secretKeyRef:
               key: JOBSERVICE_SECRET
               name: harbor-secrets
+        - name: INTERNAL_TLS_ENABLED
+          value: "true"
+        - name: INTERNAL_TLS_KEY_PATH
+          value: /etc/harbor/ssl/jobservice/tls.key
+        - name: INTERNAL_TLS_CERT_PATH
+          value: /etc/harbor/ssl/jobservice/tls.crt
+        - name: INTERNAL_TLS_TRUST_CA_PATH
+          value: /etc/harbor/ssl/jobservice/ca.crt
         - name: REGISTRY_CREDENTIAL_PASSWORD
           valueFrom:
             secretKeyRef:
@@ -1128,21 +1181,21 @@ spec:
           failureThreshold: 3
           httpGet:
             path: /api/v1/stats
-            port: 8080
-            scheme: HTTP
+            port: 8443
+            scheme: HTTPS
           initialDelaySeconds: 300
           periodSeconds: 10
           successThreshold: 1
           timeoutSeconds: 1
         name: jobservice
         ports:
-        - containerPort: 8080
+        - containerPort: 8443
         readinessProbe:
           failureThreshold: 3
           httpGet:
             path: /api/v1/stats
-            port: 8080
-            scheme: HTTP
+            port: 8443
+            scheme: HTTPS
           initialDelaySeconds: 20
           periodSeconds: 10
           successThreshold: 1
@@ -1169,7 +1222,8 @@ spec:
           subPath: config.yml
         - mountPath: /var/log/jobs
           name: job-logs
-          subPath: null
+        - mountPath: /etc/harbor/ssl/jobservice
+          name: jobservice-internal-certs
       priorityClassName: platform-critical
       securityContext:
         fsGroup: 10000
@@ -1193,6 +1247,9 @@ spec:
         name: jobservice-config
       - emptyDir: {}
         name: job-logs
+      - name: jobservice-internal-certs
+        secret:
+          secretName: harbor-jobservice-internal-tls
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -1222,7 +1279,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/configmap: c0c80a781ec1d4173c5b6574c8458cd79bdf311d550cf3f7bd7123cadff45a15
+        checksum/configmap: 0ea61f0a6e3f76ade62f424182d93561eed08b78bb2a11391346f3d6a15a3c34
       labels:
         app: harbor
         app.kubernetes.io/component: nginx
@@ -1317,6 +1374,8 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  annotations:
+    secret.reloader.stakater.com/reload: harbor-portal-internal-tls
   labels:
     app: harbor
     app.kubernetes.io/component: portal
@@ -1342,7 +1401,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/configmap: 909e2a854cc420cc17504592662a7cdfc7ab839826a4416f515097da3163673a
+        checksum/configmap: 259ec75aaaed685072bfba13f785b482049c8245d6bae7f300f4f2a998f02878
       labels:
         app: harbor
         app.kubernetes.io/component: portal
@@ -1374,21 +1433,21 @@ spec:
           failureThreshold: 3
           httpGet:
             path: /
-            port: 8080
-            scheme: HTTP
+            port: 8443
+            scheme: HTTPS
           initialDelaySeconds: 300
           periodSeconds: 10
           successThreshold: 1
           timeoutSeconds: 1
         name: portal
         ports:
-        - containerPort: 8080
+        - containerPort: 8443
         readinessProbe:
           failureThreshold: 3
           httpGet:
             path: /
-            port: 8080
-            scheme: HTTP
+            port: 8443
+            scheme: HTTPS
           initialDelaySeconds: 1
           periodSeconds: 10
           successThreshold: 1
@@ -1413,6 +1472,8 @@ spec:
         - mountPath: /etc/nginx/nginx.conf
           name: portal-config
           subPath: nginx.conf
+        - mountPath: /etc/harbor/ssl/portal
+          name: portal-internal-certs
       priorityClassName: platform-critical
       securityContext:
         fsGroup: 10000
@@ -1433,10 +1494,15 @@ spec:
       - configMap:
           name: harbor-portal
         name: portal-config
+      - name: portal-internal-certs
+        secret:
+          secretName: harbor-portal-internal-tls
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  annotations:
+    secret.reloader.stakater.com/reload: harbor-registry-internal-tls
   labels:
     app: harbor
     app.kubernetes.io/component: registry
@@ -1464,7 +1530,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/configmap: 03cbd2d59fb0e8212692ad92b2f87239221a8438b0a3e62b51b1888b6ee2bbb6
+        checksum/configmap: b7b7a9ddf7181e7968a1850de386d699c300571db60763f4e6c4e0458d0fd003
         checksum/secret: fa19e18dff7e34e15462713bec24881b0add3635801b9e2a110e7c62940b6cc9
         checksum/secret-core: 7c8a26615e5ea394c6ebb5d6b975553556dcd3224c5e76351f3c71db82ca1dbc
         checksum/secret-jobservice: b458a24b4de57975a180b4e59cd775b5cba4528dfd251c7d911e385b6e7c330e
@@ -1513,6 +1579,14 @@ spec:
             secretKeyRef:
               key: REGISTRY_HTTP_SECRET
               name: harbor-secrets
+        - name: INTERNAL_TLS_ENABLED
+          value: "true"
+        - name: INTERNAL_TLS_KEY_PATH
+          value: /etc/harbor/ssl/registry/tls.key
+        - name: INTERNAL_TLS_CERT_PATH
+          value: /etc/harbor/ssl/registry/tls.crt
+        - name: INTERNAL_TLS_TRUST_CA_PATH
+          value: /etc/harbor/ssl/registry/ca.crt
         envFrom:
         - secretRef:
             name: harbor-registry
@@ -1522,22 +1596,22 @@ spec:
           failureThreshold: 3
           httpGet:
             path: /
-            port: 5000
-            scheme: HTTP
+            port: 5443
+            scheme: HTTPS
           initialDelaySeconds: 300
           periodSeconds: 10
           successThreshold: 1
           timeoutSeconds: 1
         name: registry
         ports:
-        - containerPort: 5000
+        - containerPort: 5443
         - containerPort: 8001
         readinessProbe:
           failureThreshold: 3
           httpGet:
             path: /
-            port: 5000
-            scheme: HTTP
+            port: 5443
+            scheme: HTTPS
           initialDelaySeconds: 1
           periodSeconds: 10
           successThreshold: 1
@@ -1567,6 +1641,8 @@ spec:
         - mountPath: /etc/registry/config.yml
           name: registry-config
           subPath: config.yml
+        - mountPath: /etc/harbor/ssl/registry
+          name: registry-internal-certs
       - env:
         - name: REGISTRY_STORAGE_S3_REGIONENDPOINT
           value: http://ceph-rgw.rook-ceph.svc
@@ -1597,6 +1673,14 @@ spec:
             secretKeyRef:
               key: JOBSERVICE_SECRET
               name: harbor-secrets
+        - name: INTERNAL_TLS_ENABLED
+          value: "true"
+        - name: INTERNAL_TLS_KEY_PATH
+          value: /etc/harbor/ssl/registry/tls.key
+        - name: INTERNAL_TLS_CERT_PATH
+          value: /etc/harbor/ssl/registry/tls.crt
+        - name: INTERNAL_TLS_TRUST_CA_PATH
+          value: /etc/harbor/ssl/registry/ca.crt
         envFrom:
         - configMapRef:
             name: harbor-registryctl
@@ -1610,21 +1694,21 @@ spec:
           failureThreshold: 3
           httpGet:
             path: /api/health
-            port: 8080
-            scheme: HTTP
+            port: 8443
+            scheme: HTTPS
           initialDelaySeconds: 300
           periodSeconds: 10
           successThreshold: 1
           timeoutSeconds: 1
         name: registryctl
         ports:
-        - containerPort: 8080
+        - containerPort: 8443
         readinessProbe:
           failureThreshold: 3
           httpGet:
             path: /api/health
-            port: 8080
-            scheme: HTTP
+            port: 8443
+            scheme: HTTPS
           initialDelaySeconds: 1
           periodSeconds: 10
           successThreshold: 1
@@ -1654,6 +1738,8 @@ spec:
         - mountPath: /etc/registryctl/config.yml
           name: registry-config
           subPath: ctl-config.yml
+        - mountPath: /etc/harbor/ssl/registry
+          name: registry-internal-certs
       priorityClassName: platform-critical
       securityContext:
         fsGroup: 10000
@@ -1684,6 +1770,9 @@ spec:
         name: registry-config
       - emptyDir: {}
         name: registry-data
+      - name: registry-internal-certs
+        secret:
+          secretName: harbor-registry-internal-tls
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
@@ -1798,6 +1887,28 @@ spec:
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
+  name: harbor-core-internal-tls
+  namespace: harbor
+spec:
+  commonName: harbor-core
+  dnsNames:
+  - harbor-core
+  - localhost
+  duration: 8760h
+  ipAddresses:
+  - 127.0.0.1
+  issuerRef:
+    kind: ClusterIssuer
+    name: homelab-internal-ca
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  renewBefore: 720h
+  secretName: harbor-core-internal-tls
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
   name: harbor-core-token
   namespace: harbor
 spec:
@@ -1811,6 +1922,63 @@ spec:
     rotationPolicy: Never
     size: 4096
   secretName: harbor-core-token
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: harbor-jobservice-internal-tls
+  namespace: harbor
+spec:
+  commonName: harbor-jobservice
+  dnsNames:
+  - harbor-jobservice
+  duration: 8760h
+  issuerRef:
+    kind: ClusterIssuer
+    name: homelab-internal-ca
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  renewBefore: 720h
+  secretName: harbor-jobservice-internal-tls
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: harbor-portal-internal-tls
+  namespace: harbor
+spec:
+  commonName: harbor-portal
+  dnsNames:
+  - harbor-portal
+  duration: 8760h
+  issuerRef:
+    kind: ClusterIssuer
+    name: homelab-internal-ca
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  renewBefore: 720h
+  secretName: harbor-portal-internal-tls
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: harbor-registry-internal-tls
+  namespace: harbor
+spec:
+  commonName: harbor-registry
+  dnsNames:
+  - harbor-registry
+  duration: 8760h
+  issuerRef:
+    kind: ClusterIssuer
+    name: homelab-internal-ca
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  renewBefore: 720h
+  secretName: harbor-registry-internal-tls
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -2174,7 +2342,7 @@ spec:
   endpoints:
   - honorLabels: true
     interval: 60s
-    port: http-metrics
+    port: https-metrics
   jobLabel: app.kubernetes.io/name
   selector:
     matchLabels:
