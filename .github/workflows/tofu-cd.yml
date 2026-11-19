@@ -8,12 +8,14 @@ on:
       # - "tofu/stacks/cloudflare/**"
       - "tofu/stacks/netbird/**"
       - "tofu/stacks/uptime-kuma/**"
+      - "tofu/stacks/harbor/**"
   push:
     branches: [main]
     paths:
       # - "tofu/stacks/cloudflare/**"
       - "tofu/stacks/netbird/**"
       - "tofu/stacks/uptime-kuma/**"
+      - "tofu/stacks/harbor/**"
   workflow_dispatch:
 
 permissions:
@@ -50,7 +52,7 @@ jobs:
           set -euo pipefail
           case "$EVENT" in
             workflow_dispatch)
-              echo 'matrix=["netbird","uptime-kuma"]' >> "$GITHUB_OUTPUT"
+              echo 'matrix=["netbird","uptime-kuma","harbor"]' >> "$GITHUB_OUTPUT"
               exit 0 ;;
             pull_request) RANGE=("origin/$BASE...HEAD") ;;
             *)
@@ -61,14 +63,14 @@ jobs:
               elif git rev-parse -q --verify "$SHA~1" >/dev/null; then
                 RANGE=("$SHA~1" "$SHA")
               else
-                echo 'matrix=["netbird","uptime-kuma"]' >> "$GITHUB_OUTPUT"
+                echo 'matrix=["netbird","uptime-kuma","harbor"]' >> "$GITHUB_OUTPUT"
                 exit 0
               fi
               ;;
           esac
 
           LIST=""
-          for m in netbird uptime-kuma; do
+          for m in netbird uptime-kuma harbor; do
             files=$(git diff --name-only "${RANGE[@]}" -- "tofu/stacks/$m/")
             [ -n "$files" ] || continue
             # ausserhalb von HCL kann '#' Nutzdaten sein (yaml, tftpl) — dort nicht filtern
@@ -89,10 +91,10 @@ jobs:
     needs: changes
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && needs.changes.outputs.matrix != '[]'
     name: plan (${{ matrix.module }})
-    # uptime-kuma ist LAN-only und braucht den in-cluster Runner (ARC scale set "tofu")
-    runs-on: ${{ matrix.module == 'uptime-kuma' && 'tofu' || 'ubuntu-latest' }}
+    # uptime-kuma und harbor laufen auf dem in-cluster Runner (ARC scale set "tofu")
+    runs-on: ${{ matrix.module == 'netbird' && 'ubuntu-latest' || 'tofu' }}
     env:
-      TF_ENCRYPTION: ${{ matrix.module == 'netbird' && secrets.TF_ENCRYPTION_NETBIRD || secrets.TF_ENCRYPTION_UPTIME_KUMA }}
+      TF_ENCRYPTION: ${{ matrix.module == 'netbird' && secrets.TF_ENCRYPTION_NETBIRD || matrix.module == 'harbor' && secrets.TF_ENCRYPTION_HARBOR || secrets.TF_ENCRYPTION_UPTIME_KUMA }}
     strategy:
       matrix:
         module: ${{ fromJSON(needs.changes.outputs.matrix) }}
@@ -117,6 +119,8 @@ jobs:
           TF_VAR_publish_apex: true
           TF_VAR_netbird_api_token: ${{ secrets.NETBIRD_API_TOKEN }}
           TF_VAR_uptime_kuma_url: http://uptime-kuma.uptime-kuma.svc.cluster.local:3001
+          TF_VAR_harbor_url: http://harbor.harbor.svc.cluster.local
+          TF_VAR_harbor_password: ${{ secrets.HARBOR_ADMIN_PASSWORD }}
           TF_VAR_uptime_kuma_password: ${{ secrets.UPTIME_KUMA_PASSWORD }}
           TF_VAR_telegram_bot_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TF_VAR_slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -155,9 +159,9 @@ jobs:
     needs: changes
     if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && needs.changes.outputs.matrix != '[]'
     name: apply (${{ matrix.module }})
-    runs-on: ${{ matrix.module == 'uptime-kuma' && 'tofu' || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.module == 'netbird' && 'ubuntu-latest' || 'tofu' }}
     env:
-      TF_ENCRYPTION: ${{ matrix.module == 'netbird' && secrets.TF_ENCRYPTION_NETBIRD || secrets.TF_ENCRYPTION_UPTIME_KUMA }}
+      TF_ENCRYPTION: ${{ matrix.module == 'netbird' && secrets.TF_ENCRYPTION_NETBIRD || matrix.module == 'harbor' && secrets.TF_ENCRYPTION_HARBOR || secrets.TF_ENCRYPTION_UPTIME_KUMA }}
     environment: tofu-apply # Required-Reviewer-Gate, nur main
     concurrency:
       group: tofu-apply-${{ matrix.module }}
@@ -187,6 +191,8 @@ jobs:
           TF_VAR_publish_apex: true
           TF_VAR_netbird_api_token: ${{ secrets.NETBIRD_API_TOKEN }}
           TF_VAR_uptime_kuma_url: http://uptime-kuma.uptime-kuma.svc.cluster.local:3001
+          TF_VAR_harbor_url: http://harbor.harbor.svc.cluster.local
+          TF_VAR_harbor_password: ${{ secrets.HARBOR_ADMIN_PASSWORD }}
           TF_VAR_uptime_kuma_password: ${{ secrets.UPTIME_KUMA_PASSWORD }}
           TF_VAR_telegram_bot_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TF_VAR_slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
