@@ -100,3 +100,27 @@ kubectl -n velero logs -l name=velero --tail 100 | grep -i error
 ## VeleroNoRecentWeeklyBackup
 
 Wie [VeleroNoRecentBackup](#veleronorecentbackup), für die Wochen-Schedules (`tier2-*`, `*-weekly`) mit 8 Tagen Grenze.
+
+## BackupCopyStale
+
+Die nächtliche Kopie der Backup-Buckets auf die externe Platte an aoostar ist älter als 36 h. Ceph hält dann die einzige aktuelle Kopie.
+
+```bash
+ssh root@aoostar
+systemctl status backup-copy.timer
+journalctl -u backup-copy -n 50
+ls /dev/disk/by-label/backup-hdd
+```
+
+- Platte nicht da → Kabel, Strom, `lsblk`. Der Job endet ohne Platte ohne Fehler und schreibt keine Metrik.
+- Einrichtung und Skript: `tofu/stacks/proxmox/install/backup-copy.sh`. Kopiert wird um 04:30, gelöscht wird nie.
+- Auf der Platte liegt je Bucket ein Ordner unter `rgw/`, lesbar mit jedem Linux.
+
+Wiederherstellen, wenn Ceph weg war und neu steht (RGW läuft, Buckets und Benutzer sind wieder angelegt):
+
+```bash
+mount /mnt/backup-hdd
+rclone copy /mnt/backup-hdd/rgw/velero-cluster-backups rgw:velero-cluster-backups --s3-acl bucket-owner-full-control
+```
+
+Je Bucket einmal, dann den Velero-Speicherort auf `ReadOnly` stellen und wie gewohnt `velero restore create --from-backup <backup>`. Postgres und OpenBao lesen ihre Sicherungen aus denselben Buckets wie vorher.

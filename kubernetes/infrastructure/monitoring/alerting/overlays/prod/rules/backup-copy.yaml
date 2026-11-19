@@ -1,0 +1,22 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: backup-copy
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: backup-copy
+      interval: 300s
+      rules:
+        - alert: BackupCopyStale
+          expr: time() - backup_copy_last_success_timestamp_seconds > 129600
+          for: 30m
+          labels:
+            severity: warning
+            component: backup
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/storage.md#backupcopystale"
+            summary: "Backup copy on the external disk is {{ $value | humanizeDuration }} old"
+            description: "The nightly copy of the backup buckets to the external disk on aoostar has not finished for 36h. Ceph holds the only current copy."
+            action: "On aoostar: journalctl -u backup-copy -n 50; ls /dev/disk/by-label/backup-hdd."
