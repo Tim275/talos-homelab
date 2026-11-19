@@ -474,6 +474,19 @@ metadata:
   namespace: harbor
 ---
 apiVersion: v1
+data:
+  redis.conf: |
+    appendonly no
+    save 900 1
+    save 300 10
+    maxmemory 192mb
+    maxmemory-policy volatile-lru
+kind: ConfigMap
+metadata:
+  name: redis-harbor-config
+  namespace: harbor
+---
+apiVersion: v1
 data: null
 kind: Secret
 metadata:
@@ -1998,6 +2011,7 @@ spec:
         CSRF_KEY: '{{ .CSRF_KEY | trunc 32 }}'
         HARBOR_ADMIN_PASSWORD: '{{ .HARBOR_ADMIN_PASSWORD }}'
         JOBSERVICE_SECRET: '{{ .JOBSERVICE_SECRET | trunc 16 }}'
+        REDIS_PASSWORD: '{{ .REDIS_PASSWORD }}'
         REGISTRY_HTPASSWD: '{{ htpasswd "harbor_registry_user" .REGISTRY_PASSWD "bcrypt"
           }}'
         REGISTRY_HTTP_SECRET: '{{ .REGISTRY_HTTP_SECRET | trunc 16 }}'
@@ -2138,6 +2152,31 @@ kind: PushSecret
 metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
+  name: harbor-secrets-redis-password
+  namespace: harbor
+spec:
+  data:
+  - match:
+      remoteRef:
+        property: REDIS_PASSWORD
+        remoteKey: harbor/harbor-secrets
+      secretKey: password
+  refreshInterval: 1h
+  secretStoreRefs:
+  - kind: ClusterSecretStore
+    name: openbao
+  selector:
+    generatorRef:
+      apiVersion: generators.external-secrets.io/v1alpha1
+      kind: ClusterGenerator
+      name: password
+  updatePolicy: IfNotExists
+---
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
   name: harbor-secrets-registry-http-secret
   namespace: harbor
 spec:
@@ -2256,6 +2295,21 @@ spec:
     matchLabels:
       app: harbor
 ---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redis-harbor
+  namespace: harbor
+spec:
+  endpoints:
+  - honorLabels: true
+    interval: 60s
+    port: redis-exporter
+  selector:
+    matchLabels:
+      app: redis-harbor
+      app.kubernetes.io/component: metrics
+---
 apiVersion: objectbucket.io/v1alpha1
 kind: ObjectBucketClaim
 metadata:
@@ -2264,3 +2318,118 @@ metadata:
 spec:
   bucketName: harbor-registry
   storageClassName: rook-ceph-bucket
+---
+apiVersion: redis.redis.opstreelabs.in/v1beta2
+kind: RedisReplication
+metadata:
+  labels:
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/name: redis-harbor
+  name: redis-harbor
+  namespace: harbor
+spec:
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app: redis-harbor
+          topologyKey: topology.kubernetes.io/zone
+        weight: 100
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchLabels:
+            app: redis-harbor
+        topologyKey: kubernetes.io/hostname
+  clusterSize: 3
+  kubernetesConfig:
+    image: quay.io/opstree/redis:v7.4.11@sha256:115d8e221b1459b9f2db7d927ed40318ffac4eb2cddb5702974bce92d32b7a51
+    imagePullPolicy: IfNotPresent
+    redisSecret:
+      key: REDIS_PASSWORD
+      name: harbor-secrets
+    resources:
+      limits:
+        cpu: 500m
+        memory: 256Mi
+      requests:
+        cpu: 20m
+        memory: 64Mi
+  pdb:
+    enabled: true
+    maxUnavailable: 1
+  podSecurityContext:
+    fsGroup: 1000
+    runAsUser: 1000
+  priorityClassName: platform-critical
+  redisConfig:
+    additionalRedisConfig: redis-harbor-config
+  redisExporter:
+    enabled: true
+    env:
+    - name: REDIS_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          key: REDIS_PASSWORD
+          name: harbor-secrets
+    image: quay.io/opstree/redis-exporter:v1.89.0@sha256:00a3628bdd3bb3423a15c5daefa328c471ee609798eed1744fe578c906d20cab
+    resources:
+      limits:
+        cpu: 250m
+        memory: 64Mi
+      requests:
+        cpu: 10m
+        memory: 32Mi
+  storage:
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+        storageClassName: rook-ceph-block-enterprise
+---
+apiVersion: redis.redis.opstreelabs.in/v1beta2
+kind: RedisSentinel
+metadata:
+  labels:
+    app.kubernetes.io/component: sentinel
+    app.kubernetes.io/name: redis-harbor-sentinel
+  name: redis-harbor-sentinel
+  namespace: harbor
+spec:
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchLabels:
+            app: redis-harbor-sentinel-sentinel
+        topologyKey: kubernetes.io/hostname
+  clusterSize: 3
+  kubernetesConfig:
+    image: quay.io/opstree/redis-sentinel:v7.4.11@sha256:9aae9fadd987a72684d5e75f92081bd4a3df81726e713b47a71df8bae861cda6
+    imagePullPolicy: IfNotPresent
+    resources:
+      limits:
+        cpu: 200m
+        memory: 64Mi
+      requests:
+        cpu: 10m
+        memory: 32Mi
+  pdb:
+    enabled: true
+    maxUnavailable: 1
+  podSecurityContext:
+    fsGroup: 1000
+    runAsUser: 1000
+  priorityClassName: platform-critical
+  redisSentinelConfig:
+    masterGroupName: harbor
+    quorum: "2"
+    redisReplicationName: redis-harbor
+    redisReplicationPassword:
+      secretKeyRef:
+        key: REDIS_PASSWORD
+        name: harbor-secrets
