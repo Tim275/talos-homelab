@@ -8,3 +8,5 @@ Keine Retention-Regel: Harbor löscht unveränderliche Tags nicht, die Quota beg
 Die Robot-Secrets verwaltet der Stack nicht. Sie liegen in OpenBao (`harbor/robot-drova-pull`) und als
 `HARBOR_USERNAME`/`HARBOR_PASSWORD` im Repo drova.
 Projekte und Robots sind von Hand angelegt und stehen in `imports.tofu`, auf einer leeren Instanz die Datei entfernen.
+Den GC-Zeitplan setzt nur der Stack: ein von Hand angelegter Zeitplan lässt `harbor_garbage_collection` mit 412 scheitern,
+vorher in der Oberfläche auf „None“ stellen.
