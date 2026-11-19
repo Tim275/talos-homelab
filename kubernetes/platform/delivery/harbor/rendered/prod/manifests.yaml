@@ -820,6 +820,11 @@ spec:
             secretKeyRef:
               key: CSRF_KEY
               name: harbor-secrets
+        - name: CONFIG_OVERWRITE_JSON
+          valueFrom:
+            secretKeyRef:
+              key: CONFIG_OVERWRITE_JSON
+              name: harbor-oidc
         envFrom:
         - configMapRef:
             name: harbor-core
@@ -1711,6 +1716,42 @@ spec:
     name: openbao
   target:
     name: harbor-database
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: harbor-oidc
+  namespace: harbor
+spec:
+  data:
+  - remoteRef:
+      key: keycloak/keycloak-harbor-client-secret
+      property: clientSecret
+    secretKey: clientSecret
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: openbao
+  target:
+    name: harbor-oidc
+    template:
+      data:
+        CONFIG_OVERWRITE_JSON: |
+          {{ dict
+            "auth_mode" "oidc_auth"
+            "oidc_name" "Keycloak"
+            "oidc_endpoint" "https://iam.timourhomelab.org/realms/plattform"
+            "oidc_client_id" "harbor"
+            "oidc_client_secret" .clientSecret
+            "oidc_scope" "openid,profile,email,groups,offline_access"
+            "oidc_groups_claim" "groups"
+            "oidc_admin_group" "cluster-admins"
+            "oidc_user_claim" "preferred_username"
+            "oidc_verify_cert" true
+            "oidc_auto_onboard" true
+            "project_creation_restriction" "adminonly"
+            | toJson }}
+      engineVersion: v2
 ---
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
