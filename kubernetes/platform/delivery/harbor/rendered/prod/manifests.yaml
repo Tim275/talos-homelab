@@ -1937,6 +1937,42 @@ spec:
     size: 4096
   secretName: harbor-core-token
 ---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: redis-harbor
+  namespace: harbor
+spec:
+  endpointSelector:
+    matchExpressions:
+    - key: app.kubernetes.io/name
+      operator: In
+      values:
+      - redis-harbor
+      - redis-harbor-sentinel
+  ingress:
+  - fromEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: harbor
+    - matchLabels:
+        io.kubernetes.pod.namespace: redis-operator-system
+    toPorts:
+    - ports:
+      - port: "6379"
+        protocol: TCP
+      - port: "26379"
+        protocol: TCP
+  - fromEndpoints:
+    - matchLabels:
+        app.kubernetes.io/name: prometheus
+        io.kubernetes.pod.namespace: monitoring
+    toPorts:
+    - ports:
+      - port: "9121"
+        protocol: TCP
+  - fromEntities:
+    - host
+---
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
@@ -2011,7 +2047,6 @@ spec:
         CSRF_KEY: '{{ .CSRF_KEY | trunc 32 }}'
         HARBOR_ADMIN_PASSWORD: '{{ .HARBOR_ADMIN_PASSWORD }}'
         JOBSERVICE_SECRET: '{{ .JOBSERVICE_SECRET | trunc 16 }}'
-        REDIS_PASSWORD: '{{ .REDIS_PASSWORD }}'
         REGISTRY_HTPASSWD: '{{ htpasswd "harbor_registry_user" .REGISTRY_PASSWD "bcrypt"
           }}'
         REGISTRY_HTTP_SECRET: '{{ .REGISTRY_HTTP_SECRET | trunc 16 }}'
@@ -2134,31 +2169,6 @@ spec:
   - match:
       remoteRef:
         property: JOBSERVICE_SECRET
-        remoteKey: harbor/harbor-secrets
-      secretKey: password
-  refreshInterval: 1h
-  secretStoreRefs:
-  - kind: ClusterSecretStore
-    name: openbao
-  selector:
-    generatorRef:
-      apiVersion: generators.external-secrets.io/v1alpha1
-      kind: ClusterGenerator
-      name: password
-  updatePolicy: IfNotExists
----
-apiVersion: external-secrets.io/v1alpha1
-kind: PushSecret
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "-1"
-  name: harbor-secrets-redis-password
-  namespace: harbor
-spec:
-  data:
-  - match:
-      remoteRef:
-        property: REDIS_PASSWORD
         remoteKey: harbor/harbor-secrets
       secretKey: password
   refreshInterval: 1h
@@ -2334,21 +2344,18 @@ spec:
       - podAffinityTerm:
           labelSelector:
             matchLabels:
-              app: redis-harbor
+              app.kubernetes.io/name: redis-harbor
           topologyKey: topology.kubernetes.io/zone
         weight: 100
       requiredDuringSchedulingIgnoredDuringExecution:
       - labelSelector:
           matchLabels:
-            app: redis-harbor
+            app.kubernetes.io/name: redis-harbor
         topologyKey: kubernetes.io/hostname
   clusterSize: 3
   kubernetesConfig:
     image: quay.io/opstree/redis:v7.4.11@sha256:115d8e221b1459b9f2db7d927ed40318ffac4eb2cddb5702974bce92d32b7a51
     imagePullPolicy: IfNotPresent
-    redisSecret:
-      key: REDIS_PASSWORD
-      name: harbor-secrets
     resources:
       limits:
         cpu: 500m
@@ -2367,12 +2374,6 @@ spec:
     additionalRedisConfig: redis-harbor-config
   redisExporter:
     enabled: true
-    env:
-    - name: REDIS_PASSWORD
-      valueFrom:
-        secretKeyRef:
-          key: REDIS_PASSWORD
-          name: harbor-secrets
     image: quay.io/opstree/redis-exporter:v1.89.0@sha256:00a3628bdd3bb3423a15c5daefa328c471ee609798eed1744fe578c906d20cab
     resources:
       limits:
@@ -2405,7 +2406,7 @@ spec:
       requiredDuringSchedulingIgnoredDuringExecution:
       - labelSelector:
           matchLabels:
-            app: redis-harbor-sentinel-sentinel
+            app.kubernetes.io/name: redis-harbor-sentinel
         topologyKey: kubernetes.io/hostname
   clusterSize: 3
   kubernetesConfig:
@@ -2429,7 +2430,3 @@ spec:
     masterGroupName: harbor
     quorum: "2"
     redisReplicationName: redis-harbor
-    redisReplicationPassword:
-      secretKeyRef:
-        key: REDIS_PASSWORD
-        name: harbor-secrets
