@@ -1,0 +1,25 @@
+rule_files:
+  - .rules.generated.yaml
+evaluation_interval: 1m
+tests:
+  # rescan gap of 40 min must not resolve the alert, a fixed image resolves after 6 h
+  - interval: 5m
+    input_series:
+      - series: 'trivy_image_vulnerabilities{severity="Critical",namespace="demo",image_repository="demo/app"}'
+        values: '3x12 _x8 3x12'
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: TrivyCriticalCVEFound
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              component: compliance
+              namespace: demo
+              image_repository: demo/app
+            exp_annotations:
+              summary: "3 kritische CVEs in demo/app"
+              description: "Nur behebbare CVEs (ignoreUnfixed). Ein Update existiert also."
+              action: "kubectl get vulnerabilityreports -n demo — dann das image bumpen."
+      - eval_time: 9h
+        alertname: TrivyCriticalCVEFound
+        exp_alerts: []
