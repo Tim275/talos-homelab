@@ -1,0 +1,42 @@
+name: customer
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: create or cancel (cancel keeps the database)
+        type: choice
+        options: [create, cancel]
+        default: create
+      customer:
+        description: Customer number, 1-5 letters then 2-12 digits, e.g. k100
+        required: true
+      address:
+        description: Host becomes n8n-<address>, empty means the customer number
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  order:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        id: app
+        with:
+          client-id: ${{ vars.CUSTOMER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CUSTOMER_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          token: ${{ steps.app.outputs.token }}
+      - run: .github/scripts/customer.sh
+        env:
+          ACTION: ${{ inputs.action }}
+          CUSTOMER: ${{ inputs.customer }}
+          ADDRESS: ${{ inputs.address }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GIT_NAME: ${{ github.actor }}
+          GIT_EMAIL: ${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com
