@@ -1,0 +1,147 @@
+realm: customers
+displayName: "Customers"
+attributes:
+  frontendUrl: "https://iam.staging.timourhomelab.org"
+enabled: true
+sslRequired: external
+registrationAllowed: false
+registrationEmailAsUsername: true
+loginWithEmailAllowed: true
+duplicateEmailsAllowed: false
+resetPasswordAllowed: true
+editUsernameAllowed: false
+verifyEmail: true
+passwordPolicy: "length(15) and maxLength(64) and notUsername and notEmail"
+bruteForceProtected: true
+failureFactor: 3
+waitIncrementSeconds: 900
+maxFailureWaitSeconds: 900
+quickLoginCheckMilliSeconds: 1000
+internationalizationEnabled: true
+supportedLocales:
+  - de
+  - en
+defaultLocale: de
+smtpServer:
+  host: "smtp.resend.com"
+  port: "587"
+  from: "$(SMTP_FROM:-it@timourhomelab.org)"
+  fromDisplayName: "Timour Homelab IAM"
+  replyTo: "$(SMTP_REPLY_TO:-it@timourhomelab.org)"
+  replyToDisplayName: "Timour Homelab IAM"
+  envelopeFrom: "$(SMTP_FROM:-it@timourhomelab.org)"
+  ssl: "false"
+  starttls: "true"
+  auth: "true"
+  user: "$(SMTP_USER:-resend)"
+  password: "$(SMTP_PASSWORD)"
+eventsEnabled: true
+eventsExpiration: 2592000
+eventsListeners:
+  - jboss-logging
+enabledEventTypes:
+  - LOGIN
+  - LOGIN_ERROR
+  - LOGOUT
+  - LOGOUT_ERROR
+  - REGISTER
+  - REFRESH_TOKEN
+  - REFRESH_TOKEN_ERROR
+  - CODE_TO_TOKEN
+  - CODE_TO_TOKEN_ERROR
+  - CLIENT_LOGIN
+  - CLIENT_LOGIN_ERROR
+  - UPDATE_PASSWORD
+  - UPDATE_TOTP
+  - REMOVE_TOTP
+  - SEND_RESET_PASSWORD
+  - RESET_PASSWORD
+  - IDENTITY_PROVIDER_LOGIN
+adminEventsEnabled: true
+adminEventsDetailsEnabled: true
+accessTokenLifespan: 300
+revokeRefreshToken: true
+refreshTokenMaxReuse: 0
+ssoSessionIdleTimeout: 1800
+ssoSessionMaxLifespan: 36000
+actionTokenGeneratedByAdminLifespan: 259200 # 72h
+requiredActions:
+  - alias: CONFIGURE_TOTP
+    name: "Configure OTP"
+    providerId: CONFIGURE_TOTP
+    enabled: true
+    defaultAction: true
+    priority: 10
+  - alias: UPDATE_PASSWORD
+    name: "Update Password"
+    providerId: UPDATE_PASSWORD
+    enabled: true
+    defaultAction: true
+    priority: 30
+otpPolicyType: totp
+otpPolicyAlgorithm: HmacSHA1
+otpPolicyDigits: 6
+otpPolicyPeriod: 30
+otpPolicyLookAheadWindow: 1
+browserFlow: browser-mfa
+authenticationFlows:
+  - alias: browser-mfa
+    description: Passwort und Einmalcode, beides Pflicht
+    providerId: basic-flow
+    topLevel: true
+    builtIn: false
+    authenticationExecutions:
+      - authenticator: auth-cookie
+        requirement: ALTERNATIVE
+        priority: 10
+        authenticatorFlow: false
+        userSetupAllowed: false
+      - flowAlias: browser-mfa-forms
+        requirement: ALTERNATIVE
+        priority: 20
+        authenticatorFlow: true
+        userSetupAllowed: false
+  - alias: browser-mfa-forms
+    description: erst Passwort, dann Einmalcode
+    providerId: basic-flow
+    topLevel: false
+    builtIn: false
+    authenticationExecutions:
+      - authenticator: auth-username-password-form
+        requirement: REQUIRED
+        priority: 10
+        authenticatorFlow: false
+        userSetupAllowed: false
+      - authenticator: auth-otp-form
+        requirement: REQUIRED
+        priority: 20
+        authenticatorFlow: false
+        userSetupAllowed: false
+clients:
+  - clientId: customer-invite
+    enabled: true
+    protocol: openid-connect
+    publicClient: false
+    secret: $(CUSTOMER_INVITE_SECRET)
+    standardFlowEnabled: false
+    directAccessGrantsEnabled: false
+    serviceAccountsEnabled: true
+    defaultClientScopes:
+      - acr
+      - basic
+      - email
+      - profile
+      - roles
+      - service_account
+      - web-origins
+      - kc-admin-api
+users:
+  - username: service-account-customer-invite
+    enabled: true
+    serviceAccountClientId: customer-invite
+    clientRoles:
+      realm-management:
+        - manage-users
+        - view-users
+        - query-users
+        - query-groups

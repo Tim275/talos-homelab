@@ -1,0 +1,67 @@
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: keycloak-customer-invite-client-secret-clientsecret
+  namespace: keycloak
+  annotations:
+    argocd.argoproj.io/sync-wave: '-1'
+spec:
+  refreshInterval: 1h
+  updatePolicy: IfNotExists
+  secretStoreRefs:
+  - name: openbao
+    kind: ClusterSecretStore
+  selector:
+    generatorRef:
+      apiVersion: generators.external-secrets.io/v1alpha1
+      kind: ClusterGenerator
+      name: password
+  data:
+  - match:
+      secretKey: password
+      remoteRef:
+        remoteKey: platform/keycloak/keycloak-customer-invite-client-secret
+        property: clientSecret
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: keycloak-customer-invite-client-secret
+  namespace: keycloak
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao
+    kind: ClusterSecretStore
+  target:
+    name: keycloak-customer-invite-client-secret
+  data:
+  - secretKey: clientSecret
+    remoteRef:
+      key: platform/keycloak/keycloak-customer-invite-client-secret
+      property: clientSecret
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: customer-invite-secret-reader
+  namespace: keycloak
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [keycloak-customer-invite-client-secret]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: customer-invite-secret-reader
+  namespace: keycloak
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: customer-invite-secret-reader
+subjects:
+  - kind: ServiceAccount
+    name: tofu-staging-gha-rs-no-permission
+    namespace: arc-runners
