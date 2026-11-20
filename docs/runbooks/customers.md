@@ -4,7 +4,7 @@ Bestellungen liegen in `kubernetes/customers/<env>/`, die APIs kommen als Paket 
 
 ```bash
 kubectl get configuration,configurationrevision,functions
-kubectl get customers,n8ninstances,postgresdatabases
+kubectl get customers,customernamespaces,n8ninstances,postgresdatabases
 ```
 
 ## Bestellen und kündigen
@@ -28,6 +28,8 @@ kubectl -n crossplane-system logs deploy/crossplane --tail 100 | grep -i <kunde>
 - `forbidden` → ClusterRole in `kubernetes/platform/automation/crossplane/base/rbac-*.yaml` fehlt das Kind.
 - Datenbank `applied` bleibt aus → `kubectl -n postgres describe database n8n-<kunde>`, [CnpgPrimaryDown](data.md#cnpgprimarydown).
 - n8n startet nicht → `kubectl -n n8n-<kunde> logs deploy/n8n`, Secret `n8n-<kunde>-postgres` vorhanden?
+- Pod wird nicht angelegt → `kubectl -n n8n-<kunde> get events`: `exceeded quota` (Quota im `CustomerNamespace` anheben) oder `violates PodSecurity` (Pod erfüllt `restricted` nicht).
+- Verbindung bricht ab → Default-deny im Namespace: `kubectl -n n8n-<kunde> get ciliumnetworkpolicy default-deny -o yaml`, Drops mit `hubble observe --namespace n8n-<kunde> --verdict DROPPED`.
 
 ## Paket nicht Healthy
 
