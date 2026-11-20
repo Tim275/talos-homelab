@@ -6,13 +6,20 @@ CUSTOMER=$(printf '%s' "$CUSTOMER" | tr '[:upper:]' '[:lower:]')
 echo "$CUSTOMER" | LC_ALL=C grep -Eq '^[a-z]{1,5}[0-9]{2,12}$' || { echo "customer number invalid: $CUSTOMER"; exit 1; }
 ADDRESS=$(printf '%s' "${ADDRESS:-$CUSTOMER}" | tr '[:upper:]' '[:lower:]')
 echo "$ADDRESS" | LC_ALL=C grep -Eq '^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$' || { echo "address invalid: $ADDRESS"; exit 1; }
+SERVICES=$(printf '%s' "${SERVICES:-}" | tr '[:upper:],' '[:lower:] ' | xargs -n1 | sort -u)
+allowed=$(yq '.spec.versions[0].schema.openAPIV3Schema.properties.spec.properties.services.items.enum[]' crossplane/apis/customer/definition.yaml)
+hint="allowed: $(printf '%s' "$allowed" | tr '\n' ' ')"
 
 environments='staging prod'
 file=$CUSTOMER.yaml
-orders() { echo "kubernetes/customers/orders/$1"; }
+orders() { echo "kubernetes/customers/$1"; }
 
 case $ACTION in
   create)
+    [ -n "$SERVICES" ] || { echo "no services given, $hint"; exit 1; }
+    for s in $SERVICES; do
+      echo "$allowed" | grep -qx "$s" || { echo "unknown service: $s, $hint"; exit 1; }
+    done
     for e in $environments; do
       [ ! -e "$(orders "$e")/$file" ] || { echo "$CUSTOMER already exists in $e"; exit 1; }
       ! grep -rlx "  address: $ADDRESS" "$(orders "$e")" > /dev/null || { echo "address $ADDRESS is taken in $e"; exit 1; }
@@ -29,7 +36,8 @@ esac
 apply_change() {
   dir=$(orders "$1")
   if [ "$ACTION" = create ]; then
-    printf 'apiVersion: customers.tim275.github.io/v1alpha1\nkind: N8nInstance\nmetadata:\n  name: %s\nspec:\n  address: %s\n' "$CUSTOMER" "$ADDRESS" > "$dir/$file"
+    printf 'apiVersion: customers.tim275.github.io/v1alpha1\nkind: Customer\nmetadata:\n  name: %s\nspec:\n  address: %s\n' "$CUSTOMER" "$ADDRESS" > "$dir/$file"
+    S=$SERVICES yq -i '.spec.services = (strenv(S) | split("\n"))' "$dir/$file"
     F=$file yq -i '.resources = ((.resources // []) + [strenv(F)] | unique | sort)' "$dir/kustomization.yaml"
   else
     rm "$dir/$file"
