@@ -100,6 +100,51 @@ spec:
                     key: {{ $vault }}/encryption-key
                     property: key
             ---
+            apiVersion: external-secrets.io/v1alpha1
+            kind: PushSecret
+            metadata:
+              name: n8n-runners-auth-token
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: runners-token-seed
+            spec:
+              refreshInterval: 1h
+              updatePolicy: IfNotExists
+              secretStoreRefs:
+                - name: openbao-customers
+                  kind: ClusterSecretStore
+              selector:
+                generatorRef:
+                  apiVersion: generators.external-secrets.io/v1alpha1
+                  kind: ClusterGenerator
+                  name: password
+              data:
+                - match:
+                    secretKey: password
+                    remoteRef:
+                      remoteKey: {{ $vault }}/runners-auth-token
+                      property: token
+            ---
+            apiVersion: external-secrets.io/v1
+            kind: ExternalSecret
+            metadata:
+              name: n8n-runners-auth-token
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: runners-token
+            spec:
+              refreshInterval: 1h
+              secretStoreRef:
+                name: openbao-customers
+                kind: ClusterSecretStore
+              target:
+                name: n8n-runners-auth-token
+              data:
+                - secretKey: token
+                  remoteRef:
+                    key: {{ $vault }}/runners-auth-token
+                    property: token
+            ---
             apiVersion: apps/v1
             kind: Deployment
             metadata:
@@ -128,7 +173,7 @@ spec:
                       type: RuntimeDefault
                   containers:
                     - name: n8n
-                      image: docker.io/n8nio/n8n:2.49.3@sha256:69f3d3694b42992d7cce232b7ba46f22205e39d5eb61bd235588e4d5d111d8c4
+                      image: ghcr.io/n8n-io/n8n:2.48.7  # renovate: github-releases=n8n-io/n8n
                       ports:
                         - name: http
                           containerPort: 5678
@@ -165,6 +210,10 @@ spec:
                           valueFrom: {secretKeyRef: {name: {{ $ns }}-postgres, key: password}}
                         - name: N8N_ENCRYPTION_KEY
                           valueFrom: {secretKeyRef: {name: n8n-encryption-key, key: N8N_ENCRYPTION_KEY}}
+                        - name: N8N_RUNNERS_MODE
+                          value: external
+                        - name: N8N_RUNNERS_AUTH_TOKEN
+                          valueFrom: {secretKeyRef: {name: n8n-runners-auth-token, key: token}}
                       resources:
                         requests:
                           cpu: 100m
@@ -182,6 +231,30 @@ spec:
                           port: http
                         initialDelaySeconds: 60
                         periodSeconds: 30
+                    - name: task-runners
+                      image: ghcr.io/n8n-io/runners:2.48.7  # renovate: github-releases=n8n-io/n8n
+                      securityContext:
+                        allowPrivilegeEscalation: false
+                        capabilities:
+                          drop: [ALL]
+                      env:
+                        - name: N8N_RUNNERS_TASK_BROKER_URI
+                          value: http://127.0.0.1:5679
+                        - name: N8N_RUNNERS_AUTH_TOKEN
+                          valueFrom: {secretKeyRef: {name: n8n-runners-auth-token, key: token}}
+                      ports:
+                        - name: launcher-health
+                          containerPort: 5680
+                      readinessProbe:
+                        tcpSocket:
+                          port: launcher-health
+                        periodSeconds: 10
+                      resources:
+                        requests:
+                          cpu: 50m
+                          memory: 128Mi
+                        limits:
+                          memory: 512Mi
             ---
             apiVersion: v1
             kind: Service
