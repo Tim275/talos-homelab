@@ -49,6 +49,9 @@ spec:
 Hosts are `<service>-<address>.<domain>`. Deleting an order removes everything except databases and the
 secrets in OpenBao.
 
+With an e-mail address the workflow also creates the customer's group and user in the Keycloak realm
+`customers` and sends the invitation. The address never lands in Git.
+
 ## Isolation
 
 Every service runs in a `CustomerNamespace`, never in a Namespace of its own making:

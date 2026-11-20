@@ -9,11 +9,28 @@ kubectl get customers,customernamespaces,n8ninstances,postgresdatabases
 
 ## Bestellen und kündigen
 
-GitHub → Actions → `customer` → Run workflow: `create` oder `cancel`, Kundennummer (`k100`), Dienste (`n8n`), Adresse.
+GitHub → Actions → `customer` → Run workflow: `create`, `cancel` oder `invite`, Kundennummer (`k100`), Dienste (`n8n`), Adresse, E-Mail des Kunden.
 
 - Je Umgebung ein PR. staging merged sich selbst, prod von Hand.
 - Nach dem Merge die App `customers` in Argo CD syncen.
 - Kündigen löscht Namespace und Instanz. Datenbank, Rolle und die Schlüssel in OpenBao bleiben.
+
+## Einladung
+
+Mit einer E-Mail-Adresse legt der Job `access` (läuft auf dem Runner im Cluster) im Realm `customers` die Gruppe `<kunde>` und den Nutzer an und lässt Keycloak die Mail zum Einrichten von Passwort und TOTP schicken. Der Link gilt 72 Stunden.
+
+- Der Job wartet bis zu 30 Minuten, bis `https://<dienst>-<adresse>.<domain>/healthz` antwortet. Ist prod bis dahin nicht gemergt und gesynct, den Workflow mit `invite` erneut starten. `invite` verschickt auch eine neue Mail, wenn der Link abgelaufen ist.
+- `cancel` sperrt alle Nutzer der Gruppe und meldet sie ab. Gruppe und Nutzer bleiben erhalten.
+- Die Adresse steht nur in der Workflow-Eingabe und in Keycloak, nicht im Repo.
+
+```bash
+kubectl -n keycloak logs job/keycloak-config-cli-customers
+kubectl -n keycloak get secret keycloak-customer-invite-client-secret
+```
+
+- `login as customer-invite failed` → Realm oder Client fehlt, Job `keycloak-config-cli-customers` prüfen.
+- `client secret of customer-invite not readable` → RoleBinding `customer-invite-secret-reader` im Namespace `keycloak` nennt nicht das ServiceAccount der Runner.
+- Mail kommt nicht an → Keycloak-Log nach `EmailException` durchsuchen, Zugang in `kv/platform/keycloak/keycloak-smtp`.
 
 Schlüssel liegen unter `kv/customers/<kunde>/<dienst>/`, zum Beispiel `kv/customers/k100/n8n/postgres` und `kv/customers/k100/n8n/encryption-key`. Kunden-Namespaces lesen nur über den Store `openbao-customers`, dessen Rolle nur `kv/customers/*` sieht. Den Plattform-Store `openbao` können sie nicht benutzen.
 

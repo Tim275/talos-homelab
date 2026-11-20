@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: create or cancel (cancel keeps the databases)
+        description: create, cancel (keeps the databases) or invite (send the invitation again)
         type: choice
-        options: [create, cancel]
+        options: [create, cancel, invite]
         default: create
       customer:
         description: Customer number, 1-5 letters then 2-12 digits, e.g. k100
@@ -18,12 +18,16 @@ on:
       address:
         description: Hosts become <service>-<address>, empty means the customer number
         required: false
+      email:
+        description: Contact of the customer, gets the invitation
+        required: false
 
 permissions:
   contents: read
 
 jobs:
   order:
+    if: inputs.action != 'invite'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
@@ -45,3 +49,19 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GIT_NAME: ${{ github.actor }}
           GIT_EMAIL: ${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com
+
+  access:
+    needs: order
+    if: ${{ !cancelled() && needs.order.result != 'failure' && (inputs.action == 'cancel' || inputs.email != '') }}
+    runs-on: tofu
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - run: .github/scripts/customer-access.sh
+        env:
+          ACTION: ${{ inputs.action }}
+          CUSTOMER: ${{ inputs.customer }}
+          ADDRESS: ${{ inputs.address }}
+          SERVICES: ${{ inputs.services }}
