@@ -1,0 +1,70 @@
+name: crossplane-apis
+
+on:
+  pull_request:
+    paths:
+      - "crossplane/**"
+      - "kubernetes/platform/automation/crossplane/overlays/*/functions.yaml"
+      - ".github/workflows/crossplane-apis.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crossplane/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crossplane-apis-${{ github.event_name }}
+  cancel-in-progress: false
+
+env:
+  XP_VERSION: v2.4.1
+  XP_SHA256: ad0661eed7d2c0b20f5a0f8217e54755d6808ad7f6960660326d761338f311e0
+  PACKAGE: ghcr.io/tim275/talos-homelab/crossplane-apis
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Install crossplane CLI
+        run: |
+          curl -sfLo /tmp/crossplane "https://cli.crossplane.io/stable/${XP_VERSION}/bin/linux_amd64/crossplane"
+          echo "${XP_SHA256}  /tmp/crossplane" | sha256sum -c
+          sudo install /tmp/crossplane /usr/local/bin/crossplane
+
+      - name: Render examples
+        run: |
+          for api in crossplane/apis/*/; do
+            name=$(basename "$api")
+            echo "::group::$name"
+            crossplane render "crossplane/examples/$name.yaml" "$api/composition.yaml" \
+              kubernetes/platform/automation/crossplane/overlays/prod/functions.yaml \
+              --required-resources crossplane/examples/environmentconfig.yaml
+            echo "::endgroup::"
+          done
+
+      - name: Build
+        run: crossplane xpkg build --package-root crossplane --examples-root crossplane/examples -o /tmp/apis.xpkg
+
+      - name: Push
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          minor=$(cat crossplane/VERSION)
+          last=$(git tag -l "crossplane-apis/v${minor}.*" | sed 's/.*\.//' | sort -n | tail -1)
+          version="v${minor}.$(( ${last:--1} + 1 ))"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          crossplane xpkg push -f /tmp/apis.xpkg "${PACKAGE}:${version}"
+          git tag "crossplane-apis/${version}"
+          git push origin "crossplane-apis/${version}"
+          echo "${PACKAGE}:${version}" >> "$GITHUB_STEP_SUMMARY"
