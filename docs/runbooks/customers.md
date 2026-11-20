@@ -15,6 +15,8 @@ GitHub → Actions → `customer` → Run workflow: `create` oder `cancel`, Kund
 - Nach dem Merge die App `customers` in Argo CD syncen.
 - Kündigen löscht Namespace und Instanz. Datenbank, Rolle und die Schlüssel in OpenBao bleiben.
 
+Schlüssel liegen unter `kv/customers/<kunde>/<dienst>/`, zum Beispiel `kv/customers/k100/n8n/postgres` und `kv/customers/k100/n8n/encryption-key`. Kunden-Namespaces lesen nur über den Store `openbao-customers`, dessen Rolle nur `kv/customers/*` sieht. Den Plattform-Store `openbao` können sie nicht benutzen.
+
 ## Customer bleibt nicht Ready
 
 ```bash
@@ -50,4 +52,4 @@ primary=$(kubectl -n postgres get pod -l cnpg.io/instanceRole=primary -o name)
 kubectl -n postgres exec -it "$primary" -c postgres -- psql -c 'DROP DATABASE n8n_<kunde>' -c 'DROP ROLE n8n_<kunde>'
 ```
 
-In OpenBao `n8n-<kunde>/n8n-<kunde>-postgres-credentials` und `n8n-<kunde>/n8n-encryption-key` löschen.
+In OpenBao den Ordner `kv/customers/<kunde>/` löschen, darin liegen alle Schlüssel des Kunden.
