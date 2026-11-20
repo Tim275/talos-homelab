@@ -37,3 +37,8 @@ kubectl config set-context --current --namespace=argocd
 argocd app sync --core -l app.kubernetes.io/part-of=apps
 argocd app sync --core -l app.kubernetes.io/part-of=tenants
 ```
+
+`customers` is one of the apps. Its orders wait until Crossplane has pulled the `crossplane-apis` package from GHCR:
+```bash
+kubectl get configuration crossplane-apis
+```
