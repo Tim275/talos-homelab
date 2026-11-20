@@ -27,6 +27,27 @@ kubectl cnpg status postgres -n postgres
 
 - DB-Verbindungsfehler im Log → Datenbank, nicht Keycloak.
 - Fehler nur beim LDAP-Login → LLDAP prüfen: `kubectl -n lldap get pods`
+- Langsame Logins → Grafana „Keycloak troubleshooting“ (Ordner Security), Traces in Tempo mit `service.name=keycloak`.
+
+## Keycloak-Upgrade
+
+Renovate mergt Keycloak nie selbst. Patch-Versionen rollen Pod für Pod, Minor und Major starten alle Pods neu (Update-Strategie `Auto` entscheidet). Die Datenbank lässt sich nicht zurückmigrieren, ein Rollback ist nur ein Restore.
+
+Vor dem Merge eines Minor- oder Major-Updates:
+
+```bash
+kubectl cnpg backup postgres -n postgres --method plugin --plugin-name barman-cloud.cloudnative-pg.io
+kubectl -n postgres get backup --sort-by=.metadata.creationTimestamp | tail -1
+```
+
+Erst mergen, wenn das Backup `completed` ist. Danach:
+
+```bash
+kubectl -n keycloak get keycloak keycloak -o jsonpath='{.status.conditions}'
+kubectl -n keycloak get pods -l app=keycloak
+```
+
+- Keycloak läuft über den PgBouncer im Transaktionsmodus. Das geht nur mit PgBouncer ab 1.21 und `max_prepared_statements` > 0 (Pooler `postgres-pooler`).
 
 ## N8NBurnRateFast
 
