@@ -1,0 +1,209 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: n8ninstance
+spec:
+  compositeTypeRef:
+    apiVersion: customers.tim275.github.io/v1alpha1
+    kind: N8nInstance
+  mode: Pipeline
+  pipeline:
+    - step: render
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $xr := .observed.composite.resource }}
+            {{- $id := $xr.metadata.name }}
+            {{- $ns := printf "n8n-%s" $id }}
+            {{- $host := printf "n8n-%s.timourhomelab.org" ($xr.spec.address | default $id) }}
+            ---
+            apiVersion: v1
+            kind: Namespace
+            metadata:
+              name: {{ $ns }}
+              labels:
+                postgres-access: "true"
+                pod-security.kubernetes.io/audit: restricted
+                pod-security.kubernetes.io/warn: restricted
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: namespace
+            ---
+            apiVersion: platform.tim275.github.io/v1alpha1
+            kind: PostgresDatabase
+            metadata:
+              name: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: database
+            spec:
+              namespace: {{ $ns }}
+            ---
+            apiVersion: external-secrets.io/v1alpha1
+            kind: PushSecret
+            metadata:
+              name: n8n-encryption-key
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: encryption-key-seed
+            spec:
+              refreshInterval: 1h
+              updatePolicy: IfNotExists
+              secretStoreRefs:
+                - name: openbao
+                  kind: ClusterSecretStore
+              selector:
+                generatorRef:
+                  apiVersion: generators.external-secrets.io/v1alpha1
+                  kind: ClusterGenerator
+                  name: password
+              data:
+                - match:
+                    secretKey: password
+                    remoteRef:
+                      remoteKey: {{ $ns }}/n8n-encryption-key
+                      property: key
+            ---
+            apiVersion: external-secrets.io/v1
+            kind: ExternalSecret
+            metadata:
+              name: n8n-encryption-key
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: encryption-key
+            spec:
+              refreshInterval: 1h
+              secretStoreRef:
+                name: openbao
+                kind: ClusterSecretStore
+              target:
+                name: n8n-encryption-key
+              data:
+                - secretKey: N8N_ENCRYPTION_KEY
+                  remoteRef:
+                    key: {{ $ns }}/n8n-encryption-key
+                    property: key
+            ---
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: n8n
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: deployment
+            spec:
+              replicas: 1
+              strategy:
+                type: Recreate
+              selector:
+                matchLabels:
+                  app: n8n
+              template:
+                metadata:
+                  labels:
+                    app: n8n
+                spec:
+                  securityContext:
+                    runAsUser: 1000
+                    runAsGroup: 1000
+                    fsGroup: 1000
+                    runAsNonRoot: true
+                    seccompProfile:
+                      type: RuntimeDefault
+                  containers:
+                    - name: n8n
+                      image: docker.io/n8nio/n8n:2.49.2@sha256:ba471f441bcb515aee81eb41f940a924b82da89a93effab9b4d5731dda576081
+                      ports:
+                        - name: http
+                          containerPort: 5678
+                      securityContext:
+                        allowPrivilegeEscalation: false
+                        capabilities:
+                          drop: [ALL]
+                      env:
+                        - name: N8N_HOST
+                          value: {{ $host }}
+                        - name: N8N_PROTOCOL
+                          value: https
+                        - name: WEBHOOK_URL
+                          value: https://{{ $host }}/
+                        - name: N8N_PROXY_HOPS
+                          value: "1"
+                        - name: N8N_SECURE_COOKIE
+                          value: "true"
+                        - name: EXECUTIONS_DATA_PRUNE
+                          value: "true"
+                        - name: EXECUTIONS_DATA_MAX_AGE
+                          value: "168"
+                        - name: DB_TYPE
+                          value: postgresdb
+                        - name: DB_POSTGRESDB_HOST
+                          valueFrom: {secretKeyRef: {name: {{ $ns }}-postgres, key: host}}
+                        - name: DB_POSTGRESDB_PORT
+                          valueFrom: {secretKeyRef: {name: {{ $ns }}-postgres, key: port}}
+                        - name: DB_POSTGRESDB_DATABASE
+                          valueFrom: {secretKeyRef: {name: {{ $ns }}-postgres, key: dbname}}
+                        - name: DB_POSTGRESDB_USER
+                          valueFrom: {secretKeyRef: {name: {{ $ns }}-postgres, key: username}}
+                        - name: DB_POSTGRESDB_PASSWORD
+                          valueFrom: {secretKeyRef: {name: {{ $ns }}-postgres, key: password}}
+                        - name: N8N_ENCRYPTION_KEY
+                          valueFrom: {secretKeyRef: {name: n8n-encryption-key, key: N8N_ENCRYPTION_KEY}}
+                      resources:
+                        requests:
+                          cpu: 100m
+                          memory: 256Mi
+                        limits:
+                          memory: 1Gi
+                      readinessProbe:
+                        httpGet:
+                          path: /healthz
+                          port: http
+                        periodSeconds: 10
+                      livenessProbe:
+                        httpGet:
+                          path: /healthz
+                          port: http
+                        initialDelaySeconds: 60
+                        periodSeconds: 30
+            ---
+            apiVersion: v1
+            kind: Service
+            metadata:
+              name: n8n
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: service
+            spec:
+              selector:
+                app: n8n
+              ports:
+                - name: http
+                  port: 5678
+                  targetPort: http
+            ---
+            apiVersion: gateway.networking.k8s.io/v1
+            kind: HTTPRoute
+            metadata:
+              name: n8n
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: route
+                gotemplating.fn.crossplane.io/ready: "True"
+            spec:
+              parentRefs:
+                - name: envoy-gateway
+                  namespace: gateway
+                  sectionName: https
+              hostnames:
+                - {{ $host }}
+              rules:
+                - backendRefs:
+                    - name: n8n
+                      port: 5678
+    - step: ready
+      functionRef:
+        name: function-auto-ready
