@@ -21,7 +21,8 @@ spec:
             {{- $name := $xr.metadata.name }}
             {{- $role := $name | replace "-" "_" }}
             {{- $ns := $xr.spec.namespace }}
-            {{- $key := printf "%s/%s-postgres-credentials" $ns $name }}
+            {{- $key := $xr.spec.secretKey | default (printf "%s/%s-postgres-credentials" $ns $name) }}
+            {{- $store := $xr.spec.secretStore | default "openbao" }}
             {{- $observed := .observed.resources | default dict }}
             ---
             apiVersion: external-secrets.io/v1alpha1
@@ -35,7 +36,7 @@ spec:
               refreshInterval: 1h
               updatePolicy: IfNotExists
               secretStoreRefs:
-                - name: openbao
+                - name: {{ $store }}
                   kind: ClusterSecretStore
               selector:
                 generatorRef:
@@ -59,7 +60,7 @@ spec:
             spec:
               refreshInterval: 1h
               secretStoreRef:
-                name: openbao
+                name: {{ $store }}
                 kind: ClusterSecretStore
               target:
                 name: role-{{ $name }}
@@ -127,7 +128,7 @@ spec:
             spec:
               refreshInterval: 1h
               secretStoreRef:
-                name: openbao
+                name: {{ $store }}
                 kind: ClusterSecretStore
               target:
                 name: {{ $name }}-postgres

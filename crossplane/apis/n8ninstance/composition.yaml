@@ -32,6 +32,7 @@ spec:
             {{- $env := index .context "apiextensions.crossplane.io/environment" }}
             {{- $id := $xr.metadata.name }}
             {{- $ns := printf "n8n-%s" $id }}
+            {{- $vault := printf "customers/%s/n8n" $id }}
             {{- $host := printf "n8n-%s.%s" ($xr.spec.address | default $id) $env.domain }}
             ---
             apiVersion: platform.tim275.github.io/v1alpha1
@@ -51,6 +52,8 @@ spec:
                 gotemplating.fn.crossplane.io/composition-resource-name: database
             spec:
               namespace: {{ $ns }}
+              secretStore: openbao-customers
+              secretKey: {{ $vault }}/postgres
             ---
             apiVersion: external-secrets.io/v1alpha1
             kind: PushSecret
@@ -63,7 +66,7 @@ spec:
               refreshInterval: 1h
               updatePolicy: IfNotExists
               secretStoreRefs:
-                - name: openbao
+                - name: openbao-customers
                   kind: ClusterSecretStore
               selector:
                 generatorRef:
@@ -74,7 +77,7 @@ spec:
                 - match:
                     secretKey: password
                     remoteRef:
-                      remoteKey: {{ $ns }}/n8n-encryption-key
+                      remoteKey: {{ $vault }}/encryption-key
                       property: key
             ---
             apiVersion: external-secrets.io/v1
@@ -87,14 +90,14 @@ spec:
             spec:
               refreshInterval: 1h
               secretStoreRef:
-                name: openbao
+                name: openbao-customers
                 kind: ClusterSecretStore
               target:
                 name: n8n-encryption-key
               data:
                 - secretKey: N8N_ENCRYPTION_KEY
                   remoteRef:
-                    key: {{ $ns }}/n8n-encryption-key
+                    key: {{ $vault }}/encryption-key
                     property: key
             ---
             apiVersion: apps/v1
