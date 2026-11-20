@@ -44,17 +44,17 @@ jobs:
           echo "${XP_SHA256}  /tmp/crossplane" | sha256sum -c
           sudo install /tmp/crossplane /usr/local/bin/crossplane
 
-      - name: Render examples
+      - name: Render and validate examples
         run: |
+          mkdir -p /tmp/rendered
           for api in crossplane/apis/*/; do
             name=$(basename "$api")
-            echo "::group::$name"
-            crossplane render "crossplane/examples/$name.yaml" "$api/composition.yaml" \
+            crossplane composition render --include-full-xr "crossplane/examples/$name.yaml" "$api/composition.yaml" \
               kubernetes/platform/automation/crossplane/overlays/prod/functions.yaml \
               --required-resources crossplane/examples/environmentconfig.yaml \
-              --crossplane-version "$XP_RUNTIME"
-            echo "::endgroup::"
+              --crossplane-version "$XP_RUNTIME" > "/tmp/rendered/$name.yaml"
           done
+          crossplane resource validate crossplane/apis /tmp/rendered
 
       - name: Build
         run: crossplane xpkg build --package-root crossplane --examples-root crossplane/examples -o /tmp/apis.xpkg
