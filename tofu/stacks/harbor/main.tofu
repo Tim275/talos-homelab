@@ -11,6 +11,20 @@ resource "harbor_project" "drova" {
   storage_quota          = 50
 }
 
+resource "harbor_registry" "dockerhub" {
+  provider_name = "docker-hub"
+  name          = "dockerhub"
+  endpoint_url  = "https://hub.docker.com"
+}
+
+resource "harbor_project" "dockerhub" {
+  name                   = "dockerhub"
+  registry_id            = harbor_registry.dockerhub.registry_id
+  public                 = true
+  vulnerability_scanning = false
+  storage_quota          = 100
+}
+
 resource "harbor_immutable_tag_rule" "releases" {
   project_id    = harbor_project.drova.id
   repo_matching = "**"
