@@ -45,15 +45,35 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
 .
 ├── docs/                    architecture diagrams, runbooks, kubectl OIDC config
 ├── tofu/
-│   ├── stacks/              one root module per state: cluster, proxmox, netbird, uptime-kuma, state
+│   ├── stacks/              one root module per state: cluster, proxmox, netbird, uptime-kuma, harbor, state
 │   └── modules/             talos, openbao, rook-external
+├── crossplane/              source of the crossplane-apis package: Customer, N8nInstance, PostgresDatabase
 └── kubernetes/
     ├── argocd/              control plane: bootstrap (Argo CD itself, root), projects, clusters, applicationsets, crds
     ├── infrastructure/      what the cluster runs on: network, storage, security, monitoring, cluster
     ├── platform/            what teams and apps consume: identity, observability (dashboards, logs, traces), data, delivery, automation
     ├── apps/                self-hosted services: forgejo, uptime-kuma, pgadmin, homepage, n8n, excalidraw
+    ├── customers/           orders, one Customer per file and environment
     └── tenants/             one namespace, one AppProject, own repository: drova
 ```
+
+## 🧾 Customers
+
+A customer orders services instead of a set of manifests:
+
+```yaml
+apiVersion: customers.tim275.github.io/v1alpha1
+kind: Customer
+metadata:
+  name: k100
+spec:
+  address: lab
+  services: [n8n]
+```
+
+Crossplane builds namespace, database, secrets, deployment and route (`n8n-lab.<domain>`). Orders come from the
+`customer` workflow: one PR per environment, staging merges itself, prod waits for review. The APIs ship as a
+versioned package, see [crossplane/README.md](crossplane/README.md) and the [runbook](docs/runbooks/customers.md).
 
 ## 📦 Applications
 
@@ -246,6 +266,16 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
         <td><img width="32" src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/keda.png"></td>
         <td><a href="https://keda.sh/">KEDA</a></td>
         <td>Event-driven autoscaling.</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/crossplane.png"></td>
+        <td><a href="https://www.crossplane.io/">Crossplane</a></td>
+        <td>Self-service APIs for customer instances, shipped as a versioned package.</td>
+    </tr>
+    <tr>
+        <td><img width="32" src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/harbor.png"></td>
+        <td><a href="https://goharbor.io/">Harbor</a></td>
+        <td>Private container registry, reachable over VPN only.</td>
     </tr>
 </table>
 
