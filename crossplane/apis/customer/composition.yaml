@@ -18,14 +18,16 @@ spec:
         inline:
           template: |
             {{- $xr := .observed.composite.resource }}
-            {{- if has "n8n" $xr.spec.services }}
+            {{- $kinds := dict "n8n" "N8nInstance" }}
+            {{- range $service := $xr.spec.services }}
+            {{- if not (hasKey $kinds $service) }}{{ fail (printf "no API for service %s" $service) }}{{ end }}
             ---
             apiVersion: customers.tim275.github.io/v1alpha1
-            kind: N8nInstance
+            kind: {{ get $kinds $service }}
             metadata:
               name: {{ $xr.metadata.name }}
               annotations:
-                gotemplating.fn.crossplane.io/composition-resource-name: n8n
+                gotemplating.fn.crossplane.io/composition-resource-name: {{ $service }}
             spec:
               address: {{ $xr.spec.address | default $xr.metadata.name }}
             {{- end }}
