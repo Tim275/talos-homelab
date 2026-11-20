@@ -77,4 +77,9 @@ resource "harbor_robot_account" "pull" {
       action   = "read"
     }
   }
+
+  # rotated monthly by the harbor-robot-rotation CronJob
+  lifecycle {
+    ignore_changes = [duration]
+  }
 }
