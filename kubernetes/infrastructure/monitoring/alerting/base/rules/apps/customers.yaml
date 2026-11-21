@@ -1,0 +1,23 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: apps-customers
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: customers
+      interval: 1m
+      rules:
+        - alert: CustomerAppDown
+          expr: probe_success{job="customer-apps", customer!~"zz.*"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: apps
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/customers.md#customerappdown"
+            dashboard_url: "/d/blackbox-exporter?var-target={{ $labels.instance }}"
+            summary: "Customer {{ $labels.customer }} cannot reach {{ $labels.service }}"
+            description: "{{ $labels.instance }} gave no valid answer for >5min."
+            action: "kubectl -n {{ $labels.service }}-{{ $labels.customer }} get pods,httproute,securitypolicy; kubectl describe n8ninstance {{ $labels.customer }}"

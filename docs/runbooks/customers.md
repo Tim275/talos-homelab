@@ -34,6 +34,20 @@ kubectl -n keycloak get secret keycloak-customer-invite-client-secret
 
 Schlüssel liegen unter `kv/customers/<kunde>/<dienst>/`, zum Beispiel `kv/customers/k100/n8n/postgres` und `kv/customers/k100/n8n/encryption-key`. Kunden-Namespaces lesen nur über den Store `openbao-customers`, dessen Rolle nur `kv/customers/*` sieht. Den Plattform-Store `openbao` können sie nicht benutzen.
 
+## CustomerAppDown
+
+Der Blackbox-Check `https://<adresse>-<dienst>.<domain>/healthz` eines zahlenden Kunden schlägt seit 5 Minuten fehl. Geprüft wird aus dem Cluster über das Gateway (CoreDNS leitet Kunden-Hosts intern dorthin), nicht über Cloudflare. Test-Kunden (`zz…`) lösen keinen Alarm aus.
+
+```bash
+kubectl -n n8n-<kunde> get pods,httproute,securitypolicy
+kubectl describe n8ninstance <kunde>
+curl -s -o /dev/null -w "%{http_code}\n" https://<adresse>-n8n.timourhomelab.org/healthz
+```
+
+- Pod nicht bereit → Logs und Datenbank wie unter „Customer bleibt nicht Ready“.
+- Pod bereit, Check rot → Route nicht `Accepted` oder Gateway-Problem, [HomelabEdgeDown](network.md#homelabedgedown).
+- Intern grün, Kunde meldet Ausfall → Tunnel oder Cloudflare, [CloudflaredNoEdgeConnections](network.md#cloudflarednoedgeconnections).
+
 ## Kunde kommt nicht an seine App
 
 Weg: Cloudflare → Tunnel → Gateway → Login auf `login.<domain>` (Realm `customers`) → App. `/webhook/` und `/form/` gehen ohne Login.
