@@ -15,7 +15,7 @@ hint="allowed: $(printf '%s' "$allowed" | tr '\n' ' ')"
 
 environments='staging prod'
 file=$CUSTOMER.yaml
-orders() { echo "kubernetes/customers/$1"; }
+orders() { echo "orders/$1"; }
 
 case $ACTION in
   create)
@@ -48,18 +48,19 @@ apply_change() {
   fi
 }
 
-start=$(git rev-parse HEAD)
+repo=Tim275/talos-homelab-customers
+start=$(git -C orders rev-parse HEAD)
 for e in $environments; do
   branch=customer/$ACTION-$CUSTOMER-${GITHUB_RUN_ID:-local}-$e
-  git switch -q -c "$branch" "$start"
+  git -C orders switch -q -c "$branch" "$start"
   apply_change "$e"
-  git add "$(orders "$e")"
-  git -c user.name="$GIT_NAME" -c user.email="$GIT_EMAIL" commit -qm "$ACTION $CUSTOMER $e"
-  git push -q origin "HEAD:refs/heads/$branch"
+  git -C orders add "$e"
+  git -C orders -c user.name="$GIT_NAME" -c user.email="$GIT_EMAIL" commit -qm "$ACTION $CUSTOMER $e"
+  git -C orders push -q origin "HEAD:refs/heads/$branch"
   if [ "$e" = staging ]; then
-    url=$(gh pr create --base main --head "$branch" --title "$ACTION $CUSTOMER ($e)" --body "Merges itself once the checks pass.")
-    gh pr merge --auto --squash "$url"
+    url=$(gh pr create -R "$repo" --base main --head "$branch" --title "$ACTION $CUSTOMER ($e)" --body "Merged right away, staging has no checks.")
+    gh pr merge -R "$repo" --squash "$url"
   else
-    gh pr create --base main --head "$branch" --title "$ACTION $CUSTOMER ($e)" --body "Merge by hand once staging runs, then sync customers in Argo CD."
+    gh pr create -R "$repo" --base main --head "$branch" --title "$ACTION $CUSTOMER ($e)" --body "Merge by hand once staging runs, then sync customers in Argo CD."
   fi
 done
