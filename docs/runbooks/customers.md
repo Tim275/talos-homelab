@@ -20,7 +20,7 @@ GitHub → Actions → `customer` → Run workflow: Aktion, Kundennummer (`k100`
 - `create`: Bestellung, App, Login, Einladung.
 - `cancel`: `spec.suspended: true` und `suspended-at` in der Bestellung. App, Routen, Client, DNS und Check verschwinden, Namespace, Datenbank, Schlüssel und Gruppe bleiben, Nutzer werden gesperrt.
 - `resume`: macht `cancel` rückgängig, Nutzer werden entsperrt, die Daten sind wieder da.
-- `delete`: entfernt die Bestellung. Datenbank, Rolle, Schlüssel in OpenBao, Gruppe, Nutzer und DNS-Eintrag werden gelöscht. Zurück nur aus dem CNPG-Backup.
+- `delete`: wartet auf deine Freigabe (GitHub-Environment `customer-delete`, „Review deployments“ im Lauf), entfernt dann die Bestellung. Datenbank, Rolle, Schlüssel in OpenBao, Gruppe, Nutzer und DNS-Eintrag werden gelöscht. Zurück nur aus dem CNPG-Backup.
 - `customer-purge` läuft täglich 05:30 und löscht Kunden, die seit 30 Tagen gekündigt sind. Seine PRs mergen sich selbst.
 - Je Umgebung ein PR im privaten Repo. staging wird sofort gemergt, prod von Hand. Danach die App `customers` in Argo CD syncen.
 

@@ -30,8 +30,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  approve:
+    if: inputs.action == 'delete'
+    runs-on: ubuntu-latest
+    environment: customer-delete
+    steps:
+      - run: echo "deletion of $CUSTOMER approved" | tee -a "$GITHUB_STEP_SUMMARY"
+        env:
+          CUSTOMER: ${{ inputs.customer }}
+
   order:
-    if: inputs.action != 'invite'
+    needs: approve
+    if: ${{ !cancelled() && inputs.action != 'invite' && (inputs.action != 'delete' || needs.approve.result == 'success') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
@@ -62,7 +72,7 @@ jobs:
 
   access:
     needs: order
-    if: ${{ !cancelled() && needs.order.result != 'failure' && (inputs.action != 'create' || inputs.email != '') && (inputs.action != 'invite' || inputs.email != '') }}
+    if: ${{ !cancelled() && needs.order.result != 'failure' && (inputs.action != 'delete' || needs.order.result == 'success') && (inputs.action != 'create' || inputs.email != '') && (inputs.action != 'invite' || inputs.email != '') }}
     runs-on: tofu
     timeout-minutes: 40
     steps:
