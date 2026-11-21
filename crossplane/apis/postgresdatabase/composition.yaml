@@ -24,6 +24,7 @@ spec:
             {{- $key := $xr.spec.secretKey | default (printf "platform/%s/%s-postgres-credentials" $ns $name) }}
             {{- $store := $xr.spec.secretStore | default "openbao" }}
             {{- $observed := .observed.resources | default dict }}
+            {{- $reclaim := $xr.spec.reclaimPolicy | default "Retain" | lower }}
             ---
             apiVersion: external-secrets.io/v1alpha1
             kind: PushSecret
@@ -35,6 +36,7 @@ spec:
             spec:
               refreshInterval: 1h
               updatePolicy: IfNotExists
+              deletionPolicy: {{ if eq $reclaim "delete" }}Delete{{ else }}None{{ end }}
               secretStoreRefs:
                 - name: {{ $store }}
                   kind: ClusterSecretStore
@@ -98,7 +100,7 @@ spec:
               connectionLimit: {{ $xr.spec.connectionLimit }}
               passwordSecret:
                 name: role-{{ $name }}
-              databaseRoleReclaimPolicy: retain
+              databaseRoleReclaimPolicy: {{ $reclaim }}
             ---
             apiVersion: postgresql.cnpg.io/v1
             kind: Database
@@ -116,7 +118,7 @@ spec:
               cluster:
                 name: postgres
               ensure: present
-              databaseReclaimPolicy: retain
+              databaseReclaimPolicy: {{ $reclaim }}
             ---
             apiVersion: external-secrets.io/v1
             kind: ExternalSecret

@@ -5,7 +5,9 @@ set -eu
 CUSTOMER=$(printf '%s' "$CUSTOMER" | tr '[:upper:]' '[:lower:]')
 echo "$CUSTOMER" | LC_ALL=C grep -Eq '^[a-z]{1,5}[0-9]{2,12}$' || { echo "customer number invalid: $CUSTOMER"; exit 1; }
 ADDRESS=$(printf '%s' "${ADDRESS:-}" | tr '[:upper:]' '[:lower:]')
-[ "$ACTION" = cancel ] || echo "$ADDRESS" | LC_ALL=C grep -Eq '^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$' || { echo "address invalid: $ADDRESS"; exit 1; }
+if [ "$ACTION" = create ] || [ "$ACTION" = invite ]; then
+  echo "$ADDRESS" | LC_ALL=C grep -Eq '^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$' || { echo "address invalid: $ADDRESS"; exit 1; }
+fi
 SERVICES=$(printf '%s' "${SERVICES:-}" | tr '[:upper:],' '[:lower:] ' | xargs -n1 | sort -u)
 # the address never appears in the workflow file or its env, so the log cannot print it
 EMAIL=$(jq -r '.inputs.email // ""' "$GITHUB_EVENT_PATH" | tr '[:upper:]' '[:lower:]')
@@ -15,7 +17,7 @@ KC=${KC:-http://keycloak-service.keycloak.svc.cluster.local:8080}
 REALM=customers
 domain=$(sed -n 's/^  domain: //p' kubernetes/platform/automation/crossplane/overlays/prod/environment.yaml)
 
-if [ "$ACTION" != cancel ]; then
+if [ "$ACTION" = create ] || [ "$ACTION" = invite ]; then
   [ -n "$ADDRESS" ] && [ -n "$SERVICES" ] || { echo "address and services are needed to invite"; exit 1; }
   echo "$EMAIL" | LC_ALL=C grep -Eq '^[^@[:space:]]+@[^@[:space:]]+\.[a-z]{2,}$' || { echo "email missing or invalid"; exit 1; }
   for s in $SERVICES; do
@@ -56,17 +58,40 @@ set_enabled() {
 
 gid=$(group_id)
 
-if [ "$ACTION" = cancel ]; then
-  [ -n "$gid" ] || { echo "no group $CUSTOMER, nothing to lock"; exit 0; }
-  count=0
-  for id in $(api GET "/groups/$gid/members?max=1000" | jq -r '.[].id'); do
-    set_enabled "$id" false
-    api POST "/users/$id/logout"
-    count=$((count + 1))
-  done
-  echo "locked $count users of $CUSTOMER" | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
-  exit 0
-fi
+members() {
+  api GET "/groups/$gid/members?max=1000" | jq -r '.[].id'
+}
+
+case $ACTION in
+  cancel|resume)
+    [ -n "$gid" ] || { echo "no group $CUSTOMER, nothing to change"; exit 0; }
+    enable=true
+    [ "$ACTION" = cancel ] && enable=false
+    count=0
+    for id in $(members); do
+      set_enabled "$id" "$enable"
+      [ "$enable" = true ] || api POST "/users/$id/logout"
+      count=$((count + 1))
+    done
+    echo "$ACTION: $count users of $CUSTOMER, enabled=$enable" | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
+    exit 0
+    ;;
+  delete)
+    [ -n "$gid" ] || { echo "no group $CUSTOMER, nothing to delete"; exit 0; }
+    deleted=0 kept=0
+    for id in $(members); do
+      if [ "$(api GET "/users/$id/groups" | jq 'length')" -le 1 ]; then
+        api DELETE "/users/$id"
+        deleted=$((deleted + 1))
+      else
+        api DELETE "/users/$id/groups/$gid"
+        kept=$((kept + 1))
+      fi
+    done
+    echo "delete: $deleted users of $CUSTOMER removed, $kept kept for other customers" | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
+    exit 0
+    ;;
+esac
 
 [ -n "$gid" ] || { echo "group $CUSTOMER missing in realm $REALM, is the order synced?"; exit 1; }
 user_id() {

@@ -7,20 +7,29 @@ kubectl get configuration,configurationrevision,functions
 kubectl get customers,customernamespaces,n8ninstances,postgresdatabases
 ```
 
-## Bestellen und kündigen
+## Lebenszyklus
 
-GitHub → Actions → `customer` → Run workflow: `create`, `cancel` oder `invite`, Kundennummer (`k100`), Dienste (`n8n`), Adresse, E-Mail des Kunden.
+```
+ create ──► aktiv ──cancel──► gekündigt ──30 Tage / delete──► gelöscht
+              ▲                  │
+              └──────resume──────┘
+```
 
-- Je Umgebung ein PR im privaten Repo. staging wird sofort gemergt, prod von Hand.
-- Nach dem Merge die App `customers` in Argo CD syncen.
-- Kündigen löscht Namespace und Instanz. Datenbank, Rolle und die Schlüssel in OpenBao bleiben.
+GitHub → Actions → `customer` → Run workflow: Aktion, Kundennummer (`k100`), Dienste (`n8n`), Adresse und E-Mail (nur bei `create` und `invite`).
+
+- `create`: Bestellung, App, Login, Einladung.
+- `cancel`: `spec.suspended: true` und `suspended-at` in der Bestellung. App, Routen, Client, DNS und Check verschwinden, Namespace, Datenbank, Schlüssel und Gruppe bleiben, Nutzer werden gesperrt.
+- `resume`: macht `cancel` rückgängig, Nutzer werden entsperrt, die Daten sind wieder da.
+- `delete`: entfernt die Bestellung. Datenbank, Rolle, Schlüssel in OpenBao, Gruppe, Nutzer und DNS-Eintrag werden gelöscht. Zurück nur aus dem CNPG-Backup.
+- `customer-purge` läuft täglich 05:30 und löscht Kunden, die seit 30 Tagen gekündigt sind. Seine PRs mergen sich selbst.
+- Je Umgebung ein PR im privaten Repo. staging wird sofort gemergt, prod von Hand. Danach die App `customers` in Argo CD syncen.
 
 ## Einladung
 
 Mit einer E-Mail-Adresse legt der Job `access` (läuft auf dem Runner im Cluster) im Realm `customers` die Gruppe `<kunde>` und den Nutzer an und lässt Keycloak die Mail zum Einrichten von Passwort und TOTP schicken. Der Link gilt 72 Stunden.
 
 - Der Job wartet bis zu 30 Minuten, bis `https://<adresse>-<dienst>.<domain>/healthz` antwortet. Ist prod bis dahin nicht gemergt und gesynct, den Workflow mit `invite` erneut starten. `invite` verschickt auch eine neue Mail, wenn der Link abgelaufen ist.
-- `cancel` sperrt alle Nutzer der Gruppe und meldet sie ab. Gruppe und Nutzer bleiben erhalten.
+- `cancel` sperrt alle Nutzer der Gruppe und meldet sie ab, `resume` entsperrt sie, `delete` löscht sie. Gehört ein Nutzer noch zu einem anderen Kunden, wird er nur aus der Gruppe genommen.
 - Die Adresse steht nur in der Workflow-Eingabe und in Keycloak, nicht im Repo.
 
 ```bash
@@ -88,13 +97,12 @@ kubectl describe configurationrevision
 - Pull-Fehler → `ghcr.io/tim275/talos-homelab/crossplane-apis` erreichbar und öffentlich?
 - `incompatible dependencies` → Function-Version in `overlays/<env>/functions.yaml` liegt unter der Mindestversion in `crossplane/crossplane.yaml`.
 
-## Daten endgültig löschen
-
-Erst nach der Kündigung und nur, wenn die Daten weg dürfen.
+## Löschen hängt
 
 ```bash
-primary=$(kubectl -n postgres get pod -l cnpg.io/instanceRole=primary -o name)
-kubectl -n postgres exec -it "$primary" -c postgres -- psql -c 'DROP DATABASE n8n_<kunde>' -c 'DROP ROLE n8n_<kunde>'
+kubectl get ns n8n-<kunde> -o jsonpath='{.status.conditions[*].message}'
+kubectl -n postgres get database,databaserole | grep <kunde>
 ```
 
-In OpenBao den Ordner `kv/customers/<kunde>/` löschen, darin liegen alle Schlüssel des Kunden.
+- PushSecret hängt → Store darf den Schlüssel nicht löschen, Policy `eso-customers` bzw. `eso` prüfen.
+- Datenbank bleibt → `kubectl -n postgres describe database n8n-<kunde>`, offene Verbindungen beenden.

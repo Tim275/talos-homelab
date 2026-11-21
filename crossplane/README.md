@@ -47,7 +47,8 @@ spec:
 ```
 
 Hosts are `<address>-<service>.<domain>`. The address is a name the customer picks, never the customer number.
-Deleting an order removes everything except databases and the secrets in OpenBao.
+`spec.suspended: true` (workflow `cancel`) stops the services and keeps database and keys. Deleting the order removes
+everything, including database, role, keys, Keycloak group and DNS record.
 
 ## Public access
 
