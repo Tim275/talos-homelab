@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: create, cancel (keeps the databases) or invite (send the invitation again)
+        description: create, cancel (stops, keeps data 30 days), resume, delete (removes all data) or invite (mail again)
         type: choice
-        options: [create, cancel, invite]
+        options: [create, cancel, resume, delete, invite]
         default: create
       customer:
         description: Customer number, 1-5 letters then 2-12 digits, e.g. k100
@@ -24,6 +24,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: customer
+  cancel-in-progress: false
 
 jobs:
   order:
@@ -58,7 +62,7 @@ jobs:
 
   access:
     needs: order
-    if: ${{ !cancelled() && needs.order.result != 'failure' && (inputs.action == 'cancel' || inputs.email != '') }}
+    if: ${{ !cancelled() && needs.order.result != 'failure' && (inputs.action != 'create' || inputs.email != '') && (inputs.action != 'invite' || inputs.email != '') }}
     runs-on: tofu
     timeout-minutes: 40
     steps:

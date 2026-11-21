@@ -28,9 +28,13 @@ case $ACTION in
       ! grep -rlx "  address: $ADDRESS" "$(orders "$e")" > /dev/null || { echo "address $ADDRESS is taken in $e"; exit 1; }
     done
     ;;
-  cancel)
+  cancel|resume|delete)
+    want=true
+    [ "$ACTION" = cancel ] && want=false
     for e in $environments; do
-      [ -e "$(orders "$e")/$file" ] || { echo "$CUSTOMER does not exist in $e"; exit 1; }
+      f=$(orders "$e")/$file
+      [ -e "$f" ] || { echo "$CUSTOMER does not exist in $e"; exit 1; }
+      [ "$ACTION" = delete ] || [ "$(yq '.spec.suspended // false' "$f")" = "$want" ] || { echo "$CUSTOMER cannot $ACTION in $e, suspended is $(yq '.spec.suspended // false' "$f")"; exit 1; }
     done
     ;;
   *) echo "unknown action: $ACTION"; exit 1 ;;
@@ -38,14 +42,23 @@ esac
 
 apply_change() {
   dir=$(orders "$1")
-  if [ "$ACTION" = create ]; then
-    printf 'apiVersion: customers.tim275.github.io/v1alpha1\nkind: Customer\nmetadata:\n  name: %s\nspec:\n  address: %s\n' "$CUSTOMER" "$ADDRESS" > "$dir/$file"
-    S=$SERVICES yq -i '.spec.services = (strenv(S) | split("\n"))' "$dir/$file"
-    F=$file yq -i '.resources = ((.resources // []) + [strenv(F)] | unique | sort)' "$dir/kustomization.yaml"
-  else
-    rm "$dir/$file"
-    F=$file yq -i 'del(.resources[] | select(. == strenv(F)))' "$dir/kustomization.yaml"
-  fi
+  case $ACTION in
+    create)
+      printf 'apiVersion: customers.tim275.github.io/v1alpha1\nkind: Customer\nmetadata:\n  name: %s\nspec:\n  address: %s\n' "$CUSTOMER" "$ADDRESS" > "$dir/$file"
+      S=$SERVICES yq -i '.spec.services = (strenv(S) | split("\n"))' "$dir/$file"
+      F=$file yq -i '.resources = ((.resources // []) + [strenv(F)] | unique | sort)' "$dir/kustomization.yaml"
+      ;;
+    cancel)
+      D=$(date -u +%Y-%m-%d) yq -i '.spec.suspended = true | .metadata.annotations."customers.tim275.github.io/suspended-at" = strenv(D)' "$dir/$file"
+      ;;
+    resume)
+      yq -i 'del(.spec.suspended) | del(.metadata.annotations."customers.tim275.github.io/suspended-at") | del(.metadata.annotations | select(length == 0))' "$dir/$file"
+      ;;
+    delete)
+      rm "$dir/$file"
+      F=$file yq -i 'del(.resources[] | select(. == strenv(F)))' "$dir/kustomization.yaml"
+      ;;
+  esac
 }
 
 repo=Tim275/talos-homelab-customers
@@ -59,6 +72,9 @@ for e in $environments; do
   git -C orders push -q origin "HEAD:refs/heads/$branch"
   if [ "$e" = staging ]; then
     url=$(gh pr create -R "$repo" --base main --head "$branch" --title "$ACTION $CUSTOMER ($e)" --body "Merged right away, staging has no checks.")
+    gh pr merge -R "$repo" --squash "$url"
+  elif [ "${AUTOMERGE:-}" = true ]; then
+    url=$(gh pr create -R "$repo" --base main --head "$branch" --title "$ACTION $CUSTOMER ($e)" --body "Retention of 30 days is over, merged by the purge run.")
     gh pr merge -R "$repo" --squash "$url"
   else
     gh pr create -R "$repo" --base main --head "$branch" --title "$ACTION $CUSTOMER ($e)" --body "Merge by hand once staging runs, then sync customers in Argo CD."
