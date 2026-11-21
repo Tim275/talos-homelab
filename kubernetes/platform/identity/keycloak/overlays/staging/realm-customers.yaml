@@ -1,7 +1,7 @@
 realm: customers
 displayName: "Customers"
 attributes:
-  frontendUrl: "https://iam.staging.timourhomelab.org"
+  frontendUrl: "https://login.staging.timourhomelab.org"
 enabled: true
 sslRequired: external
 registrationAllowed: false
@@ -117,12 +117,56 @@ authenticationFlows:
         priority: 20
         authenticatorFlow: false
         userSetupAllowed: false
+defaultDefaultClientScopes:
+  - basic
+  - acr
+  - web-origins
+  - roles
+  - profile
+  - email
+  - groups
+clientScopes:
+  - name: groups
+    description: "Group membership (mapped to 'groups' JWT claim)"
+    protocol: openid-connect
+    attributes:
+      include.in.token.scope: "true"
+      display.on.consent.screen: "true"
+      consent.screen.text: "Group membership"
+    protocolMappers:
+      - name: groups
+        protocol: openid-connect
+        protocolMapper: oidc-group-membership-mapper
+        consentRequired: false
+        config:
+          claim.name: "groups"
+          full.path: "false"
+          id.token.claim: "true"
+          access.token.claim: "true"
+          userinfo.token.claim: "true"
 clients:
   - clientId: customer-invite
     enabled: true
     protocol: openid-connect
     publicClient: false
     secret: $(CUSTOMER_INVITE_SECRET)
+    standardFlowEnabled: false
+    directAccessGrantsEnabled: false
+    serviceAccountsEnabled: true
+    defaultClientScopes:
+      - acr
+      - basic
+      - email
+      - profile
+      - roles
+      - service_account
+      - web-origins
+      - kc-admin-api
+  - clientId: crossplane
+    enabled: true
+    protocol: openid-connect
+    publicClient: false
+    secret: $(CROSSPLANE_CLIENT_SECRET)
     standardFlowEnabled: false
     directAccessGrantsEnabled: false
     serviceAccountsEnabled: true
@@ -145,3 +189,14 @@ users:
         - view-users
         - query-users
         - query-groups
+  - username: service-account-crossplane
+    enabled: true
+    serviceAccountClientId: crossplane
+    clientRoles:
+      realm-management:
+        - manage-clients
+        - view-clients
+        - manage-users
+        - query-users
+        - query-groups
+        - view-realm

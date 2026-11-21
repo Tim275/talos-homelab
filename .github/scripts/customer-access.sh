@@ -4,7 +4,7 @@ set -eu
 
 CUSTOMER=$(printf '%s' "$CUSTOMER" | tr '[:upper:]' '[:lower:]')
 echo "$CUSTOMER" | LC_ALL=C grep -Eq '^[a-z]{1,5}[0-9]{2,12}$' || { echo "customer number invalid: $CUSTOMER"; exit 1; }
-ADDRESS=$(printf '%s' "${ADDRESS:-$CUSTOMER}" | tr '[:upper:]' '[:lower:]')
+ADDRESS=$(printf '%s' "${ADDRESS:-}" | tr '[:upper:]' '[:lower:]')
 echo "$ADDRESS" | LC_ALL=C grep -Eq '^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$' || { echo "address invalid: $ADDRESS"; exit 1; }
 SERVICES=$(printf '%s' "${SERVICES:-}" | tr '[:upper:],' '[:lower:] ' | xargs -n1 | sort -u)
 # the address never appears in the workflow file or its env, so the log cannot print it
@@ -16,9 +16,10 @@ REALM=customers
 domain=$(sed -n 's/^  domain: //p' kubernetes/platform/automation/crossplane/overlays/prod/environment.yaml)
 
 if [ "$ACTION" != cancel ]; then
+  [ -n "$ADDRESS" ] && [ -n "$SERVICES" ] || { echo "address and services are needed to invite"; exit 1; }
   echo "$EMAIL" | LC_ALL=C grep -Eq '^[^@[:space:]]+@[^@[:space:]]+\.[a-z]{2,}$' || { echo "email missing or invalid"; exit 1; }
   for s in $SERVICES; do
-    url=https://$s-$ADDRESS.$domain/healthz
+    url=https://$ADDRESS-$s.$domain/healthz
     tries=0
     until curl -sf -o /dev/null --max-time 10 "$url"; do
       tries=$((tries + 1))
@@ -67,10 +68,7 @@ if [ "$ACTION" = cancel ]; then
   exit 0
 fi
 
-if [ -z "$gid" ]; then
-  api POST /groups -d "$(jq -cn --arg n "$CUSTOMER" '{name: $n}')"
-  gid=$(group_id)
-fi
+[ -n "$gid" ] || { echo "group $CUSTOMER missing in realm $REALM, is the order synced?"; exit 1; }
 user_id() {
   api GET /users -G --data-urlencode "email=$EMAIL" --data-urlencode exact=true | jq -r '.[0].id // empty'
 }
@@ -82,6 +80,7 @@ else
   set_enabled "$uid" true
 fi
 api PUT "/users/$uid/groups/$gid"
-redirect=$(jq -rn --arg u "https://iam.$domain/realms/$REALM/account/" '$u | @uri')
-api PUT "/users/$uid/execute-actions-email?client_id=account-console&redirect_uri=$redirect" -d '["VERIFY_EMAIL","UPDATE_PASSWORD","CONFIGURE_TOTP"]'
+service=$(printf '%s\n' $SERVICES | head -1)
+redirect=$(jq -rn --arg u "https://$ADDRESS-$service.$domain/" '$u | @uri')
+api PUT "/users/$uid/execute-actions-email?client_id=$service-$CUSTOMER&redirect_uri=$redirect" -d '["VERIFY_EMAIL","UPDATE_PASSWORD","CONFIGURE_TOTP"]'
 echo "invitation sent for $CUSTOMER" | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"

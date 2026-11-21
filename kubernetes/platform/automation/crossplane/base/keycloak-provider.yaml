@@ -1,0 +1,47 @@
+apiVersion: apiextensions.crossplane.io/v1alpha1
+kind: ManagedResourceActivationPolicy
+metadata:
+  name: keycloak
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  activate:
+    - clients.openidclient.keycloak.m.crossplane.io
+    - groups.group.keycloak.m.crossplane.io
+---
+apiVersion: keycloak.m.crossplane.io/v1beta1
+kind: ClusterProviderConfig
+metadata:
+  name: default
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  credentials:
+    source: Secret
+    secretRef:
+      name: keycloak-provider-credentials
+      namespace: crossplane-system
+      key: credentials
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: keycloak-provider-credentials
+  namespace: crossplane-system
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao
+    kind: ClusterSecretStore
+  target:
+    name: keycloak-provider-credentials
+    template:
+      engineVersion: v2
+      data:
+        credentials: '{"client_id":"crossplane","client_secret":"{{ .clientSecret }}","url":"http://keycloak-service.keycloak.svc.cluster.local:8080","realm":"customers"}'
+  data:
+    - secretKey: clientSecret
+      remoteRef:
+        key: platform/keycloak/keycloak-crossplane-client-secret
+        property: clientSecret

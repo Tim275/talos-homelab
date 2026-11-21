@@ -71,7 +71,8 @@ spec:
   services: [n8n]
 ```
 
-Crossplane builds namespace, database, secrets, deployment and route (`n8n-lab.<domain>`). Orders come from the
+Crossplane builds namespace, database, secrets, deployment, Keycloak client and a public route (`lab-n8n.<domain>`)
+behind the customer login. Orders come from the
 `customer` workflow: one PR per environment, staging merges itself, prod waits for review. Once the service
 answers, Keycloak mails the customer an invitation to the realm `customers`. The APIs ship as a
 versioned package, see [crossplane/README.md](crossplane/README.md) and the [runbook](docs/runbooks/customers.md).

@@ -19,7 +19,7 @@ GitHub → Actions → `customer` → Run workflow: `create`, `cancel` oder `inv
 
 Mit einer E-Mail-Adresse legt der Job `access` (läuft auf dem Runner im Cluster) im Realm `customers` die Gruppe `<kunde>` und den Nutzer an und lässt Keycloak die Mail zum Einrichten von Passwort und TOTP schicken. Der Link gilt 72 Stunden.
 
-- Der Job wartet bis zu 30 Minuten, bis `https://<dienst>-<adresse>.<domain>/healthz` antwortet. Ist prod bis dahin nicht gemergt und gesynct, den Workflow mit `invite` erneut starten. `invite` verschickt auch eine neue Mail, wenn der Link abgelaufen ist.
+- Der Job wartet bis zu 30 Minuten, bis `https://<adresse>-<dienst>.<domain>/healthz` antwortet. Ist prod bis dahin nicht gemergt und gesynct, den Workflow mit `invite` erneut starten. `invite` verschickt auch eine neue Mail, wenn der Link abgelaufen ist.
 - `cancel` sperrt alle Nutzer der Gruppe und meldet sie ab. Gruppe und Nutzer bleiben erhalten.
 - Die Adresse steht nur in der Workflow-Eingabe und in Keycloak, nicht im Repo.
 
@@ -33,6 +33,20 @@ kubectl -n keycloak get secret keycloak-customer-invite-client-secret
 - Mail kommt nicht an → Keycloak-Log nach `EmailException` durchsuchen, Zugang in `kv/platform/keycloak/keycloak-smtp`.
 
 Schlüssel liegen unter `kv/customers/<kunde>/<dienst>/`, zum Beispiel `kv/customers/k100/n8n/postgres` und `kv/customers/k100/n8n/encryption-key`. Kunden-Namespaces lesen nur über den Store `openbao-customers`, dessen Rolle nur `kv/customers/*` sieht. Den Plattform-Store `openbao` können sie nicht benutzen.
+
+## Kunde kommt nicht an seine App
+
+Weg: Cloudflare → Tunnel → Gateway → Login auf `login.<domain>` (Realm `customers`) → App. `/webhook/` und `/form/` gehen ohne Login.
+
+```bash
+kubectl -n n8n-<kunde> get securitypolicy,httproute,dnsendpoint,client.openidclient.keycloak.m.crossplane.io
+kubectl -n crossplane-system get group.group.keycloak.m.crossplane.io <kunde>
+dig +short <adresse>-n8n.<domain>
+```
+
+- Name löst nicht auf → DNSEndpoint fehlt oder external-dns schreibt nicht: `kubectl -n external-dns logs deploy/external-dns | grep <adresse>`.
+- 403 nach dem Login → Nutzer ist nicht in der Gruppe `<kunde>`, Workflow mit `invite` erneut starten.
+- Login-Seite meldet „Invalid redirect uri“ → Client `n8n-<kunde>` nicht `Synced`, `kubectl describe` am Client, Zugang des Providers in `crossplane-system/keycloak-provider-credentials`.
 
 ## Customer bleibt nicht Ready
 

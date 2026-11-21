@@ -4,8 +4,11 @@ set -eu
 
 CUSTOMER=$(printf '%s' "$CUSTOMER" | tr '[:upper:]' '[:lower:]')
 echo "$CUSTOMER" | LC_ALL=C grep -Eq '^[a-z]{1,5}[0-9]{2,12}$' || { echo "customer number invalid: $CUSTOMER"; exit 1; }
-ADDRESS=$(printf '%s' "${ADDRESS:-$CUSTOMER}" | tr '[:upper:]' '[:lower:]')
-echo "$ADDRESS" | LC_ALL=C grep -Eq '^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$' || { echo "address invalid: $ADDRESS"; exit 1; }
+ADDRESS=$(printf '%s' "${ADDRESS:-}" | tr '[:upper:]' '[:lower:]')
+if [ "$ACTION" = create ]; then
+  echo "$ADDRESS" | LC_ALL=C grep -Eq '^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$' || { echo "address invalid or missing: $ADDRESS"; exit 1; }
+  ! echo "$ADDRESS" | LC_ALL=C grep -Eq '^[a-z]{1,5}[0-9]{2,12}$' || { echo "address must be a name, not a customer number"; exit 1; }
+fi
 SERVICES=$(printf '%s' "${SERVICES:-}" | tr '[:upper:],' '[:lower:] ' | xargs -n1 | sort -u)
 allowed=$(yq '.spec.versions[0].schema.openAPIV3Schema.properties.spec.properties.services.items.enum[]' crossplane/apis/customer/definition.yaml)
 hint="allowed: $(printf '%s' "$allowed" | tr '\n' ' ')"

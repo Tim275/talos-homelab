@@ -567,6 +567,38 @@ kind: ClusterRole
 metadata:
   labels:
     rbac.crossplane.io/aggregate-to-crossplane: "true"
+  name: crossplane:compose-keycloak
+rules:
+- apiGroups:
+  - openidclient.keycloak.m.crossplane.io
+  resources:
+  - clients
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - group.keycloak.m.crossplane.io
+  resources:
+  - groups
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    rbac.crossplane.io/aggregate-to-crossplane: "true"
   name: crossplane:compose-n8n-instance
 rules:
 - apiGroups:
@@ -610,6 +642,31 @@ rules:
   resources:
   - externalsecrets
   - pushsecrets
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - gateway.envoyproxy.io
+  resources:
+  - securitypolicies
+  - backendtrafficpolicies
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - externaldns.k8s.io
+  resources:
+  - dnsendpoints
   verbs:
   - get
   - list
@@ -1167,6 +1224,17 @@ spec:
           type: RuntimeDefault
       serviceAccountName: rbac-manager
 ---
+apiVersion: apiextensions.crossplane.io/v1alpha1
+kind: ManagedResourceActivationPolicy
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  name: keycloak
+spec:
+  activate:
+  - clients.openidclient.keycloak.m.crossplane.io
+  - groups.group.keycloak.m.crossplane.io
+---
 apiVersion: apiextensions.crossplane.io/v1beta1
 data:
   domain: staging.timourhomelab.org
@@ -1176,6 +1244,44 @@ metadata:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     argocd.argoproj.io/sync-wave: "5"
   name: customers
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: keycloak-provider-credentials
+  namespace: crossplane-system
+spec:
+  data:
+  - remoteRef:
+      key: platform/keycloak/keycloak-crossplane-client-secret
+      property: clientSecret
+    secretKey: clientSecret
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: openbao
+  target:
+    name: keycloak-provider-credentials
+    template:
+      data:
+        credentials: '{"client_id":"crossplane","client_secret":"{{ .clientSecret
+          }}","url":"http://keycloak-service.keycloak.svc.cluster.local:8080","realm":"customers"}'
+      engineVersion: v2
+---
+apiVersion: keycloak.m.crossplane.io/v1beta1
+kind: ClusterProviderConfig
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "6"
+  name: default
+spec:
+  credentials:
+    secretRef:
+      key: credentials
+      name: keycloak-provider-credentials
+      namespace: crossplane-system
+    source: Secret
 ---
 apiVersion: pkg.crossplane.io/v1
 kind: Configuration
@@ -1216,3 +1322,13 @@ metadata:
   name: function-go-templating
 spec:
   package: xpkg.crossplane.io/crossplane-contrib/function-go-templating:v0.13.2
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "5"
+  name: provider-keycloak
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/provider-keycloak:v3.2.4
