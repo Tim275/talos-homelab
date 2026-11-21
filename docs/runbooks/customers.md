@@ -1,6 +1,6 @@
 # Kunden
 
-Bestellungen liegen in `kubernetes/customers/<env>/`, die APIs kommen als Paket `crossplane-apis` (siehe `crossplane/README.md`).
+Bestellungen liegen im privaten Repo `Tim275/talos-homelab-customers` unter `<env>/`, Argo CD liest es mit einem Nur-Lese-Schlüssel (`kv/platform/argocd/customers-repo`). Die APIs kommen als Paket `crossplane-apis` (siehe `crossplane/README.md`).
 
 ```bash
 kubectl get configuration,configurationrevision,functions
@@ -11,7 +11,7 @@ kubectl get customers,customernamespaces,n8ninstances,postgresdatabases
 
 GitHub → Actions → `customer` → Run workflow: `create`, `cancel` oder `invite`, Kundennummer (`k100`), Dienste (`n8n`), Adresse, E-Mail des Kunden.
 
-- Je Umgebung ein PR. staging merged sich selbst, prod von Hand.
+- Je Umgebung ein PR im privaten Repo. staging wird sofort gemergt, prod von Hand.
 - Nach dem Merge die App `customers` in Argo CD syncen.
 - Kündigen löscht Namespace und Instanz. Datenbank, Rolle und die Schlüssel in OpenBao bleiben.
 
