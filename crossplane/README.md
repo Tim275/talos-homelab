@@ -46,11 +46,22 @@ spec:
   services: [n8n]
 ```
 
-Hosts are `<service>-<address>.<domain>`. Deleting an order removes everything except databases and the
-secrets in OpenBao.
+Hosts are `<address>-<service>.<domain>`. The address is a name the customer picks, never the customer number.
+Deleting an order removes everything except databases and the secrets in OpenBao.
 
-With an e-mail address the workflow also creates the customer's group and user in the Keycloak realm
-`customers` and sends the invitation. The address never lands in Git.
+## Public access
+
+```
+internet ─► Cloudflare ─► tunnel ─► gateway ─► login (Keycloak realm customers) ─► service
+                                          └──► /webhook/, /form/ without login
+```
+
+- DNS: each service gets a `DNSEndpoint` (CNAME to `edge.target` of the EnvironmentConfig), external-dns writes it.
+  Switching away from the tunnel means changing `edge.target` and `edge.proxied`, nothing in the compositions.
+- Login: `login.<domain>` serves only the realm `customers`. Every Customer gets a Keycloak group, every service its
+  own client (provider-keycloak), and the gateway only lets in members of that customer's group.
+- The workflow creates the user, adds them to the group and lets Keycloak mail the invitation. The e-mail address
+  never lands in Git.
 
 ## Isolation
 
@@ -69,6 +80,7 @@ Secrets of a service live in `kv/customers/<customer>/<service>/`, for n8n `post
 1. `apis/<name>instance/definition.yaml` and `composition.yaml` with a `CustomerNamespace`, plus `examples/<name>instance.yaml`
 2. service name in the `services` enum of `apis/customer/definition.yaml` and in `$kinds` of `apis/customer/composition.yaml`
 3. ClusterRole for the composed kinds in `kubernetes/platform/automation/crossplane/base/rbac-<name>instance.yaml`
-4. raise the minor version in `VERSION`
+4. for a web UI: Keycloak `Client`, `SecurityPolicy`, public routes and `DNSEndpoint` as in `apis/n8ninstance`
+5. raise the minor version in `VERSION`
 
 Settings a service needs go into new optional fields, existing orders keep working.

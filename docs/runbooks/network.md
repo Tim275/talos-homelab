@@ -1,6 +1,6 @@
 # Netzwerk
 
-Öffentlich: Cloudflare → cloudflared (ns `cloudflared`) → Envoy Gateway (ns `gateway`) → App.
+Öffentlich: Cloudflare → cloudflared (ns `cloudflared`) → Envoy Gateway (ns `gateway`) → App. Feste Hosts stehen in `cloudflared/overlays/prod/config.yaml`, alles andere mit öffentlichem CNAME auf den Tunnel (Kunden-Apps über `DNSEndpoint`, `login.`) läuft über die letzte Regel zum Gateway. Interne Hosts zeigen öffentlich auf die LAN-IP und erreichen den Tunnel nie.
 Intern: Cilium, Istio Ambient (ns `istio-system`), NetBird für den VPN-Zugang.
 
 ## HomelabEdgeDown
