@@ -5,7 +5,7 @@ set -eu
 CUSTOMER=$(printf '%s' "$CUSTOMER" | tr '[:upper:]' '[:lower:]')
 echo "$CUSTOMER" | LC_ALL=C grep -Eq '^[a-z]{1,5}[0-9]{2,12}$' || { echo "customer number invalid: $CUSTOMER"; exit 1; }
 ADDRESS=$(printf '%s' "${ADDRESS:-}" | tr '[:upper:]' '[:lower:]')
-echo "$ADDRESS" | LC_ALL=C grep -Eq '^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$' || { echo "address invalid: $ADDRESS"; exit 1; }
+[ "$ACTION" = cancel ] || echo "$ADDRESS" | LC_ALL=C grep -Eq '^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$' || { echo "address invalid: $ADDRESS"; exit 1; }
 SERVICES=$(printf '%s' "${SERVICES:-}" | tr '[:upper:],' '[:lower:] ' | xargs -n1 | sort -u)
 # the address never appears in the workflow file or its env, so the log cannot print it
 EMAIL=$(jq -r '.inputs.email // ""' "$GITHUB_EVENT_PATH" | tr '[:upper:]' '[:lower:]')
