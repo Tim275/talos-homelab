@@ -1,16 +1,55 @@
-# tofu
+# OpenTofu
 
-- `stacks/`: ein Root-Modul je State. `cluster` (Proxmox-VMs, Talos, OpenBao-Seed), `proxmox` (Hosts, Storages, Tokens; nur lokal mit root@pam), `netbird`, `uptime-kuma`, `harbor` (Projekte, Robots, Garbage Collection), `state` (das Azure-Backend selbst).
-- `modules/`: Bausteine, die nur aus den Stacks heraus benutzt werden (`talos`, `openbao`).
+## Stacks
+One root module per state, each runs from its own folder. `modules/` holds the building blocks (`talos`, `openbao`, `rook-external`).
 
-Lokal braucht der Cluster-Stack in `stacks/cluster` die Startwerte `openbao_values.auto.tfvars`, den Seal-Key `keys/seal.key` und die Ceph-Zugänge `rook_external.auto.tfvars` (`mise run pve-rook-export`). Alle drei kommen nie ins Repo, ohne sie bricht `tofu plan` ab.
+```
+cluster      Proxmox VMs, Talos, OpenBao seed
+proxmox      hosts, storages, tokens (local only, needs root@pam)
+netbird
+uptime-kuma
+harbor       projects, robots, garbage collection
+state        the Azure backend itself
+```
 
-Der Remote-State ist mit OpenTofu State Encryption (AES-GCM, PBKDF2) verschlüsselt, eine Passphrase je Stack. Lokal: `export TF_ENCRYPTION="$(cat ~/.homelab/tofu-encryption/<stack>.hcl)"`, in der CI die Secrets `TF_ENCRYPTION_CLUSTER`, `TF_ENCRYPTION_NETBIRD`, `TF_ENCRYPTION_UPTIME_KUMA`, `TF_ENCRYPTION_HARBOR` und `TF_ENCRYPTION_STATE`. Ohne Schlüssel lässt sich der State nicht lesen, die Passphrasen gehören zusätzlich in den Passwortmanager.
+```bash
+cd tofu/stacks/<stack>
+tofu init
+tofu plan
+```
 
-Jeder Stack läuft aus seinem Ordner. `netbird`, `uptime-kuma` und `harbor` wendet die CI nach dem Merge an, `cluster` die CI mit Freigabe, `state` plant die CI nur, Apply von Hand. Der Cluster-Stack immer mit `tofu apply -parallelism=1`.
+## Cluster stack
+Three files stay out of the repo, `tofu plan` fails without them:
+```bash
+ls tofu/stacks/cluster/openbao_values.auto.tfvars tofu/stacks/cluster/keys/seal.key tofu/stacks/cluster/rook_external.auto.tfvars
+mise run pve-rook-export
+tofu apply -parallelism=1
+```
+`pve-rook-export` writes `rook_external.auto.tfvars`.
 
-Plan und Drift melden sich mit einer Azure-App an, die den State nur lesen darf. Apply läuft mit einer eigenen App, die nur aus dem GitHub-Environment `tofu-apply` anmelden kann (Secret `AZURE_APPLY_CLIENT_ID`). Deshalb laufen Plan und Drift mit `-lock=false`. `tofu-drift` plant täglich um 06:00 UTC `netbird`, `state`, `uptime-kuma`, `harbor` und `cluster`. `proxmox` fehlt, der Stack braucht root@pam.
+## State encryption
+The remote state is encrypted with OpenTofu State Encryption (AES-GCM, PBKDF2), one passphrase per stack. Keep the passphrases in the password manager too.
+```bash
+export TF_ENCRYPTION="$(cat ~/.homelab/tofu-encryption/<stack>.hcl)"
+```
+CI reads `TF_ENCRYPTION_CLUSTER`, `TF_ENCRYPTION_NETBIRD`, `TF_ENCRYPTION_UPTIME_KUMA`, `TF_ENCRYPTION_HARBOR` and `TF_ENCRYPTION_STATE`.
 
-OpenTofu 1.13.9 steht in `mise.toml` und als `TOFU_VERSION` in den Workflows, die Downloads prüfen die SHA256-Summe.
+## CI
+`netbird`, `uptime-kuma` and `harbor` are applied after the merge (`tofu-cd`), `cluster` by `tofu-root-cd`. Every apply waits for approval in the GitHub environment `tofu-apply`. `state` is only planned, apply it by hand.
 
-Der State-Speicher (`stacks/state`) löscht alte State-Versionen nach 30 Tagen, hat ein Lock gegen Löschen (`state` an der Resource Group `rg-tofu-state`) und keinen Zugriff per Speicherschlüssel. Zum Löschen oder Ersetzen zuerst das Lock entfernen.
+Plan and drift sign in with an Azure app that can only read the state, so they run with `-lock=false`. Apply uses its own app that can only sign in from the environment `tofu-apply` (secret `AZURE_APPLY_CLIENT_ID`).
+
+## Drift
+Every day at 06:00 UTC `tofu-drift` plans `netbird`, `state`, `uptime-kuma`, `harbor` and `cluster`. `proxmox` is left out, it needs root@pam.
+```bash
+gh workflow run tofu-drift.yml
+```
+
+## OpenTofu version
+1.13.9, in `mise.toml` and as `TOFU_VERSION` in the workflows. The downloads verify the SHA256 sum.
+
+## State storage
+`stacks/state` deletes old state versions after 30 days, locks the storage account against deletion (lock `state`) and allows no access with storage keys. Remove the lock before deleting or replacing it:
+```bash
+az lock delete --name state --resource-group rg-tofu-state --resource-name tofustatehomelab --resource-type Microsoft.Storage/storageAccounts
+```
