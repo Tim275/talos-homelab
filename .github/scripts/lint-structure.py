@@ -304,13 +304,14 @@ def main(path: str) -> int:
         if rel.parts[rel.parts.index(layer) - 1] in PROD_ONLY:
             continue
         docs = load(f) if f.suffix in (".yaml", ".yml") else []
-        if docs and all(d.get("kind") in ENV_EXEMPT_KINDS for d in docs):
-            continue
+        exempt = bool(docs) and all(d.get("kind") in ENV_EXEMPT_KINDS for d in docs)
         for i, line in enumerate(f.read_text().splitlines(), 1):
             if line.lstrip().startswith("#"):
                 continue
             code = re.sub(r"\s+#.*$", "", line)
             for what, rx in ENV_SPECIFIC.items():
+                if exempt and what != "hostname":
+                    continue
                 if rx.search(code):
                     err(f"{f.relative_to(repo)},line={i}", f"{what} in {'components' if 'components' in f.relative_to(root).parts else 'base'}, move it to the overlays")
 
