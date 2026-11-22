@@ -19,5 +19,9 @@ terraform {
 }
 
 provider "azurerm" {
-  features {}
+  features {
+    storage {
+      data_plane_available = false
+    }
+  }
 }
