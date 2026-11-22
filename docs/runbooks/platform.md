@@ -47,6 +47,7 @@ kubectl -n keycloak get keycloak keycloak -o jsonpath='{.status.conditions}'
 kubectl -n keycloak get pods -l app=keycloak
 ```
 
+- Der Rollout am 20.11. (drei Instanzen, Pods nacheinander neu gestartet) lief ohne 5xx am Gateway. Die beiden Ausfälle davor (15.11. und 19.11.) waren Einzelereignisse beim Datenbank-Umzug und bei einem Neustart.
 - Keycloak läuft über den PgBouncer im Transaktionsmodus. Das geht nur mit PgBouncer ab 1.21 und `max_prepared_statements` > 0 (Pooler `postgres-pooler`).
 
 ## N8NBurnRateFast
