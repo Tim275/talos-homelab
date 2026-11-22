@@ -53,6 +53,7 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
     ├── infrastructure/      what the cluster runs on: network, storage, security, monitoring, cluster
     ├── platform/            what teams and apps consume: identity, observability (dashboards, logs, traces), data, delivery, automation
     ├── apps/                self-hosted services: forgejo, uptime-kuma, pgadmin, homepage, n8n, excalidraw
+    ├── customers/           orders, one Customer per file and environment
     └── tenants/             one namespace, one AppProject, own repository: drova
 ```
 
@@ -72,7 +73,7 @@ spec:
 
 Crossplane builds namespace, database, secrets, deployment, Keycloak client and a public route (`lab-n8n.<domain>`)
 behind the customer login. Orders come from the
-`customer` workflow into a private orders repo: one PR per environment, staging merges right away, prod waits for review. Once the service
+`customer` workflow: one PR per environment, staging merges itself, prod waits for review. Once the service
 answers, Keycloak mails the customer an invitation to the realm `customers`. The APIs ship as a
 versioned package, see [crossplane/README.md](crossplane/README.md) and the [runbook](docs/runbooks/customers.md).
 

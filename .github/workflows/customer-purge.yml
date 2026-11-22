@@ -23,25 +23,15 @@ jobs:
     outputs:
       customers: ${{ steps.find.outputs.customers }}
     steps:
-      - uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
-        id: app
-        with:
-          client-id: ${{ vars.CUSTOMER_APP_CLIENT_ID }}
-          private-key: ${{ secrets.CUSTOMER_APP_PRIVATE_KEY }}
-          repositories: talos-homelab-customers
-          permission-contents: read
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          repository: Tim275/talos-homelab-customers
-          token: ${{ steps.app.outputs.token }}
-          path: orders
           persist-credentials: false
       - id: find
         env:
           DAYS: ${{ inputs.days || '30' }}
         run: |
           cutoff=$(date -u -d "$DAYS days ago" +%Y-%m-%d)
-          list=$(for f in orders/prod/*.yaml; do
+          list=$(for f in kubernetes/customers/prod/*.yaml; do
             [ "$(basename "$f")" = kustomization.yaml ] && continue
             at=$(yq '.metadata.annotations."customers.tim275.github.io/suspended-at" // ""' "$f")
             [ -n "$at" ] && [ "$(yq '.spec.suspended // false' "$f")" = true ] && [ ! "$at" \> "$cutoff" ] && yq '.metadata.name' "$f"
@@ -80,17 +70,12 @@ jobs:
         with:
           client-id: ${{ vars.CUSTOMER_APP_CLIENT_ID }}
           private-key: ${{ secrets.CUSTOMER_APP_PRIVATE_KEY }}
-          repositories: talos-homelab-customers
+          repositories: ${{ github.event.repository.name }}
           permission-contents: write
           permission-pull-requests: write
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          persist-credentials: false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          repository: Tim275/talos-homelab-customers
           token: ${{ steps.app.outputs.token }}
-          path: orders
       - run: .github/scripts/customer.sh
         env:
           ACTION: delete

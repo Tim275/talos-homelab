@@ -1,6 +1,6 @@
 # Kunden
 
-Bestellungen liegen im privaten Repo `Tim275/talos-homelab-customers` unter `<env>/`, Argo CD liest es mit einem Nur-Lese-Schlüssel (`kv/platform/argocd/customers-repo`). Die APIs kommen als Paket `crossplane-apis` (siehe `crossplane/README.md`).
+Bestellungen liegen in `kubernetes/customers/<env>/`, die APIs kommen als Paket `crossplane-apis` (siehe `crossplane/README.md`).
 
 ```bash
 kubectl get configuration,configurationrevision,functions
@@ -20,9 +20,9 @@ GitHub → Actions → `customer` → Run workflow: Aktion, Kundennummer (`k100`
 - `create`: Bestellung, App, Login, Einladung.
 - `cancel`: `spec.suspended: true` und `suspended-at` in der Bestellung. App, Routen, Client, DNS und Check verschwinden, Namespace, Datenbank, Schlüssel und Gruppe bleiben, Nutzer werden gesperrt.
 - `resume`: macht `cancel` rückgängig, Nutzer werden entsperrt, die Daten sind wieder da.
-- `delete`: wartet auf deine Freigabe (GitHub-Environment `customer-delete`, „Review deployments“ im Lauf), entfernt dann die Bestellung. Datenbank, Rolle, Schlüssel in OpenBao, Gruppe, Nutzer und DNS-Eintrag werden gelöscht. Zurück nur aus dem CNPG-Backup.
-- `customer-purge` läuft täglich 05:30 und löscht Kunden, die seit 30 Tagen gekündigt sind. Seine PRs mergen sich selbst.
-- Je Umgebung ein PR im privaten Repo. staging wird sofort gemergt, prod von Hand. Danach die App `customers` in Argo CD syncen.
+- `delete`: wartet auf deine Freigabe (GitHub-Environment `customer-delete`, „Review deployments“ im Lauf), entfernt dann die Bestellung. Datenbank, Rolle, Schlüssel in OpenBao, Gruppe, Nutzer und DNS-Eintrag werden gelöscht.
+- `customer-purge` läuft täglich 05:30 und löscht Kunden, die seit 30 Tagen gekündigt sind. Seine PRs mergen sich selbst, sobald die Checks durch sind.
+- Je Umgebung ein PR. staging merged sich selbst, prod von Hand. Danach die App `customers` in Argo CD syncen.
 
 ## Einladung
 
