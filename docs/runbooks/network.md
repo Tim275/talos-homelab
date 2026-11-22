@@ -125,7 +125,7 @@ ssh root@<host> systemctl restart netbird
 
 - Client verbunden, aber nichts erreichbar: `netbird networks ls` auf dem Client. Ausgewählt ist nicht dasselbe wie verfügbar.
 
-## NetBirdClientOffline
+## NetBird-Client auf dem Mac startet nicht
 
 Ein Laptop ist in NetBird getrennt, `netbird status` meldet `failed to connect to daemon` und `/var/run/netbird.sock` fehlt. Zu Hause fällt es nicht auf, das LAN reicht. Unterwegs sind die VPN-only-Dienste weg. Auf dem Mac meist nach einem Neustart.
 
