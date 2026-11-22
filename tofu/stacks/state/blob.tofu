@@ -23,10 +23,43 @@ resource "azurerm_storage_account" "state" {
   }
 
   allow_nested_items_to_be_public = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_storage_container" "tfstate" {
   name                  = "tfstate"
   storage_account_id    = azurerm_storage_account.state.id
   container_access_type = "private"
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "azurerm_storage_management_policy" "state" {
+  storage_account_id = azurerm_storage_account.state.id
+
+  rule {
+    name    = "old-versions"
+    enabled = true
+
+    filters {
+      blob_types = ["blockBlob"]
+    }
+
+    actions {
+      version {
+        delete_after_days_since_creation = 30
+      }
+    }
+  }
+}
+
+resource "azurerm_management_lock" "state" {
+  name       = "state"
+  scope      = azurerm_storage_account.state.id
+  lock_level = "CanNotDelete"
 }
