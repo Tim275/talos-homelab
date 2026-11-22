@@ -9,6 +9,7 @@ on:
       - "tofu/stacks/netbird/**"
       - "tofu/stacks/uptime-kuma/**"
       - "tofu/stacks/harbor/**"
+      - "tofu/stacks/state/**"
   push:
     branches: [main]
     paths:
@@ -69,8 +70,12 @@ jobs:
               ;;
           esac
 
+          MODULES=(netbird uptime-kuma harbor)
+          # state: nur plan, apply von Hand
+          if [ "$EVENT" = "pull_request" ]; then MODULES+=(state); fi
+
           LIST=""
-          for m in netbird uptime-kuma harbor; do
+          for m in "${MODULES[@]}"; do
             files=$(git diff --name-only "${RANGE[@]}" -- "tofu/stacks/$m/")
             [ -n "$files" ] || continue
             # ausserhalb von HCL kann '#' Nutzdaten sein (yaml, tftpl) — dort nicht filtern
@@ -92,9 +97,9 @@ jobs:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && needs.changes.outputs.matrix != '[]'
     name: plan (${{ matrix.module }})
     # uptime-kuma und harbor laufen auf dem in-cluster Runner (ARC scale set "tofu")
-    runs-on: ${{ matrix.module == 'netbird' && 'ubuntu-latest' || 'tofu' }}
+    runs-on: ${{ (matrix.module == 'netbird' || matrix.module == 'state') && 'ubuntu-latest' || 'tofu' }}
     env:
-      TF_ENCRYPTION: ${{ matrix.module == 'netbird' && secrets.TF_ENCRYPTION_NETBIRD || matrix.module == 'harbor' && secrets.TF_ENCRYPTION_HARBOR || secrets.TF_ENCRYPTION_UPTIME_KUMA }}
+      TF_ENCRYPTION: ${{ matrix.module == 'netbird' && secrets.TF_ENCRYPTION_NETBIRD || matrix.module == 'harbor' && secrets.TF_ENCRYPTION_HARBOR || matrix.module == 'state' && secrets.TF_ENCRYPTION_STATE || secrets.TF_ENCRYPTION_UPTIME_KUMA }}
     strategy:
       matrix:
         module: ${{ fromJSON(needs.changes.outputs.matrix) }}
