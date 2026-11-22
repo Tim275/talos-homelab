@@ -1,6 +1,6 @@
 name: tofu-drift
 
-# Nightly plan gegen netbird, state und cluster — faengt manuelle Aenderungen
+# Nightly plan gegen netbird, state, uptime-kuma, harbor und cluster — faengt manuelle Aenderungen
 # ausserhalb Git (Drift). Exit 2 = Drift -> Job faellt (sichtbar/notifiziert).
 
 on:
@@ -22,13 +22,13 @@ env:
 jobs:
   drift:
     name: drift (${{ matrix.module }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ (matrix.module == 'netbird' || matrix.module == 'state') && 'ubuntu-latest' || 'tofu' }}
     env:
-      TF_ENCRYPTION: ${{ matrix.module == 'state' && secrets.TF_ENCRYPTION_STATE || secrets.TF_ENCRYPTION_NETBIRD }}
+      TF_ENCRYPTION: ${{ matrix.module == 'netbird' && secrets.TF_ENCRYPTION_NETBIRD || matrix.module == 'harbor' && secrets.TF_ENCRYPTION_HARBOR || matrix.module == 'state' && secrets.TF_ENCRYPTION_STATE || secrets.TF_ENCRYPTION_UPTIME_KUMA }}
     strategy:
       fail-fast: false
       matrix:
-        module: [netbird, state]
+        module: [netbird, state, uptime-kuma, harbor]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -50,6 +50,8 @@ jobs:
           TF_VAR_publish_apex: true
           TF_VAR_netbird_api_token: ${{ secrets.NETBIRD_API_TOKEN }}
           TF_VAR_uptime_kuma_url: http://uptime-kuma.uptime-kuma.svc.cluster.local:3001
+          TF_VAR_harbor_url: http://harbor.harbor.svc.cluster.local
+          TF_VAR_harbor_password: ${{ secrets.HARBOR_ADMIN_PASSWORD }}
           TF_VAR_uptime_kuma_password: ${{ secrets.UPTIME_KUMA_PASSWORD }}
           TF_VAR_telegram_bot_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TF_VAR_slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
