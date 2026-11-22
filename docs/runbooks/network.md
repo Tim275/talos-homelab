@@ -123,7 +123,25 @@ ssh root@192.168.0.59 'systemctl status netbird --no-pager; netbird status'
 ssh root@<host> systemctl restart netbird
 ```
 
-- Client verbunden, aber nichts erreichbar: `netbird routes ls` auf dem Client. Ausgewählt ist nicht dasselbe wie verfügbar.
+- Client verbunden, aber nichts erreichbar: `netbird networks ls` auf dem Client. Ausgewählt ist nicht dasselbe wie verfügbar.
+
+## NetBirdClientOffline
+
+Ein Laptop ist in NetBird getrennt, `netbird status` meldet `failed to connect to daemon` und `/var/run/netbird.sock` fehlt. Zu Hause fällt es nicht auf, das LAN reicht. Unterwegs sind die VPN-only-Dienste weg. Auf dem Mac meist nach einem Neustart.
+
+```bash
+netbird status 2>&1 | tail -3
+launchctl print system/netbird | grep -E "state|pid"
+sfltool dumpbtm | grep -B4 -A8 "Identifier: 16.netbird" | grep Disposition
+```
+```promql
+netbird_peer_connection_status_by_name == 0
+```
+
+- `Could not find service "netbird"` und Disposition `disallowed` → macOS erlaubt den Hintergrunddienst nicht und startet ihn nach einem Neustart nicht mehr. Systemeinstellungen → Allgemein → Anmeldeobjekte und Erweiterungen → „Im Hintergrund erlauben“ → `netbird` einschalten.
+- Sofort starten: `sudo launchctl bootstrap system /Library/LaunchDaemons/netbird.plist`. Ohne die Freigabe hält das nur bis zum nächsten Neustart.
+- Viele Macs: Konfigurationsprofil `com.apple.servicemanagement` mit der Regel `TeamIdentifier` `TA739QLA7A` per MDM verteilen, dann entfällt die Abfrage. Ungetestet. NetBird beschreibt die [Verteilung per MDM](https://docs.netbird.io/manage/peers/mdm-deployment/macos-cli-pkg-deployment) mit dem signierten Paket.
+- Server prüfen: Der Peer steht im `netbird-exporter` als `netbird_peer_connection_status_by_name{connected="false"}`, die Routing-Peers dort als `true`.
 
 ## 403 ohne Inhalt
 
