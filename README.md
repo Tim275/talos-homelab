@@ -57,26 +57,6 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
     └── tenants/             one namespace, one AppProject, own repository: drova
 ```
 
-## 🧾 Customers
-
-A customer orders services instead of a set of manifests:
-
-```yaml
-apiVersion: customers.tim275.github.io/v1alpha1
-kind: Customer
-metadata:
-  name: k100
-spec:
-  address: lab
-  services: [n8n]
-```
-
-Crossplane builds namespace, database, secrets, deployment, Keycloak client and a public route (`lab-n8n.<domain>`)
-behind the customer login. Orders come from the
-`customer` workflow: one PR per environment, staging merges itself, prod waits for review. Once the service
-answers, Keycloak mails the customer an invitation to the realm `customers`. The APIs ship as a
-versioned package, see [crossplane/README.md](crossplane/README.md) and the [runbook](docs/runbooks/customers.md).
-
 ## 📦 Applications
 
 <table>
