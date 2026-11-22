@@ -125,6 +125,23 @@ ssh root@<host> systemctl restart netbird
 
 - Client verbunden, aber nichts erreichbar: `netbird routes ls` auf dem Client. Ausgewählt ist nicht dasselbe wie verfügbar.
 
+## 403 ohne Inhalt
+
+Eine Anfrage bekommt ein 403 ohne Text und die App sieht nichts davon. Das ist die WAF (Coraza mit den OWASP-Regeln) am Gateway. Sie lässt ohne Ausnahme nur `GET`, `HEAD`, `POST` und `OPTIONS` durch, `PUT`, `PATCH` und `DELETE` scheitern. Das trifft Oberflächen, die Daten ändern oder löschen.
+
+Im Zugriffslog des Gateways erkennt man es an Status 403, leeren `response_code_details` und 0 gesendeten Bytes. Ein 403 der App hat Details (`via_upstream`) und einen Inhalt.
+
+```bash
+curl -si -X DELETE https://<host>/<pfad> | head -1
+kubectl -n gateway logs -l app.kubernetes.io/component=proxy -c envoy --since=30m | grep '"method":"DELETE"' | grep '"response_code":403'
+```
+
+In Loki: `{namespace="gateway", container="envoy"} | json | response_code="403" | response_code_details="" | bytes_sent="0"`, gruppiert nach `_authority` und `method`.
+
+- Echte Anfrage blockiert → Ausnahme je Host in `kubernetes/infrastructure/network/gateway/overlays/prod/coraza-waf.yaml`: `setvar:tx.allowed_methods=…`, nächste freie Regel-ID nehmen. Vorhanden für `harbor` (1100020) und `openbao` (1100025).
+- Pfade wie `/.env`, `/.kube/config` oder `/phpinfo.php` → Scanner, die WAF arbeitet richtig.
+- Alarme: CorazaWAFDetectionSpike und CorazaWAFBlockingSpike.
+
 ## RateLimitServiceDown
 
 envoy-ratelimit (ns `gateway`) ist weg. Der Filter fällt offen aus, es greift kein Limit mehr, auch nicht auf den öffentlichen Routen.
