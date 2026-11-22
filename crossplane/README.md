@@ -34,7 +34,7 @@ Kinds of other operators (CNPG, External Secrets, Cilium, Gateway API) show up a
 
 ## Orders
 
-`<env>/<customer>.yaml` in the private repo `Tim275/talos-homelab-customers`, written by the `customer` workflow:
+`kubernetes/customers/<env>/<customer>.yaml`, written by the `customer` workflow:
 
 ```yaml
 apiVersion: customers.tim275.github.io/v1alpha1
