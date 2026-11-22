@@ -18,6 +18,7 @@ env:
   ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
   ARM_USE_AZUREAD: true
   ARM_USE_OIDC: true
+  TOFU_VERSION: v1.13.9 # renovate: github-releases=opentofu/opentofu
 
 jobs:
   drift:
@@ -79,7 +80,12 @@ jobs:
 
       - name: install opentofu
         run: |
-          curl -sSLo /tmp/tofu.tar.gz https://github.com/opentofu/opentofu/releases/download/v1.12.3/tofu_1.12.3_linux_amd64.tar.gz
+          V="${TOFU_VERSION#v}"
+          cd /tmp
+          curl -sSfLO "https://github.com/opentofu/opentofu/releases/download/v$V/tofu_${V}_linux_amd64.tar.gz"
+          curl -sSfL "https://github.com/opentofu/opentofu/releases/download/v$V/tofu_${V}_SHA256SUMS" | grep " tofu_${V}_linux_amd64.tar.gz$" | sha256sum -c -
+          mv "tofu_${V}_linux_amd64.tar.gz" /tmp/tofu.tar.gz
+          cd - >/dev/null
           mkdir -p "$HOME/.local/bin"
           tar -xzf /tmp/tofu.tar.gz -C "$HOME/.local/bin" tofu
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
