@@ -7,7 +7,7 @@ talos_cluster_config = {
   proxmox_cluster               = "homelab"
   kubernetes_version            = "v1.37.2" # renovate: docker=registry.k8s.io/kube-apiserver
   gateway_api_version           = "v1.7.0"
-  kube_prometheus_stack_version = "93.3.1" # renovate: helm=kube-prometheus-stack registry=https://prometheus-community.github.io/helm-charts
+  kube_prometheus_stack_version = "93.4.0" # renovate: helm=kube-prometheus-stack registry=https://prometheus-community.github.io/helm-charts
   extra_manifests               = []
   kubelet                       = ""
   api_server                    = ""
