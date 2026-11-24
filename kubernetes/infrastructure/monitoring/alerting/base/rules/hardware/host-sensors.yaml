@@ -10,8 +10,8 @@ spec:
       interval: 1m
       rules:
         - alert: HostCPUTemperatureCritical
-          # k10temp der Ryzen-Hosts meldet keinen crit-Wert und liegt bauartbedingt auf Tjmax 95
-          expr: node_hwmon_temp_celsius{chip=~"platform_coretemp.*"} > 95
+          # Tctl (AMD) bzw. Package (Intel) ueber Tjmax: Drosselung haelt nicht mehr
+          expr: node_hwmon_temp_celsius * on (instance, chip, sensor) group_left (label) node_hwmon_sensor_label{label=~"Tctl|Package id 0"} > 100
           for: 15m
           labels:
             severity: critical
@@ -20,7 +20,7 @@ spec:
             runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/hosts.md#hostcputemperaturecritical"
             dashboard_url: "/d/k8s-node-overview"
             summary: "CPU {{ $labels.chip }} on {{ $labels.instance }} at {{ $value }}°C"
-            description: "Thermal shutdown imminent — host may power off. Check airflow / dust / fan."
+            description: "CPU above Tjmax (100 °C) for 15 min, throttling no longer holds; the host may power off."
             action: "PHYSICAL: clean dust + check fan/airflow on the host; reduce load until temp drops below throttle."
         - alert: HostNVMeTemperatureCritical
           # Composite, nicht Sensor 2
