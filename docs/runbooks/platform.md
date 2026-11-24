@@ -43,7 +43,7 @@ kubectl -n postgres get backup --sort-by=.metadata.creationTimestamp | tail -1
 Erst mergen, wenn das Backup `completed` ist. Danach:
 
 ```bash
-kubectl -n keycloak get keycloak keycloak -o jsonpath='{.status.conditions}'
+kubectl -n keycloak get keycloaks.k8s.keycloak.org keycloak -o jsonpath='{.status.conditions}'
 kubectl -n keycloak get pods -l app=keycloak
 ```
 

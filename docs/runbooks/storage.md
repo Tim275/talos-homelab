@@ -29,10 +29,9 @@ Ein MON ist weg, es bleibt nur das Mindest-Quorum. Fällt noch einer aus, steht 
 ```bash
 ceph mon stat
 ceph quorum_status -f json-pretty | grep -A5 quorum_names
-kubectl -n rook-ceph get pods -l app=rook-ceph-mon -o wide
 ```
 
-- Node des fehlenden MON prüfen: NotReady → [ProxmoxHostDown](hosts.md#proxmoxhostdown)
+- Ceph läuft extern auf den Proxmox-Hosts (`mon.aoostar`, `mon.msa2proxmox`, `mon.nipogi`). Fehlt ein MON: `ssh root@<host> systemctl status ceph-mon@<host>`, Host down → [ProxmoxHostDown](hosts.md#proxmoxhostdown)
 - In dieser Zeit keine Nodes rebooten, keine Talos-Upgrades.
 
 ## CephOSDMajorityDown
@@ -40,8 +39,7 @@ kubectl -n rook-ceph get pods -l app=rook-ceph-mon -o wide
 Mehr als die Hälfte der OSDs ist down. Storage steht, Datenverlust möglich.
 
 ```bash
-ceph osd tree | grep down
-kubectl -n rook-ceph get pods -l app=rook-ceph-osd -o wide
+ceph osd tree
 ```
 
 - Liegen die toten OSDs auf demselben Host → Host-Problem, siehe [hosts.md](hosts.md#proxmoxhostdown)
@@ -57,7 +55,7 @@ stern -n rook-ceph . --since 15m -i 'i/o error'
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph device ls
 ```
 
-- `ceph device ls` zeigt nur die virtuellen Disks der VMs (worker-X:sdb → osd.N). Welche physische Platte darunter liegt, steht am Host: `ssh root@<host> 'qm config <vmid> | grep scsi1; pvesm status'`
+- `ceph device ls` zeigt HOST:GERÄT (z. B. `aoostar:sda` → osd.3–5). Platte am Host prüfen: `ssh root@<host> smartctl -a /dev/<gerät>`
 - Physische Platte prüfen → [SSDSmartHealthFailed](hosts.md#ssdsmarthealthfailed)
 
 ## PVCCriticallyFull
@@ -70,7 +68,7 @@ kubectl -n <ns> patch pvc <pvc> -p '{"spec":{"resources":{"requests":{"storage":
 kubectl -n <ns> get pvc <pvc> -w
 ```
 
-- Alle `rook-ceph-*`-StorageClasses erlauben Online-Vergrößerung.
+- Alle Block-StorageClasses `rook-ceph-*` erlauben Online-Vergrößerung (`rook-ceph-bucket` ist für Buckets).
 - Danach die Größe in Git nachziehen (Helm-Values oder PVC-Manifest), sonst zeigt ArgoCD dauerhaft Drift und ein Neuaufbau bekommt wieder die alte Größe.
 - Verkleinern geht nicht.
 

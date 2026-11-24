@@ -31,7 +31,7 @@ spec:
 
 | Date | Backup | Namespace | Items | RTO | Status | Notes |
 |---|---|---|---|---|---|---|
-| 2026-05-14 | `manual-tier0-keycloak-20260513-173320` | drdrill-kc | 111/111 | ~30s | ✓ PASS | First drill ever. Skipped pods+CRs (live conflict). |
+| 2026-05-14 | `manual-tier0-keycloak-20260513-173320` | drdrill-kc | 111/111 | ~30s | ✓ PASS | First drill ever, old cluster. Skipped pods+CRs (live conflict). |
 
 ## RTO Measurement Methodology
 
@@ -52,8 +52,8 @@ Voll-Disaster-RTO realistisch: 20-90min für komplette tenant-restore.
 | Quarter | Target | Trigger | Person | Status |
 |---|---|---|---|---|
 | 2026 Q2 | keycloak | 2026-05-14 | Tim | ✅ done (this drill) |
-| 2026 Q3 | drova-postgres | ~2026-08-01 | Tim | scheduled |
-| 2026 Q4 | grafana-full (mit PVC) | ~2026-11-01 | Tim | scheduled |
+| 2026 Q3 | drova-postgres | ~2026-08-01 | Tim | not done |
+| 2026 Q4 | grafana-full (mit PVC) | ~2026-11-01 | Tim | not done |
 | 2027 Q1 | full-cluster-recreate auf staging-pi | wenn HW da | Tim | hardware needed |
 
 ## Lessons Learned (2026-05-14)
@@ -75,14 +75,14 @@ Voll-Disaster-RTO realistisch: 20-90min für komplette tenant-restore.
 
 ```
 1. PRE-WORK (immer parat):
-   ✓ /tmp/break-glass-prod.yaml (X.509 kubeconfig, im Tresor)
-   ✓ /tmp/talosconfig-prod (im Tresor)
+   ✓ ~/.kube/homelab-admin.yaml (X.509 kubeconfig, `mise run kubeconfigs`)
+   ✓ talosconfig mit aktueller CA (`talosctl -n 192.168.0.101 version` muss antworten)
    ✓ Diese Datei mit Backup-Liste
 
 2. SCHRITTE:
    a) X.509-kubeconfig laden (OIDC ist down)
    b) Restore-CR template aus dieser Datei kopieren
-   c) Backup-Name aus `kubectl get backups -n velero` (oder offline-liste)
+   c) Backup-Name aus `kubectl get backups.velero.io -n velero` (oder offline-liste)
    d) Apply → warten
    e) Pod-restart manuell triggern (statefulsets/deployments)
    f) Verify per `kubectl get all -n <target>`

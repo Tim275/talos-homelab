@@ -25,7 +25,7 @@ kubectl apply --server-side --force-conflicts -k kubernetes/argocd/bootstrap/pro
 ## Staging
 Same steps with `overlays/staging` and `bootstrap/staging`.
 
-The root app labels the cluster with its environment, the ApplicationSets deploy `overlays/<environment>`.
+The `clusters` app (synced by root) labels the in-cluster secret with its environment, the ApplicationSets deploy `overlays/<environment>`.
 
 ```bash
 kubectl -n argocd get applications -l environment=staging
