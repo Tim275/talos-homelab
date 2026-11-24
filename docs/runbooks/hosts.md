@@ -4,7 +4,7 @@
 |---|---|
 | msa2proxmox | 192.168.0.50 |
 | nipogi | 192.168.0.57 |
-| pve | 192.168.0.58 |
+| aoostar | 192.168.0.59 |
 
 Welche VM auf welchem Host liegt, ändert sich. Nie aus dem Gedächtnis, immer live: `ssh root@<ip> qm list`.
 Soll-Zuordnung: `host_node` in `tofu/stacks/cluster/talos_nodes.auto.tfvars`.
@@ -15,11 +15,11 @@ node-exporter eines Hosts seit 5 min weg. Meist ist der ganze Host samt VMs weg.
 
 ```bash
 ping -c3 <ip>
-ssh root@<ip> 'uptime; qm list; systemctl is-active node_exporter'
+ssh root@<ip> 'uptime; qm list; systemctl is-active prometheus-node-exporter'
 kubectl get nodes -o wide
 ```
 
-- Nur der Exporter ist tot: `ssh root@<ip> systemctl restart node_exporter`
+- Nur der Exporter ist tot: `ssh root@<ip> systemctl restart prometheus-node-exporter`
 - Host erreichbar, aber langsam oder Nodes flappen → Netzwerklink prüfen. Ein halb steckendes Kabel läuft mit 100 statt 1000 Mbit:
   ```bash
   ssh root@<ip> 'ethtool <nic> | grep -E "Speed|Link detected"'
@@ -86,12 +86,13 @@ ssh root@<ip> 'journalctl --vacuum-size=200M'
 CPU seit 15 min über 95 °C. Thermischer Shutdown droht.
 
 ```bash
-ssh root@<ip> sensors
+ssh root@<ip> 'grep . /sys/class/hwmon/hwmon*/name /sys/class/hwmon/hwmon*/temp*_input'
 ```
 ```promql
-node_hwmon_temp_celsius{chip=~"platform_coretemp.*"}
+node_hwmon_temp_celsius{job="proxmox-host-node"} * on (instance, chip) group_left (chip_name) node_hwmon_chip_names
 ```
 
+- Die Regel prüft nur Intel-`coretemp`. aoostar, msa2 und nipogi sind Ryzen (`k10temp`), sie liegen bauartbedingt bei 95 °C und sind ausgenommen.
 - Physisch: Staub, Lüfter, Luftstrom. Bis dahin Last runternehmen.
 
 ## HostBridgeDown
@@ -116,7 +117,7 @@ ssh root@<ip> 'qm list; pvesm status'
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd tree
 ```
 
-- Welche VMs auf der Platte liegen, bestimmt, welche OSDs mitsterben. Mehrere OSD-Nodes können auf derselben NVMe liegen.
+- Alle OSDs laufen auf aoostar: osd.0–2 auf der NVMe, osd.3–5 auf der HDD (`sda`) mit DB auf der NVMe. Fällt die NVMe aus, sind alle sechs weg.
 - Vor Wartung: `ceph osd set noout`, danach `ceph osd unset noout`.
 - Nicht OSDs auf mehreren Nodes gleichzeitig rausnehmen.
 

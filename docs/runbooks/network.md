@@ -39,7 +39,7 @@ kubectl -n cloudflared get secret cloudflared-credentials
 
 ## CloudflaredNoEdgeConnections
 
-Die Pods laufen, halten aber keine Verbindung zur Cloudflare-Edge. Normal sind 4 je Pod. Blackbox-Probe und Uptime-Kuma bleiben grün, weil sie aus dem Cluster prüfen und nie über Cloudflare gehen.
+Die Pods laufen, halten aber keine Verbindung zur Cloudflare-Edge. Normal sind 4 je Pod. Proben auf iam, n8n, harbor, login und Kunden-Apps bleiben grün, CoreDNS schreibt sie aufs Gateway um. Die Proben auf drova und homepage gehen über Cloudflare und den Tunnel und schlagen fehl.
 
 ```bash
 kubectl -n cloudflared logs -l app=cloudflared --tail 100 | grep -iE "error|connect|register"

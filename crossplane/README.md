@@ -74,7 +74,7 @@ Every service runs in a `CustomerNamespace`, never in a Namespace of its own mak
 - egress only DNS, the namespace itself, Postgres when `postgres: true`, and 80/443 outside private ranges
 - secrets only through the ClusterSecretStore `openbao-customers`, which reads and writes `kv/customers/*` and nothing else
 
-Secrets of a service live in `kv/customers/<customer>/<service>/`, for n8n `postgres` and `encryption-key`.
+Secrets of a service live in `kv/customers/<customer>/<service>/`, for n8n `postgres`, `encryption-key` and `runners-auth-token`.
 
 ## Adding a service
 

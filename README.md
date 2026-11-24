@@ -47,7 +47,7 @@ Held together using Proxmox VE, OpenTofu, Talos Linux, Kubernetes, Argo CD and c
 ├── tofu/
 │   ├── stacks/              one root module per state: cluster, proxmox, netbird, uptime-kuma, harbor, state
 │   └── modules/             talos, openbao, rook-external
-├── crossplane/              source of the crossplane-apis package: Customer, N8nInstance, PostgresDatabase
+├── crossplane/              source of the crossplane-apis package: Customer, CustomerNamespace, N8nInstance, PostgresDatabase
 └── kubernetes/
     ├── argocd/              control plane: bootstrap (Argo CD itself, root), projects, clusters, applicationsets, crds
     ├── infrastructure/      what the cluster runs on: network, storage, security, monitoring, cluster

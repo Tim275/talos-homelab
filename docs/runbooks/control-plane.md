@@ -56,7 +56,7 @@ talosctl -n 192.168.0.101 logs etcd --tail 100
 
 ## etcdHighFsyncDurations
 
-WAL-fsync p99 über 1 s (Page) bzw. 0,5 s (Ticket). etcd wartet auf die Platte, der apiserver wird langsam, Webhooks und Leader-Elections laufen in Timeouts.
+WAL-fsync p99 über 0,5 s für 10 min (warning, Ticket); `EtcdDiskLatencyHigh` warnt schon ab 10 ms. etcd wartet auf die Platte, der apiserver wird langsam, Webhooks und Leader-Elections laufen in Timeouts.
 
 ```bash
 talosctl -n 192.168.0.101 read /proc/pressure/io
@@ -92,7 +92,7 @@ etcd-DB über 95 % der Quota. Bei 100 % setzt etcd den NOSPACE-Alarm und nimmt k
 ```bash
 talosctl -n 192.168.0.101 etcd status
 talosctl -n 192.168.0.101 etcd alarm list
-kubectl get --raw /metrics | grep '^apiserver_storage_objects' | sort -k2 -n | tail -10
+kubectl get --raw /metrics | grep '^apiserver_resource_objects' | sort -k2 -n | tail -10
 ```
 
 - DB SIZE deutlich größer als IN USE → Fragmentierung:
@@ -162,7 +162,7 @@ kubectl -n kube-system rollout restart deploy coredns
 
 - `talosctl upgrade-k8s` überschreibt die Corefile. Danach fehlen Rewrites und Forwarder:
   ```bash
-  kubectl apply -f kubernetes/infrastructure/network/coredns/base/coredns-config.yaml
+  kubectl apply -f kubernetes/infrastructure/network/coredns/overlays/prod/settings.yaml
   kubectl -n kube-system rollout restart deploy coredns
   ```
 - Test: `kubectl run dnstest --rm -it --restart=Never --image=busybox:1.36 -- nslookup kubernetes.default`

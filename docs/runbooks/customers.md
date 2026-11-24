@@ -21,7 +21,7 @@ GitHub → Actions → `customer` → Run workflow: Aktion, Kundennummer (`k100`
 - `cancel`: `spec.suspended: true` und `suspended-at` in der Bestellung. App, Routen, Client, DNS und Check verschwinden, Namespace, Datenbank, Schlüssel und Gruppe bleiben, Nutzer werden gesperrt.
 - `resume`: macht `cancel` rückgängig, Nutzer werden entsperrt, die Daten sind wieder da.
 - `delete`: wartet auf deine Freigabe (GitHub-Environment `customer-delete`, „Review deployments“ im Lauf), entfernt dann die Bestellung. Datenbank, Rolle, Schlüssel in OpenBao, Gruppe, Nutzer und DNS-Eintrag werden gelöscht.
-- `customer-purge` läuft täglich 05:30 und löscht Kunden, die seit 30 Tagen gekündigt sind. Seine PRs mergen sich selbst, sobald die Checks durch sind.
+- `customer-purge` läuft täglich (Cron 04:30 UTC, GitHub startet ihn oft Stunden später) und löscht Kunden, die seit 30 Tagen gekündigt sind. Seine PRs mergen sich selbst, sobald die Checks durch sind.
 - Je Umgebung ein PR, geöffnet von der GitHub-App `crossplane-automatic`. staging merged sich selbst, prod von Hand. Danach die App `customers` in Argo CD syncen.
 - Das Repo ist öffentlich. In eine Bestellung gehören nur Kundennummer, Host-Name und Dienste, keine echte E-Mail-Adresse und kein Klarname. Für echte Kunden die Bestellungen vorher in ein privates Repo legen, im öffentlichen Verlauf bleibt sonst alles sichtbar.
 
@@ -34,7 +34,7 @@ Mit einer E-Mail-Adresse legt der Job `access` (läuft auf dem Runner im Cluster
 - Die Adresse steht nur in der Workflow-Eingabe und in Keycloak, nicht im Repo.
 
 ```bash
-kubectl -n keycloak logs job/keycloak-config-cli-customers
+kubectl -n keycloak logs job/keycloak-config-cli-customers   # gibt es nur 10 min nach einem Sync der App keycloak
 kubectl -n keycloak get secret keycloak-customer-invite-client-secret
 ```
 
@@ -96,7 +96,8 @@ kubectl describe configurationrevision
 ```
 
 - Pull-Fehler → `ghcr.io/tim275/talos-homelab/crossplane-apis` erreichbar und öffentlich?
-- `incompatible dependencies` → Function-Version in `overlays/<env>/functions.yaml` liegt unter der Mindestversion in `crossplane/crossplane.yaml`.
+- `cannot initialize dependency graph … node … already exists` → zwei Functions oder Provider mit derselben Quelle. Der Resolver legt ein Duplikat `crossplane-contrib-<paket>` an, wenn die Configuration Abhängigkeiten selbst auflöst (crossplane#7880). Prüfen: `kubectl get configuration crossplane-apis -o jsonpath='{.spec.skipDependencyResolution}'` muss `true` sein (#450). Dann die Duplikate löschen (`kubectl get functions,providers`, alles mit Präfix `crossplane-contrib-` und ohne Argo-Tracking), nach etwa 2 min sind alle Pakete Healthy.
+- Function-Versionen in `overlays/<env>/functions.yaml` müssen die Mindestversionen in `crossplane/crossplane.yaml` erfüllen; geprüft wird das wegen `skipDependencyResolution` nur noch per `crossplane render` in der CI.
 
 ## Löschen hängt
 

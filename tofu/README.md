@@ -19,9 +19,9 @@ tofu plan
 ```
 
 ## Cluster stack
-Three files stay out of the repo, `tofu plan` fails without them:
+Four files stay out of the repo, `tofu plan` fails without them:
 ```bash
-ls tofu/stacks/cluster/openbao_values.auto.tfvars tofu/stacks/cluster/keys/seal.key tofu/stacks/cluster/rook_external.auto.tfvars
+ls tofu/stacks/cluster/proxmox.auto.tfvars tofu/stacks/cluster/openbao_values.auto.tfvars tofu/stacks/cluster/keys/seal.key tofu/stacks/cluster/rook_external.auto.tfvars
 mise run pve-rook-export
 tofu apply -parallelism=1
 ```
@@ -40,7 +40,7 @@ CI reads `TF_ENCRYPTION_CLUSTER`, `TF_ENCRYPTION_NETBIRD`, `TF_ENCRYPTION_UPTIME
 Plan and drift sign in with an Azure app that can only read the state, so they run with `-lock=false`. Apply uses its own app that can only sign in from the environment `tofu-apply` (secret `AZURE_APPLY_CLIENT_ID`).
 
 ## Drift
-Every day at 06:00 UTC `tofu-drift` plans `netbird`, `state`, `uptime-kuma`, `harbor` and `cluster`. `proxmox` is left out, it needs root@pam.
+Every day (cron 06:00 UTC, GitHub often starts it hours later) `tofu-drift` plans `netbird`, `state`, `uptime-kuma`, `harbor` and `cluster`. `proxmox` is left out, it needs root@pam.
 ```bash
 gh workflow run tofu-drift.yml
 ```
