@@ -44,25 +44,12 @@ spec:
         - name: vector
           image: ghcr.io/vectordotdev/vector
           args: ["--config-toml", "/etc/vector/vector.toml"]
-          env:
-            - name: ELASTICSEARCH_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: production-cluster-es-elastic-user
-                  key: elastic
-            - name: AUDIT_ARCHIVE_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: rook-ceph-object-user-homelab-objectstore-audit-archive
-                  key: AccessKey
-            - name: AUDIT_ARCHIVE_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: rook-ceph-object-user-homelab-objectstore-audit-archive
-                  key: SecretKey
           volumeMounts:
             - name: config
               mountPath: /etc/vector
+              readOnly: true
+            - name: secrets
+              mountPath: /etc/vector-secrets
               readOnly: true
             - name: data-dir
               mountPath: /vector-data-dir
@@ -93,6 +80,21 @@ spec:
         - name: config
           configMap:
             name: vector-aggregator-config
+        - name: secrets
+          projected:
+            sources:
+              - secret:
+                  name: production-cluster-es-elastic-user
+                  items:
+                    - key: elastic
+                      path: elastic_password
+              - secret:
+                  name: rook-ceph-object-user-homelab-objectstore-audit-archive
+                  items:
+                    - key: AccessKey
+                      path: audit_archive_access_key
+                    - key: SecretKey
+                      path: audit_archive_secret_key
         - name: data-dir
           emptyDir: {}
 ---
