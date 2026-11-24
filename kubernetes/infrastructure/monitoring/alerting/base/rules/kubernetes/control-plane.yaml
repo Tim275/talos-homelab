@@ -19,8 +19,8 @@ spec:
           annotations:
             dashboard_url: "/d/etcd"
             summary: "etcd WAL fsync p99 {{ $value | humanizeDuration }}"
-            description: "etcd shares rpool on msa2 with three Ceph OSDs. Above 10ms the apiserver slows on every write."
-            action: "cat /proc/pressure/io on the host; a defrag does NOT help here — check OSD load instead."
+            description: "Above 10ms the apiserver slows on every write."
+            action: "Host of the VM: pve_guest_info{name=\"ctrl-0\"}. There: cat /proc/pressure/io and check what else writes to that disk; a defrag does not help."
         - alert: etcdHighFsyncDurations
           expr: |
             histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket{job=~".*etcd.*"}[5m]))
@@ -33,13 +33,13 @@ spec:
             runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/control-plane.md#etcdhighfsyncdurations"
             summary: "etcd disk WAL fsync p99 {{ $value | humanizeDuration }} on {{ $labels.instance }}"
             dashboard_url: "/d/etcd"
-            description: "Baseline was measured on pve's LENSE SSD (p50 105ms / p90 216ms). ctrl-0 moved back to msa2 since (verified 2026-09-16) — that baseline is stale, not re-measured on the new disk yet. This fires only on degradation beyond whatever the real current baseline is. AdmissionWebhookRejecting is the alert that catches the actual damage."
-            action: "Check ctrl-0's etcd VM disk I/O; same root cause class as EtcdRequestLatencyHigh."
+            description: "Threshold from the etcd mixin. Normal p99 is under 10ms, EtcdDiskLatencyHigh fires long before this. AdmissionWebhookRejecting catches the actual damage."
+            action: "Same cause as EtcdDiskLatencyHigh."
 
         - alert: etcdHighCommitDurations
           expr: |
             histogram_quantile(0.99, rate(etcd_disk_backend_commit_duration_seconds_bucket{job=~".*etcd.*"}[5m]))
-            > 0.8
+            > 0.25
           for: 10m
           labels:
             severity: warning
@@ -47,8 +47,8 @@ spec:
           annotations:
             summary: "etcd backend commit p99 {{ $value | humanizeDuration }} on {{ $labels.instance }}"
             dashboard_url: "/d/etcd"
-            description: "Baseline was measured on pve's LENSE SSD (p50 145ms / p90 422ms). ctrl-0 moved back to msa2 since (verified 2026-09-16) — that baseline is stale, not re-measured on the new disk yet."
-            action: "Check ctrl-0's etcd VM disk I/O."
+            description: "Threshold from the etcd mixin. Normal p99 is around 12ms."
+            action: "Same cause as EtcdDiskLatencyHigh."
 
         - alert: etcdHighNumberOfFailedGRPCRequests
           expr: |
