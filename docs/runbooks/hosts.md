@@ -83,7 +83,7 @@ ssh root@<ip> 'journalctl --vacuum-size=200M'
 
 ## HostCPUTemperatureCritical
 
-CPU seit 15 min über 95 °C. Thermischer Shutdown droht.
+CPU seit 15 min über 100 °C (Tctl). Die Drosselung hält nicht, Shutdown möglich.
 
 ```bash
 ssh root@<ip> 'grep . /sys/class/hwmon/hwmon*/name /sys/class/hwmon/hwmon*/temp*_input'
@@ -92,7 +92,7 @@ ssh root@<ip> 'grep . /sys/class/hwmon/hwmon*/name /sys/class/hwmon/hwmon*/temp*
 node_hwmon_temp_celsius{job="proxmox-host-node"} * on (instance, chip) group_left (chip_name) node_hwmon_chip_names
 ```
 
-- Die Regel prüft nur Intel-`coretemp`. aoostar, msa2 und nipogi sind Ryzen (`k10temp`), sie liegen bauartbedingt bei 95 °C und sind ausgenommen.
+- Die Regel prüft Tctl (AMD) bzw. `Package id 0` (Intel) über 100 °C, das ist Tjmax des 9955HX in msa2. Darüber hält die Drosselung nicht mehr; normal sind bis etwa 97 °C.
 - Physisch: Staub, Lüfter, Luftstrom. Bis dahin Last runternehmen.
 
 ## HostBridgeDown
