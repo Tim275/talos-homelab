@@ -3,6 +3,11 @@
 
 data_dir = "/vector-data-dir"
 
+[secret.k8s]
+type = "directory"
+path = "/etc/vector-secrets"
+remove_trailing_whitespace = true
+
 [api]
 enabled = true
 address = "0.0.0.0:8686"
@@ -39,7 +44,7 @@ type = "remap"
 inputs = ["proxmox_syslog"]
 source = '''
 .source = "proxmox"
-.cluster = "${CLUSTER_NAME}"
+.cluster = get_env_var!("CLUSTER_NAME")
 .datacenter = "homelab"
 .node_type = "hypervisor"
 
@@ -242,12 +247,12 @@ pod_name = to_string(.kubernetes.pod_name) ?? ""
 ."service.name" = .service_name
 
 # ECS service.environment
-."service.environment" = "${ENVIRONMENT}"
+."service.environment" = get_env_var!("ENVIRONMENT")
 
 # Add cluster metadata (custom fields)
-.cluster = "${CLUSTER_NAME}"
+.cluster = get_env_var!("CLUSTER_NAME")
 .datacenter = "homelab"
-.environment = "${ENVIRONMENT}"
+.environment = get_env_var!("ENVIRONMENT")
 
 # OpenTelemetry Tracing Support
 
@@ -355,7 +360,7 @@ api_version = "v8"
 [sinks.elasticsearch.auth]
 strategy = "basic"
 user = "elastic"
-password = "${ELASTICSEARCH_PASSWORD}"  # Set via secret
+password = "SECRET[k8s.elastic_password]"
 
 # TLS configuration
 [sinks.elasticsearch.tls]
@@ -452,8 +457,8 @@ key_prefix = "kube-audit/%Y/%m/%d/"
 compression = "gzip"
 encoding.codec = "json"
 framing.method = "newline_delimited"
-auth.access_key_id = "${AUDIT_ARCHIVE_ACCESS_KEY}"
-auth.secret_access_key = "${AUDIT_ARCHIVE_SECRET_KEY}"
+auth.access_key_id = "SECRET[k8s.audit_archive_access_key]"
+auth.secret_access_key = "SECRET[k8s.audit_archive_secret_key]"
 
 [sinks.audit_archive.buffer]
 type = "disk"
