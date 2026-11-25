@@ -1,0 +1,88 @@
+rule_files:
+  - .rules.generated.yaml
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'vault_core_active{namespace="openbao",pod="openbao-0"}'
+        values: '1x20'
+      - series: 'vault_core_active{namespace="openbao",pod="openbao-1"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: OpenBaoNoLeader
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'vault_core_active{namespace="openbao",pod="openbao-0"}'
+        values: '0x20'
+      - series: 'vault_core_active{namespace="openbao",pod="openbao-1"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: OpenBaoNoLeader
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              component: platform
+            exp_annotations: &noleader
+              dashboard_url: "/d/openbao-metrics"
+              summary: "OpenBao hat keinen aktiven Node"
+              description: "ESO kann keine Secrets lesen oder schreiben, vorhandene Secrets bleiben. Fehlt die Metrik ganz, ist auch das Scraping weg."
+              action: "kubectl -n openbao get openbaocluster openbao; kubectl -n openbao get pods -o wide; bao operator raft list-peers"
+
+  - interval: 1m
+    input_series:
+      - series: 'up{job="other"}'
+        values: '1x20'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: OpenBaoNoLeader
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              component: platform
+              namespace: openbao
+            exp_annotations: *noleader
+
+  - interval: 1m
+    input_series:
+      - series: 'vault_core_unsealed{namespace="openbao",pod="openbao-2"}'
+        values: '1x5 0x10'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: OpenBaoSealed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              component: platform
+              namespace: openbao
+              pod: openbao-2
+            exp_annotations:
+              dashboard_url: "/d/openbao-metrics"
+              summary: "OpenBao openbao-2 ist versiegelt"
+              description: "Der Pod beantwortet keine Anfragen. Der Static Seal entsiegelt beim Start selbst; bleibt er versiegelt, wurde von Hand versiegelt oder der Seal-Key passt nicht."
+              action: "kubectl -n openbao exec openbao-2 -- bao status; kubectl -n openbao logs openbao-2 | grep -i seal"
+
+  - interval: 1m
+    input_series:
+      - series: 'openbao_backup_last_success_timestamp{exported_namespace="openbao",name="openbao"}'
+        values: '3600x1800'
+    alert_rule_test:
+      - eval_time: 20h
+        alertname: OpenBaoBackupStale
+        exp_alerts: []
+      - eval_time: 28h
+        alertname: OpenBaoBackupStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              component: backup
+              exported_namespace: openbao
+              name: openbao
+            exp_annotations:
+              dashboard_url: "/d/openbao-metrics"
+              summary: "Kein erfolgreicher OpenBao-Snapshot seit über 26 h"
+              description: "Der Snapshot läuft täglich um 01:30. Fehlt die Metrik, wird der Operator nicht gescrapt."
+              action: "kubectl -n openbao get openbaocluster openbao -o jsonpath='{.status.backup}'; kubectl -n openbao get jobs"
