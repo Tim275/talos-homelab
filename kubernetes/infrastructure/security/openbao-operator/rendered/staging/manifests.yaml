@@ -10553,6 +10553,25 @@ subjects:
   name: openbao-operator-controller
   namespace: openbao-operator-system
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/instance: openbao-operator
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: openbao-operator
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
+  name: openbao-operator-metrics-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: metrics-reader
+subjects:
+- kind: ServiceAccount
+  name: kube-prometheus-stack-prometheus
+  namespace: monitoring
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -14228,6 +14247,37 @@ spec:
   validationActions:
   - Deny
 ---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: openbao-operator
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: openbao-operator
+    app.kubernetes.io/version: 0.6.3
+    helm.sh/chart: openbao-operator-0.6.3
+    release: kube-prometheus-stack
+  name: openbao-operator-controller-metrics
+  namespace: openbao-operator-system
+spec:
+  endpoints:
+  - bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+    interval: 30s
+    path: /metrics
+    port: https
+    scheme: https
+    scrapeTimeout: 10s
+    tlsConfig:
+      insecureSkipVerify: true
+  namespaceSelector:
+    matchNames:
+    - openbao-operator-system
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: controller
+      app.kubernetes.io/name: openbao-operator
+---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -14266,7 +14316,7 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          metrics: enabled
+          kubernetes.io/metadata.name: monitoring
     ports:
     - port: 8443
       protocol: TCP

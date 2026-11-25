@@ -20,3 +20,110 @@ spec:
             summary: "OpenBao {{ $labels.pod }} nicht ready seit >15min"
             description: "OpenBao entsiegelt sich selbst (static seal, Key aus tofu). Startet er trotzdem nicht ready, fehlt meist das Secret openbao-seal-key oder die raft-Daten sind kaputt."
             action: "kubectl -n openbao get openbaocluster openbao; kubectl -n openbao get secret openbao-seal-key; kubectl exec -n openbao openbao-0 -- bao status. Fehlt das Secret: tofu apply -target=module.openbao."
+
+        - alert: OpenBaoSealed
+          expr: vault_core_unsealed{namespace="openbao"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: platform
+          annotations:
+            dashboard_url: "/d/openbao-metrics"
+            summary: "OpenBao {{ $labels.pod }} ist versiegelt"
+            description: "Der Pod beantwortet keine Anfragen. Der Static Seal entsiegelt beim Start selbst; bleibt er versiegelt, wurde von Hand versiegelt oder der Seal-Key passt nicht."
+            action: "kubectl -n openbao exec {{ $labels.pod }} -- bao status; kubectl -n openbao logs {{ $labels.pod }} | grep -i seal"
+
+        - alert: OpenBaoNoLeader
+          expr: sum(vault_core_active{namespace="openbao"}) < 1 or absent(vault_core_active{namespace="openbao"})
+          for: 5m
+          labels:
+            severity: warning
+            component: platform
+          annotations:
+            dashboard_url: "/d/openbao-metrics"
+            summary: "OpenBao hat keinen aktiven Node"
+            description: "ESO kann keine Secrets lesen oder schreiben, vorhandene Secrets bleiben. Fehlt die Metrik ganz, ist auch das Scraping weg."
+            action: "kubectl -n openbao get openbaocluster openbao; kubectl -n openbao get pods -o wide; bao operator raft list-peers"
+
+        - alert: OpenBaoRaftFaultToleranceLost
+          expr: max(vault_autopilot_failure_tolerance{namespace="openbao"}) < 1
+          for: 15m
+          labels:
+            severity: warning
+            component: platform
+          annotations:
+            dashboard_url: "/d/openbao-metrics"
+            summary: "OpenBao-Raft verträgt keinen weiteren Ausfall"
+            description: "Fällt noch ein Voter aus, verliert Raft das Quorum und der Tresor steht."
+            action: "kubectl -n openbao get pods -o wide; bao operator raft autopilot state"
+
+        - alert: OpenBaoLeadershipSetupFailed
+          expr: increase(vault_core_leadership_setup_failed_count{namespace="openbao"}[15m]) > 0
+          for: 1m
+          labels:
+            severity: warning
+            component: platform
+          annotations:
+            dashboard_url: "/d/openbao-metrics"
+            summary: "OpenBao {{ $labels.pod }}: Leader-Übernahme gescheitert"
+            description: "Ein Node wurde Leader, konnte aber nicht starten. Wiederholt sich das, wechselt die Führung ständig."
+            action: "kubectl -n openbao logs {{ $labels.pod }} | grep -i -E 'leader|error'"
+
+        - alert: OpenBaoAuditLogFailing
+          expr: sum(increase(vault_audit_log_request_failure{namespace="openbao"}[10m])) > 0
+          for: 5m
+          labels:
+            severity: warning
+            component: platform
+          annotations:
+            dashboard_url: "/d/openbao-metrics"
+            summary: "OpenBao kann nicht ins Audit-Log schreiben"
+            description: "Es gibt nur ein Audit-Gerät. Scheitert es, lehnt OpenBao die Anfragen ab."
+            action: "kubectl -n openbao logs openbao-0 | grep -i audit; bao audit list"
+
+        - alert: OpenBaoBackupStale
+          expr: time() - openbao_backup_last_success_timestamp > 26 * 3600 or absent(openbao_backup_last_success_timestamp)
+          for: 10m
+          labels:
+            severity: warning
+            component: backup
+          annotations:
+            dashboard_url: "/d/openbao-metrics"
+            summary: "Kein erfolgreicher OpenBao-Snapshot seit über 26 h"
+            description: "Der Snapshot läuft täglich um 01:30. Fehlt die Metrik, wird der Operator nicht gescrapt."
+            action: "kubectl -n openbao get openbaocluster openbao -o jsonpath='{.status.backup}'; kubectl -n openbao get jobs"
+
+        - alert: OpenBaoUpgradeFailed
+          expr: openbao_upgrade_status == 3
+          for: 5m
+          labels:
+            severity: warning
+            component: platform
+          annotations:
+            dashboard_url: "/d/openbao-metrics"
+            summary: "OpenBao-Upgrade gescheitert"
+            description: "Der Operator hält den Rollout an, bis er erneut angestoßen wird."
+            action: "kubectl -n openbao get openbaocluster openbao -o jsonpath='{.status.upgrade}'; kubectl -n openbao get events --sort-by=.lastTimestamp | tail"
+
+        - alert: OpenBaoTLSCertExpiring
+          expr: openbao_tls_cert_expiry_timestamp - time() < 7 * 86400
+          for: 1h
+          labels:
+            severity: warning
+            component: platform
+          annotations:
+            dashboard_url: "/d/openbao-metrics"
+            summary: "OpenBao-Zertifikat ({{ $labels.type }}) läuft in {{ $value | humanizeDuration }} ab"
+            description: "Der Operator erneuert alle 30 Tage. Läuft es trotzdem ab, ist die Erneuerung hängen geblieben."
+            action: "kubectl -n openbao describe openbaocluster openbao | grep -A4 TLSReady"
+
+        - alert: OpenBaoOperatorDown
+          expr: absent(up{job="openbao-operator-controller-metrics"}) or up{job="openbao-operator-controller-metrics"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            component: platform
+          annotations:
+            summary: "OpenBao-Operator nicht erreichbar"
+            description: "Snapshots, Upgrades und Zertifikatserneuerung stehen. Der Tresor selbst läuft weiter."
+            action: "kubectl -n openbao-operator-system get pods; kubectl -n openbao-operator-system logs deploy/openbao-operator-controller"
