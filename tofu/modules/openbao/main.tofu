@@ -41,7 +41,7 @@ resource "kubernetes_namespace_v1" "external_secrets" {
 }
 
 locals {
-  values_dir = var.values_dir == null ? null : "${path.root}/${var.values_dir}"
+  values_dir = var.values == null ? null : "${path.root}/${var.values.dir}"
   values = local.values_dir == null ? {} : {
     for f in fileset(local.values_dir, "**") :
     replace(f, "/", ".") => trimspace(file("${local.values_dir}/${f}"))
@@ -67,7 +67,7 @@ resource "kubernetes_secret_v1" "bootstrap_values" {
     ignore_changes = [data]
 
     precondition {
-      condition     = var.values_dir == null || length(local.values) > 0
+      condition     = var.values == null || length(local.values) > 0
       error_message = "OpenBao values directory is missing or empty."
     }
   }

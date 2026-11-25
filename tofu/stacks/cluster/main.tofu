@@ -19,8 +19,8 @@ module "openbao" {
     kubernetes = kubernetes
   }
 
-  seal       = var.openbao_seal_config
-  values_dir = var.openbao_values_dir
+  seal   = var.openbao_seal_config
+  values = var.openbao_values_config
 }
 
 module "rook_external" {

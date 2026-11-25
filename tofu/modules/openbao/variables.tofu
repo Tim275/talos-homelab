@@ -5,6 +5,8 @@ variable "seal" {
   sensitive = true
 }
 
-variable "values_dir" {
-  type = string
+variable "values" {
+  type = object({
+    dir = string
+  })
 }

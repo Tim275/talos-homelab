@@ -93,9 +93,11 @@ variable "openbao_seal_config" {
   sensitive = true
 }
 
-variable "openbao_values_dir" {
+variable "openbao_values_config" {
   description = "OpenBao seed values, one file per ns/secret/field, null in CI"
-  type        = string
+  type = object({
+    dir = string
+  })
 }
 
 variable "rook_external" {
