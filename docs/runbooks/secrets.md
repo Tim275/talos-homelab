@@ -12,7 +12,7 @@ kv/customers/<namespace>/<schlüssel>   Store openbao-customers   Rolle eso-cust
 - Was ein Tenant liest, liegt unter `tenants/`, auch wenn die Plattform es schreibt (Datenbank-Passwort, Keycloak-Client, Harbor-Pull).
 - Unter `customers/` sieht jeder Kunden-Namespace nur seinen eigenen Ordner. ESO meldet sich dort mit dem ServiceAccount `eso` des Namespaces an, die Policy setzt den Namespace aus dem Token in den Pfad ein. Nur `postgres`, das die Datenbank-Passwörter aller Kunden schreibt, nutzt `openbao-customers-platform` mit Zugriff auf ganz `customers/`.
 - `openbao-tenants` ist nur für drova, drova-staging und die Plattform-Namespaces freigegeben, die für drova schreiben oder lesen (postgres, grafana, keycloak, harbor, kyverno). `openbao` ist für drova- und Kunden-Namespaces gesperrt.
-- Werte, die kein Generator erzeugt (API-Tokens, Webhooks), kommen beim Aufbau aus `tofu/stacks/cluster/openbao_values.auto.tfvars` und werden von `pushsecret-bootstrap-values` geschrieben.
+- Werte, die kein Generator erzeugt (API-Tokens, Webhooks), kommen beim Aufbau aus `tofu/stacks/cluster/keys/openbao-values/`, eine Datei je Wert unter `<namespace>/<secret>/<feld>`, und werden von `pushsecret-bootstrap-values` geschrieben.
 
 ## Zugriff
 
@@ -25,7 +25,7 @@ kv/customers/<namespace>/<schlüssel>   Store openbao-customers   Rolle eso-cust
 ## Neuer Schlüssel
 
 1. Pfad nach der Regel oben wählen.
-2. Zufallswerte per PushSecret mit ClusterGenerator `password` und `updatePolicy: IfNotExists`, feste Werte in `openbao_values.auto.tfvars` und `pushsecret-bootstrap-values.yaml`.
+2. Zufallswerte per PushSecret mit ClusterGenerator `password` und `updatePolicy: IfNotExists`, feste Werte als Datei in `keys/openbao-values/` und in `pushsecret-bootstrap-values.yaml`. tofu übernimmt neue oder geänderte Dateien nicht von selbst (`ignore_changes`), dazu `tofu apply -replace=module.openbao.kubernetes_secret_v1.bootstrap_values`.
 3. ExternalSecret mit dem Store der Gruppe.
 
 ## ExternalSecret oder PushSecret nicht synchron

@@ -93,10 +93,9 @@ variable "openbao_seal_config" {
   sensitive = true
 }
 
-variable "openbao_bootstrap_values" {
-  description = "OpenBao seed values, key ns.secret.field, empty in CI"
-  type        = map(string)
-  sensitive   = true
+variable "openbao_values_dir" {
+  description = "OpenBao seed values, one file per ns/secret/field, null in CI"
+  type        = string
 }
 
 variable "rook_external" {

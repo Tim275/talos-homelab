@@ -40,6 +40,15 @@ resource "kubernetes_namespace_v1" "external_secrets" {
   }
 }
 
+locals {
+  values_dir = var.values_dir == null ? null : "${path.root}/${var.values_dir}"
+  values = local.values_dir == null ? {} : {
+    for f in fileset(local.values_dir, "**") :
+    replace(f, "/", ".") => trimspace(file("${local.values_dir}/${f}"))
+    if !startswith(basename(f), ".")
+  }
+}
+
 resource "kubernetes_secret_v1" "bootstrap_values" {
   depends_on = [kubernetes_namespace_v1.external_secrets]
 
@@ -51,10 +60,15 @@ resource "kubernetes_secret_v1" "bootstrap_values" {
     }
   }
 
-  data = var.values
+  data = sensitive(local.values)
 
   # CI hat die Werte nicht
   lifecycle {
     ignore_changes = [data]
+
+    precondition {
+      condition     = var.values_dir == null || length(local.values) > 0
+      error_message = "OpenBao values directory is missing or empty."
+    }
   }
 }
