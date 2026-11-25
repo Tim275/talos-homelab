@@ -6,6 +6,7 @@ variable "seal" {
 }
 
 variable "values" {
-  type      = map(string)
-  sensitive = true
+  type = object({
+    dir = string
+  })
 }
