@@ -72,9 +72,11 @@ Every service runs in a `CustomerNamespace`, never in a Namespace of its own mak
 - ResourceQuota (default 1 CPU and 2Gi requested, 4Gi memory limit) and LimitRange defaults
 - ingress only from the gateway, the namespace itself and the node (probes)
 - egress only DNS, the namespace itself, Postgres when `postgres: true`, and 80/443 outside private ranges
-- secrets only through the ClusterSecretStore `openbao-customers`, which reads and writes `kv/customers/*` and nothing else
+- secrets only through the ClusterSecretStore `openbao-customers`. ESO logs in with the namespace's own ServiceAccount `eso`,
+  and a templated policy limits it to `kv/customers/<namespace>/*`
 
-Secrets of a service live in `kv/customers/<customer>/<service>/`, for n8n `postgres`, `encryption-key` and `runners-auth-token`.
+Secrets of a service live in `kv/customers/<namespace>/`, for n8n `postgres`, `encryption-key` and `runners-auth-token`.
+The database password is written from the namespace `postgres` through `openbao-customers-platform`.
 
 ## Adding a service
 

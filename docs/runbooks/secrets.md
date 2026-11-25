@@ -5,11 +5,12 @@ Alle Schlüssel liegen im KV-Speicher `kv` (v2) in OpenBao, sortiert nach Nutzer
 ```
 kv/platform/<komponente>/<schlüssel>   Store openbao             Rolle eso
 kv/tenants/drova/<schlüssel>           Store openbao-tenants     Rolle eso-tenants
-kv/customers/<kunde>/<dienst>/…        Store openbao-customers   Rolle eso-customers
+kv/customers/<namespace>/<schlüssel>   Store openbao-customers   Rolle eso-customer-namespace
 ```
 
 - Der Ordner heißt wie die Komponente im Repo, die den Schlüssel braucht (`platform/harbor/…`, `platform/kube-prometheus-stack/…`), nicht wie ihr Namespace. Keine Umgebung im Pfad, jede Umgebung hat ihr eigenes OpenBao.
 - Was ein Tenant liest, liegt unter `tenants/`, auch wenn die Plattform es schreibt (Datenbank-Passwort, Keycloak-Client, Harbor-Pull).
+- Unter `customers/` sieht jeder Kunden-Namespace nur seinen eigenen Ordner. ESO meldet sich dort mit dem ServiceAccount `eso` des Namespaces an, die Policy setzt den Namespace aus dem Token in den Pfad ein. Nur `postgres`, das die Datenbank-Passwörter aller Kunden schreibt, nutzt `openbao-customers-platform` mit Zugriff auf ganz `customers/`.
 - `openbao-tenants` ist nur für drova, drova-staging und die Plattform-Namespaces freigegeben, die für drova schreiben oder lesen (postgres, grafana, keycloak, harbor, kyverno). `openbao` ist für drova- und Kunden-Namespaces gesperrt.
 - Werte, die kein Generator erzeugt (API-Tokens, Webhooks), kommen beim Aufbau aus `tofu/stacks/cluster/openbao_values.auto.tfvars` und werden von `pushsecret-bootstrap-values` geschrieben.
 
@@ -17,7 +18,7 @@ kv/customers/<kunde>/<dienst>/…        Store openbao-customers   Rolle eso-cus
 
 - Oberfläche: `https://openbao.timourhomelab.org` (nur über VPN), Method **OIDC**, Rolle `admin`. Zugelassen ist die Keycloak-Gruppe `cluster-admins`, das Token gilt eine Stunde. Mit der Method LDAP scheitert jeder Login mit `permission denied`, eingerichtet ist nur OIDC.
 - Direkt am Dienst, am Gateway vorbei: `kubectl -n openbao port-forward svc/openbao-active 18200:8200`, dann `BAO_ADDR=https://127.0.0.1:18200 BAO_SKIP_VERIFY=true bao status`.
-- OpenBao entsiegelt sich selbst. Seal `static` mit dem Schlüssel aus dem Secret `openbao-seal-key` (`keys/seal.key`, von tofu angelegt), kein Cloud-KMS. Die Recovery-Keys sind per Shamir geteilt.
+- OpenBao entsiegelt sich selbst. Seal `static` mit dem Schlüssel aus dem Secret `openbao-seal-key` (`keys/seal.key`, von tofu angelegt), kein Cloud-KMS. Recovery-Keys gibt es nicht, Self-Init erzeugt keine.
 - Ein Eintrag endgültig löschen: Oberfläche, Secret öffnen, Delete, **Destroy all versions**. „Delete this version“ lässt sich rückgängig machen, „Destroy this version“ lässt einen leeren Eintrag stehen.
 - `PUT`, `PATCH` und `DELETE` lässt die WAF am Gateway nur für Hosts mit Ausnahme in `coraza-waf.yaml` durch, für OpenBao gilt die Regel 1100025. Ein leeres 403 kommt von der WAF, `{"errors":["permission denied"]}` von OpenBao, siehe [403 ohne Inhalt](network.md#403-ohne-inhalt).
 

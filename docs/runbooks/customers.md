@@ -42,7 +42,7 @@ kubectl -n keycloak get secret keycloak-customer-invite-client-secret
 - `client secret of customer-invite not readable` → RoleBinding `customer-invite-secret-reader` im Namespace `keycloak` nennt nicht das ServiceAccount der Runner.
 - Mail kommt nicht an → Keycloak-Log nach `EmailException` durchsuchen, Zugang in `kv/platform/keycloak/keycloak-smtp`.
 
-Schlüssel liegen unter `kv/customers/<kunde>/<dienst>/`, zum Beispiel `kv/customers/k100/n8n/postgres` und `kv/customers/k100/n8n/encryption-key`. Kunden-Namespaces lesen nur über den Store `openbao-customers`, dessen Rolle nur `kv/customers/*` sieht. Den Plattform-Store `openbao` können sie nicht benutzen.
+Schlüssel liegen unter `kv/customers/<namespace>/`, zum Beispiel `kv/customers/n8n-k100/postgres` und `kv/customers/n8n-k100/encryption-key`. Kunden-Namespaces lesen und schreiben nur über den Store `openbao-customers`, und zwar nur ihren eigenen Ordner: ESO meldet sich mit dem ServiceAccount `eso` des Namespaces an, Rolle `eso-customer-namespace`. Den Plattform-Store `openbao` können sie nicht benutzen.
 
 ## CustomerAppDown
 
@@ -106,5 +106,6 @@ kubectl get ns n8n-<kunde> -o jsonpath='{.status.conditions[*].message}'
 kubectl -n postgres get database,databaserole | grep <kunde>
 ```
 
-- PushSecret hängt → Store darf den Schlüssel nicht löschen, Policy `eso-customers` bzw. `eso` prüfen.
+- PushSecret hängt → Store darf den Schlüssel nicht löschen, Policy `eso-customer-namespace` bzw. `eso-customers` (Namespace `postgres`) prüfen.
+- `permission denied` im Kunden-Namespace → Schlüssel liegt nicht unter `customers/<eigener Namespace>/`, oder der ServiceAccount `eso` fehlt.
 - Datenbank bleibt → `kubectl -n postgres describe database n8n-<kunde>`, offene Verbindungen beenden.
