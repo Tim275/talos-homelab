@@ -19,9 +19,9 @@ tofu plan
 ```
 
 ## Cluster stack
-Three files and one folder stay out of the repo, `tofu plan` fails without them:
+Three files stay out of the repo, `tofu plan` fails without them:
 ```bash
-ls tofu/stacks/cluster/proxmox.auto.tfvars tofu/stacks/cluster/keys/seal.key tofu/stacks/cluster/keys/openbao-values/ tofu/stacks/cluster/rook_external.auto.tfvars
+ls tofu/stacks/cluster/proxmox.auto.tfvars tofu/stacks/cluster/keys/seal.key tofu/stacks/cluster/rook_external.auto.tfvars
 mise run pve-rook-export
 tofu apply -parallelism=1
 ```

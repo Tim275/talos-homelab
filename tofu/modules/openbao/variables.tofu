@@ -4,9 +4,3 @@ variable "seal" {
   })
   sensitive = true
 }
-
-variable "values" {
-  type = object({
-    dir = string
-  })
-}
