@@ -34,6 +34,18 @@ path "auth/token/renew-self" {
 }
 POLICY
 
+bao policy write "seal-$STAGE" - <<POLICY
+path "kv/data/$STAGE/platform/openbao/openbao-seal-key" {
+  capabilities = ["read"]
+}
+path "auth/token/lookup-self" {
+  capabilities = ["read"]
+}
+path "auth/token/renew-self" {
+  capabilities = ["update"]
+}
+POLICY
+
 bao policy write snapshot - <<'POLICY'
 path "sys/storage/raft/snapshot" {
   capabilities = ["read"]
@@ -51,6 +63,13 @@ bao write "auth/k8s-$STAGE/role/external-secrets" \
   bound_subject=system:serviceaccount:external-secrets:eso \
   bound_audiences=central-openbao \
   token_policies="seed-$STAGE" token_no_default_policy=true \
+  token_ttl=10m token_max_ttl=1h >/dev/null
+
+bao write "auth/k8s-$STAGE/role/openbao-seal" \
+  role_type=jwt user_claim=sub \
+  bound_subject=system:serviceaccount:openbao:eso \
+  bound_audiences=central-openbao \
+  token_policies="seal-$STAGE" token_no_default_policy=true \
   token_ttl=10m token_max_ttl=1h >/dev/null
 
 bao read -format=json sys/auth | jq -c '[keys[] | select(test("/$"))]'
