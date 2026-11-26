@@ -93,6 +93,18 @@ spec:
             description: "Der Snapshot läuft täglich um 01:30. Fehlt die Metrik, wird der Operator nicht gescrapt."
             action: "kubectl -n openbao get openbaocluster openbao -o jsonpath='{.status.backup}'; kubectl -n openbao get jobs"
 
+        - alert: OpenBaoRestoreTestFailing
+          expr: openbao_restore_test_success == 0 or (openbao_restore_test_last_success_timestamp_seconds > 0 and time() - openbao_restore_test_last_success_timestamp_seconds > 26 * 3600)
+          for: 10m
+          labels:
+            severity: warning
+            component: backup
+          annotations:
+            dashboard_url: "/d/openbao-metrics"
+            summary: "Rückspiel-Probe des OpenBao-Snapshots gescheitert oder seit über 26 h ohne Erfolg"
+            description: "Der Operator spielt den letzten Snapshot täglich um 03:00 in einen leeren Test-Tresor zurück."
+            action: "kubectl -n openbao get openbaocluster openbao -o jsonpath='{.status.backup.restoreTest}'; kubectl -n openbao get openbaorestore"
+
         - alert: OpenBaoUpgradeFailed
           expr: openbao_upgrade_status == 3
           for: 5m
