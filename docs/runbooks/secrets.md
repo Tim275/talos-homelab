@@ -12,7 +12,7 @@ kv/customers/<namespace>/<schlüssel>   Store openbao-customers   Rolle eso-cust
 - Was ein Tenant liest, liegt unter `tenants/`, auch wenn die Plattform es schreibt (Datenbank-Passwort, Keycloak-Client, Harbor-Pull).
 - Unter `customers/` sieht jeder Kunden-Namespace nur seinen eigenen Ordner. ESO meldet sich dort mit dem ServiceAccount `eso` des Namespaces an, die Policy setzt den Namespace aus dem Token in den Pfad ein. Nur `postgres`, das die Datenbank-Passwörter aller Kunden schreibt, nutzt `openbao-customers-platform` mit Zugriff auf ganz `customers/`.
 - `openbao-tenants` ist nur für drova, drova-staging und die Plattform-Namespaces freigegeben, die für drova schreiben oder lesen (postgres, grafana, keycloak, harbor, kyverno). `openbao` ist für drova- und Kunden-Namespaces gesperrt.
-- Werte, die kein Generator erzeugt (API-Tokens, Webhooks), kommen beim Aufbau aus `tofu/stacks/cluster/keys/openbao-values/`, eine Datei je Wert unter `<namespace>/<secret>/<feld>`, und werden von `pushsecret-bootstrap-values` geschrieben.
+- Werte, die kein Generator erzeugt (API-Tokens, Webhooks), trägt ein Mensch einmal in OpenBao ein, mit dem Wert direkt aus der Konsole des Anbieters. Danach kommen sie mit jedem Restore aus dem Snapshot zurück.
 
 ## Zugriff
 
@@ -25,7 +25,7 @@ kv/customers/<namespace>/<schlüssel>   Store openbao-customers   Rolle eso-cust
 ## Neuer Schlüssel
 
 1. Pfad nach der Regel oben wählen.
-2. Zufallswerte per PushSecret mit ClusterGenerator `password` und `updatePolicy: IfNotExists`, feste Werte als Datei in `keys/openbao-values/` und in `pushsecret-bootstrap-values.yaml`. tofu übernimmt neue oder geänderte Dateien nicht von selbst (`ignore_changes`), dazu `tofu apply -replace=module.openbao.kubernetes_secret_v1.bootstrap_values`.
+2. Zufallswerte per PushSecret mit ClusterGenerator `password` und `updatePolicy: IfNotExists`. Feste Werte in der Oberfläche unter `kv/platform/<komponente>/<secret>` eintragen, oder per CLI über die Eingabe: `bao kv put -mount=kv platform/<komponente>/<secret> <feld>=-`.
 3. ExternalSecret mit dem Store der Gruppe.
 
 ## ExternalSecret oder PushSecret nicht synchron

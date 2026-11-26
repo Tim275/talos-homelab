@@ -93,13 +93,6 @@ variable "openbao_seal_config" {
   sensitive = true
 }
 
-variable "openbao_values_config" {
-  description = "OpenBao seed values, one file per ns/secret/field, null in CI"
-  type = object({
-    dir = string
-  })
-}
-
 variable "rook_external" {
   description = "Ceph access for Rook external mode, from mise run pve-rook-export, null in CI"
   type = object({
