@@ -72,6 +72,30 @@ bao write "auth/k8s-$STAGE/role/openbao-seal" \
   token_policies="seal-$STAGE" token_no_default_policy=true \
   token_ttl=10m token_max_ttl=1h >/dev/null
 
+bao auth list -format=json | jq -e '."github/"' >/dev/null || bao auth enable -path=github jwt
+bao write auth/github/config \
+  oidc_discovery_url=https://token.actions.githubusercontent.com \
+  bound_issuer=https://token.actions.githubusercontent.com >/dev/null
+
+bao policy write "pipeline-$STAGE" - <<POLICY
+path "kv/data/$STAGE/pipeline/*" {
+  capabilities = ["read"]
+}
+path "auth/token/revoke-self" {
+  capabilities = ["update"]
+}
+POLICY
+
+jq -n --arg stage "$STAGE" '{
+  role_type: "jwt", user_claim: "sub", bound_audiences: ["central-openbao"],
+  bound_claims: {
+    repository: "Tim275/talos-homelab",
+    sub: ["repo:Tim275/talos-homelab:ref:refs/heads/main", "repo:Tim275/talos-homelab:environment:tofu-apply"]
+  },
+  token_policies: ["pipeline-\($stage)"], token_no_default_policy: true,
+  token_ttl: "15m", token_max_ttl: "1h"
+}' | bao write "auth/github/role/tofu-$STAGE" - >/dev/null
+
 bao read -format=json sys/auth | jq -c '[keys[] | select(test("/$"))]'
 bao policy list | tr '\n' ' '; echo
 INNER
