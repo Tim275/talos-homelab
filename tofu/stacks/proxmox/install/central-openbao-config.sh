@@ -2,6 +2,7 @@
 # Run on msa2 after central-openbao.sh, once per cluster: STAGE=prod or STAGE=staging.
 # Expects that cluster's service account signing keys (kubectl get --raw /openid/v1/jwks, as PEM)
 # at /root/cluster-sa-pubkeys.pem on msa2. Each cluster reads only kv/<env>/.
+# Authenticates with BAO_TOKEN if set (admin login), otherwise with the initial root token.
 set -euo pipefail
 
 id=1060
@@ -9,11 +10,25 @@ stage=${STAGE:?STAGE=prod or STAGE=staging}
 issuer=${ISSUER:-https://192.168.0.100:6443}
 pct push "$id" /root/cluster-sa-pubkeys.pem /root/cluster-sa-pubkeys.pem --perms 600
 
-pct exec "$id" -- env STAGE="$stage" ISSUER="$issuer" bash -s <<'INNER'
+pct exec "$id" -- env STAGE="$stage" ISSUER="$issuer" BAO_TOKEN="${BAO_TOKEN:-}" bash -s <<'INNER'
 set -euo pipefail
 export BAO_ADDR=https://127.0.0.1:8200 BAO_CACERT=/opt/openbao/tls/ca.crt BAO_TLS_SERVER_NAME=bao.timourhomelab.org
-BAO_TOKEN=$(jq -r .root_token /root/init.json)
+BAO_TOKEN=${BAO_TOKEN:-$(jq -r .root_token /root/init.json 2>/dev/null)}
+[ -n "$BAO_TOKEN" ] || { echo "no token: set BAO_TOKEN from the admin login"; exit 1; }
 export BAO_TOKEN
+
+bao policy write admin - <<'POLICY'
+path "*" {
+  capabilities = ["create", "read", "update", "patch", "delete", "list", "sudo"]
+}
+POLICY
+bao auth list -format=json | jq -e '."userpass/"' >/dev/null || bao auth enable userpass
+if ! bao read auth/userpass/users/timour >/dev/null 2>&1; then
+  umask 077
+  [ -s /root/admin-password ] || openssl rand -base64 32 | tr -d '\n' >/root/admin-password
+  bao write auth/userpass/users/timour password=@/root/admin-password \
+    token_policies=admin token_ttl=1h token_max_ttl=8h >/dev/null
+fi
 
 bao secrets list -format=json | jq -e '."kv/"' >/dev/null || bao secrets enable -path=kv -version=2 kv
 bao auth list -format=json | jq -e ".\"k8s-$STAGE/\"" >/dev/null || bao auth enable -path="k8s-$STAGE" jwt
