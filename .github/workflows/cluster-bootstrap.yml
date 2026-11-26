@@ -1,0 +1,80 @@
+name: cluster-bootstrap
+
+# Tag 0 nach tofu apply; apply=false ist ein Server-Trockenlauf
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  ARM_CLIENT_ID: ${{ secrets.AZURE_APPLY_CLIENT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_USE_AZUREAD: true
+  ARM_USE_OIDC: true
+  MISE_VERSION: v2026.11.14 # renovate: github-releases=jdx/mise
+  MISE_YES: 1
+  MISE_AUTO_INSTALL: false
+
+jobs:
+  bootstrap:
+    if: github.ref == 'refs/heads/main'
+    name: bootstrap
+    runs-on: bootstrap
+    environment: tofu-apply
+    timeout-minutes: 30
+    concurrency:
+      group: tofu-apply-root
+      cancel-in-progress: false
+    steps:
+      - name: checkout
+        run: |
+          find . -mindepth 1 -delete
+          git init -q .
+          git fetch -q --depth 1 https://github.com/${{ github.repository }}.git "${{ github.sha }}"
+          git checkout -q FETCH_HEAD
+
+      - name: secrets
+        run: .github/scripts/central-secrets.sh cluster
+
+      - name: install mise
+        run: |
+          f="mise-${MISE_VERSION}-linux-x64.tar.gz"
+          cd "$RUNNER_TEMP"
+          curl -sSfLO "https://github.com/jdx/mise/releases/download/${MISE_VERSION}/$f"
+          curl -sSfL "https://github.com/jdx/mise/releases/download/${MISE_VERSION}/SHASUMS256.txt" | grep " ./$f$" | sha256sum -c -
+          tar -xzf "$f" mise/bin/mise
+          mkdir -p "$HOME/.local/bin"
+          install -m 755 mise/bin/mise "$HOME/.local/bin/mise"
+          rm -rf mise "$f"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "MISE_TRUSTED_CONFIG_PATHS=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: install tools
+        run: mise install opentofu kubectl helm kustomize
+
+      - name: kubeconfig
+        working-directory: tofu/stacks/cluster
+        run: |
+          mise exec -- tofu init -input=false
+          umask 077
+          mise exec -- tofu output -raw kube_config > "$RUNNER_TEMP/kubeconfig"
+          echo "KUBECONFIG=$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
+
+      - name: bootstrap
+        env:
+          BOOTSTRAP_DRY_RUN: ${{ !inputs.apply && '1' || '' }}
+        run: mise run bootstrap
+
+      - name: clean workspace
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/kubeconfig"
+          find . -mindepth 1 -delete
