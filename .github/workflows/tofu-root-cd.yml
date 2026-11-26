@@ -40,13 +40,11 @@ jobs:
     steps:
       - name: checkout
         run: |
-          git clone https://github.com/${{ github.repository }}.git .
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin ${{ github.event.pull_request.head.sha }}
-            git checkout ${{ github.event.pull_request.head.sha }}
-          else
-            git checkout ${{ github.sha }}
-          fi
+          sha="${{ github.event.pull_request.head.sha || github.sha }}"
+          find . -mindepth 1 -delete
+          git init -q .
+          git fetch -q --depth 1 https://github.com/${{ github.repository }}.git "$sha"
+          git checkout -q FETCH_HEAD
 
       - name: secrets
         env:
@@ -117,6 +115,10 @@ jobs:
               "$API/issues/$PR/comments" -d @payload.json -o /dev/null
           fi
 
+      - name: clean workspace
+        if: always()
+        run: find . -mindepth 1 -delete
+
   apply:
     # auch von Hand ausloesbar — das Freigabe-Gate bleibt unveraendert
     if: >-
@@ -136,8 +138,10 @@ jobs:
     steps:
       - name: checkout
         run: |
-          git clone https://github.com/${{ github.repository }}.git .
-          git checkout ${{ github.sha }}
+          find . -mindepth 1 -delete
+          git init -q .
+          git fetch -q --depth 1 https://github.com/${{ github.repository }}.git "${{ github.sha }}"
+          git checkout -q FETCH_HEAD
 
       - name: secrets
         run: .github/scripts/central-secrets.sh cluster
@@ -161,3 +165,7 @@ jobs:
       - name: tofu apply
         working-directory: tofu/stacks/cluster
         run: tofu apply -input=false -auto-approve -no-color -parallelism=1 -var 'rook_external=null'
+
+      - name: clean workspace
+        if: always()
+        run: find . -mindepth 1 -delete

@@ -89,8 +89,9 @@ POLICY
 jq -n --arg stage "$STAGE" '{
   role_type: "jwt", user_claim: "sub", bound_audiences: ["central-openbao"],
   bound_claims: {
-    repository: "Tim275/talos-homelab",
-    sub: ["repo:Tim275/talos-homelab:ref:refs/heads/main", "repo:Tim275/talos-homelab:environment:tofu-apply"]
+    repository_id: "1461209908",
+    sub: ["repo:Tim275@117520669/talos-homelab@1461209908:ref:refs/heads/main",
+          "repo:Tim275@117520669/talos-homelab@1461209908:environment:tofu-apply"]
   },
   token_policies: ["pipeline-\($stage)"], token_no_default_policy: true,
   token_ttl: "15m", token_max_ttl: "1h"
