@@ -34,9 +34,7 @@ jobs:
     # kein Fork-PR auf dem self-hosted Runner
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: plan (root)
-    runs-on: tofu
-    env:
-      TF_ENCRYPTION: ${{ secrets.TF_ENCRYPTION_CLUSTER }}
+    runs-on: ${{ github.event_name == 'pull_request' && 'tofu' || 'bootstrap' }}
     outputs:
       changed: ${{ steps.plan.outputs.changed }}
     steps:
@@ -49,6 +47,13 @@ jobs:
           else
             git checkout ${{ github.sha }}
           fi
+
+      - name: secrets
+        env:
+          PR_TF_ENCRYPTION: ${{ github.event_name == 'pull_request' && secrets.TF_ENCRYPTION_CLUSTER || '' }}
+          PR_TF_VAR_proxmox: ${{ github.event_name == 'pull_request' && secrets.PROXMOX_CONFIG || '' }}
+          PR_TF_VAR_proxmox_api_token: ${{ github.event_name == 'pull_request' && secrets.PROXMOX_API_TOKEN || '' }}
+        run: .github/scripts/central-secrets.sh cluster
 
       - name: install opentofu
         run: |
@@ -69,9 +74,6 @@ jobs:
       - name: tofu plan
         id: plan
         working-directory: tofu/stacks/cluster
-        env:
-          TF_VAR_proxmox: ${{ secrets.PROXMOX_CONFIG }}
-          TF_VAR_proxmox_api_token: ${{ secrets.PROXMOX_API_TOKEN }}
         run: |
           set -o pipefail
           tofu plan -input=false -no-color -lock=false -var 'rook_external=null' -out=tfplan | tee plan_output.txt
@@ -123,10 +125,9 @@ jobs:
       needs.plan.outputs.changed == 'true'
     needs: plan
     name: apply (root)
-    runs-on: tofu
+    runs-on: bootstrap
     env:
       ARM_CLIENT_ID: ${{ secrets.AZURE_APPLY_CLIENT_ID }}
-      TF_ENCRYPTION: ${{ secrets.TF_ENCRYPTION_CLUSTER }}
     environment: tofu-apply # Required-Reviewer-Gate
     timeout-minutes: 30
     concurrency:
@@ -137,6 +138,9 @@ jobs:
         run: |
           git clone https://github.com/${{ github.repository }}.git .
           git checkout ${{ github.sha }}
+
+      - name: secrets
+        run: .github/scripts/central-secrets.sh cluster
 
       - name: install opentofu
         run: |
@@ -156,7 +160,4 @@ jobs:
 
       - name: tofu apply
         working-directory: tofu/stacks/cluster
-        env:
-          TF_VAR_proxmox: ${{ secrets.PROXMOX_CONFIG }}
-          TF_VAR_proxmox_api_token: ${{ secrets.PROXMOX_API_TOKEN }}
         run: tofu apply -input=false -auto-approve -no-color -parallelism=1 -var 'rook_external=null'
