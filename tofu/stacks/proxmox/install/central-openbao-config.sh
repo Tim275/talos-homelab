@@ -26,6 +26,12 @@ bao policy write "seed-$STAGE" - <<POLICY
 path "kv/data/$STAGE/*" {
   capabilities = ["read"]
 }
+path "auth/token/lookup-self" {
+  capabilities = ["read"]
+}
+path "auth/token/renew-self" {
+  capabilities = ["update"]
+}
 POLICY
 
 bao policy write snapshot - <<'POLICY'
