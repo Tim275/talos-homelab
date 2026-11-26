@@ -105,6 +105,18 @@ spec:
             description: "Der Operator spielt den letzten Snapshot täglich um 03:00 in einen leeren Test-Tresor zurück."
             action: "kubectl -n openbao get openbaocluster openbao -o jsonpath='{.status.backup.restoreTest}'; kubectl -n openbao get openbaorestore"
 
+        - alert: CentralOpenBaoDown
+          expr: up{job="central-openbao"} == 0 or vault_core_unsealed{job="central-openbao"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            component: platform
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/secrets.md#zentraler-tresor"
+            summary: "Central OpenBao on msa2 is down or sealed"
+            description: "Running clusters keep their secrets, but no new or changed fixed value reaches them."
+            action: "ssh root@192.168.0.50 pct exec 1060 -- bao status; after a host restart unseal with the key from the password manager."
+
         - alert: OpenBaoUpgradeFailed
           expr: openbao_upgrade_status == 3
           for: 5m
