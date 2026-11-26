@@ -9,6 +9,10 @@ locals {
 
 resource "talos_machine_secrets" "this" {
   talos_version = var.cluster.talos_machine_config_version
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 data "talos_client_configuration" "this" {
