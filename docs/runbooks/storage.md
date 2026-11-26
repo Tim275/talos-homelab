@@ -127,3 +127,23 @@ rclone copy /mnt/backup-hdd/rgw/velero-cluster-backups rgw:velero-cluster-backup
 ```
 
 Je Bucket einmal, dann den Velero-Speicherort auf `ReadOnly` stellen und wie gewohnt `velero restore create --from-backup <backup>`. Postgres und OpenBao lesen ihre Sicherungen aus denselben Buckets wie vorher.
+
+## BackupOffsiteStale
+
+Die nächtliche Kopie der OpenBao-Snapshots in den Azure-Container `openbao-backups` (Konto `homelaboffsitebackup`) ist älter als 36 h. Alles andere liegt dann nur auf aoostar.
+
+```bash
+ssh root@aoostar
+journalctl -u backup-copy -n 50
+rclone lsl offsite:openbao-backups | tail
+```
+
+- `AuthorizationFailure` oder `403` → der Zugang ist abgelaufen. Neues Ablaufdatum in `tofu/stacks/state/variables.tofu`, `tofu apply` im Stack `state`, dann auf aoostar den Abschnitt `[offsite]` aus `/root/.config/rclone/rclone.conf` löschen und `backup-copy.sh` mit `OFFSITE_SAS_URL` neu ausführen.
+- Der Zugang darf nicht löschen. Alte Stände bleiben 30 Tage als Version erhalten.
+- `SHA256SUMS` neben den Snapshots enthält die Prüfsummen für `expectedDigest` im `OpenBaoRestore`.
+
+Zurückholen, wenn Ceph weg war und neu steht:
+
+```bash
+rclone copy offsite:openbao-backups rgw:openbao-backups
+```
