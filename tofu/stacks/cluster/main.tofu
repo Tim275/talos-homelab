@@ -18,8 +18,6 @@ module "openbao" {
   providers = {
     kubernetes = kubernetes
   }
-
-  seal = var.openbao_seal_config
 }
 
 module "rook_external" {
@@ -31,4 +29,12 @@ module "rook_external" {
   }
 
   values = var.rook_external
+}
+
+removed {
+  from = module.openbao.kubernetes_secret_v1.seal_key
+
+  lifecycle {
+    destroy = false
+  }
 }

@@ -203,3 +203,37 @@ spec:
     remoteRef:
       key: prod/platform/sealed-secrets/sealed-secrets-bootstrap-key-2026
       property: tls.key
+---
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: openbao-central-seal
+  annotations:
+    argocd.argoproj.io/sync-wave: '2'
+spec:
+  conditions:
+  - namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: openbao
+  provider:
+    vault:
+      server: https://192.168.0.60:8200
+      caProvider:
+        type: ConfigMap
+        name: central-openbao-ca
+        namespace: external-secrets
+        key: ca.crt
+      path: kv
+      version: v2
+      auth:
+        jwt:
+          path: k8s-prod
+          role: openbao-seal
+          kubernetesServiceAccountToken:
+            serviceAccountRef:
+              name: eso
+              namespace: openbao
+            audiences:
+            - central-openbao
+            expirationSeconds: 600
+

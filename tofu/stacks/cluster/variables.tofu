@@ -85,14 +85,6 @@ variable "talos_nodes" {
   }
 }
 
-variable "openbao_seal_config" {
-  description = "OpenBao seal key, null in CI"
-  type = object({
-    seal_key_path = string
-  })
-  sensitive = true
-}
-
 variable "rook_external" {
   description = "Ceph access for Rook external mode, from mise run pve-rook-export, null in CI"
   type = object({
