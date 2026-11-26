@@ -45,6 +45,9 @@ offsite() {
   grep -q '^\[offsite\]' /root/.config/rclone/rclone.conf || { echo "offsite not configured"; return 0; }
   rclone copy rgw:openbao-backups offsite:openbao-backups --transfers 4 || return 1
   rclone copyto "$sums" offsite:openbao-backups/SHA256SUMS || return 1
+  central=$(rclone lsjson --files-only offsite:openbao-backups/central | jq -r '[.[] | select(.Name | endswith(".snap")) | .ModTime | sub("\\.[0-9]+";"") | fromdateiso8601] | max // 0') || return 1
+  printf 'backup_central_openbao_last_snapshot_timestamp_seconds %s\n' "$central" >"$prom/backup_central_openbao.prom.tmp"
+  mv "$prom/backup_central_openbao.prom.tmp" "$prom/backup_central_openbao.prom"
   printf 'backup_offsite_last_success_timestamp_seconds %s\n' "$(date +%s)" >"$prom/backup_offsite.prom.tmp"
   mv "$prom/backup_offsite.prom.tmp" "$prom/backup_offsite.prom"
 }

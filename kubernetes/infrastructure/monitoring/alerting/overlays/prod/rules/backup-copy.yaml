@@ -33,3 +33,15 @@ spec:
             description: "The nightly copy of the OpenBao snapshots to the Azure container has not finished for 36h. Everything else lives on aoostar."
             action: "On aoostar: journalctl -u backup-copy -n 50; rclone lsl offsite:openbao-backups | tail."
 
+        - alert: CentralOpenBaoBackupStale
+          expr: time() - backup_central_openbao_last_snapshot_timestamp_seconds > 129600
+          for: 30m
+          labels:
+            severity: warning
+            component: backup
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/secrets.md#zentraler-tresor"
+            summary: "Newest snapshot of the central OpenBao in Azure is {{ $value | humanizeDuration }} old"
+            description: "The central OpenBao on msa2 holds the master copy of the fixed values. Its daily snapshot at 01:45 has not reached Azure for 36h."
+            action: "On msa2: pct exec 1060 -- journalctl -u openbao-snapshot -n 30"
+

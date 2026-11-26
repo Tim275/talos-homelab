@@ -39,3 +39,21 @@ kubectl -n external-secrets logs deploy/external-secrets --since=10m | grep <nam
 - `permission denied` → Pfad liegt außerhalb des Ordners der Rolle, falscher Store.
 - `could not get secret data from provider` ohne weitere Meldung → Namespace ist für den Store nicht freigegeben (`conditions` am ClusterSecretStore) oder der Schlüssel fehlt.
 - Store selbst prüfen: `kubectl get clustersecretstore` muss `Valid` zeigen.
+
+## Zentraler Tresor
+
+OpenBao außerhalb von Kubernetes, Container 1060 auf msa2, `https://192.168.0.60:8200` (Zertifikat auch für `bao.timourhomelab.org`). Er hält die festen Werte je Umgebung unter `kv/<umgebung>/platform/…`. Im prod-Cluster liest External Secrets sie über den Store `openbao-central` und schreibt sie per `pushsecret-bootstrap-values` in den Cluster-Tresor. Jeder Cluster meldet sich an seinem eigenen Mount `k8s-<umgebung>` an und liest nur seine Umgebung.
+
+```bash
+ssh root@192.168.0.50
+pct exec 1060 -- bash
+export BAO_ADDR=https://127.0.0.1:8200 BAO_CACERT=/opt/openbao/tls/ca.crt BAO_TLS_SERVER_NAME=bao.timourhomelab.org
+bao status
+```
+
+- Nach einem Neustart von msa2 ist er versiegelt: `bao operator unseal`, Schlüssel aus dem Passwort-Manager. Laufende Cluster arbeiten weiter, nur neue oder geänderte Werte kommen nicht an.
+- Neuer oder geänderter Wert: in der Oberfläche oder per `bao kv put -mount=kv prod/platform/<komponente>/<secret> <feld>=-`, für einen neuen Schlüssel zusätzlich ein Eintrag in `overlays/prod/central-openbao.yaml` und `pushsecret-bootstrap-values.yaml`.
+- Neue Umgebung: `STAGE=staging ISSUER=<issuer des clusters> bash central-openbao-config.sh` mit den öffentlichen Schlüsseln dieses Clusters, siehe Kopf des Skripts.
+- Sicherung täglich 01:45 nach Azure (`openbao-backups/central/`, mit `SHA256SUMS`), Alarm `CentralOpenBaoBackupStale`. Zurückspielen: Container mit `central-openbao.sh` neu aufbauen, Snapshot holen, `bao operator raft snapshot restore -force <datei>`, entsiegeln mit dem alten Schlüssel.
+- Einrichtung: `tofu/stacks/proxmox/install/central-openbao*.sh`.
+
