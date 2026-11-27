@@ -4,8 +4,6 @@
 #   - Service "keycloak-discovery" (JGroups headless)
 #   - PodDisruptionBudget
 #
-#
-# Reload: pods auto-restart when keycloak-db-credentials Secret rotates (via Stakater Reloader).
 ---
 apiVersion: k8s.keycloak.org/v2beta1
 kind: Keycloak
@@ -16,9 +14,8 @@ metadata:
     app.kubernetes.io/name: keycloak
     app.kubernetes.io/component: oidc-provider
     app.kubernetes.io/part-of: platform-identity
-  annotations:
-    secret.reloader.stakater.com/reload: keycloak-db-credentials,keycloak-admin
 spec:
+  automountServiceAccountToken: false
   update:
     strategy: Auto
   scheduling:
@@ -66,44 +63,29 @@ spec:
   proxy:
     headers: xforwarded                     # Trust X-Forwarded-* headers from Envoy
 
+  networkPolicy:
+    enabled: true
+    http:
+      - podSelector: {}
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: gateway
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: crossplane-system
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: arc-runners
+
   truststores:
     ldap-ca:
       secret:
         name: keycloak-ldap-ca              # LDAPS zu LLDAP
 
-  env:
-    - name: LLDAP_BIND_PASSWORD
-      secret:
-        name: keycloak-lldap-admin
-        key: svc-bind-password
-    - name: ARGOCD_CLIENT_SECRET
-      secret:
-        name: argocd-oidc-client-secret
-        key: clientSecret
-    - name: GRAFANA_CLIENT_SECRET
-      secret:
-        name: keycloak-grafana-client-secret
-        key: clientSecret
-    - name: KUBECTL_CLIENT_SECRET
-      secret:
-        name: keycloak-kubectl-client-secret
-        key: clientSecret
-    - name: SMTP_USER
-      secret:
-        name: keycloak-smtp
-        key: user
-    - name: SMTP_PASSWORD
-      secret:
-        name: keycloak-smtp
-        key: password
-    - name: SMTP_FROM
-      secret:
-        name: keycloak-smtp
-        key: from
-    - name: SMTP_REPLY_TO
-      secret:
-        name: keycloak-smtp
-        key: replyTo
+  tracing:
+    enabled: true
+    endpoint: http://otel-collector-collector.opentelemetry.svc.cluster.local:4317
+    samplerRatio: 0.1
 
   additionalOptions:
     - name: log-level
@@ -116,12 +98,6 @@ spec:
       value: "5,10,25,50,100,250,500,1000,2500,5000,10000"
     - name: event-metrics-user-enabled
       value: "true"
-    - name: tracing-enabled
-      value: "true"
-    - name: tracing-endpoint
-      value: http://otel-collector-collector.opentelemetry.svc.cluster.local:4317
-    - name: tracing-sampler-ratio
-      value: "0.1"
     - name: spi-events-listener-jboss-logging-success-level
       value: info
     - name: spi-events-listener-jboss-logging-error-level
