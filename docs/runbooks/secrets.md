@@ -49,11 +49,21 @@ ssh root@192.168.0.50
 pct exec 1060 -- bash
 export BAO_ADDR=https://127.0.0.1:8200 BAO_CACERT=/opt/openbao/tls/ca.crt BAO_TLS_SERVER_NAME=bao.timourhomelab.org
 bao status
+bao login -method=userpass username=timour
 ```
 
 - Nach einem Neustart von msa2 ist er versiegelt: `bao operator unseal`, Schlüssel aus dem Passwort-Manager. Laufende Cluster arbeiten weiter, nur neue oder geänderte Werte kommen nicht an.
 - Neuer oder geänderter Wert: in der Oberfläche oder per `bao kv put -mount=kv prod/platform/<komponente>/<secret> <feld>=-`, für einen neuen Schlüssel zusätzlich ein Eintrag in `overlays/prod/central-openbao.yaml` und `pushsecret-bootstrap-values.yaml`.
 - Neue Umgebung: `STAGE=staging ISSUER=<issuer des clusters> bash central-openbao-config.sh` mit den öffentlichen Schlüsseln dieses Clusters, siehe Kopf des Skripts.
 - Sicherung täglich 01:45 nach Azure (`openbao-backups/central/`, mit `SHA256SUMS`), Alarm `CentralOpenBaoBackupStale`. Zurückspielen: Container mit `central-openbao.sh` neu aufbauen, Snapshot holen, `bao operator raft snapshot restore -force <datei>`, entsiegeln mit dem alten Schlüssel.
-- Einrichtung: `tofu/stacks/proxmox/install/central-openbao*.sh`.
+- Einrichtung: `tofu/stacks/proxmox/install/central-openbao*.sh`; die Skripte nutzen `BAO_TOKEN` aus dem Admin-Login.
+
+## Neuaufbau
+
+1. Workflow `tofu-root-cd` von Hand starten, Plan lesen, Umgebung `tofu-apply` freigeben.
+2. Workflow `cluster-bootstrap` mit `apply` starten und freigeben: CRDs, Argo CD, root. Ohne `apply` ist es ein Trockenlauf.
+3. Argo CD rollt aus; External Secrets holt Seal-Key und feste Werte aus dem zentralen Tresor.
+4. `OpenBaoRestore` anlegen, damit generierte Passwörter aus dem Snapshot zurückkommen.
+
+Beide Workflows laufen auf dem Runner `bootstrap` (Container 1061 auf msa2) und holen ihre Secrets per ID-Token aus `kv/prod/pipeline/cluster`. Schritt 3 klappt nur, wenn die Talos-Geheimnisse den Neuaufbau überleben, sonst kennt der zentrale Tresor die Schlüssel des neuen Clusters nicht.
 
