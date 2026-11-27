@@ -1,0 +1,45 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: keycloak-ingress-lock
+  namespace: keycloak
+spec:
+  endpointSelector:
+    matchLabels:
+      app: keycloak
+      app.kubernetes.io/managed-by: keycloak-operator
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: gateway
+            gateway.envoyproxy.io/owning-gateway-name: envoy-gateway
+        - matchLabels:
+            io.kubernetes.pod.namespace: keycloak
+        - matchLabels:
+            io.kubernetes.pod.namespace: crossplane-system
+            pkg.crossplane.io/provider: provider-keycloak
+        - matchLabels:
+            io.kubernetes.pod.namespace: arc-runners
+      toPorts:
+        - ports:
+            - { port: "8080", protocol: TCP }
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: keycloak
+            app: keycloak
+      toPorts:
+        - ports:
+            - { port: "7800", protocol: TCP }
+            - { port: "57800", protocol: TCP }
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: monitoring
+      toPorts:
+        - ports:
+            - { port: "9000", protocol: TCP }
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - { port: "9000", protocol: TCP }
