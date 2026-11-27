@@ -291,3 +291,52 @@ spec:
       remoteRef:
         key: platform/harbor/harbor-postgres-credentials
         property: password
+---
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: role-lldap-password
+  namespace: postgres
+  annotations:
+    argocd.argoproj.io/sync-wave: '-1'
+spec:
+  refreshInterval: 1h
+  updatePolicy: IfNotExists
+  secretStoreRefs:
+    - name: openbao
+      kind: ClusterSecretStore
+  selector:
+    generatorRef:
+      apiVersion: generators.external-secrets.io/v1alpha1
+      kind: ClusterGenerator
+      name: password
+  data:
+    - match:
+        secretKey: password
+        remoteRef:
+          remoteKey: platform/lldap/lldap-postgres-credentials
+          property: password
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: role-lldap
+  namespace: postgres
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao
+    kind: ClusterSecretStore
+  target:
+    name: role-lldap
+    template:
+      type: kubernetes.io/basic-auth
+      engineVersion: v2
+      data:
+        username: lldap
+        password: '{{ .password }}'
+  data:
+    - secretKey: password
+      remoteRef:
+        key: platform/lldap/lldap-postgres-credentials
+        property: password
