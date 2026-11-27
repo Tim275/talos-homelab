@@ -38,8 +38,11 @@ bao write "auth/k8s-$STAGE/config" \
   jwt_validation_pubkeys=@/root/cluster-sa-pubkeys.pem >/dev/null
 
 bao policy write "seed-$STAGE" - <<POLICY
-path "kv/data/$STAGE/*" {
+path "kv/data/$STAGE/platform/*" {
   capabilities = ["read"]
+}
+path "kv/data/$STAGE/platform/openbao/*" {
+  capabilities = ["deny"]
 }
 path "auth/token/lookup-self" {
   capabilities = ["read"]
