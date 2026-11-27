@@ -10,9 +10,10 @@ metadata:
     secret.reloader.stakater.com/reload: lldap-ldaps-tls
 spec:
   strategy:
-    type: Recreate  # For SQLite (single instance)
-    #   maxSurge: 1
-    #   maxUnavailable: 1
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app.kubernetes.io/name: lldap
@@ -30,6 +31,16 @@ spec:
         fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          nodeTaintsPolicy: Honor
+          matchLabelKeys:
+            - pod-template-hash
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: lldap
       containers:
         - name: lldap
           image: ghcr.io/lldap/lldap
@@ -85,12 +96,9 @@ spec:
                   key: LLDAP_HTTP_HOST
             - name: LLDAP_DATABASE_URL
               valueFrom:
-                configMapKeyRef:
-                  name: lldap-config
-                  key: LLDAP_DATABASE_URL
-            # - name: LLDAP_DATABASE_URL
-            #       name: lldap-postgres-app
-            #       key: uri
+                secretKeyRef:
+                  name: lldap-database
+                  key: url
             - name: LLDAP_LDAP_USER_DN
               valueFrom:
                 configMapKeyRef:
@@ -153,8 +161,7 @@ spec:
             failureThreshold: 3
       volumes:
         - name: data
-          persistentVolumeClaim:
-            claimName: lldap-data
+          emptyDir: {}
         - name: ldaps-tls
           secret:
             secretName: lldap-ldaps-tls
