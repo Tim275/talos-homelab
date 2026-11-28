@@ -1,0 +1,82 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - multi-filerealm.yaml
+  - elasticsearch-exporter-credentials.yaml
+
+components:
+  - ../../components/rook-ceph
+  - ../../components/kube-prometheus-stack
+
+patches:
+  - path: sizing.yaml
+  - path: settings.yaml
+  - target:
+      group: elasticsearch.k8s.elastic.co
+      version: v1
+      kind: Elasticsearch
+      name: production-cluster
+      namespace: elastic-system
+    patch: |
+      - op: add
+        path: /spec/nodeSets/0/count
+        value: 1
+      # 7d max 2032Mi against a 2Gi limit. Heap stays 1g — what was missing is
+      # the off-heap room next to it (Lucene, direct buffers).
+      - op: add
+        path: /spec/nodeSets/0/podTemplate/spec/containers/0/resources
+        value:
+          requests:
+            memory: 2Gi
+            cpu: 500m
+          limits:
+            memory: 3Gi
+            cpu: "2"
+      - op: add
+        path: /spec/nodeSets/0/podTemplate/spec/affinity/nodeAffinity/requiredDuringSchedulingIgnoredDuringExecution/nodeSelectorTerms/0/matchExpressions/-
+        value:
+          key: kubernetes.io/hostname
+          operator: NotIn
+          values: [worker-1, worker-2]
+      - op: add
+        path: /spec/nodeSets/0/volumeClaimTemplates/0/spec/resources
+        value:
+          requests:
+            storage: 100Gi
+  - target:
+      group: kibana.k8s.elastic.co
+      version: v1
+      kind: Kibana
+      name: production-kibana
+      namespace: elastic-system
+    patch: |
+      - op: add
+        path: /spec/podTemplate/spec/containers/0/resources
+        value:
+          requests:
+            memory: 512Mi
+            cpu: 250m
+          limits:
+            memory: 1Gi
+            cpu: 1
+      - op: add
+        path: /spec/podTemplate/spec/affinity
+        value:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: kubernetes.io/hostname
+                      operator: NotIn
+                      values: [worker-1, worker-2]
+  - path: versions.yaml
+
+images:
+  - name: alpine/k8s
+    newTag: 1.37.2@sha256:7a82aeefea3d554a43a8676b137f2b88bae6c1fe11c13862b191b3a086cc28c0
+  - name: curlimages/curl
+    newTag: 8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93
+  - name: quay.io/prometheuscommunity/elasticsearch-exporter
+    newTag: v1.11.0@sha256:a056739b095df4baaa076f0b31321394233da9a240eeada2623d1b028b7ee7a6

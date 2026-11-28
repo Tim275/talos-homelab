@@ -1,0 +1,13 @@
+# harbor
+
+Projekte, Robot-Accounts, unveränderliche Release-Tags und Garbage Collection von Harbor als Code. Die Instanz selbst
+kommt per GitOps (`kubernetes/platform/delivery/harbor`), die Anmeldung über Keycloak setzt dort `CONFIG_OVERWRITE_JSON`.
+Apply läuft über `tofu-cd.yml` nach dem Merge, `tofu-drift` plant den Stack täglich. Lokal `tofu plan` mit `TF_VAR_harbor_password`
+(Secret `harbor-secrets` in `harbor`, Schlüssel `HARBOR_ADMIN_PASSWORD`).
+Keine Retention-Regel: Harbor löscht unveränderliche Tags nicht, die Quota begrenzt das Projekt.
+Die Robot-Secrets verwaltet der Stack nicht. Sie liegen in OpenBao (`tenants/drova/harbor-robot-pull`) und als
+`HARBOR_USERNAME`/`HARBOR_PASSWORD` im Repo drova.
+Projekte und Robots sind von Hand angelegt und stehen in `imports.tofu`, auf einer leeren Instanz die Datei entfernen.
+Den GC-Zeitplan setzt nur der Stack: ein von Hand angelegter Zeitplan lässt `harbor_garbage_collection` mit 412 scheitern,
+vorher in der Oberfläche auf „None“ stellen.
+An der WAF des Gateways gilt für `harbor.timourhomelab.org` eine Ausnahme für `PUT`, `PATCH` und `DELETE` (Regel 1100020). Ohne sie scheitern Löschen und Ändern in der Oberfläche mit einem leeren 403.

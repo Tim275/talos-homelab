@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgadmin
+  namespace: pgadmin
+  labels:
+    app.kubernetes.io/name: pgadmin
+    app.kubernetes.io/component: database-admin
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pgadmin
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pgadmin
+    spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node-pool
+                    operator: In
+                    values:
+                      - stateless
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 5050
+        runAsGroup: 5050
+        fsGroup: 5050
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: pgpass
+          image: ghcr.io/pgadmin-org/pgadmin4
+          command: ["sh", "-c"]
+          args:
+            - d="/var/lib/pgadmin/storage/$(echo "$PGADMIN_DEFAULT_EMAIL" | sed 's/@/_/g')";
+              mkdir -p "$d" && cp /secrets/pgpass "$d/.pgpass" && chmod 600 "$d/.pgpass"
+          volumeMounts:
+            - name: pgadmin-data
+              mountPath: /var/lib/pgadmin
+            - name: pgpass
+              mountPath: /secrets
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      containers:
+        - name: pgadmin
+          image: ghcr.io/pgadmin-org/pgadmin4
+          ports:
+            - containerPort: 5050
+              name: http
+          env:
+            - name: PGADMIN_DEFAULT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pgadmin-credentials
+                  key: password
+            - name: PGADMIN_LISTEN_PORT
+              value: "5050"
+            - name: PGADMIN_DISABLE_POSTFIX
+              value: "True"
+            - name: PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED
+              value: "False"
+            - name: PGADMIN_SERVER_JSON_FILE
+              value: /pgadmin4/config/servers.json
+            - name: PGADMIN_REPLACE_SERVERS_ON_STARTUP
+              value: "True"
+          volumeMounts:
+            - name: pgadmin-data
+              mountPath: /var/lib/pgadmin
+            - name: servers
+              mountPath: /pgadmin4/config
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: false
+          readinessProbe:
+            httpGet:
+              path: /misc/ping
+              port: 5050
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /misc/ping
+              port: 5050
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 3
+      volumes:
+        - name: pgadmin-data
+          persistentVolumeClaim:
+            claimName: pgadmin-data
+        - name: servers
+          configMap:
+            name: pgadmin-servers
+        - name: pgpass
+          secret:
+            secretName: pgadmin-pgpass

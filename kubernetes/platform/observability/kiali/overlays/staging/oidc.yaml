@@ -1,0 +1,108 @@
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: kiali-oidc-credentials-cookie-secret
+  namespace: istio-system
+  annotations:
+    argocd.argoproj.io/sync-wave: '-1'
+spec:
+  refreshInterval: 1h
+  updatePolicy: IfNotExists
+  secretStoreRefs:
+    - name: openbao
+      kind: ClusterSecretStore
+  selector:
+    generatorRef:
+      apiVersion: generators.external-secrets.io/v1alpha1
+      kind: ClusterGenerator
+      name: password
+  data:
+    - match:
+        secretKey: password
+        remoteRef:
+          remoteKey: platform/kiali/kiali-oidc-credentials
+          property: cookie-secret
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: kiali-oidc-credentials
+  namespace: istio-system
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao
+    kind: ClusterSecretStore
+  target:
+    name: kiali-oidc-credentials
+    template:
+      engineVersion: v2
+      data:
+        client-id: kiali
+        client-secret: '{{ index . "client-secret" }}'
+        cookie-secret: '{{ index . "cookie-secret" }}'
+  data:
+    - secretKey: client-secret
+      remoteRef:
+        key: platform/keycloak/keycloak-kiali-client-secret
+        property: clientSecret
+    - secretKey: cookie-secret
+      remoteRef:
+        key: platform/kiali/kiali-oidc-credentials
+        property: cookie-secret
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: kiali-oidc
+  namespace: istio-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: kiali
+  oidc:
+    provider:
+      issuer: https://iam.staging.timourhomelab.org/realms/plattform
+      authorizationEndpoint: https://iam.staging.timourhomelab.org/realms/plattform/protocol/openid-connect/auth
+      tokenEndpoint: https://iam.staging.timourhomelab.org/realms/plattform/protocol/openid-connect/token
+    clientIDRef:
+      name: kiali-oidc-credentials
+      group: ""
+      kind: Secret
+    clientSecret:
+      name: kiali-oidc-credentials
+    redirectURL: https://kiali.staging.timourhomelab.org/oauth2/callback
+    logoutPath: /oauth2/logout
+    cookieNames:
+      accessToken: AccessToken-Kiali
+      idToken: IdToken-Kiali
+    refreshToken: true
+    scopes:
+      - openid
+      - profile
+      - email
+      - groups
+  jwt:
+    providers:
+      - name: keycloak
+        issuer: https://iam.staging.timourhomelab.org/realms/plattform
+        remoteJWKS:
+          uri: https://iam.staging.timourhomelab.org/realms/plattform/protocol/openid-connect/certs
+        extractFrom:
+          cookies:
+            - AccessToken-Kiali
+  authorization:
+    defaultAction: Deny
+    rules:
+      - name: admins
+        action: Allow
+        principal:
+          jwt:
+            provider: keycloak
+            claims:
+              - name: groups
+                valueType: StringArray
+                values: ["cluster-admins", "platform-engineers", "sre-team", "security-team"]

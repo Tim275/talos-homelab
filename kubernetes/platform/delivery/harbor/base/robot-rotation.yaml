@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: harbor-robot-rotation
+  namespace: harbor
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: harbor-robot-rotation
+  namespace: harbor
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [harbor-robot-drova-pull]
+    verbs: [get, patch]
+  - apiGroups: [external-secrets.io]
+    resources: [pushsecrets]
+    resourceNames: [harbor-robot-drova-pull]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: harbor-robot-rotation
+  namespace: harbor
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: harbor-robot-rotation
+subjects:
+  - kind: ServiceAccount
+    name: harbor-robot-rotation
+    namespace: harbor
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: harbor-robot-rotation
+  namespace: harbor
+spec:
+  schedule: "0 6 1 * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: harbor-robot-rotation
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: rotate
+              image: docker.io/alpine/k8s
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              env:
+                - name: HARBOR_URL
+                  value: http://harbor.harbor.svc.cluster.local
+                - name: HARBOR_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: harbor-secrets
+                      key: HARBOR_ADMIN_PASSWORD
+                - name: PROJECT
+                  value: drova
+                - name: ROBOT
+                  value: robot$drova+pull
+                - name: SECRET_NAME
+                  value: harbor-robot-drova-pull
+                - name: VALID_DAYS
+                  value: "90"
+                - name: HOME
+                  value: /tmp
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+              command: ["/bin/bash", "-ceu"]
+              args:
+                - |
+                  set -o pipefail
+                  api() { curl -fsS -u "admin:$HARBOR_PASSWORD" -H 'Content-Type: application/json' "$@"; }
+                  project=$(api "$HARBOR_URL/api/v2.0/projects/$PROJECT" | jq -r .project_id)
+                  robot=$(api "$HARBOR_URL/api/v2.0/robots?q=Level%3Dproject%2CProjectID%3D$project&page_size=100" | jq -c --arg n "$ROBOT" '.[] | select(.name == $n)')
+                  [ -n "$robot" ] || { echo "robot $ROBOT not found"; exit 1; }
+                  id=$(jq -r .id <<<"$robot")
+                  new="$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)aB3"
+                  # the expiry counts from creation, so it has to move with every rotation
+                  jq -c --argjson v "$VALID_DAYS" '.duration = (((now - (.creation_time | sub("\\.[0-9]+"; "") | fromdate)) / 86400 | floor) + $v)' <<<"$robot" | api -X PUT "$HARBOR_URL/api/v2.0/robots/$id" -d @- >/dev/null
+                  jq -nc --arg s "$new" '{secret: $s}' | api -X PATCH "$HARBOR_URL/api/v2.0/robots/$id" -d @- >/dev/null
+                  kubectl -n harbor patch secret "$SECRET_NAME" --type merge -p "$(jq -nc --arg s "$new" '{stringData: {password: $s}}')" >/dev/null
+                  kubectl -n harbor annotate pushsecret "$SECRET_NAME" force-sync="$(date +%s)" --overwrite >/dev/null
+                  echo "rotated $ROBOT, valid for $VALID_DAYS days"
+          volumes:
+            - name: tmp
+              emptyDir: {}

@@ -1,0 +1,50 @@
+# Fallback-Discovery fuer Services mit Label monitoring: prometheus, feste Ports fuer Kafka/ES.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: global-prometheus-discovery
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/tracking-id: kube-prometheus-stack:monitoring.coreos.com/ServiceMonitor:monitoring/global-prometheus-discovery
+  labels:
+    argocd.argoproj.io/instance: kube-prometheus-stack
+    app.kubernetes.io/name: global-servicemonitor
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: prometheus-stack
+    team: platform
+    release: prometheus-operator  # CRITICAL: Prometheus discovery
+spec:
+  namespaceSelector:
+    any: true  # Monitor services in ALL namespaces
+  selector:
+    matchLabels:
+      monitoring: prometheus
+  endpoints:
+    - port: metrics           # Default metrics port (standard naming)
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      honorLabels: true
+    - port: tcp-ctrlplane     # Kafka JMX metrics port (Strimzi pattern)
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      honorLabels: true
+    - port: https             # Elasticsearch HTTPS metrics port
+      path: /_prometheus/metrics
+      scheme: https
+      interval: 30s
+      scrapeTimeout: 10s
+      honorLabels: true
+      tlsConfig:
+        insecureSkipVerify: true
+    - targetPort: 9090        # Direct port targeting (Kafka JMX)
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      honorLabels: true
+    - targetPort: 9200        # Direct port targeting (Elasticsearch)
+      path: /_prometheus/metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      honorLabels: true

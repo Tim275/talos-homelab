@@ -1,0 +1,579 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
+  labels:
+    app.kubernetes.io/name: crossview
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+  name: crossview
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/instance: crossview
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: crossview
+    app.kubernetes.io/version: v4.8.0
+    helm.sh/chart: crossview-4.8.0
+  name: crossview-sa
+  namespace: crossview
+---
+apiVersion: v1
+automountServiceAccountToken: false
+kind: ServiceAccount
+metadata:
+  name: eso
+  namespace: crossview
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: crossview
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  - pods
+  - services
+  - configmaps
+  - events
+  - nodes
+  - persistentvolumeclaims
+  - resourcequotas
+  - limitranges
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - apiextensions.crossplane.io
+  - pkg.crossplane.io
+  - protection.crossplane.io
+  - ops.crossplane.io
+  - platform.tim275.github.io
+  - customers.tim275.github.io
+  - apps
+  - gateway.networking.k8s.io
+  - external-secrets.io
+  - postgresql.cnpg.io
+  - cilium.io
+  resources:
+  - '*'
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: crossview
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: crossview
+subjects:
+- kind: ServiceAccount
+  name: crossview-sa
+  namespace: crossview
+---
+apiVersion: v1
+data:
+  AUTH_CREATE_USERS: "true"
+  AUTH_DEFAULT_ROLE: viewer
+  AUTH_MODE: session
+  AUTH_TRUSTED_HEADER: X-Auth-User
+  CONTEXT_ALIASES: '{}'
+  CORS_ORIGIN: https://crossview.staging.timourhomelab.org
+  DB_ENABLED: "false"
+  DB_HOST: crossview-postgres
+  DB_NAME: crossview
+  DB_PORT: "5432"
+  DB_SSL_CERT: ""
+  DB_SSL_KEY: ""
+  DB_SSL_MODE: disable
+  DB_SSL_ROOT_CERT: ""
+  DB_USER: postgres
+  LOG_LEVEL: info
+  MANAGED_CACHE_TTL_SECONDS: "300"
+  MANAGED_MAX_CONCURRENCY: "10"
+  MANAGED_MAX_ITEMS_PER_TYPE: "5000"
+  MANAGED_PAGE_SIZE: "1000"
+  OIDC_AUTHORIZATION_URL: ""
+  OIDC_CALLBACK_URL: https://crossview.staging.timourhomelab.org/api/auth/oidc/callback
+  OIDC_CLIENT_ID: crossview
+  OIDC_EMAIL_ATTRIBUTE: email
+  OIDC_ENABLED: "true"
+  OIDC_FIRSTNAME_ATTRIBUTE: given_name
+  OIDC_ISSUER: https://iam.staging.timourhomelab.org/realms/plattform
+  OIDC_LASTNAME_ATTRIBUTE: family_name
+  OIDC_PROVIDER_ICON: ""
+  OIDC_PROVIDER_NAME: Keycloak
+  OIDC_SCOPE: openid profile email
+  OIDC_TOKEN_URL: ""
+  OIDC_USERINFO_URL: ""
+  OIDC_USERNAME_ATTRIBUTE: preferred_username
+  PORT: "3001"
+  SAML_CALLBACK_URL: http://localhost:3001/api/auth/saml/callback
+  SAML_EMAIL_ATTRIBUTE: http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress
+  SAML_ENABLED: "false"
+  SAML_ENTRY_POINT: http://localhost:8080/realms/crossview/protocol/saml
+  SAML_FIRSTNAME_ATTRIBUTE: http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname
+  SAML_ISSUER: crossview
+  SAML_LASTNAME_ATTRIBUTE: http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname
+  SAML_PROVIDER_ICON: ""
+  SAML_PROVIDER_NAME: ""
+  SAML_USERNAME_ATTRIBUTE: http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/instance: crossview
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: crossview
+    app.kubernetes.io/version: v4.8.0
+    helm.sh/chart: crossview-4.8.0
+  name: crossview-config
+  namespace: crossview
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/instance: crossview
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: crossview
+    app.kubernetes.io/version: v4.8.0
+    helm.sh/chart: crossview-4.8.0
+  name: crossview-service
+  namespace: crossview
+spec:
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 3001
+  selector:
+    app.kubernetes.io/component: app
+    app.kubernetes.io/instance: crossview
+    app.kubernetes.io/name: crossview
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/instance: crossview
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: crossview
+    app.kubernetes.io/version: v4.8.0
+    helm.sh/chart: crossview-4.8.0
+  name: crossview
+  namespace: crossview
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: app
+      app.kubernetes.io/instance: crossview
+      app.kubernetes.io/name: crossview
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations: null
+      labels:
+        app.kubernetes.io/component: app
+        app.kubernetes.io/instance: crossview
+        app.kubernetes.io/name: crossview
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - crossview
+              topologyKey: kubernetes.io/hostname
+            weight: 100
+      containers:
+      - env:
+        - name: DB_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              key: DB_ENABLED
+              name: crossview-config
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              key: DB_HOST
+              name: crossview-config
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              key: DB_PORT
+              name: crossview-config
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              key: DB_NAME
+              name: crossview-config
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              key: DB_USER
+              name: crossview-config
+        - name: DB_SSL_MODE
+          valueFrom:
+            configMapKeyRef:
+              key: DB_SSL_MODE
+              name: crossview-config
+        - name: DB_SSL_ROOT_CERT
+          valueFrom:
+            configMapKeyRef:
+              key: DB_SSL_ROOT_CERT
+              name: crossview-config
+        - name: DB_SSL_CERT
+          valueFrom:
+            configMapKeyRef:
+              key: DB_SSL_CERT
+              name: crossview-config
+        - name: DB_SSL_KEY
+          valueFrom:
+            configMapKeyRef:
+              key: DB_SSL_KEY
+              name: crossview-config
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              key: PORT
+              name: crossview-config
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              key: LOG_LEVEL
+              name: crossview-config
+        - name: CORS_ORIGIN
+          valueFrom:
+            configMapKeyRef:
+              key: CORS_ORIGIN
+              name: crossview-config
+        - name: AUTH_MODE
+          valueFrom:
+            configMapKeyRef:
+              key: AUTH_MODE
+              name: crossview-config
+        - name: AUTH_TRUSTED_HEADER
+          valueFrom:
+            configMapKeyRef:
+              key: AUTH_TRUSTED_HEADER
+              name: crossview-config
+        - name: AUTH_CREATE_USERS
+          valueFrom:
+            configMapKeyRef:
+              key: AUTH_CREATE_USERS
+              name: crossview-config
+        - name: AUTH_DEFAULT_ROLE
+          valueFrom:
+            configMapKeyRef:
+              key: AUTH_DEFAULT_ROLE
+              name: crossview-config
+        - name: MANAGED_CACHE_TTL_SECONDS
+          valueFrom:
+            configMapKeyRef:
+              key: MANAGED_CACHE_TTL_SECONDS
+              name: crossview-config
+        - name: MANAGED_PAGE_SIZE
+          valueFrom:
+            configMapKeyRef:
+              key: MANAGED_PAGE_SIZE
+              name: crossview-config
+        - name: MANAGED_MAX_ITEMS_PER_TYPE
+          valueFrom:
+            configMapKeyRef:
+              key: MANAGED_MAX_ITEMS_PER_TYPE
+              name: crossview-config
+        - name: MANAGED_MAX_CONCURRENCY
+          valueFrom:
+            configMapKeyRef:
+              key: MANAGED_MAX_CONCURRENCY
+              name: crossview-config
+        - name: OIDC_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              key: OIDC_ENABLED
+              name: crossview-config
+        - name: OIDC_ISSUER
+          valueFrom:
+            configMapKeyRef:
+              key: OIDC_ISSUER
+              name: crossview-config
+        - name: OIDC_CLIENT_ID
+          valueFrom:
+            configMapKeyRef:
+              key: OIDC_CLIENT_ID
+              name: crossview-config
+        - name: OIDC_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              key: oidc-client-secret
+              name: crossview-secrets
+        - name: OIDC_AUTHORIZATION_URL
+          valueFrom:
+            configMapKeyRef:
+              key: OIDC_AUTHORIZATION_URL
+              name: crossview-config
+        - name: OIDC_TOKEN_URL
+          valueFrom:
+            configMapKeyRef:
+              key: OIDC_TOKEN_URL
+              name: crossview-config
+        - name: OIDC_USERINFO_URL
+          valueFrom:
+            configMapKeyRef:
+              key: OIDC_USERINFO_URL
+              name: crossview-config
+        - name: OIDC_CALLBACK_URL
+          valueFrom:
+            configMapKeyRef:
+              key: OIDC_CALLBACK_URL
+              name: crossview-config
+        - name: OIDC_SCOPE
+          valueFrom:
+            configMapKeyRef:
+              key: OIDC_SCOPE
+              name: crossview-config
+        - name: OIDC_USERNAME_ATTRIBUTE
+          valueFrom:
+            configMapKeyRef:
+              key: OIDC_USERNAME_ATTRIBUTE
+              name: crossview-config
+        - name: OIDC_PROVIDER_NAME
+          valueFrom:
+            configMapKeyRef:
+              key: OIDC_PROVIDER_NAME
+              name: crossview-config
+              optional: true
+        - name: OIDC_PROVIDER_ICON
+          valueFrom:
+            configMapKeyRef:
+              key: OIDC_PROVIDER_ICON
+              name: crossview-config
+              optional: true
+        - name: OIDC_EMAIL_ATTRIBUTE
+          valueFrom:
+            configMapKeyRef:
+              key: OIDC_EMAIL_ATTRIBUTE
+              name: crossview-config
+        - name: OIDC_FIRSTNAME_ATTRIBUTE
+          valueFrom:
+            configMapKeyRef:
+              key: OIDC_FIRSTNAME_ATTRIBUTE
+              name: crossview-config
+        - name: OIDC_LASTNAME_ATTRIBUTE
+          valueFrom:
+            configMapKeyRef:
+              key: OIDC_LASTNAME_ATTRIBUTE
+              name: crossview-config
+        - name: SAML_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              key: SAML_ENABLED
+              name: crossview-config
+        - name: SAML_ENTRY_POINT
+          valueFrom:
+            configMapKeyRef:
+              key: SAML_ENTRY_POINT
+              name: crossview-config
+        - name: SAML_PROVIDER_NAME
+          valueFrom:
+            configMapKeyRef:
+              key: SAML_PROVIDER_NAME
+              name: crossview-config
+              optional: true
+        - name: SAML_PROVIDER_ICON
+          valueFrom:
+            configMapKeyRef:
+              key: SAML_PROVIDER_ICON
+              name: crossview-config
+              optional: true
+        - name: SAML_ISSUER
+          valueFrom:
+            configMapKeyRef:
+              key: SAML_ISSUER
+              name: crossview-config
+        - name: SAML_CALLBACK_URL
+          valueFrom:
+            configMapKeyRef:
+              key: SAML_CALLBACK_URL
+              name: crossview-config
+        - name: SAML_USERNAME_ATTRIBUTE
+          valueFrom:
+            configMapKeyRef:
+              key: SAML_USERNAME_ATTRIBUTE
+              name: crossview-config
+        - name: SAML_EMAIL_ATTRIBUTE
+          valueFrom:
+            configMapKeyRef:
+              key: SAML_EMAIL_ATTRIBUTE
+              name: crossview-config
+        - name: SAML_FIRSTNAME_ATTRIBUTE
+          valueFrom:
+            configMapKeyRef:
+              key: SAML_FIRSTNAME_ATTRIBUTE
+              name: crossview-config
+        - name: SAML_LASTNAME_ATTRIBUTE
+          valueFrom:
+            configMapKeyRef:
+              key: SAML_LASTNAME_ATTRIBUTE
+              name: crossview-config
+        - name: SESSION_SECRET
+          valueFrom:
+            secretKeyRef:
+              key: session-secret
+              name: crossview-secrets
+        image: ghcr.io/crossplane-contrib/crossview:v4.8.0@sha256:98b790624b8dc04fc768ba19a9bff464f4dd812510482f59619008359d13abd9
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /api/health
+            port: 3001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        name: crossview
+        ports:
+        - containerPort: 3001
+          name: http
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /api/health
+            port: 3001
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+          requests:
+            cpu: 50m
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          runAsUser: 1000
+        volumeMounts:
+        - mountPath: /app/logs
+          name: logs
+      securityContext:
+        fsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: crossview-sa
+      volumes:
+      - emptyDir: {}
+        name: logs
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: crossview-secrets
+  namespace: crossview
+spec:
+  data:
+  - remoteRef:
+      key: platform/crossview/crossview-secrets
+      property: session-secret
+    secretKey: session-secret
+  - remoteRef:
+      key: platform/keycloak/keycloak-crossview-client-secret
+      property: clientSecret
+    secretKey: oidc-client-secret
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: openbao
+  target:
+    name: crossview-secrets
+---
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  name: crossview-session-secret
+  namespace: crossview
+spec:
+  data:
+  - match:
+      remoteRef:
+        property: session-secret
+        remoteKey: platform/crossview/crossview-secrets
+      secretKey: password
+  refreshInterval: 1h
+  secretStoreRefs:
+  - kind: ClusterSecretStore
+    name: openbao
+  selector:
+    generatorRef:
+      apiVersion: generators.external-secrets.io/v1alpha1
+      kind: ClusterGenerator
+      name: password
+  updatePolicy: IfNotExists
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  annotations:
+    gethomepage.dev/description: Crossplane (VPN-only)
+    gethomepage.dev/enabled: "true"
+    gethomepage.dev/group: Platform
+    gethomepage.dev/href: https://crossview.staging.timourhomelab.org
+    gethomepage.dev/icon: crossplane.png
+    gethomepage.dev/name: Crossview
+    gethomepage.dev/pod-selector: app.kubernetes.io/name=crossview
+  name: crossview
+  namespace: crossview
+spec:
+  hostnames:
+  - crossview.staging.timourhomelab.org
+  parentRefs:
+  - name: envoy-gateway
+    namespace: gateway
+    sectionName: https
+  rules:
+  - backendRefs:
+    - name: crossview-service
+      port: 80

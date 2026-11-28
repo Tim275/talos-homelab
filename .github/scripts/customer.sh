@@ -1,0 +1,81 @@
+#!/bin/sh
+set -eu
+: "${ACTION:?}" "${CUSTOMER:?}"
+
+CUSTOMER=$(printf '%s' "$CUSTOMER" | tr '[:upper:]' '[:lower:]')
+echo "$CUSTOMER" | LC_ALL=C grep -Eq '^[a-z]{1,5}[0-9]{2,12}$' || { echo "customer number invalid: $CUSTOMER"; exit 1; }
+ADDRESS=$(printf '%s' "${ADDRESS:-}" | tr '[:upper:]' '[:lower:]')
+if [ "$ACTION" = create ]; then
+  echo "$ADDRESS" | LC_ALL=C grep -Eq '^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$' || { echo "address invalid or missing: $ADDRESS"; exit 1; }
+  ! echo "$ADDRESS" | LC_ALL=C grep -Eq '^[a-z]{1,5}[0-9]{2,12}$' || { echo "address must be a name, not a customer number"; exit 1; }
+fi
+SERVICES=$(printf '%s' "${SERVICES:-}" | tr '[:upper:],' '[:lower:] ' | xargs -n1 | sort -u)
+allowed=$(yq '.spec.versions[0].schema.openAPIV3Schema.properties.spec.properties.services.items.enum[]' crossplane/apis/customer/definition.yaml)
+hint="allowed: $(printf '%s' "$allowed" | tr '\n' ' ')"
+
+environments='staging prod'
+file=$CUSTOMER.yaml
+orders() { echo "kubernetes/customers/$1"; }
+
+case $ACTION in
+  create)
+    [ -n "$SERVICES" ] || { echo "no services given, $hint"; exit 1; }
+    for s in $SERVICES; do
+      echo "$allowed" | grep -qx "$s" || { echo "unknown service: $s, $hint"; exit 1; }
+    done
+    for e in $environments; do
+      [ ! -e "$(orders "$e")/$file" ] || { echo "$CUSTOMER already exists in $e"; exit 1; }
+      ! grep -rlx "  address: $ADDRESS" "$(orders "$e")" > /dev/null || { echo "address $ADDRESS is taken in $e"; exit 1; }
+    done
+    ;;
+  cancel|resume|delete)
+    want=true
+    [ "$ACTION" = cancel ] && want=false
+    for e in $environments; do
+      f=$(orders "$e")/$file
+      [ -e "$f" ] || { echo "$CUSTOMER does not exist in $e"; exit 1; }
+      [ "$ACTION" = delete ] || [ "$(yq '.spec.suspended // false' "$f")" = "$want" ] || { echo "$CUSTOMER cannot $ACTION in $e, suspended is $(yq '.spec.suspended // false' "$f")"; exit 1; }
+    done
+    ;;
+  *) echo "unknown action: $ACTION"; exit 1 ;;
+esac
+
+apply_change() {
+  dir=$(orders "$1")
+  case $ACTION in
+    create)
+      printf 'apiVersion: customers.tim275.github.io/v1alpha1\nkind: Customer\nmetadata:\n  name: %s\nspec:\n  address: %s\n' "$CUSTOMER" "$ADDRESS" > "$dir/$file"
+      S=$SERVICES yq -i '.spec.services = (strenv(S) | split("\n"))' "$dir/$file"
+      F=$file yq -i '.resources = ((.resources // []) + [strenv(F)] | unique | sort)' "$dir/kustomization.yaml"
+      ;;
+    cancel)
+      D=$(date -u +%Y-%m-%d) yq -i '.spec.suspended = true | .metadata.annotations."customers.tim275.github.io/suspended-at" = strenv(D)' "$dir/$file"
+      ;;
+    resume)
+      yq -i 'del(.spec.suspended) | del(.metadata.annotations."customers.tim275.github.io/suspended-at") | del(.metadata.annotations | select(length == 0))' "$dir/$file"
+      ;;
+    delete)
+      rm "$dir/$file"
+      F=$file yq -i 'del(.resources[] | select(. == strenv(F)))' "$dir/kustomization.yaml"
+      ;;
+  esac
+}
+
+start=$(git rev-parse HEAD)
+for e in $environments; do
+  branch=customer/$ACTION-$CUSTOMER-${GITHUB_RUN_ID:-local}-$e
+  git switch -q -c "$branch" "$start"
+  apply_change "$e"
+  git add "$(orders "$e")"
+  git -c user.name="$GIT_NAME" -c user.email="$GIT_EMAIL" commit -qm "$ACTION $CUSTOMER $e"
+  git push -q origin "HEAD:refs/heads/$branch"
+  if [ "$e" = staging ]; then
+    url=$(gh pr create --base main --head "$branch" --title "$ACTION $CUSTOMER ($e)" --body "Merges itself once the checks pass.")
+    gh pr merge --auto --squash "$url"
+  elif [ "${AUTOMERGE:-}" = true ]; then
+    url=$(gh pr create --base main --head "$branch" --title "$ACTION $CUSTOMER ($e)" --body "Retention of 30 days is over, merges itself once the checks pass.")
+    gh pr merge --auto --squash "$url"
+  else
+    gh pr create --base main --head "$branch" --title "$ACTION $CUSTOMER ($e)" --body "Merge by hand once staging runs, then sync customers in Argo CD."
+  fi
+done

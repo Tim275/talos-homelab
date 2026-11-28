@@ -1,0 +1,153 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: postgresdatabase
+spec:
+  compositeTypeRef:
+    apiVersion: platform.tim275.github.io/v1alpha1
+    kind: PostgresDatabase
+  mode: Pipeline
+  pipeline:
+    - step: render
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $xr := .observed.composite.resource }}
+            {{- $name := $xr.metadata.name }}
+            {{- $role := $name | replace "-" "_" }}
+            {{- $ns := $xr.spec.namespace }}
+            {{- $key := $xr.spec.secretKey | default (printf "platform/%s/%s-postgres-credentials" $ns $name) }}
+            {{- $store := $xr.spec.secretStore | default "openbao" }}
+            {{- $appStore := $xr.spec.appSecretStore | default $store }}
+            {{- $observed := .observed.resources | default dict }}
+            {{- $reclaim := $xr.spec.reclaimPolicy | default "Retain" | lower }}
+            ---
+            apiVersion: external-secrets.io/v1alpha1
+            kind: PushSecret
+            metadata:
+              name: role-{{ $name }}-password
+              namespace: postgres
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: password
+            spec:
+              refreshInterval: 1h
+              updatePolicy: IfNotExists
+              deletionPolicy: {{ if eq $reclaim "delete" }}Delete{{ else }}None{{ end }}
+              secretStoreRefs:
+                - name: {{ $store }}
+                  kind: ClusterSecretStore
+              selector:
+                generatorRef:
+                  apiVersion: generators.external-secrets.io/v1alpha1
+                  kind: ClusterGenerator
+                  name: password
+              data:
+                - match:
+                    secretKey: password
+                    remoteRef:
+                      remoteKey: {{ $key }}
+                      property: password
+            ---
+            apiVersion: external-secrets.io/v1
+            kind: ExternalSecret
+            metadata:
+              name: role-{{ $name }}
+              namespace: postgres
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: role-secret
+            spec:
+              refreshInterval: 1h
+              secretStoreRef:
+                name: {{ $store }}
+                kind: ClusterSecretStore
+              target:
+                name: role-{{ $name }}
+                template:
+                  type: kubernetes.io/basic-auth
+                  engineVersion: v2
+                  metadata:
+                    labels:
+                      cnpg.io/reload: "true"
+                  data:
+                    username: {{ $role }}
+                    password: '{{ "{{" }} .password {{ "}}" }}'
+              data:
+                - secretKey: password
+                  remoteRef:
+                    key: {{ $key }}
+                    property: password
+            ---
+            apiVersion: postgresql.cnpg.io/v1
+            kind: DatabaseRole
+            metadata:
+              name: {{ $name }}
+              namespace: postgres
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: role
+                {{- if dig "role" "resource" "status" "applied" false $observed }}
+                gotemplating.fn.crossplane.io/ready: "True"
+                {{- end }}
+            spec:
+              name: {{ $role }}
+              cluster:
+                name: postgres
+              ensure: present
+              login: true
+              connectionLimit: {{ $xr.spec.connectionLimit }}
+              passwordSecret:
+                name: role-{{ $name }}
+              databaseRoleReclaimPolicy: {{ $reclaim }}
+            ---
+            apiVersion: postgresql.cnpg.io/v1
+            kind: Database
+            metadata:
+              name: {{ $name }}
+              namespace: postgres
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: database
+                {{- if dig "database" "resource" "status" "applied" false $observed }}
+                gotemplating.fn.crossplane.io/ready: "True"
+                {{- end }}
+            spec:
+              name: {{ $role }}
+              owner: {{ $role }}
+              cluster:
+                name: postgres
+              ensure: present
+              databaseReclaimPolicy: {{ $reclaim }}
+            ---
+            apiVersion: external-secrets.io/v1
+            kind: ExternalSecret
+            metadata:
+              name: {{ $name }}-postgres
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: app-secret
+            spec:
+              refreshInterval: 1h
+              secretStoreRef:
+                name: {{ $appStore }}
+                kind: ClusterSecretStore
+              target:
+                name: {{ $name }}-postgres
+                template:
+                  engineVersion: v2
+                  data:
+                    host: postgres-rw.postgres.svc.cluster.local
+                    port: "5432"
+                    dbname: {{ $role }}
+                    username: {{ $role }}
+                    password: '{{ "{{" }} .password {{ "}}" }}'
+              data:
+                - secretKey: password
+                  remoteRef:
+                    key: {{ $key }}
+                    property: password
+    - step: ready
+      functionRef:
+        name: function-auto-ready

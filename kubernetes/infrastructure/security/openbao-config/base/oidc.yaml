@@ -1,0 +1,93 @@
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: keycloak-openbao-client-secret
+  namespace: openbao
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao
+    kind: ClusterSecretStore
+  target:
+    name: keycloak-openbao-client-secret
+  data:
+  - secretKey: clientSecret
+    remoteRef:
+      key: platform/keycloak/keycloak-openbao-client-secret
+      property: clientSecret
+---
+apiVersion: redhatcop.redhat.io/v1alpha1
+kind: AuthEngineMount
+metadata:
+  name: oidc
+  namespace: openbao
+spec:
+  authentication:
+    path: jwt-operator
+    role: config-admin
+    serviceAccount:
+      name: openbao-config
+  connection:
+    address: https://openbao-active.openbao.svc.cluster.local:8200
+    tLSConfig:
+      tlsSecret:
+        name: openbao-tls-ca
+  type: oidc
+  path: ""
+---
+apiVersion: redhatcop.redhat.io/v1alpha1
+kind: JWTOIDCAuthEngineConfig
+metadata:
+  name: oidc
+  namespace: openbao
+spec:
+  authentication:
+    path: jwt-operator
+    role: config-admin
+    serviceAccount:
+      name: openbao-config
+  connection:
+    address: https://openbao-active.openbao.svc.cluster.local:8200
+    tLSConfig:
+      tlsSecret:
+        name: openbao-tls-ca
+  path: oidc
+  OIDCClientID: openbao
+  OIDCCredentials:
+    secret:
+      name: keycloak-openbao-client-secret
+    passwordKey: clientSecret
+  defaultRole: admin
+---
+apiVersion: redhatcop.redhat.io/v1alpha1
+kind: JWTOIDCAuthEngineRole
+metadata:
+  name: oidc-admin
+  namespace: openbao
+spec:
+  authentication:
+    path: jwt-operator
+    role: config-admin
+    serviceAccount:
+      name: openbao-config
+  connection:
+    address: https://openbao-active.openbao.svc.cluster.local:8200
+    tLSConfig:
+      tlsSecret:
+        name: openbao-tls-ca
+  path: oidc
+  name: admin
+  roleType: oidc
+  userClaim: sub
+  groupsClaim: groups
+  boundClaims:
+    groups: cluster-admins
+  OIDCScopes:
+    - profile
+    - email
+    - groups
+  allowedRedirectURIs:
+    - http://localhost:8250/oidc/callback
+  tokenPolicies:
+    - admin
+  tokenTTL: 1h

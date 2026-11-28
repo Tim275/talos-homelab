@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: n8n-worker
+  namespace: n8n
+  labels:
+    app: n8n
+    component: worker
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    configmap.reloader.stakater.com/reload: n8n-configmap
+    secret.reloader.stakater.com/reload: n8n-secrets
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: n8n
+      component: worker
+  template:
+    metadata:
+      labels:
+        app: n8n
+        component: worker
+    spec:
+
+
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node-pool
+                    operator: In
+                    values:
+                      - stateless
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - n8n
+                topologyKey: kubernetes.io/hostname
+
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: n8n-worker
+          image: ghcr.io/n8n-io/n8n
+          command: ["n8n", "worker"]  # CRITICAL: Worker mode!
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false  # N8N needs /tmp
+            capabilities:
+              drop:
+                - ALL
+          envFrom:
+            - configMapRef:
+                name: n8n-configmap
+            - secretRef:
+                name: n8n-secrets
+          env:
+            - name: N8N_CONCURRENCY_PRODUCTION_LIMIT
+              value: "10"  # 10 concurrent executions per worker
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 5678  # Workers expose health on port 5678
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # ohne readiness ersetzt ein Rollout alle Worker, ohne den neuen zu pruefen
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 5678
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+        - name: task-runners
+          image: ghcr.io/n8n-io/runners
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: N8N_RUNNERS_TASK_BROKER_URI
+              value: http://127.0.0.1:5679
+            - name: N8N_RUNNERS_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: n8n-secrets
+                  key: N8N_RUNNERS_AUTH_TOKEN
+          ports:
+            - name: launcher-health
+              containerPort: 5680
+          readinessProbe:
+            tcpSocket:
+              port: launcher-health
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+      restartPolicy: Always

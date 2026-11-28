@@ -1,0 +1,143 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: customernamespace
+spec:
+  compositeTypeRef:
+    apiVersion: platform.tim275.github.io/v1alpha1
+    kind: CustomerNamespace
+  mode: Pipeline
+  pipeline:
+    - step: render
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $xr := .observed.composite.resource }}
+            {{- $ns := $xr.metadata.name }}
+            {{- $quota := $xr.spec.quota | default dict }}
+            {{- $cpu := $quota.requestsCpu | default "1" }}
+            {{- $memory := $quota.requestsMemory | default "2Gi" }}
+            {{- $limit := $quota.limitsMemory | default "4Gi" }}
+            ---
+            apiVersion: v1
+            kind: Namespace
+            metadata:
+              name: {{ $ns }}
+              labels:
+                {{- if $xr.spec.postgres }}
+                postgres-access: "true"
+                {{- end }}
+                platform.tim275.github.io/customer: "true"
+                pod-security.kubernetes.io/enforce: restricted
+                pod-security.kubernetes.io/audit: restricted
+                pod-security.kubernetes.io/warn: restricted
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: namespace
+            ---
+            apiVersion: v1
+            kind: ResourceQuota
+            metadata:
+              name: customer
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: quota
+                gotemplating.fn.crossplane.io/ready: "True"
+            spec:
+              hard:
+                requests.cpu: {{ $cpu | quote }}
+                requests.memory: {{ $memory | quote }}
+                limits.memory: {{ $limit | quote }}
+                persistentvolumeclaims: "5"
+                services.loadbalancers: "0"
+                services.nodeports: "0"
+            ---
+            apiVersion: v1
+            kind: LimitRange
+            metadata:
+              name: customer
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: limits
+                gotemplating.fn.crossplane.io/ready: "True"
+            spec:
+              limits:
+                - type: Container
+                  defaultRequest:
+                    cpu: 100m
+                    memory: 128Mi
+                  default:
+                    memory: 512Mi
+                  max:
+                    memory: {{ $limit | quote }}
+            ---
+            apiVersion: v1
+            kind: ServiceAccount
+            metadata:
+              name: eso
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: eso-serviceaccount
+                gotemplating.fn.crossplane.io/ready: "True"
+            automountServiceAccountToken: false
+            ---
+            apiVersion: cilium.io/v2
+            kind: CiliumNetworkPolicy
+            metadata:
+              name: default-deny
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: network-policy
+                gotemplating.fn.crossplane.io/ready: "True"
+            spec:
+              endpointSelector: {}
+              ingress:
+                - fromEndpoints:
+                    - matchLabels:
+                        io.kubernetes.pod.namespace: gateway
+                    - matchLabels:
+                        io.kubernetes.pod.namespace: {{ $ns }}
+                - fromEntities:
+                    - host
+              egress:
+                - toEndpoints:
+                    - matchLabels:
+                        io.kubernetes.pod.namespace: kube-system
+                        k8s-app: kube-dns
+                  toPorts:
+                    - ports:
+                        - port: "53"
+                          protocol: UDP
+                        - port: "53"
+                          protocol: TCP
+                - toEndpoints:
+                    - matchLabels:
+                        io.kubernetes.pod.namespace: {{ $ns }}
+                {{- if $xr.spec.postgres }}
+                - toEndpoints:
+                    - matchLabels:
+                        io.kubernetes.pod.namespace: postgres
+                  toPorts:
+                    - ports:
+                        - port: "5432"
+                          protocol: TCP
+                {{- end }}
+                - toCIDRSet:
+                    - cidr: 0.0.0.0/0
+                      except:
+                        - 10.0.0.0/8
+                        - 172.16.0.0/12
+                        - 192.168.0.0/16
+                  toPorts:
+                    - ports:
+                        - port: "80"
+                          protocol: TCP
+                        - port: "443"
+                          protocol: TCP
+    - step: ready
+      functionRef:
+        name: function-auto-ready

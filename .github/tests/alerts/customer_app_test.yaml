@@ -1,0 +1,28 @@
+rule_files:
+  - .rules.generated.yaml
+evaluation_interval: 1m
+tests:
+  # paying customer down pages, test customers (zz…) do not
+  - interval: 1m
+    input_series:
+      - series: 'probe_success{job="customer-apps", customer="k100", service="n8n", instance="https://lab-n8n.timourhomelab.org/healthz"}'
+        values: '0x10'
+      - series: 'probe_success{job="customer-apps", customer="zz04", service="n8n", instance="https://demo-n8n.timourhomelab.org/healthz"}'
+        values: '0x10'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: CustomerAppDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              component: apps
+              job: customer-apps
+              customer: k100
+              service: n8n
+              instance: https://lab-n8n.timourhomelab.org/healthz
+            exp_annotations:
+              runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/customers.md#customerappdown"
+              dashboard_url: "/d/blackbox-exporter?var-target=https://lab-n8n.timourhomelab.org/healthz"
+              summary: "Customer k100 cannot reach n8n"
+              description: "https://lab-n8n.timourhomelab.org/healthz gave no valid answer for >5min."
+              action: "kubectl -n n8n-k100 get pods,httproute,securitypolicy; kubectl describe n8ninstance k100"

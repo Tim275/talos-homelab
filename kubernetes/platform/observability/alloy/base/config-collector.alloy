@@ -1,0 +1,58 @@
+// OTLP geht an den otel-collector — hier nur die Cluster-Events, einmal pro Cluster
+
+loki.source.kubernetes_events "cluster" {
+	job_name   = "kubernetes-events"
+	forward_to = [loki.process.events.receiver]
+}
+
+loki.process "events" {
+	stage.static_labels {
+		values = {
+			source  = "k8s-events",
+			cluster = "talos-homelab",
+		}
+	}
+
+	forward_to = [loki.write.default.receiver]
+}
+
+// Harbor leitet sein Audit-Log als Syslog ueber TCP weiter, tcplog ist experimental
+otelcol.receiver.tcplog "harbor_audit" {
+	listen_address = "0.0.0.0:1514"
+
+	output {
+		logs = [otelcol.exporter.loki.harbor_audit.input]
+	}
+}
+
+otelcol.exporter.loki "harbor_audit" {
+	forward_to = [loki.process.harbor_audit.receiver]
+}
+
+loki.process "harbor_audit" {
+	stage.json {
+		expressions = {
+			body = "body",
+		}
+	}
+
+	stage.static_labels {
+		values = {
+			source  = "harbor-audit",
+			cluster = "talos-homelab",
+		}
+	}
+
+	stage.output {
+		source = "body"
+	}
+
+	forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+	endpoint {
+		url       = "http://loki-gateway.monitoring.svc.cluster.local:80/loki/api/v1/push"
+		tenant_id = "talos-homelab"
+	}
+}

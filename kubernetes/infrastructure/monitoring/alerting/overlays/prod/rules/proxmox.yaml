@@ -1,0 +1,153 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hypervisor-proxmox
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: proxmox-capacity
+      interval: 300s
+      rules:
+        - alert: ProxmoxStorageFilling
+          expr: max by (id) (pve_disk_usage_bytes{id=~"storage/.*"} / pve_disk_size_bytes{id=~"storage/.*"}) > 0.75
+          for: 30m
+          labels:
+            severity: warning
+            component: hypervisor
+          annotations:
+            dashboard_url: "/d/proxmox-cluster"
+            summary: "Proxmox storage {{ $labels.id }} at {{ $value | humanizePercentage }}"
+            description: "Thin provisioning: declared volume sizes exceed the pool. ZFS degrades above 80%, LVM-thin goes read-only at 100%."
+            action: "kubectl get pvc -A to see what grew; zfs list -t volume on the host; shrink retention or add disks."
+        - alert: ProxmoxStorageCritical
+          expr: max by (id) (pve_disk_usage_bytes{id=~"storage/.*"} / pve_disk_size_bytes{id=~"storage/.*"}) > 0.85
+          for: 10m
+          labels:
+            severity: critical
+            component: hypervisor
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/hosts.md#proxmoxstoragecritical"
+            dashboard_url: "/d/proxmox-cluster"
+            summary: "Proxmox storage {{ $labels.id }} at {{ $value | humanizePercentage }}"
+            description: "Above 85% ZFS write performance collapses; LVM-thin at 100% turns volumes read-only and VMs corrupt."
+            action: "Free space now — delete old snapshots, shrink a zvol, or evacuate a VM."
+
+    - name: proxmox-page
+      interval: 60s
+      rules:
+        - alert: ProxmoxHostDown
+          expr: absent(up{job="proxmox-host-node"}) or up{job="proxmox-host-node"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: hypervisor
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/hosts.md#proxmoxhostdown"
+            dashboard_url: "/d/proxmox-cluster"
+            summary: "Proxmox host {{ if $labels.instance }}{{ $labels.instance }}{{ else }}(kein Scrape-Ziel mehr){{ end }} unreachable"
+            description: "node-exporter on Proxmox host down >5min — host (and its VMs) likely offline."
+            action: "Check the Proxmox host ({{ if $labels.instance }}{{ $labels.instance }}{{ else }}alle: kein proxmox-host-node-Target mehr{{ end }}) physically; SSH it; its VMs are down too — full-host outage."
+
+        - alert: ProxmoxZfsPoolCritical
+          expr: node_zfs_zpool_state{job="proxmox-host-node",state=~"faulted|unavail|suspended|removed"} == 1
+          for: 5m
+          labels:
+            severity: critical
+            component: hypervisor
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/hosts.md#proxmoxzfspoolcritical"
+            dashboard_url: "/d/proxmox-cluster"
+            summary: "ZFS pool {{ $labels.zpool }} {{ $labels.state }} on {{ $labels.instance }}"
+            description: "Pool in a data-loss state ({{ $labels.state }}) — VMs/Ceph on it at risk."
+            action: "SSH the host; 'zpool status {{ $labels.zpool }}'; check failed disks, replace + resilver."
+
+    - name: proxmox-ticket
+      interval: 60s
+      rules:
+        - alert: ProxmoxRootDiskFull
+          expr: (1 - node_filesystem_avail_bytes{job="proxmox-host-node",mountpoint="/"} / node_filesystem_size_bytes{job="proxmox-host-node",mountpoint="/"}) > 0.85
+          for: 30m
+          labels:
+            severity: warning
+            component: hypervisor
+          annotations:
+            dashboard_url: "/d/k8s-node-overview?var-job=proxmox-host-node"
+            summary: "Proxmox host {{ $labels.instance }} root disk >85% full"
+            description: "Root at {{ $value | humanizePercentage }} — PVE config write failures loom."
+            action: "SSH the host; clean /var/log + old ISOs/backups; PVE config writes fail when root fills."
+
+        - alert: ProxmoxHostMemoryPressure
+          expr: (node_memory_MemAvailable_bytes{job="proxmox-host-node"} / node_memory_MemTotal_bytes{job="proxmox-host-node"}) < 0.10
+          for: 15m
+          labels:
+            severity: warning
+            component: hypervisor
+          annotations:
+            dashboard_url: "/d/k8s-node-overview?var-job=proxmox-host-node"
+            summary: "Proxmox host {{ $labels.instance }} memory <10% available"
+            description: "VM scheduling/migration may fail (nipogi RAM is tight). Available {{ $value | humanizePercentage }}."
+            action: "SSH the host; check VM RAM allocation (nipogi is tight); reduce/rebalance before migration fails."
+
+        - alert: ProxmoxZfsPoolDegraded
+          expr: node_zfs_zpool_state{job="proxmox-host-node",state!="online"} > 0
+          for: 10m
+          labels:
+            severity: warning
+            component: hypervisor
+          annotations:
+            dashboard_url: "/d/proxmox-cluster"
+            summary: "ZFS pool {{ $labels.zpool }} degraded on {{ $labels.instance }}"
+            description: "Pool state {{ $labels.state }} — single-disk pools have no redundancy, check the disk."
+            action: "SSH the host; 'zpool status {{ $labels.zpool }}'; single-disk pool = no redundancy, check/replace the disk."
+
+        - alert: ProxmoxApiExporterDown
+          expr: absent(up{job="proxmox-pve"}) or up{job="proxmox-pve"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            component: hypervisor
+          annotations:
+            dashboard_url: "/d/proxmox-cluster"
+            summary: "Proxmox PVE exporter down"
+            description: "Cannot scrape Proxmox API — VM/cluster state not visible in Grafana."
+            action: "Check the pve-exporter pod + the Proxmox API token; Grafana loses VM/cluster state meanwhile."
+
+        - alert: ProxmoxHostRebootLoop
+          expr: |
+            changes(node_boot_time_seconds{job="proxmox-host-node"}[7d]) > 2
+              and (time() - node_boot_time_seconds{job="proxmox-host-node"}) < 86400
+          for: 10m
+          labels:
+            severity: warning
+            component: hypervisor
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/hosts.md#proxmoxhostrebootloop"
+            dashboard_url: "/d/k8s-node-overview?var-job=proxmox-host-node"
+            summary: "Proxmox host {{ $labels.instance }} rebooted {{ $value }}x in 7 days"
+            description: "Ein einzelnes Reboot ist Rauschen, ein Muster ist ein Defekt. Vergleich: die anderen Hosts."
+            action: "ssh <host> 'last -x reboot | head; sysctl kernel.panic; systemctl is-active watchdog-mux'. Steht kernel.panic auf 0, kommt der Reset vom Watchdog, nicht vom Kernel — dann pvestatd-Log auf blockierende Storages pruefen."
+
+        - alert: ProxmoxHostRebooted
+          expr: (time() - node_boot_time_seconds{job="proxmox-host-node"}) < 600
+          for: 1m
+          labels:
+            severity: warning
+            component: hypervisor
+          annotations:
+            dashboard_url: "/d/k8s-node-overview?var-job=proxmox-host-node"
+            summary: "Proxmox host {{ $labels.instance }} rebooted recently (uptime {{ $value | humanizeDuration }})"
+            description: "Host uptime <10min — all VMs on it restarted too."
+            action: "ssh <host> 'journalctl --list-boots; last -x reboot | head'; if unplanned check power + the VMs that came back."
+
+        # - alert: ProxmoxBackupStale
+        #   expr: time() - max by (host) (pve_vzdump_last_backup_timestamp_seconds) > 93600
+        #   for: 1h
+        #   labels:
+        #     severity: warning
+        #     component: hypervisor
+        #   annotations:
+        #     dashboard_url: "/d/proxmox-cluster"
+        #     summary: "Proxmox VM-backup on {{ $labels.host }} is stale"
+        #     description: "Newest vzdump archive on {{ $labels.host }} older than 26h — nightly job (02:00) missed or failed."
+        #     action: "SSH {{ $labels.host }}; check the vzdump cron (02:00) + 'pvesm status'; is the backup storage reachable?"

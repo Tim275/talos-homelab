@@ -1,0 +1,95 @@
+notifications:
+  enabled: true
+
+
+
+  secret:
+    create: false  # Secret managed externally in monitoring/alerts/
+
+
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: topology.kubernetes.io/zone
+                operator: NotIn
+                values: [nipogi]
+
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: argocd
+
+
+  # Reference: https://argo-cd.readthedocs.io/en/stable/operator-manual/notifications/services/webhook/
+  notifiers:
+    service.webhook.slack: |
+      url: $slack-token
+      headers:
+        - name: Content-Type
+          value: application/json
+
+
+
+
+
+
+  triggers:
+    trigger.on-deployed: |
+      - description: Application is synced and healthy
+        oncePer: app.status.operationState.syncResult.revision
+        send:
+        - app-deployed
+        when: app.status.operationState != nil and app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+
+    trigger.on-health-degraded: |
+      - description: Application health is degraded
+        oncePer: app.metadata.name
+        send:
+        - app-health-degraded
+        when: app.status.health.status == 'Degraded'
+
+    # PRODUCTION: Sync failed (critical action needed)
+    trigger.on-sync-failed: |
+      - description: Application sync failed
+        oncePer: app.status.operationState.syncResult.revision
+        send:
+        - app-sync-failed
+        when: app.status.operationState != nil and app.status.operationState.phase in ['Error', 'Failed']
+
+    # trigger.on-sync-running: |
+    #   - description: Application is syncing
+    #     - app-sync-running
+
+    trigger.on-sync-succeeded: |
+      - description: Application sync succeeded
+        oncePer: app.status.operationState.syncResult.revision
+        send:
+        - app-sync-succeeded
+        when: app.status.operationState != nil and app.status.operationState.phase in ['Succeeded']
+
+    trigger.on-sync-status-unknown: |
+      - description: Application out of sync with auto-sync disabled (manual intervention needed)
+        oncePer: app.metadata.name
+        send:
+        - app-sync-status-unknown
+        when: app.status.sync.status == 'OutOfSync' and app.spec.syncPolicy.automated == nil
+
+    # PRODUCTION: Sync Failed + Degraded Health (critical combo)
+    trigger.on-sync-failed-degraded: |
+      - description: Application sync failed AND health degraded (critical)
+        oncePer: app.status.operationState.syncResult.revision
+        send:
+        - app-sync-failed
+        when: app.status.operationState != nil and app.status.operationState.phase in ['Error', 'Failed'] and app.status.health.status == 'Degraded'
+
+  subscriptions:
+    - recipients: ["slack"]
+      triggers:
+        - on-health-degraded
+        - on-sync-failed
+        - on-sync-failed-degraded
+        - on-sync-status-unknown
+

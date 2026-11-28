@@ -1,0 +1,58 @@
+
+controller:
+  pdb:
+    enabled: true
+    maxUnavailable: 1
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+
+  metrics:
+    enabled: true
+    service:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8090"
+        prometheus.io/path: "/metrics"
+
+dashboard:
+  enabled: true
+
+  podAnnotations:
+    prometheus.io/scrape: "false"
+
+
+  service:
+    type: ClusterIP
+  ingress:
+    enabled: false  # Will use Gateway API
+
+notifications:
+  notifiers:
+    service.slack: |
+      username: argo-rollouts
+      channel: "#deployments"
+      title: Rollout Notification
+      text: |
+        Rollout {{.rollout.metadata.name}} is {{.rollout.status.phase}}
+        {{if .rollout.status.message}}Message: {{.rollout.status.message}}{{end}}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 999
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/component: argo-rollouts
+    app.kubernetes.io/part-of: timour-homelab

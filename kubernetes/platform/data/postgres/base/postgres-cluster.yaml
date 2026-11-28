@@ -1,0 +1,95 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres
+  namespace: postgres
+  labels:
+    app.kubernetes.io/name: postgres
+spec:
+  imageName: ghcr.io/cloudnative-pg/postgresql
+  priorityClassName: platform-critical
+  postgresql:
+    synchronous:
+      method: any
+      number: 1
+    shared_preload_libraries:
+      - pgaudit
+    parameters:
+      pgaudit.log: "ddl,role,write"
+      max_connections: '200'
+      shared_buffers: 256MB
+      effective_cache_size: 768MB
+      maintenance_work_mem: 64MB
+      checkpoint_completion_target: '0.9'
+      wal_buffers: 16MB
+      default_statistics_target: '100'
+      random_page_cost: '1.1'
+      effective_io_concurrency: '200'
+      tcp_keepalives_idle: '60'
+      tcp_keepalives_interval: '10'
+      tcp_keepalives_count: '6'
+    # each role reaches only its own database
+    pg_hba:
+      - host n8n n8n all scram-sha-256
+      - host keycloak keycloak all scram-sha-256
+      - host drova_users,drova_trips,drova_payments,drova_drivers drova_admin,grafana_reader all scram-sha-256
+      - host all pgadmin all scram-sha-256
+      - host harbor harbor all scram-sha-256
+      - host lldap lldap all scram-sha-256
+      - host sameuser all all scram-sha-256
+      - host all all all reject
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      parameters:
+        barmanObjectName: postgres-backup-store
+        serverName: postgres
+  affinity:
+    podAntiAffinityType: required
+    topologyKey: topology.kubernetes.io/zone
+  managed:
+    services:
+      disabledDefaultServices: ["r"]
+    roles:
+      - name: n8n
+        ensure: present
+        login: true
+        passwordSecret:
+          name: role-n8n
+      - name: keycloak
+        ensure: present
+        login: true
+        passwordSecret:
+          name: role-keycloak
+      - name: drova_admin
+        ensure: present
+        login: true
+        passwordSecret:
+          name: role-drova-admin
+      - name: grafana_reader
+        ensure: present
+        login: true
+        connectionLimit: 5
+        inRoles:
+          - pg_read_all_data
+        passwordSecret:
+          name: role-grafana-reader
+      - name: pgadmin
+        ensure: present
+        login: true
+        connectionLimit: 5
+        inRoles:
+          - pg_read_all_data
+          - pg_monitor
+        passwordSecret:
+          name: role-pgadmin
+      - name: harbor
+        ensure: present
+        login: true
+        connectionLimit: 40
+        passwordSecret:
+          name: role-harbor
+      - name: lldap
+        ensure: present
+        login: true
+        passwordSecret:
+          name: role-lldap

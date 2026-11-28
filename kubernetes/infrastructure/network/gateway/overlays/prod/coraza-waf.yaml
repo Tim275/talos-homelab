@@ -1,0 +1,55 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyExtensionPolicy
+metadata:
+  name: coraza-waf
+  namespace: gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: envoy-gateway
+  wasm:
+    - name: coraza
+      rootID: coraza
+      failOpen: true
+      code:
+        type: Image
+        image:
+          url: ghcr.io/corazawaf/coraza-proxy-wasm:0.6.0
+      config:
+        directives_map:
+          default:
+            - "Include @recommended-conf"
+            - "Include @crs-setup-conf"
+            # - 'SecAction "id:9000001,phase:1,nolog,pass,t:none,setvar:tx.blocking_paranoia_level=2"'  # PL2 — activate after FP-soak
+            - "SecRuleEngine On"  # enforcing — revert to DetectionOnly if legit traffic gets 403'd
+            - "SecResponseBodyAccess Off"  # drova SPA > 512KB → empty 520; Off keeps request-side protection
+            - "SecAuditEngine RelevantOnly"
+            - "SecAuditLogParts ABIJDEFHZ"
+            - "SecAuditLogType Serial"
+            - "SecAuditLog /dev/stdout"
+            - "SecAuditLogFormat JSON"
+            - 'SecRule REQUEST_HEADERS:Upgrade "@streq websocket" "id:1000,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - 'SecRule REQUEST_HEADERS:Content-Type "@beginsWith application/grpc" "id:1001,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - 'SecRule REQUEST_URI "@beginsWith /internal/bsearch" "id:1100010,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - 'SecRule REQUEST_URI "@beginsWith /api/saved_objects" "id:1100011,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - 'SecRule REQUEST_URI "@beginsWith /api/ds/" "id:1100012,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - 'SecRule REQUEST_URI "@beginsWith /realms/plattform/protocol/openid-connect" "id:1100013,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - 'SecRule REQUEST_URI "@beginsWith /realms/plattform/login-actions" "id:1100014,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - 'SecRule REQUEST_URI "@beginsWith /realms/customers/protocol/openid-connect" "id:1100022,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - 'SecRule REQUEST_URI "@beginsWith /realms/customers/login-actions" "id:1100023,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - 'SecRule REQUEST_HEADERS:Host "@rx ^[a-z0-9-]+-n8n\.timourhomelab\.org$" "id:1100024,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - 'SecRule REQUEST_HEADERS:Host "@streq n8n.timourhomelab.org" "id:1100015,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - 'SecRule REQUEST_HEADERS:Host "@streq status.timourhomelab.org" "id:1100016,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - 'SecRule REQUEST_URI "@beginsWith /user/settings/keys" "id:1100017,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - 'SecRule REQUEST_URI "@contains .git/" "id:1100018,phase:1,pass,nolog,ctl:ruleEngine=Off"'
+            - 'SecRule REQUEST_HEADERS:Host "@streq harbor.timourhomelab.org" "id:1100019,phase:1,pass,nolog,chain"'
+            - 'SecRule REQUEST_URI "@beginsWith /v2/" "ctl:ruleEngine=Off,ctl:requestBodyAccess=Off"'
+            - 'SecRule REQUEST_HEADERS:Host "@streq harbor.timourhomelab.org" "id:1100020,phase:1,pass,nolog,setvar:''tx.allowed_methods=GET HEAD POST OPTIONS PUT PATCH DELETE''"'
+            - 'SecRule REQUEST_HEADERS:Host "@streq harbor.timourhomelab.org" "id:1100021,phase:1,pass,nolog,chain"'
+            - 'SecRule REQUEST_URI "@beginsWith /api/v2.0/" "ctl:ruleRemoveTargetByTag=attack-rce;ARGS:q,ctl:ruleRemoveTargetByTag=attack-sqli;ARGS:q,ctl:ruleRemoveTargetByTag=attack-xss;ARGS:q"'
+            - 'SecRule REQUEST_HEADERS:Host "@streq openbao.timourhomelab.org" "id:1100025,phase:1,pass,nolog,setvar:''tx.allowed_methods=GET HEAD POST OPTIONS PUT PATCH DELETE''"'
+            - "Include @owasp_crs/*.conf"
+        default_directives: "default"

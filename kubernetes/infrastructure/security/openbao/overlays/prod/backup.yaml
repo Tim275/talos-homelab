@@ -1,0 +1,59 @@
+apiVersion: kubebao.org/v1alpha1
+kind: OpenBaoCluster
+metadata:
+  name: openbao
+  namespace: openbao
+spec:
+  upgrade:
+    preUpgradeSnapshot: true
+  backup:
+    schedule: "30 1 * * *"
+    target:
+      provider: s3
+      endpoint: http://ceph-rgw.rook-ceph.svc:80
+      bucket: openbao-backups
+      pathPrefix: clusters
+      s3:
+        usePathStyle: true
+      credentialsSecretRef:
+        name: openbao-backup-s3
+    retention:
+      maxCount: 14
+      maxAge: 336h
+    restoreTest:
+      schedule: "0 3 * * *"
+      namespace: openbao
+      credentialsSecretRef:
+        name: openbao-backup-s3
+      clusterTemplate:
+        storage:
+          size: 1Gi
+          storageClassName: rook-ceph-block-enterprise
+        tls:
+          enabled: true
+          mode: OperatorManaged
+          rotationPeriod: 720h
+        unseal:
+          type: static
+          credentialsSecretRef:
+            name: openbao-seal-key
+          static:
+            currentKeyID: homelab-1
+  network:
+    egressRules:
+      - to:
+          - ipBlock:
+              cidr: 192.168.0.59/32
+        ports:
+          - protocol: TCP
+            port: 7480
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: gateway
+            podSelector:
+              matchLabels:
+                gateway.envoyproxy.io/owning-gateway-name: envoy-gateway
+        ports:
+          - protocol: TCP
+            port: 10443

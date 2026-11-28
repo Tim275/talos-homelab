@@ -1,0 +1,91 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-harbor-config
+  namespace: harbor
+data:
+  redis.conf: |
+    appendonly no
+    save 900 1
+    save 300 10
+    maxmemory 192mb
+    maxmemory-policy volatile-lru
+---
+apiVersion: redis.redis.opstreelabs.in/v1beta2
+kind: RedisReplication
+metadata:
+  name: redis-harbor
+  namespace: harbor
+  labels:
+    app.kubernetes.io/name: redis-harbor
+    app.kubernetes.io/component: cache
+spec:
+  clusterSize: 3
+  priorityClassName: platform-critical
+  pdb:
+    enabled: true
+    maxUnavailable: 1
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis-harbor
+          topologyKey: kubernetes.io/hostname
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: redis-harbor
+            topologyKey: topology.kubernetes.io/zone
+  podSecurityContext:
+    runAsUser: 1000
+    fsGroup: 1000
+  kubernetesConfig:
+    image: quay.io/opstree/redis
+    imagePullPolicy: IfNotPresent
+  redisConfig:
+    additionalRedisConfig: redis-harbor-config
+  redisExporter:
+    enabled: true
+    image: quay.io/opstree/redis-exporter
+  storage:
+    volumeClaimTemplate:
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: redis.redis.opstreelabs.in/v1beta2
+kind: RedisSentinel
+metadata:
+  name: redis-harbor-sentinel
+  namespace: harbor
+  labels:
+    app.kubernetes.io/name: redis-harbor-sentinel
+    app.kubernetes.io/component: sentinel
+spec:
+  clusterSize: 3
+  priorityClassName: platform-critical
+  pdb:
+    enabled: true
+    maxUnavailable: 1
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis-harbor-sentinel
+          topologyKey: kubernetes.io/hostname
+  podSecurityContext:
+    runAsUser: 1000
+    fsGroup: 1000
+  redisSentinelConfig:
+    redisReplicationName: redis-harbor
+    masterGroupName: harbor
+    quorum: "2"
+  kubernetesConfig:
+    image: quay.io/opstree/redis-sentinel
+    imagePullPolicy: IfNotPresent

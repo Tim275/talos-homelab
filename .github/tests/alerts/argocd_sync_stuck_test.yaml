@@ -1,0 +1,24 @@
+rule_files: [.rules.generated.yaml]
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'argocd_app_info{name="crds", operation="sync", sync_status="Synced", health_status="Healthy"}'
+        values: '1+0x90'
+      - series: 'argocd_app_info{name="keycloak", operation="sync", sync_status="OutOfSync", health_status="Healthy"}'
+        values: '1+0x13 _x80'
+      - series: 'argocd_app_info{name="root", sync_status="Synced", health_status="Healthy"}'
+        values: '1+0x90'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: ArgoCDSyncStuck
+        exp_alerts: []
+      - eval_time: 75m
+        alertname: ArgoCDSyncStuck
+        exp_alerts:
+          - exp_labels: {name: crds, operation: sync, sync_status: Synced, health_status: Healthy, severity: warning, component: gitops}
+            exp_annotations:
+              dashboard_url: "/d/argocd-overview"
+              summary: "crds synct seit 1h ohne Ergebnis"
+              description: "Die Sync-Operation laeuft seit ueber einer Stunde und wiederholt denselben Commit. Solange sie haengt, rollt Argo CD fuer diese App nichts Neues aus, auch wenn sie Synced und Healthy zeigt."
+              action: "kubectl -n argocd get application crds -o jsonpath='{.status.operationState.message}'"

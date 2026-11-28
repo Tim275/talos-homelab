@@ -1,0 +1,42 @@
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: keycloak-redpanda-client-secret-clientsecret
+  namespace: keycloak
+  annotations:
+    argocd.argoproj.io/sync-wave: '-1'
+spec:
+  refreshInterval: 1h
+  updatePolicy: IfNotExists
+  secretStoreRefs:
+    - name: openbao-tenants
+      kind: ClusterSecretStore
+  selector:
+    generatorRef:
+      apiVersion: generators.external-secrets.io/v1alpha1
+      kind: ClusterGenerator
+      name: password
+  data:
+    - match:
+        secretKey: password
+        remoteRef:
+          remoteKey: tenants/drova/keycloak-redpanda-client-secret
+          property: clientSecret
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: keycloak-redpanda-client-secret
+  namespace: keycloak
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao-tenants
+    kind: ClusterSecretStore
+  target:
+    name: keycloak-redpanda-client-secret
+  data:
+    - secretKey: clientSecret
+      remoteRef:
+        key: tenants/drova/keycloak-redpanda-client-secret
+        property: clientSecret

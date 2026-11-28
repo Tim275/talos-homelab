@@ -1,0 +1,36 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: redis-harbor
+  namespace: harbor
+spec:
+  # Redis runs without a password, only Harbor and the operator reach it
+  endpointSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - redis-harbor
+          - redis-harbor-sentinel
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: harbor
+        - matchLabels:
+            io.kubernetes.pod.namespace: redis-operator-system
+      toPorts:
+        - ports:
+            - port: "6379"
+              protocol: TCP
+            - port: "26379"
+              protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: monitoring
+            app.kubernetes.io/name: prometheus
+      toPorts:
+        - ports:
+            - port: "9121"
+              protocol: TCP
+    - fromEntities:
+        - host

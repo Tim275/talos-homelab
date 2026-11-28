@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: cloudflared
+  name: cloudflared
+  namespace: cloudflared
+spec:
+  selector:
+    matchLabels:
+      app: cloudflared
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: cloudflared
+    spec:
+      # Eingangspfad fuer alles Oeffentliche — ohne Klasse faellt er bei MemoryPressure zuerst
+      priorityClassName: system-cluster-critical
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          nodeTaintsPolicy: Honor
+          matchLabelKeys:
+            - pod-template-hash
+          labelSelector:
+            matchLabels:
+              app: cloudflared
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          imagePullPolicy: IfNotPresent
+          args:
+            - tunnel
+            - --config
+            - /etc/cloudflared/config/config.yaml
+            - run
+          ports:
+            - name: metrics
+              containerPort: 2000
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            initialDelaySeconds: 60
+            failureThreshold: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: config
+              mountPath: /etc/cloudflared/config/config.yaml
+              subPath: config.yaml
+            - name: credentials
+              mountPath: /etc/cloudflared/credentials
+              readOnly: true
+      restartPolicy: Always
+      volumes:
+        - name: config
+          configMap:
+            name: cloudflared-config
+        - name: credentials
+          secret:
+            secretName: cloudflared-credentials

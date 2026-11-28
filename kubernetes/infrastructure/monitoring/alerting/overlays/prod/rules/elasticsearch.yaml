@@ -1,0 +1,82 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: data-elasticsearch
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: elasticsearch
+      interval: 1m
+      rules:
+        - alert: ElasticsearchClusterRed
+          expr: elasticsearch_cluster_health_status{color="red"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            component: data
+          annotations:
+            dashboard_url: "/d/elasticsearch"
+            summary: "Elasticsearch cluster RED"
+            description: "Primary shards unassigned — log/SIEM data unavailable. Check disk + node health."
+            action: "'GET _cluster/allocation/explain' for unassigned primaries; free disk if a watermark is hit; check node health."
+
+        # - alert: ElasticsearchClusterYellow
+        #   expr: elasticsearch_cluster_health_status{color="yellow"} == 1
+        #   for: 15m
+        #     severity: warning
+        #     component: data
+        #     dashboard_url: "/d/elasticsearch"
+        #     summary: "Elasticsearch cluster YELLOW"
+
+        - alert: ElasticsearchDiskFillingUp
+          expr: |
+            (elasticsearch_filesystem_data_size_bytes - elasticsearch_filesystem_data_free_bytes)
+            / elasticsearch_filesystem_data_size_bytes > 0.85
+          for: 10m
+          labels:
+            severity: warning
+            component: data
+          annotations:
+            dashboard_url: "/d/elasticsearch"
+            summary: "Elasticsearch disk >85% on {{ $labels.instance }}"
+            description: "{{ $value | humanizePercentage }} used. ES blocks writes at 95% (flood watermark)."
+            action: "Free ES disk: delete old indices or lower ILM retention before the 95% flood watermark blocks writes."
+
+        - alert: ElasticsearchSnapshotStale
+          expr: |
+            increase(elasticsearch_slm_stats_total_snapshots_taken_total[2d]) == 0
+            and elasticsearch_slm_stats_total_snapshots_taken_total > 0
+          for: 6h
+          labels:
+            severity: warning
+            component: data
+          annotations:
+            dashboard_url: "/d/elasticsearch"
+            summary: "Elasticsearch last successful snapshot >48h old"
+            description: "SLM policy not running — check repository + cluster health."
+            action: "'GET _slm/policy'; check the snapshot repo (Ceph-RGW); 'POST _slm/policy/<id>/_execute' to retry."
+
+        - alert: ElasticsearchSnapshotFailing
+          expr: increase(elasticsearch_slm_stats_total_snapshots_failed_total[6h]) > 0
+          for: 15m
+          labels:
+            severity: warning
+            component: data
+          annotations:
+            dashboard_url: "/d/elasticsearch"
+            summary: "SLM-Snapshot fehlgeschlagen (policy {{ $labels.policy }}, {{ $value }} in 6h)"
+            description: "Ein Snapshot-Lauf ist fehlgeschlagen. Der Stale-Alert greift erst nach 2 Tagen — dieser sofort, damit ein kaputtes Repo nicht zwei Tage unbemerkt bleibt."
+            action: "GET _slm/stats; GET _snapshot/_status; Ceph-RGW-Bucket + S3-Credentials pruefen."
+
+        - alert: ElasticsearchSLMStopped
+          expr: elasticsearch_slm_stats_operation_mode{operation_mode="RUNNING"} == 0
+          for: 30m
+          labels:
+            severity: warning
+            component: data
+          annotations:
+            dashboard_url: "/d/elasticsearch"
+            summary: "SLM ist nicht im Modus RUNNING"
+            description: "Snapshot-Lifecycle-Management gestoppt — es entstehen keine neuen Snapshots, ohne dass ein einzelner Lauf fehlschlaegt."
+            action: "GET _slm/status; POST _slm/start."

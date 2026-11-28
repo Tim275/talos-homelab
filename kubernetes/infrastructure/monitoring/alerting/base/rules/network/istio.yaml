@@ -1,0 +1,70 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: network-istio
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: istio-ticket
+      interval: 60s
+      rules:
+        - alert: IstiodDown
+          expr: absent(up{job="istiod"} == 1)
+          for: 5m
+          labels:
+            severity: warning
+            component: network
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/network.md#istioddown"
+            dashboard_url: "/d/istio-control-plane"
+            summary: "istiod down — Mesh-Control-Plane weg"
+            description: "Keine xDS-Config/Cert-Ausstellung mehr; laufender ambient-Traffic laeuft weiter, neue Pods/Cert-Rotation blockiert."
+            action: "kubectl -n istio-system rollout restart deploy/istiod; sail-operator Status pruefen."
+        - alert: ZtunnelNodeDown
+          expr: |
+            kube_daemonset_status_desired_number_scheduled{namespace="istio-system",daemonset="ztunnel"}
+              - kube_daemonset_status_number_ready{namespace="istio-system",daemonset="ztunnel"} > 0
+          for: 10m
+          labels:
+            severity: warning
+            component: network
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/network.md#ztunnelnodedown"
+            dashboard_url: "/d/istio-ztunnel"
+            summary: "ztunnel fehlt auf {{ $value }} Node(s)"
+            description: "Ambient-mTLS-Datapath auf betroffenem Node tot — enrollte Pods dort verlieren Mesh-Traffic."
+            action: "kubectl -n istio-system get pods -l app=ztunnel -o wide; DaemonSet-Events pruefen."
+        - alert: IstioRootCertExpiringSoon
+          expr: (citadel_server_root_cert_expiry_timestamp - time()) < 30 * 24 * 3600
+          for: 1h
+          labels:
+            severity: warning
+            component: network
+          annotations:
+            dashboard_url: "/d/istio-control-plane"
+            summary: "Istio Root-CA laeuft in {{ $value | humanizeDuration }} ab (<30d)"
+            description: "Alle Workload-Identitaeten haengen an dieser CA — Ablauf = Mesh-weiter mTLS-Ausfall."
+            action: "Root-Cert-Rotation planen (istiod self-signed CA, 10y default — Alert = Anomalie)."
+        - alert: IstioCertIssuanceFailing
+          expr: rate(citadel_server_csr_count[10m]) - rate(citadel_server_success_cert_issuance_count[10m]) > 0
+          for: 10m
+          labels:
+            severity: warning
+            component: network
+          annotations:
+            dashboard_url: "/d/istio-control-plane"
+            summary: "istiod stellt Workload-Certs nicht aus ({{ $value | humanize }}/s fehlgeschlagen)"
+            description: "CSRs kommen an, aber Issuance schlaegt fehl — neue Pods kriegen keine mTLS-Identity, Rotation stockt."
+            action: "kubectl -n istio-system logs deploy/istiod | grep -i csr; ztunnel↔istiod-Verbindung pruefen."
+        - alert: IstioConfigConflicts
+          expr: pilot_duplicate_envoy_clusters > 0 or pilot_conflict_inbound_listener > 0
+          for: 15m
+          labels:
+            severity: warning
+            component: network
+          annotations:
+            dashboard_url: "/d/istio-control-plane"
+            summary: "istiod erzeugt kollidierende Envoy-Config ({{ $value }} Konflikte)"
+            description: "Doppelte Cluster oder kollidierende Inbound-Listener — Mesh-Routing wird unvorhersehbar, betroffene Proxies koennen auf alter Config haengen bleiben."
+            action: "istioctl analyze -A; kubectl -n istio-system logs deploy/istiod | grep -iE 'conflict|duplicate'; letzte VirtualService-/Gateway-Aenderung pruefen."

@@ -1,0 +1,239 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: central-openbao-ca
+  namespace: external-secrets
+data:
+  ca.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIIBjzCCATWgAwIBAgIUEnbKdI2DId+YLSvZ4H7TQNSqBXowCgYIKoZIzj0EAwIw
+    HTEbMBkGA1UEAwwSY2VudHJhbC1vcGVuYmFvLWNhMB4XDTI2MTEyNjE3MDg1OFoX
+    DTM2MTEyMzE3MDg1OFowHTEbMBkGA1UEAwwSY2VudHJhbC1vcGVuYmFvLWNhMFkw
+    EwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPQyNn+xEy/s5uWfWEJ6j+qrzjy+TCqsX
+    +yKl4+6F+3PUY9iRj8yKsBJ87z+r4QCC/V9XM8+Cf5zGm9RNGgmj0qNTMFEwHQYD
+    VR0OBBYEFBwv8Lro/sWQRmHbigeopkT6bXZuMB8GA1UdIwQYMBaAFBwv8Lro/sWQ
+    RmHbigeopkT6bXZuMA8GA1UdEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDSAAwRQIh
+    APz5kljtuKlcqdxLVE0ccwFBECkPjB8vTxqv++e7aW6WAiAU3LUpGbKDJuXPvCQC
+    ytppPBfa38df6ZyfBKzSf3qyMQ==
+    -----END CERTIFICATE-----
+---
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: openbao-central
+  annotations:
+    argocd.argoproj.io/sync-wave: '2'
+spec:
+  conditions:
+  - namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: external-secrets
+  provider:
+    vault:
+      server: https://192.168.0.60:8200
+      caProvider:
+        type: ConfigMap
+        name: central-openbao-ca
+        namespace: external-secrets
+        key: ca.crt
+      path: kv
+      version: v2
+      auth:
+        jwt:
+          path: k8s-prod
+          role: external-secrets
+          kubernetesServiceAccountToken:
+            serviceAccountRef:
+              name: eso
+              namespace: external-secrets
+            audiences:
+            - central-openbao
+            expirationSeconds: 600
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: openbao-bootstrap-values
+  namespace: external-secrets
+  annotations:
+    argocd.argoproj.io/sync-wave: '3'
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao-central
+    kind: ClusterSecretStore
+  target:
+    name: openbao-bootstrap-values
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data:
+  - secretKey: arc-runners.github-runner-secret.github_app_id
+    remoteRef:
+      key: prod/platform/github-runner-scale-set/github-runner-secret
+      property: github_app_id
+  - secretKey: arc-runners.github-runner-secret.github_app_installation_id
+    remoteRef:
+      key: prod/platform/github-runner-scale-set/github-runner-secret
+      property: github_app_installation_id
+  - secretKey: arc-runners.github-runner-secret.github_app_private_key
+    remoteRef:
+      key: prod/platform/github-runner-scale-set/github-runner-secret
+      property: github_app_private_key
+  - secretKey: argocd.argocd-notifications-secret.slack-token
+    remoteRef:
+      key: prod/platform/argocd/argocd-notifications-secret
+      property: slack-token
+  - secretKey: cloudflared.cloudflared-credentials.credentials.json
+    remoteRef:
+      key: prod/platform/cloudflared/cloudflared-credentials
+      property: credentials.json
+  - secretKey: keycloak.keycloak-smtp.from
+    remoteRef:
+      key: prod/platform/keycloak/keycloak-smtp
+      property: from
+  - secretKey: keycloak.keycloak-smtp.password
+    remoteRef:
+      key: prod/platform/keycloak/keycloak-smtp
+      property: password
+  - secretKey: keycloak.keycloak-smtp.replyTo
+    remoteRef:
+      key: prod/platform/keycloak/keycloak-smtp
+      property: replyTo
+  - secretKey: keycloak.keycloak-smtp.user
+    remoteRef:
+      key: prod/platform/keycloak/keycloak-smtp
+      property: user
+  - secretKey: monitoring.jira-api.token
+    remoteRef:
+      key: prod/platform/kube-prometheus-stack/jira-api
+      property: token
+  - secretKey: monitoring.jira-api.user
+    remoteRef:
+      key: prod/platform/kube-prometheus-stack/jira-api
+      property: user
+  - secretKey: monitoring.netbird-exporter-token.api-token
+    remoteRef:
+      key: prod/platform/netbird/netbird-exporter-token
+      property: api-token
+  - secretKey: monitoring.pve-exporter-token.token_value
+    remoteRef:
+      key: prod/platform/pve-exporter/pve-exporter-token
+      property: token_value
+  - secretKey: monitoring.slack-webhook-critical.url
+    remoteRef:
+      key: prod/platform/alerting/slack-webhook-critical
+      property: url
+  - secretKey: monitoring.slack-webhook-security.url
+    remoteRef:
+      key: prod/platform/alerting/slack-webhook-security
+      property: url
+  - secretKey: monitoring.slack-webhook-url.url
+    remoteRef:
+      key: prod/platform/alerting/slack-webhook-url
+      property: url
+  - secretKey: monitoring.telegram-bot-token.token
+    remoteRef:
+      key: prod/platform/kube-prometheus-stack/telegram-bot-token
+      property: token
+  - secretKey: monitoring.watchdog-webhook-url.url
+    remoteRef:
+      key: prod/platform/kube-prometheus-stack/watchdog-webhook-url
+      property: url
+  - secretKey: n8n-prod.n8n-workflow-creds.ANTHROPIC_API_KEY
+    remoteRef:
+      key: prod/platform/n8n/n8n-workflow-creds
+      property: ANTHROPIC_API_KEY
+  - secretKey: n8n-prod.n8n-workflow-creds.GITHUB_TOKEN
+    remoteRef:
+      key: prod/platform/n8n/n8n-workflow-creds
+      property: GITHUB_TOKEN
+  - secretKey: n8n-prod.n8n-workflow-creds.TELEGRAM_TOKEN
+    remoteRef:
+      key: prod/platform/n8n/n8n-workflow-creds
+      property: TELEGRAM_TOKEN
+  - secretKey: netbird.netbird-audit-token.NB_API_KEY
+    remoteRef:
+      key: prod/platform/netbird/netbird-audit-token
+      property: NB_API_KEY
+  - secretKey: netbird.netbird-mgmt-api-key.NB_API_KEY
+    remoteRef:
+      key: prod/platform/netbird/netbird-mgmt-api-key
+      property: NB_API_KEY
+  - secretKey: renovate-operator.renovate-secret.DOCKERHUB_TOKEN
+    remoteRef:
+      key: prod/platform/renovate-jobs/renovate-secret
+      property: DOCKERHUB_TOKEN
+  - secretKey: renovate-operator.renovate-secret.DOCKERHUB_USERNAME
+    remoteRef:
+      key: prod/platform/renovate-jobs/renovate-secret
+      property: DOCKERHUB_USERNAME
+  - secretKey: renovate-operator.renovate-secret.GITHUB_COM_TOKEN
+    remoteRef:
+      key: prod/platform/renovate-jobs/renovate-secret
+      property: GITHUB_COM_TOKEN
+  - secretKey: renovate-operator.renovate-secret.GITHUB_COM_USER
+    remoteRef:
+      key: prod/platform/renovate-jobs/renovate-secret
+      property: GITHUB_COM_USER
+  - secretKey: renovate-operator.renovate-secret.RENOVATE_HOST_RULES
+    remoteRef:
+      key: prod/platform/renovate-jobs/renovate-secret
+      property: RENOVATE_HOST_RULES
+  - secretKey: renovate-operator.renovate-secret.RENOVATE_TOKEN
+    remoteRef:
+      key: prod/platform/renovate-jobs/renovate-secret
+      property: RENOVATE_TOKEN
+  - secretKey: cloudflare.api-token.api-token
+    remoteRef:
+      key: prod/platform/cloudflare/api-token
+      property: api-token
+  - secretKey: sealed-secrets.sealed-secrets-bootstrap-key.tls.crt
+    remoteRef:
+      key: prod/platform/sealed-secrets/sealed-secrets-bootstrap-key
+      property: tls.crt
+  - secretKey: sealed-secrets.sealed-secrets-bootstrap-key.tls.key
+    remoteRef:
+      key: prod/platform/sealed-secrets/sealed-secrets-bootstrap-key
+      property: tls.key
+  - secretKey: sealed-secrets.sealed-secrets-bootstrap-key-2026.tls.crt
+    remoteRef:
+      key: prod/platform/sealed-secrets/sealed-secrets-bootstrap-key-2026
+      property: tls.crt
+  - secretKey: sealed-secrets.sealed-secrets-bootstrap-key-2026.tls.key
+    remoteRef:
+      key: prod/platform/sealed-secrets/sealed-secrets-bootstrap-key-2026
+      property: tls.key
+---
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: openbao-central-seal
+  annotations:
+    argocd.argoproj.io/sync-wave: '2'
+spec:
+  conditions:
+  - namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: openbao
+  provider:
+    vault:
+      server: https://192.168.0.60:8200
+      caProvider:
+        type: ConfigMap
+        name: central-openbao-ca
+        namespace: external-secrets
+        key: ca.crt
+      path: kv
+      version: v2
+      auth:
+        jwt:
+          path: k8s-prod
+          role: openbao-seal
+          kubernetesServiceAccountToken:
+            serviceAccountRef:
+              name: eso
+              namespace: openbao
+            audiences:
+            - central-openbao
+            expirationSeconds: 600
+

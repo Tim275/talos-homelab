@@ -1,0 +1,155 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: network-ingress
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: edge-slo-recording
+      interval: 30s
+      rules:
+        - record: slo:edge_availability:ratio_rate5m
+          expr: |
+            1 - (
+              sum(rate(envoy_cluster_upstream_rq_xx{namespace="gateway", envoy_cluster_name=~"httproute/(drova|n8n|homepage)/.*", envoy_response_code_class="5"}[5m]))
+              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total{namespace="gateway", envoy_cluster_name=~"httproute/(drova|n8n|homepage)/.*"}[5m])), 0.001)
+            )
+        - record: slo:edge_availability:ratio_rate30m
+          expr: |
+            1 - (
+              sum(rate(envoy_cluster_upstream_rq_xx{namespace="gateway", envoy_cluster_name=~"httproute/(drova|n8n|homepage)/.*", envoy_response_code_class="5"}[30m]))
+              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total{namespace="gateway", envoy_cluster_name=~"httproute/(drova|n8n|homepage)/.*"}[30m])), 0.001)
+            )
+        - record: slo:edge_availability:ratio_rate1h
+          expr: |
+            1 - (
+              sum(rate(envoy_cluster_upstream_rq_xx{namespace="gateway", envoy_cluster_name=~"httproute/(drova|n8n|homepage)/.*", envoy_response_code_class="5"}[1h]))
+              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total{namespace="gateway", envoy_cluster_name=~"httproute/(drova|n8n|homepage)/.*"}[1h])), 0.001)
+            )
+        - record: slo:edge_availability:ratio_rate6h
+          expr: |
+            1 - (
+              sum(rate(envoy_cluster_upstream_rq_xx{namespace="gateway", envoy_cluster_name=~"httproute/(drova|n8n|homepage)/.*", envoy_response_code_class="5"}[6h]))
+              / clamp_min(sum(rate(envoy_cluster_upstream_rq_total{namespace="gateway", envoy_cluster_name=~"httproute/(drova|n8n|homepage)/.*"}[6h])), 0.001)
+            )
+        - record: slo:edge_requests:rate5m
+          expr: sum(rate(envoy_cluster_upstream_rq_total{namespace="gateway", envoy_cluster_name=~"httproute/(drova|n8n|homepage)/.*"}[5m]))
+        - record: slo:edge_requests:rate30m
+          expr: sum(rate(envoy_cluster_upstream_rq_total{namespace="gateway", envoy_cluster_name=~"httproute/(drova|n8n|homepage)/.*"}[30m]))
+
+    - name: ingress-page
+      interval: 60s
+      rules:
+        - alert: CloudflaredAllDown
+          expr: absent(up{job="cloudflared/cloudflared"}) or count(up{job="cloudflared/cloudflared"} == 1) == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: network
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/network.md#cloudflaredalldown"
+            dashboard_url: "/d/cloudflared"
+            summary: "All Cloudflared tunnels down"
+            description: "External access via Cloudflare Tunnel completely down — all public services unreachable."
+            action: "kubectl -n cloudflared get pod -l app=cloudflared + logs; check the tunnel token secret + Cloudflare dashboard tunnel status."
+
+        - alert: CloudflaredNoEdgeConnections
+          expr: sum(cloudflared_tunnel_ha_connections) == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: network
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/network.md#cloudflarednoedgeconnections"
+            dashboard_url: "/d/cloudflared"
+            summary: "cloudflared hält keine Verbindung zur Cloudflare-Edge"
+            description: "Die Tunnel-Pods laufen (CloudflaredAllDown feuert nicht), halten aber null HA-Verbindungen zur Edge. drova/n8n/homepage sind damit von aussen tot, waehrend Blackbox-Probe und Uptime-Kuma gruen bleiben — beide pruefen aus dem Cluster heraus und kommen gar nicht an Cloudflare vorbei. Normal sind 4 Verbindungen je Pod."
+            action: "kubectl -n cloudflared logs -l app=cloudflared --tail=50; Tunnel-Status im Cloudflare-Dashboard; Token-Secret pruefen."
+
+    - name: ingress-ticket
+      interval: 60s
+      rules:
+        - alert: EnvoyGatewayDown
+          expr: absent(up{job="envoy-gateway"}) or up{job="envoy-gateway"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            component: network
+          annotations:
+            dashboard_url: "/d/envoy-global"
+            summary: "Envoy Gateway controller down"
+            description: "Gateway config updates blocked >3min (existing routes keep serving)."
+            action: "kubectl -n envoy-gateway-system rollout restart deploy/envoy-gateway; existing routes keep serving meanwhile."
+
+        - alert: EnvoyGateway5xxRateHigh
+          expr: |
+            100 * sum by (envoy_cluster_name) (rate(envoy_cluster_upstream_rq_xx{namespace="gateway", envoy_cluster_name=~"httproute/.*", envoy_response_code_class="5"}[5m]))
+            /
+            clamp_min(sum by (envoy_cluster_name) (rate(envoy_cluster_upstream_rq_total{namespace="gateway", envoy_cluster_name=~"httproute/.*"}[5m])), 0.001)
+            > 5
+          for: 5m
+          labels:
+            severity: warning
+            component: network
+          annotations:
+            dashboard_url: "/d/envoy-global"
+            summary: "Envoy Gateway 5xx >5% auf {{ $labels.envoy_cluster_name }} ({{ $value | humanize }}%)"
+            description: "Edge proxy seeing high upstream errors — backend services degraded, users see failures."
+            action: "Find the failing upstream in the envoy-global dashboard; check that backend's pods/health + any recent deploy."
+
+        - alert: EnvoyEdgeSLOFastBurn
+          expr: |
+            ((1 - slo:edge_availability:ratio_rate1h) > 0.072)
+            and
+            ((1 - slo:edge_availability:ratio_rate5m) > 0.072)
+            and
+            slo:edge_requests:rate5m > 0.01
+          for: 2m
+          labels:
+            severity: critical
+            component: network
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/network.md#envoyedgeslofastburn"
+            dashboard_url: "/d/edge-slo"
+            summary: "Edge SLO fast-burn: {{ $value | humanizePercentage }} 5xx (budget 0.5%)"
+            description: "The ingress edge is burning its availability error budget 14.4× — a month's budget in ~2 days. Every exposed app is affected."
+            action: "envoy-global dashboard → which upstream is 5xx'ing; check that backend + recent deploys. Pages because the whole front door is degraded."
+
+        - alert: EnvoyEdgeSLOSlowBurn
+          expr: |
+            ((1 - slo:edge_availability:ratio_rate6h) > 0.03)
+            and
+            ((1 - slo:edge_availability:ratio_rate30m) > 0.03)
+            and
+            slo:edge_requests:rate30m > 0.01
+          for: 15m
+          labels:
+            severity: critical
+            component: network
+          annotations:
+            runbook_url: "https://github.com/Tim275/talos-homelab/blob/main/docs/runbooks/network.md#envoyedgeslofastburn"
+            dashboard_url: "/d/edge-slo"
+            summary: "Edge SLO slow-burn: {{ $value | humanizePercentage }} 5xx (budget 0.5%)"
+            description: "The ingress edge has burned availability budget at 6× for hours — a persistent low-grade failure across the front door."
+            action: "envoy-global dashboard → the chronically-failing upstream; likely one backend flapping. Fix before it erodes the month's budget."
+
+        - alert: EnvoyGatewayNoEndpoints
+          expr: |
+            sum by (envoy_cluster_name, namespace) (
+              envoy_cluster_membership_healthy{envoy_cluster_name!~"xds_cluster|prometheus_stats|admin|.*_local.*"}
+            ) == 0
+            and
+            sum by (envoy_cluster_name, namespace) (
+              envoy_cluster_membership_total{envoy_cluster_name!~"xds_cluster|prometheus_stats|admin|.*_local.*"}
+            ) > 0
+          for: 10m
+          keep_firing_for: 5m
+          labels:
+            severity: warning
+            component: network
+          annotations:
+            dashboard_url: "/d/envoy-global"
+            summary: "Envoy Gateway: no healthy endpoints for {{ $labels.envoy_cluster_name }}"
+            description: "User-facing upstream has 0 healthy endpoints >10min — traffic dropped."
+            action: "kubectl get endpoints -n {{ $labels.namespace }} {{ $labels.envoy_cluster_name }} — backend has 0 ready pods; check the deployment + readiness probe."

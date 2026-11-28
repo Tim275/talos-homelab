@@ -1,0 +1,593 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: n8ninstance
+spec:
+  compositeTypeRef:
+    apiVersion: customers.tim275.github.io/v1alpha1
+    kind: N8nInstance
+  mode: Pipeline
+  pipeline:
+    - step: environment
+      functionRef:
+        name: function-environment-configs
+      input:
+        apiVersion: environmentconfigs.fn.crossplane.io/v1beta1
+        kind: Input
+        spec:
+          environmentConfigs:
+            - type: Reference
+              ref:
+                name: customers
+    - step: render
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $xr := .observed.composite.resource }}
+            {{- $env := index .context "apiextensions.crossplane.io/environment" }}
+            {{- $id := $xr.metadata.name }}
+            {{- $ns := printf "n8n-%s" $id }}
+            {{- $vault := printf "customers/%s" $ns }}
+            {{- $host := printf "%s-n8n.%s" $xr.spec.address $env.domain }}
+            {{- $issuer := printf "https://login.%s/realms/customers" $env.domain }}
+            {{- $edge := $env.edge | default dict }}
+            ---
+            apiVersion: platform.tim275.github.io/v1alpha1
+            kind: CustomerNamespace
+            metadata:
+              name: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: namespace
+            spec:
+              postgres: true
+            ---
+            apiVersion: platform.tim275.github.io/v1alpha1
+            kind: PostgresDatabase
+            metadata:
+              name: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: database
+            spec:
+              namespace: {{ $ns }}
+              reclaimPolicy: Delete
+              secretStore: openbao-customers-platform
+              appSecretStore: openbao-customers
+              secretKey: {{ $vault }}/postgres
+            ---
+            apiVersion: external-secrets.io/v1alpha1
+            kind: PushSecret
+            metadata:
+              name: n8n-encryption-key
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: encryption-key-seed
+            spec:
+              refreshInterval: 1h
+              updatePolicy: IfNotExists
+              deletionPolicy: Delete
+              secretStoreRefs:
+                - name: openbao-customers
+                  kind: ClusterSecretStore
+              selector:
+                generatorRef:
+                  apiVersion: generators.external-secrets.io/v1alpha1
+                  kind: ClusterGenerator
+                  name: password
+              data:
+                - match:
+                    secretKey: password
+                    remoteRef:
+                      remoteKey: {{ $vault }}/encryption-key
+                      property: key
+            ---
+            apiVersion: external-secrets.io/v1
+            kind: ExternalSecret
+            metadata:
+              name: n8n-encryption-key
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: encryption-key
+            spec:
+              refreshInterval: 1h
+              secretStoreRef:
+                name: openbao-customers
+                kind: ClusterSecretStore
+              target:
+                name: n8n-encryption-key
+              data:
+                - secretKey: N8N_ENCRYPTION_KEY
+                  remoteRef:
+                    key: {{ $vault }}/encryption-key
+                    property: key
+            ---
+            apiVersion: external-secrets.io/v1alpha1
+            kind: PushSecret
+            metadata:
+              name: n8n-runners-auth-token
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: runners-token-seed
+            spec:
+              refreshInterval: 1h
+              updatePolicy: IfNotExists
+              deletionPolicy: Delete
+              secretStoreRefs:
+                - name: openbao-customers
+                  kind: ClusterSecretStore
+              selector:
+                generatorRef:
+                  apiVersion: generators.external-secrets.io/v1alpha1
+                  kind: ClusterGenerator
+                  name: password
+              data:
+                - match:
+                    secretKey: password
+                    remoteRef:
+                      remoteKey: {{ $vault }}/runners-auth-token
+                      property: token
+            ---
+            apiVersion: external-secrets.io/v1
+            kind: ExternalSecret
+            metadata:
+              name: n8n-runners-auth-token
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: runners-token
+            spec:
+              refreshInterval: 1h
+              secretStoreRef:
+                name: openbao-customers
+                kind: ClusterSecretStore
+              target:
+                name: n8n-runners-auth-token
+              data:
+                - secretKey: token
+                  remoteRef:
+                    key: {{ $vault }}/runners-auth-token
+                    property: token
+            {{- if not $xr.spec.suspended }}
+            ---
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: n8n
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: deployment
+            spec:
+              replicas: 1
+              strategy:
+                type: Recreate
+              selector:
+                matchLabels:
+                  app: n8n
+              template:
+                metadata:
+                  labels:
+                    app: n8n
+                spec:
+                  securityContext:
+                    runAsUser: 1000
+                    runAsGroup: 1000
+                    fsGroup: 1000
+                    runAsNonRoot: true
+                    seccompProfile:
+                      type: RuntimeDefault
+                  containers:
+                    - name: n8n
+                      image: ghcr.io/n8n-io/n8n:2.48.8  # renovate: github-releases=n8n-io/n8n
+                      ports:
+                        - name: http
+                          containerPort: 5678
+                      securityContext:
+                        allowPrivilegeEscalation: false
+                        capabilities:
+                          drop: [ALL]
+                      env:
+                        - name: N8N_HOST
+                          value: {{ $host }}
+                        - name: N8N_PROTOCOL
+                          value: https
+                        - name: N8N_WEBHOOK_URL
+                          value: https://{{ $host }}/
+                        - name: N8N_EDITOR_BASE_URL
+                          value: https://{{ $host }}/
+                        - name: N8N_PROXY_HOPS
+                          value: "1"
+                        - name: N8N_SECURE_COOKIE
+                          value: "true"
+                        - name: EXECUTIONS_DATA_PRUNE
+                          value: "true"
+                        - name: EXECUTIONS_DATA_MAX_AGE
+                          value: "168"
+                        - name: DB_TYPE
+                          value: postgresdb
+                        - name: DB_POSTGRESDB_HOST
+                          valueFrom: {secretKeyRef: {name: {{ $ns }}-postgres, key: host}}
+                        - name: DB_POSTGRESDB_PORT
+                          valueFrom: {secretKeyRef: {name: {{ $ns }}-postgres, key: port}}
+                        - name: DB_POSTGRESDB_DATABASE
+                          valueFrom: {secretKeyRef: {name: {{ $ns }}-postgres, key: dbname}}
+                        - name: DB_POSTGRESDB_USER
+                          valueFrom: {secretKeyRef: {name: {{ $ns }}-postgres, key: username}}
+                        - name: DB_POSTGRESDB_PASSWORD
+                          valueFrom: {secretKeyRef: {name: {{ $ns }}-postgres, key: password}}
+                        - name: N8N_ENCRYPTION_KEY
+                          valueFrom: {secretKeyRef: {name: n8n-encryption-key, key: N8N_ENCRYPTION_KEY}}
+                        - name: N8N_RUNNERS_MODE
+                          value: external
+                        - name: N8N_RUNNERS_TASK_TIMEOUT
+                          value: "300"
+                        - name: N8N_UNVERIFIED_PACKAGES_ENABLED
+                          value: "false"
+                        - name: N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES
+                          value: "268435456"
+                        - name: N8N_RUNNERS_AUTH_TOKEN
+                          valueFrom: {secretKeyRef: {name: n8n-runners-auth-token, key: token}}
+                      resources:
+                        requests:
+                          cpu: 100m
+                          memory: 256Mi
+                        limits:
+                          memory: 1Gi
+                      readinessProbe:
+                        httpGet:
+                          path: /healthz
+                          port: http
+                        periodSeconds: 10
+                      livenessProbe:
+                        httpGet:
+                          path: /healthz
+                          port: http
+                        initialDelaySeconds: 60
+                        periodSeconds: 30
+                    - name: task-runners
+                      image: ghcr.io/n8n-io/runners:2.48.8  # renovate: github-releases=n8n-io/n8n
+                      securityContext:
+                        allowPrivilegeEscalation: false
+                        capabilities:
+                          drop: [ALL]
+                      env:
+                        - name: N8N_RUNNERS_TASK_BROKER_URI
+                          value: http://127.0.0.1:5679
+                        - name: N8N_RUNNERS_AUTH_TOKEN
+                          valueFrom: {secretKeyRef: {name: n8n-runners-auth-token, key: token}}
+                      ports:
+                        - name: launcher-health
+                          containerPort: 5680
+                      readinessProbe:
+                        tcpSocket:
+                          port: launcher-health
+                        periodSeconds: 10
+                      resources:
+                        requests:
+                          cpu: 50m
+                          memory: 128Mi
+                        limits:
+                          memory: 512Mi
+            ---
+            apiVersion: v1
+            kind: Service
+            metadata:
+              name: n8n
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: service
+            spec:
+              selector:
+                app: n8n
+              ports:
+                - name: http
+                  port: 5678
+                  targetPort: http
+            ---
+            apiVersion: external-secrets.io/v1alpha1
+            kind: PushSecret
+            metadata:
+              name: {{ $ns }}-oidc
+              namespace: crossplane-system
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: oidc-seed
+            spec:
+              refreshInterval: 1h
+              updatePolicy: IfNotExists
+              deletionPolicy: Delete
+              secretStoreRefs:
+                - name: openbao
+                  kind: ClusterSecretStore
+              selector:
+                generatorRef:
+                  apiVersion: generators.external-secrets.io/v1alpha1
+                  kind: ClusterGenerator
+                  name: password
+              data:
+                - match:
+                    secretKey: password
+                    remoteRef:
+                      remoteKey: platform/keycloak/customers/{{ $ns }}-oidc
+                      property: client-secret
+            ---
+            apiVersion: external-secrets.io/v1
+            kind: ExternalSecret
+            metadata:
+              name: {{ $ns }}-oidc
+              namespace: crossplane-system
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: oidc
+            spec:
+              refreshInterval: 1h
+              secretStoreRef:
+                name: openbao
+                kind: ClusterSecretStore
+              target:
+                name: {{ $ns }}-oidc
+                template:
+                  engineVersion: v2
+                  data:
+                    client-id: n8n-{{ $id }}
+                    client-secret: '{{ "{{" }} index . "client-secret" {{ "}}" }}'
+              data:
+                - secretKey: client-secret
+                  remoteRef:
+                    key: platform/keycloak/customers/{{ $ns }}-oidc
+                    property: client-secret
+            ---
+            apiVersion: openidclient.keycloak.m.crossplane.io/v1alpha2
+            kind: Client
+            metadata:
+              name: {{ $ns }}
+              namespace: crossplane-system
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: keycloak-client
+            spec:
+              forProvider:
+                realmId: customers
+                clientId: n8n-{{ $id }}
+                name: n8n {{ $xr.spec.address }}
+                accessType: CONFIDENTIAL
+                standardFlowEnabled: true
+                directAccessGrantsEnabled: false
+                pkceCodeChallengeMethod: S256
+                validRedirectUris:
+                  - https://{{ $host }}/oauth2/callback
+                  - https://{{ $host }}/
+                validPostLogoutRedirectUris:
+                  - https://{{ $host }}/
+                webOrigins:
+                  - https://{{ $host }}
+                clientSecretSecretRef:
+                  name: {{ $ns }}-oidc
+                  key: client-secret
+            ---
+            apiVersion: gateway.networking.k8s.io/v1beta1
+            kind: ReferenceGrant
+            metadata:
+              name: {{ $ns }}-oidc
+              namespace: crossplane-system
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: oidc-grant
+                gotemplating.fn.crossplane.io/ready: "True"
+            spec:
+              from:
+                - group: gateway.envoyproxy.io
+                  kind: SecurityPolicy
+                  namespace: {{ $ns }}
+              to:
+                - group: ""
+                  kind: Secret
+                  name: {{ $ns }}-oidc
+            ---
+            apiVersion: gateway.networking.k8s.io/v1
+            kind: HTTPRoute
+            metadata:
+              name: n8n
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: route
+                gotemplating.fn.crossplane.io/ready: "True"
+                external-dns.alpha.kubernetes.io/controller: tofu
+            spec:
+              parentRefs:
+                - name: envoy-gateway
+                  namespace: gateway
+                  sectionName: https
+              hostnames:
+                - {{ $host }}
+              rules:
+                - matches:
+                    - path:
+                        type: PathPrefix
+                        value: /rest/push
+                  timeouts:
+                    request: 0s
+                    backendRequest: 0s
+                  backendRefs:
+                    - name: n8n
+                      port: 5678
+                - backendRefs:
+                    - name: n8n
+                      port: 5678
+            ---
+            apiVersion: gateway.networking.k8s.io/v1
+            kind: HTTPRoute
+            metadata:
+              name: n8n-public
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: route-public
+                gotemplating.fn.crossplane.io/ready: "True"
+                external-dns.alpha.kubernetes.io/controller: tofu
+            spec:
+              parentRefs:
+                - name: envoy-gateway
+                  namespace: gateway
+                  sectionName: https
+              hostnames:
+                - {{ $host }}
+              rules:
+                - matches:
+                    {{- range list "/webhook/" "/webhook-test/" "/webhook-waiting/" "/form/" "/form-test/" "/form-waiting/" }}
+                    - path:
+                        type: PathPrefix
+                        value: {{ . }}
+                    {{- end }}
+                    - path:
+                        type: Exact
+                        value: /healthz
+                  backendRefs:
+                    - name: n8n
+                      port: 5678
+            ---
+            apiVersion: gateway.envoyproxy.io/v1alpha1
+            kind: SecurityPolicy
+            metadata:
+              name: n8n
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: login
+                gotemplating.fn.crossplane.io/ready: "True"
+            spec:
+              targetRefs:
+                - group: gateway.networking.k8s.io
+                  kind: HTTPRoute
+                  name: n8n
+              oidc:
+                provider:
+                  issuer: {{ $issuer }}
+                  authorizationEndpoint: {{ $issuer }}/protocol/openid-connect/auth
+                  tokenEndpoint: {{ $issuer }}/protocol/openid-connect/token
+                clientIDRef:
+                  name: {{ $ns }}-oidc
+                  namespace: crossplane-system
+                  group: ""
+                  kind: Secret
+                clientSecret:
+                  name: {{ $ns }}-oidc
+                  namespace: crossplane-system
+                redirectURL: https://{{ $host }}/oauth2/callback
+                logoutPath: /oauth2/logout
+                cookieNames:
+                  accessToken: AccessToken-n8n
+                  idToken: IdToken-n8n
+                refreshToken: true
+                scopes: [openid, profile, email, groups]
+              jwt:
+                providers:
+                  - name: keycloak
+                    issuer: {{ $issuer }}
+                    remoteJWKS:
+                      uri: {{ $issuer }}/protocol/openid-connect/certs
+                    extractFrom:
+                      cookies:
+                        - AccessToken-n8n
+              authorization:
+                defaultAction: Deny
+                rules:
+                  - name: customer
+                    action: Allow
+                    principal:
+                      jwt:
+                        provider: keycloak
+                        claims:
+                          - name: groups
+                            valueType: StringArray
+                            values: [{{ $id | quote }}]
+            ---
+            apiVersion: gateway.envoyproxy.io/v1alpha1
+            kind: BackendTrafficPolicy
+            metadata:
+              name: n8n
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: traffic
+                gotemplating.fn.crossplane.io/ready: "True"
+            spec:
+              targetRefs:
+                - group: gateway.networking.k8s.io
+                  kind: HTTPRoute
+                  name: n8n
+              timeout:
+                http:
+                  connectionIdleTimeout: 3600s
+                  maxConnectionDuration: 0s
+            ---
+            apiVersion: gateway.envoyproxy.io/v1alpha1
+            kind: BackendTrafficPolicy
+            metadata:
+              name: n8n-public
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: traffic-public
+                gotemplating.fn.crossplane.io/ready: "True"
+            spec:
+              targetRefs:
+                - group: gateway.networking.k8s.io
+                  kind: HTTPRoute
+                  name: n8n-public
+              rateLimit:
+                type: Global
+                global:
+                  rules:
+                    {{- range list "0.0.0.0/0" "::/0" }}
+                    - limit:
+                        requests: 120
+                        unit: Minute
+                      clientSelectors:
+                        - sourceCIDR:
+                            value: {{ . }}
+                            type: Distinct
+                    {{- end }}
+            ---
+            apiVersion: monitoring.coreos.com/v1
+            kind: Probe
+            metadata:
+              name: n8n
+              namespace: {{ $ns }}
+              labels:
+                release: kube-prometheus-stack
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: probe
+                gotemplating.fn.crossplane.io/ready: "True"
+            spec:
+              jobName: customer-apps
+              module: http_2xx
+              prober:
+                url: blackbox-exporter-prometheus-blackbox-exporter.monitoring.svc.cluster.local:9115
+              targets:
+                staticConfig:
+                  static:
+                    - https://{{ $host }}/healthz
+                  labels:
+                    customer: {{ $id }}
+                    service: n8n
+            {{- if $edge.target }}
+            ---
+            apiVersion: externaldns.k8s.io/v1alpha1
+            kind: DNSEndpoint
+            metadata:
+              name: n8n
+              namespace: {{ $ns }}
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: dns
+                gotemplating.fn.crossplane.io/ready: "True"
+            spec:
+              endpoints:
+                - dnsName: {{ $host }}
+                  recordType: CNAME
+                  targets:
+                    - {{ $edge.target }}
+                  {{- if $edge.proxied }}
+                  providerSpecific:
+                    - name: external-dns.alpha.kubernetes.io/cloudflare-proxied
+                      value: "true"
+                  {{- end }}
+            {{- end }}
+            {{- end }}
+    - step: ready
+      functionRef:
+        name: function-auto-ready

@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: talos-backup
+  namespace: etcd-backup
+spec:
+  schedule: "30 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: talos-backup
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: talos-backup
+              image: ghcr.io/siderolabs/talos-backup
+              workingDir: /tmp
+              command: [/talos-backup]
+              env:
+                - name: AWS_REGION
+                  value: us-east-1
+                - name: USE_PATH_STYLE
+                  value: "true"
+                - name: ENABLE_COMPRESSION
+                  value: "true"
+                - name: AGE_RECIPIENT_PUBLIC_KEY
+                  value: age1wjl4425q5jr8qr2z4ctngn4xfk2ly3evjslp85cvjatnl95n3ursrq5udz
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              volumeMounts:
+                - { name: tmp, mountPath: /tmp }
+                - { name: talos, mountPath: /.talos }
+                - { name: talos-secrets, mountPath: /var/run/secrets/talos.dev }
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: talos
+              emptyDir: {}
+            - name: talos-secrets
+              secret:
+                secretName: talos-backup-secrets

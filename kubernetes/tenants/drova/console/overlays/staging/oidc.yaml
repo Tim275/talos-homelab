@@ -1,0 +1,108 @@
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: redpanda-oidc-credentials-cookie-secret
+  namespace: drova
+  annotations:
+    argocd.argoproj.io/sync-wave: '-1'
+spec:
+  refreshInterval: 1h
+  updatePolicy: IfNotExists
+  secretStoreRefs:
+    - name: openbao-tenants
+      kind: ClusterSecretStore
+  selector:
+    generatorRef:
+      apiVersion: generators.external-secrets.io/v1alpha1
+      kind: ClusterGenerator
+      name: password
+  data:
+    - match:
+        secretKey: password
+        remoteRef:
+          remoteKey: tenants/drova/redpanda-oidc-credentials
+          property: cookie-secret
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: redpanda-oidc-credentials
+  namespace: drova
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao-tenants
+    kind: ClusterSecretStore
+  target:
+    name: redpanda-oidc-credentials
+    template:
+      engineVersion: v2
+      data:
+        client-id: redpanda
+        client-secret: '{{ index . "client-secret" }}'
+        cookie-secret: '{{ index . "cookie-secret" }}'
+  data:
+    - secretKey: client-secret
+      remoteRef:
+        key: tenants/drova/keycloak-redpanda-client-secret
+        property: clientSecret
+    - secretKey: cookie-secret
+      remoteRef:
+        key: tenants/drova/redpanda-oidc-credentials
+        property: cookie-secret
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: redpanda-oidc
+  namespace: drova
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: redpanda-console
+  oidc:
+    provider:
+      issuer: https://iam.staging.timourhomelab.org/realms/plattform
+      authorizationEndpoint: https://iam.staging.timourhomelab.org/realms/plattform/protocol/openid-connect/auth
+      tokenEndpoint: https://iam.staging.timourhomelab.org/realms/plattform/protocol/openid-connect/token
+    clientIDRef:
+      name: redpanda-oidc-credentials
+      group: ""
+      kind: Secret
+    clientSecret:
+      name: redpanda-oidc-credentials
+    redirectURL: https://redpanda.staging.timourhomelab.org/oauth2/callback
+    logoutPath: /oauth2/logout
+    cookieNames:
+      accessToken: AccessToken-Redpanda
+      idToken: IdToken-Redpanda
+    refreshToken: true
+    scopes:
+      - openid
+      - profile
+      - email
+      - groups
+  jwt:
+    providers:
+      - name: keycloak
+        issuer: https://iam.staging.timourhomelab.org/realms/plattform
+        remoteJWKS:
+          uri: https://iam.staging.timourhomelab.org/realms/plattform/protocol/openid-connect/certs
+        extractFrom:
+          cookies:
+            - AccessToken-Redpanda
+  authorization:
+    defaultAction: Deny
+    rules:
+      - name: admins
+        action: Allow
+        principal:
+          jwt:
+            provider: keycloak
+            claims:
+              - name: groups
+                valueType: StringArray
+                values: ["cluster-admins", "platform-engineers", "sre-team", "security-team", "drova-admins"]

@@ -1,0 +1,59 @@
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: file-monitoring-sensitive
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,ServerSideApply=true
+spec:
+  kprobes:
+    - call: security_file_permission
+      syscall: false
+      return: true
+      args:
+        - index: 0
+          type: file
+        - index: 1
+          type: int
+      returnArg:
+        index: 0
+        type: int
+      selectors:
+        - matchArgs:
+            - index: 0
+              operator: Equal
+              values:
+                - /etc/shadow
+                - /etc/passwd
+                - /etc/sudoers
+                - /root/.ssh/authorized_keys
+            - index: 1
+              operator: Equal
+              values:
+                - "4"
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: process-execution-monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,ServerSideApply=true
+spec:
+  kprobes:
+    - call: security_bprm_check
+      syscall: false
+      args:
+        - index: 0
+          type: linux_binprm
+      selectors:
+        - matchArgs:
+            - index: 0
+              operator: Postfix
+              values:
+                - /curl
+                - /wget
+                - /nc
+                - /ncat
+                - /nmap

@@ -1,0 +1,86 @@
+name: customer-purge
+
+on:
+  schedule:
+    - cron: "30 4 * * *"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: Delete customers cancelled at least this many days ago
+        required: false
+        default: "30"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: customer
+  cancel-in-progress: false
+
+jobs:
+  due:
+    runs-on: ubuntu-latest
+    outputs:
+      customers: ${{ steps.find.outputs.customers }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - id: find
+        env:
+          DAYS: ${{ inputs.days || '30' }}
+        run: |
+          cutoff=$(date -u -d "$DAYS days ago" +%Y-%m-%d)
+          list=$(for f in kubernetes/customers/prod/*.yaml; do
+            [ "$(basename "$f")" = kustomization.yaml ] && continue
+            at=$(yq '.metadata.annotations."customers.tim275.github.io/suspended-at" // ""' "$f")
+            [ -n "$at" ] && [ "$(yq '.spec.suspended // false' "$f")" = true ] && [ ! "$at" \> "$cutoff" ] && yq '.metadata.name' "$f"
+          done | jq -Rsc 'split("\n") | map(select(length > 0))')
+          echo "customers=$list" >> "$GITHUB_OUTPUT"
+          echo "due for deletion (cancelled on or before $cutoff): $list" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  access:
+    needs: due
+    if: needs.due.outputs.customers != '[]'
+    runs-on: tofu
+    strategy:
+      max-parallel: 1
+      matrix:
+        customer: ${{ fromJSON(needs.due.outputs.customers) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - run: .github/scripts/customer-access.sh
+        env:
+          ACTION: delete
+          CUSTOMER: ${{ matrix.customer }}
+
+  order:
+    needs: [due, access]
+    if: needs.due.outputs.customers != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 1
+      matrix:
+        customer: ${{ fromJSON(needs.due.outputs.customers) }}
+    steps:
+      - uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        id: app
+        with:
+          client-id: ${{ vars.CUSTOMER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CUSTOMER_APP_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          token: ${{ steps.app.outputs.token }}
+      - run: .github/scripts/customer.sh
+        env:
+          ACTION: delete
+          CUSTOMER: ${{ matrix.customer }}
+          AUTOMERGE: "true"
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GIT_NAME: customer-purge
+          GIT_EMAIL: ${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com

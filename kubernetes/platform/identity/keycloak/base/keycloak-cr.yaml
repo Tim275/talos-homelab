@@ -1,0 +1,105 @@
+#
+#   - StatefulSet "keycloak"
+#   - Service "keycloak-service" (HTTP on 8080)
+#   - Service "keycloak-discovery" (JGroups headless)
+#   - PodDisruptionBudget
+#
+---
+apiVersion: k8s.keycloak.org/v2beta1
+kind: Keycloak
+metadata:
+  name: keycloak
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/component: oidc-provider
+    app.kubernetes.io/part-of: platform-identity
+spec:
+  automountServiceAccountToken: false
+  update:
+    strategy: Auto
+  scheduling:
+    priorityClassName: platform-critical
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: DoNotSchedule
+        nodeTaintsPolicy: Honor
+        labelSelector:
+          matchLabels:
+            app: keycloak
+  image: quay.io/keycloak/keycloak
+  startOptimized: false                     # JIT optimization for first start
+
+  db:
+    vendor: postgres
+    host: postgres-pooler.postgres.svc.cluster.local
+    port: 5432
+    database: keycloak
+    poolMinSize: 20
+    poolInitialSize: 20
+    poolMaxSize: 20
+    usernameSecret:
+      name: keycloak-db-credentials
+      key: username
+    passwordSecret:
+      name: keycloak-db-credentials
+      key: password
+
+  bootstrapAdmin:
+    service:
+      secret: keycloak-config-automation-master-secret
+
+  hostname:
+    strict: true                            # sonst baut KC Reset-Links aus dem Host-Header
+
+  ingress:
+    enabled: false                          # Exposed via Envoy Gateway HTTPRoute, not the operator's legacy Ingress
+
+  http:
+    httpEnabled: true                       # Envoy Gateway terminates TLS, KC speaks HTTP internally
+    httpPort: 8080
+
+  proxy:
+    headers: xforwarded                     # Trust X-Forwarded-* headers from Envoy
+
+  truststores:
+    ldap-ca:
+      secret:
+        name: keycloak-ldap-ca              # LDAPS zu LLDAP
+
+  tracing:
+    enabled: true
+    endpoint: http://otel-collector-collector.opentelemetry.svc.cluster.local:4317
+    samplerRatio: 0.1
+
+  additionalOptions:
+    - name: log-level
+      value: INFO
+    - name: http-max-queued-requests
+      value: "1000"
+    - name: spi-sticky-session-encoder-infinispan-should-attach-route
+      value: "false"
+    - name: metrics-enabled
+      value: "true"
+    - name: http-metrics-slos
+      value: "5,10,25,50,100,250,500,1000,2500,5000,10000"
+    - name: event-metrics-user-enabled
+      value: "true"
+    - name: spi-events-listener-jboss-logging-success-level
+      value: info
+    - name: spi-events-listener-jboss-logging-error-level
+      value: warn
+
+  unsupported:
+    podTemplate:
+      spec:
+        securityContext:
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+        containers:
+          - securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]

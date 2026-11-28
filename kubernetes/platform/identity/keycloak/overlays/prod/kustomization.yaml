@@ -1,0 +1,58 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - db-credentials.yaml  # KC ↔ Postgres
+  - lldap-admin.yaml  # LDAP-Federation bindCredential
+  - argocd-oidc-client-secret.yaml  # argocd OIDC client secret
+  - grafana-client.yaml  # grafana OIDC client secret (Phase D iter-2)
+  - harbor-client.yaml
+  - crossview-client.yaml
+  - openbao-client.yaml  # openbao OIDC client secret
+  - smtp.yaml  # Resend SMTP creds (User-Onboarding emails)
+  - hubble-client.yaml  # hubble OIDC client secret (Envoy SecurityPolicy)
+  - excalidraw-client.yaml
+  - prometheus-client.yaml
+  - alertmanager-client.yaml
+  - jaeger-client.yaml
+  - kiali-client.yaml
+  - renovate-client.yaml
+  - redpanda-client.yaml
+  - homepage-client.yaml  # homepage OIDC client secret (einzige Quelle, per ReferenceGrant gelesen)
+  - config-automation-client.yaml  # config-cli service account
+  - config-automation-master.yaml  # config-cli service account, Realm master
+  - realm-export-client.yaml  # realm-export service account
+  - customer-invite-client.yaml
+  - crossplane-client.yaml
+  - login-dns.yaml
+
+configMapGenerator:
+  - name: keycloak-realm-config
+    namespace: keycloak
+    files:
+      - realm-plattform.yaml
+      - realm-master.yaml
+      - realm-customers.yaml
+    options:
+      disableNameSuffixHash: true
+      labels:
+        app.kubernetes.io/part-of: platform-identity
+        app.kubernetes.io/managed-by: argocd
+
+components:
+  - ../../components/cert-manager
+  - ../../components/envoy-gateway
+  - ../../components/rook-ceph
+  - ../../components/cilium
+
+patches:
+  - path: sizing.yaml
+  - path: settings.yaml
+  - path: images.yaml
+
+images:
+  - name: docker.io/adorsys/keycloak-config-cli
+    newTag: 6.6.0-26
+  - name: quay.io/keycloak/keycloak
+    newTag: 26.8.2@sha256:7e66a96e4739239070aeaf72e4c5decf0f7f682cfc725b9f7ea2b336eaba38b3
